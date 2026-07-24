@@ -32,6 +32,7 @@ from .tariff_worker_shared import (
     PanelLimitPatchState,
     canonical_subscriptions_per_panel_user,
     deliver_traffic_warning,
+    record_panel_limit_drift,
 )
 
 logger = logging.getLogger(__name__)
@@ -480,7 +481,7 @@ class TariffWorkerRegularMixin:
 
         patch_signature = f"hwid:{effective_limit if hwid_limit_changed else '-'}"
         patch_signature += f"|traffic:{traffic_limit_for_panel if traffic_limit_changed else '-'}"
-        if not self._panel_limit_patch_allowed(
+        if not await self._panel_limit_patch_allowed(
             panel_uuid,
             patch_signature,
             subscription_id=int(getattr(sub, "subscription_id", 0) or 0),
@@ -553,7 +554,7 @@ class TariffWorkerRegularMixin:
         if traffic_limit_changed:
             sub.traffic_limit_bytes = traffic_limit_for_panel
 
-    def _panel_limit_patch_allowed(
+    async def _panel_limit_patch_allowed(
         self,
         panel_uuid: str,
         signature: str,
@@ -595,6 +596,13 @@ class TariffWorkerRegularMixin:
                 signature,
                 observed,
                 PANEL_LIMIT_PATCH_BACKOFF_SECONDS,
+            )
+            await record_panel_limit_drift(
+                self.settings,
+                panel_uuid=panel_uuid,
+                subscription_id=subscription_id,
+                desired=signature,
+                observed=observed,
             )
             return False
         state.attempts = attempts

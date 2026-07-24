@@ -2010,16 +2010,16 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([sub.subscription_id for sub in kept], [2, 3])
         self.assertIn("panel-1", " ".join(logs.output))
 
-    def test_panel_limit_patch_backs_off_when_the_value_never_sticks(self):
+    async def test_panel_limit_patch_backs_off_when_the_value_never_sticks(self):
         worker = TariffTrafficWorker(
-            settings=SimpleNamespace(),
+            settings=SimpleNamespace(REDIS_URL=None),
             session_factory=SimpleNamespace(),
             panel_service=SimpleNamespace(),
             subscription_service=SimpleNamespace(),
         )
 
         allowed = [
-            worker._panel_limit_patch_allowed(
+            await worker._panel_limit_patch_allowed(
                 "panel-1",
                 "hwid:4|traffic:-",
                 subscription_id=7,
@@ -2031,15 +2031,15 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
         # Three attempts, then the worker stops rewriting the same value.
         self.assertEqual(allowed, [True, True, True, False, False])
 
-    def test_panel_limit_patch_resumes_after_the_desired_value_changes(self):
+    async def test_panel_limit_patch_resumes_after_the_desired_value_changes(self):
         worker = TariffTrafficWorker(
-            settings=SimpleNamespace(),
+            settings=SimpleNamespace(REDIS_URL=None),
             session_factory=SimpleNamespace(),
             panel_service=SimpleNamespace(),
             subscription_service=SimpleNamespace(),
         )
         for _ in range(4):
-            worker._panel_limit_patch_allowed(
+            await worker._panel_limit_patch_allowed(
                 "panel-1",
                 "hwid:4|traffic:-",
                 subscription_id=7,
@@ -2047,7 +2047,7 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertTrue(
-            worker._panel_limit_patch_allowed(
+            await worker._panel_limit_patch_allowed(
                 "panel-1",
                 "hwid:6|traffic:-",
                 subscription_id=7,

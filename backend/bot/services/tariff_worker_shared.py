@@ -2,12 +2,14 @@
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from config.settings import Settings
 
 PREMIUM_WARNING_LEVEL_OFFSET = 1000
 # Single warning per premium billing period when usage reached or exceeded the quota.
@@ -25,6 +27,10 @@ POSTGRES_RETRYABLE_SQLSTATES = {"40001", "40P01"}
 POSTGRES_RETRYABLE_ERROR_NAMES = {"DeadlockDetectedError", "SerializationError"}
 
 
+PANEL_LIMIT_DRIFT_CACHE_PARTS = ("panel-limit-drift", "subscriptions")
+PANEL_LIMIT_DRIFT_CACHE_TTL_SECONDS = 24 * 60 * 60
+
+
 @dataclass
 class PanelLimitPatchState:
     """Bookkeeping for panel limit writes that keep coming back."""
@@ -32,6 +38,35 @@ class PanelLimitPatchState:
     signature: str
     attempts: int
     blocked_until: float
+
+
+async def record_panel_limit_drift(
+    settings: Settings,
+    *,
+    panel_uuid: str,
+    subscription_id: int,
+    desired: str,
+    observed: str,
+) -> None:
+    """Remember a panel user whose limits are rewritten by somebody else.
+
+    The admin health panel reads this: without it the operator only learns about
+    a second writer from a user complaint.
+    """
+    if not settings.REDIS_URL:
+        return
+    from bot.infra.redis import cache_get_json, cache_set_json, redis_key
+
+    key = redis_key(settings, *PANEL_LIMIT_DRIFT_CACHE_PARTS)
+    stored = await cache_get_json(settings, key)
+    record: dict[str, Any] = stored if isinstance(stored, dict) else {}
+    record[panel_uuid] = {
+        "subscription_id": subscription_id,
+        "desired": desired,
+        "observed": observed,
+        "last_seen_at": datetime.now(UTC).isoformat(),
+    }
+    await cache_set_json(settings, key, record, PANEL_LIMIT_DRIFT_CACHE_TTL_SECONDS)
 
 
 def canonical_subscriptions_per_panel_user(

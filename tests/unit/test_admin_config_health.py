@@ -362,6 +362,32 @@ class PremiumEnforcementAlertsTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await health.premium_enforcement_alerts(_settings()), [])
 
 
+class PanelLimitDriftAlertsTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _record(age_seconds: float) -> dict:
+        seen_at = datetime.now(UTC) - timedelta(seconds=age_seconds)
+        return {
+            "panel-uuid-1": {
+                "subscription_id": 1,
+                "desired": "hwid:4|traffic:-",
+                "observed": "hwidDeviceLimit=2 trafficLimitBytes=None",
+                "last_seen_at": seen_at.isoformat(),
+            }
+        }
+
+    async def test_recent_drift_names_the_subscription(self):
+        with patch.object(health, "cache_get_json", AsyncMock(return_value=self._record(120))):
+            alerts = await health.panel_limit_drift_alerts(_settings())
+
+        self.assertEqual(_alert_ids(alerts), ["panel_limit_drift"])
+        self.assertEqual(alerts[0].params, {"subscriptions": "1", "count": 1})
+
+    async def test_stale_drift_is_not_reported(self):
+        stale = self._record(health.PREMIUM_LEAK_ALERT_MAX_AGE_SECONDS + 60)
+        with patch.object(health, "cache_get_json", AsyncMock(return_value=stale)):
+            self.assertEqual(await health.panel_limit_drift_alerts(_settings()), [])
+
+
 class CollectAlertsTests(unittest.IsolatedAsyncioTestCase):
     async def test_collect_sorts_errors_first_and_serializes(self):
         settings = _settings()

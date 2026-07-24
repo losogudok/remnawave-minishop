@@ -1219,6 +1219,7 @@
   "admin_health_panel_api_not_configured": "PANEL_API_URL and PANEL_API_KEY are not set — sync and subscription provisioning do not work. Set them in Settings → Remnawave or in .env, then run the check again.",
   "admin_health_panel_api_unreachable": "Remnawave panel is unreachable at {url}. Check the URL, API key, network path between backend and panel, then run the check again.",
   "admin_health_premium_squad_enforcement_leak": "Premium limiting did not take effect on Remnawave nodes: {nodes}. A subscription with an exhausted premium quota keeps spending traffic there. Make sure the node containers run with CAP_NET_ADMIN (cap_add: NET_ADMIN); without it a node cannot tear down sessions a client already holds.",
+  "admin_health_panel_limit_drift": "Device or traffic limits do not stay applied on the panel for subscriptions: {subscriptions}. Something else keeps rewriting them — a second bot instance, a script, or an admin in the Remnawave panel using the same API key. Syncing these subscriptions is paused to stop the write loop.",
   "admin_error_with_details": "{message}\n\nDetails: {details}",
   "admin_error_access_denied": "Access denied. Check that your Telegram ID is listed in ADMIN_IDS, then sign in to the admin panel again.",
   "admin_error_panel_service_unavailable": "Remnawave Panel service is unavailable for this action. Check PANEL_API_URL/PANEL_API_KEY, backend connectivity to the panel, and Configuration issues, then retry.",
