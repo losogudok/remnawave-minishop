@@ -736,6 +736,28 @@ class PanelWebhookService:
         )
 
     @staticmethod
+    def _payload_state_snapshot(user_payload: dict[str, Any]) -> str:
+        """Mutable panel fields only: enough to diff two events, no personal data."""
+        squads = user_payload.get("activeInternalSquads")
+        squad_uuids = ",".join(
+            sorted(
+                str(squad.get("uuid") if isinstance(squad, dict) else squad)
+                for squad in (squads if isinstance(squads, list) else [])
+            )
+        )
+        fields = {
+            "panel_uuid": PanelWebhookService._payload_panel_uuid(user_payload) or "N/A",
+            "status": user_payload.get("status"),
+            "expireAt": user_payload.get("expireAt"),
+            "trafficLimitBytes": user_payload.get("trafficLimitBytes"),
+            "trafficLimitStrategy": user_payload.get("trafficLimitStrategy"),
+            "hwidDeviceLimit": user_payload.get("hwidDeviceLimit"),
+            "activeInternalSquads": squad_uuids or "none",
+            "updatedAt": user_payload.get("updatedAt"),
+        }
+        return " ".join(f"{key}={value}" for key, value in fields.items())
+
+    @staticmethod
     def _mask_email(email: str) -> str:
         if not email:
             return ""
@@ -818,6 +840,14 @@ class PanelWebhookService:
             event_name,
             telegram_id if telegram_id is not None else "N/A",
         )
+        if logger.isEnabledFor(logging.DEBUG) and isinstance(user_data, dict):
+            # user.modified only fires on a panel write, so comparing two of these
+            # snapshots shows which field a foreign writer keeps changing.
+            logger.debug(
+                "Panel webhook payload snapshot: %s %s",
+                event_name,
+                self._payload_state_snapshot(user_data),
+            )
 
         queued_payload: dict[str, object] = {"event": event_name, "user": user_data}
         if meta:

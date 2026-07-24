@@ -239,6 +239,27 @@ class HandleWebhookQueueingTests(unittest.IsolatedAsyncioTestCase):
             "user.expires_in_24_hours:99",
         )
 
+    async def test_payload_snapshot_lists_mutable_panel_fields_only(self):
+        service = _make_service()
+
+        snapshot = service._payload_state_snapshot(
+            {
+                "uuid": "panel-user-1",
+                "email": "client@example.com",
+                "status": "ACTIVE",
+                "expireAt": "2026-08-01T00:00:00.000Z",
+                "trafficLimitBytes": 0,
+                "hwidDeviceLimit": 4,
+                "activeInternalSquads": [{"uuid": "squad-b"}, {"uuid": "squad-a"}],
+                "updatedAt": "2026-07-24T20:30:58.000Z",
+            }
+        )
+
+        self.assertIn("hwidDeviceLimit=4", snapshot)
+        self.assertIn("activeInternalSquads=squad-a,squad-b", snapshot)
+        self.assertIn("updatedAt=2026-07-24T20:30:58.000Z", snapshot)
+        self.assertNotIn("client@example.com", snapshot)
+
     async def test_falls_back_to_background_task_when_redis_unavailable(self):
         service = _make_service()
         background_seen: list[Any] = []
