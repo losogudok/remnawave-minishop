@@ -372,7 +372,10 @@
               }
             }}
           >
-            <td class="admin-users-cell-user" data-label={at("user", {}, "User")}>
+            <td
+              class="admin-users-cell-user admin-cell-primary"
+              data-label={at("user", {}, "User")}
+            >
               <AdminUserCell
                 name={userDisplayName(user)}
                 secondary={userSecondaryName(user)}
@@ -577,8 +580,10 @@
     overflow-x: auto;
   }
 
-  .admin-users-table-wrap :global(.admin-users-table) {
-    min-width: 1080px;
+  @media (min-width: 721px) {
+    .admin-users-table-wrap :global(.admin-users-table) {
+      min-width: 1080px;
+    }
   }
 
   .admin-users-cell-premium {
@@ -680,30 +685,6 @@
       border-bottom: 0;
       border-left: 0;
       border-radius: 18px 18px 0 0;
-    }
-
-    .admin-users-table-wrap :global(.admin-users-table thead) {
-      display: table-header-group;
-    }
-
-    .admin-users-table-wrap :global(.admin-users-table tbody tr) {
-      display: table-row;
-      padding: 0;
-      border-bottom: 0;
-    }
-
-    .admin-users-table-wrap :global(.admin-users-table tbody tr:last-child td) {
-      border-bottom: 0;
-    }
-
-    .admin-users-table-wrap :global(.admin-users-table tbody td) {
-      display: table-cell;
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--admin-border);
-    }
-
-    .admin-users-table-wrap :global(.admin-users-table tbody td::before) {
-      content: none;
     }
   }
 </style>

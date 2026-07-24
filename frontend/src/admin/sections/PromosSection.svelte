@@ -525,7 +525,12 @@
         {#snippet children(p)}
           {@const status = promoStatus(p)}
           <tr data-admin-code-id={p.id}>
-            <td class="admin-cell-mono" data-label={at("promo_csv_code", {}, "Code")}>{p.code}</td>
+            <td
+              class="admin-cell-mono admin-cell-primary"
+              data-label={at("promo_csv_code", {}, "Code")}
+            >
+              {p.code}
+            </td>
             <td data-label={at("promo_col_type", {}, "Type")}>
               <AdminBadge variant="muted">{promoType(p)}</AdminBadge>
             </td>

@@ -4488,35 +4488,85 @@
     display: none;
   }
 
-  .admin-table tbody td {
+  /* Mobile: each row becomes a self-contained card with an aligned
+     label/value grid, so dense listings stay readable and structured on
+     narrow screens. Skeleton and virtual-spacer rows keep their plain shape. */
+  .admin-table:not(.admin-table-skeleton),
+  .admin-table:not(.admin-table-skeleton) tbody {
     display: block;
-    padding: 6px 16px;
-    border: 0;
+    width: 100%;
+    min-width: 0;
   }
 
-  .admin-table tbody tr {
+  .admin-table:not(.admin-table-skeleton) tbody tr:not(.admin-virtual-spacer) {
     display: block;
-    padding: 10px 0;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    border: 1px solid var(--admin-border);
+    border-radius: 12px;
+    background: var(--admin-surface-2);
+  }
+
+  .admin-table:not(.admin-table-skeleton) tbody tr:not(.admin-virtual-spacer):last-child {
+    margin-bottom: 0;
+  }
+
+  .admin-table:not(.admin-table-skeleton) tbody td {
+    display: grid;
+    grid-template-columns: minmax(84px, 38%) minmax(0, 1fr);
+    align-items: baseline;
+    gap: 2px 12px;
+    padding: 5px 0;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .admin-table:not(.admin-table-skeleton) tbody td::before {
+    content: attr(data-label);
+    color: var(--admin-muted);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* Cells without a label span the full card width instead of leaving an
+     empty label column. */
+  .admin-table:not(.admin-table-skeleton) tbody td:not([data-label]),
+  .admin-table:not(.admin-table-skeleton) tbody td[data-label=""] {
+    display: block;
+  }
+
+  .admin-table:not(.admin-table-skeleton) tbody td:not([data-label])::before,
+  .admin-table:not(.admin-table-skeleton) tbody td[data-label=""]::before {
+    display: none;
+  }
+
+  /* The primary entity cell (user/order/etc.) leads the card at full width
+     without a label prefix, separated from the detail rows below it. */
+  .admin-table:not(.admin-table-skeleton) tbody td.admin-cell-primary {
+    display: block;
+    margin-bottom: 6px;
+    padding: 0 0 10px;
     border-bottom: 1px solid var(--admin-border);
   }
 
-  .admin-table tbody tr:last-child {
-    border-bottom: 0;
+  .admin-table:not(.admin-table-skeleton) tbody td.admin-cell-primary::before {
+    display: none;
   }
 
-  .admin-table tbody td::before {
-    content: attr(data-label);
-    display: inline-block;
-    min-width: 110px;
-    color: var(--admin-muted);
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-right: 8px;
-  }
-
-  .admin-table td.admin-cell-actions {
+  /* Row actions sit as a full-width control strip at the foot of the card. */
+  .admin-table:not(.admin-table-skeleton) tbody td.admin-cell-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    padding-top: 8px;
     text-align: left;
+  }
+
+  .admin-table:not(.admin-table-skeleton) tbody td.admin-cell-actions::before {
+    display: none;
   }
 }
 
