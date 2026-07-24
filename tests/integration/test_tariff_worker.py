@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import tempfile
 import unittest
 from contextlib import asynccontextmanager
@@ -12,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 from bot.services.panel_api_service import PanelApiService
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.services.tariff_worker import TariffTrafficWorker
+from bot.services.tariff_worker_shared import canonical_subscriptions_per_panel_user
 from config.settings import Settings
 
 
@@ -1981,6 +1983,77 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(sub.is_active)
         self.assertFalse(sub.skip_notifications)
         self.assertEqual(sub.status_from_panel, "ACTIVE")
+
+    def test_duplicate_active_subscriptions_sync_only_the_newest(self):
+        older = SimpleNamespace(
+            subscription_id=1,
+            panel_user_uuid="panel-1",
+            end_date=datetime(2026, 7, 1, tzinfo=UTC),
+        )
+        newer = SimpleNamespace(
+            subscription_id=2,
+            panel_user_uuid="panel-1",
+            end_date=datetime(2026, 8, 1, tzinfo=UTC),
+        )
+        other = SimpleNamespace(
+            subscription_id=3,
+            panel_user_uuid="panel-2",
+            end_date=datetime(2026, 8, 1, tzinfo=UTC),
+        )
+
+        with self.assertLogs("bot.services.tariff_worker_shared", level="WARNING") as logs:
+            kept = canonical_subscriptions_per_panel_user(
+                [older, newer, other],
+                logger=logging.getLogger("bot.services.tariff_worker_shared"),
+            )
+
+        self.assertEqual([sub.subscription_id for sub in kept], [2, 3])
+        self.assertIn("panel-1", " ".join(logs.output))
+
+    def test_panel_limit_patch_backs_off_when_the_value_never_sticks(self):
+        worker = TariffTrafficWorker(
+            settings=SimpleNamespace(),
+            session_factory=SimpleNamespace(),
+            panel_service=SimpleNamespace(),
+            subscription_service=SimpleNamespace(),
+        )
+
+        allowed = [
+            worker._panel_limit_patch_allowed(
+                "panel-1",
+                "hwid:4|traffic:-",
+                subscription_id=7,
+                observed="hwidDeviceLimit=2 trafficLimitBytes=None",
+            )
+            for _ in range(5)
+        ]
+
+        # Three attempts, then the worker stops rewriting the same value.
+        self.assertEqual(allowed, [True, True, True, False, False])
+
+    def test_panel_limit_patch_resumes_after_the_desired_value_changes(self):
+        worker = TariffTrafficWorker(
+            settings=SimpleNamespace(),
+            session_factory=SimpleNamespace(),
+            panel_service=SimpleNamespace(),
+            subscription_service=SimpleNamespace(),
+        )
+        for _ in range(4):
+            worker._panel_limit_patch_allowed(
+                "panel-1",
+                "hwid:4|traffic:-",
+                subscription_id=7,
+                observed="hwidDeviceLimit=2 trafficLimitBytes=None",
+            )
+
+        self.assertTrue(
+            worker._panel_limit_patch_allowed(
+                "panel-1",
+                "hwid:6|traffic:-",
+                subscription_id=7,
+                observed="hwidDeviceLimit=2 trafficLimitBytes=None",
+            )
+        )
 
     async def test_premium_fast_tick_syncs_only_subscriptions_with_premium_squads(self):
         premium_tariff = _PremiumTariff()

@@ -22,7 +22,10 @@ from bot.services.subscription_service_impl.core import SubscriptionService
 from config.settings import Settings
 from db.models import Subscription
 
-from .tariff_worker_shared import TARIFF_WORKER_PANEL_CONCURRENCY
+from .tariff_worker_shared import (
+    TARIFF_WORKER_PANEL_CONCURRENCY,
+    canonical_subscriptions_per_panel_user,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +69,10 @@ class TariffWorkerPremiumFastMixin:
         now = datetime.now(UTC)
         # Node stats are cached per tick only, so every lane starts from fresh panel data.
         self._premium_node_usage_tick_cache = {}
-        subs = list((await session.execute(self._premium_fast_candidates_query(now))).scalars())
+        subs = canonical_subscriptions_per_panel_user(
+            list((await session.execute(self._premium_fast_candidates_query(now))).scalars()),
+            logger=logger,
+        )
         if not subs:
             return
 

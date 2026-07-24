@@ -33,6 +33,8 @@ from db.advisory_locks import acquire_subscription_background_sync_lock
 from db.dal import user_dal
 from db.models import Subscription
 
+from .tariff_worker_shared import PanelLimitPatchState
+
 logger = logging.getLogger(__name__)
 
 PREMIUM_WARNING_LEVEL_OFFSET = 1000
@@ -119,6 +121,7 @@ class TariffWorkerCoreMixin:
         self._premium_node_names: dict[str, str] = {}
         self._premium_leak_usage: dict[int, dict[str, int]] = {}
         self._premium_drop_connections_at: dict[int, float] = {}
+        self._panel_limit_patches: dict[str, PanelLimitPatchState] = {}
         self._premium_node_usage_tick_cache: dict[
             tuple[str, str, str],
             dict[str, dict[Any, int]] | None,

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol
@@ -28,10 +29,17 @@ from .tariff_worker_shared import (
     TARIFF_WORKER_BATCH_SIZE,
     TARIFF_WORKER_BULK_PANEL_FETCH_THRESHOLD,
     TARIFF_WORKER_PANEL_CONCURRENCY,
+    PanelLimitPatchState,
+    canonical_subscriptions_per_panel_user,
     deliver_traffic_warning,
 )
 
 logger = logging.getLogger(__name__)
+
+# How many consecutive ticks may rewrite the same panel limits before the worker
+# decides the value does not stick and backs off instead of storming the panel.
+PANEL_LIMIT_PATCH_MAX_ATTEMPTS = 3
+PANEL_LIMIT_PATCH_BACKOFF_SECONDS = 1800
 
 
 class _RegularTariff(Protocol):
@@ -51,6 +59,7 @@ class TariffWorkerRegularMixin:
         tuple[str, str, str],
         dict[str, dict[Any, int]] | None,
     ]
+    _panel_limit_patches: dict[str, PanelLimitPatchState]
 
     if TYPE_CHECKING:
         REGULAR_RESET_NOTICE_LEVEL: int
@@ -143,7 +152,10 @@ class TariffWorkerRegularMixin:
             )
             .order_by(Subscription.subscription_id.asc())
         )
-        subs = list(result.scalars().all())
+        subs = canonical_subscriptions_per_panel_user(
+            list(result.scalars().all()),
+            logger=logger,
+        )
         if not subs:
             return
 
@@ -461,7 +473,21 @@ class TariffWorkerRegularMixin:
                 panel_traffic_limit_int = None
             traffic_limit_changed = panel_traffic_limit_int != traffic_limit_for_panel
 
+        panel_uuid = str(getattr(sub, "panel_user_uuid", "") or "")
         if not hwid_limit_changed and not traffic_limit_changed:
+            self._panel_limit_patches.pop(panel_uuid, None)
+            return
+
+        patch_signature = f"hwid:{effective_limit if hwid_limit_changed else '-'}"
+        patch_signature += f"|traffic:{traffic_limit_for_panel if traffic_limit_changed else '-'}"
+        if not self._panel_limit_patch_allowed(
+            panel_uuid,
+            patch_signature,
+            subscription_id=int(getattr(sub, "subscription_id", 0) or 0),
+            observed=(
+                f"hwidDeviceLimit={panel_limit_int} trafficLimitBytes={panel_traffic_limit_int}"
+            ),
+        ):
             return
 
         payload = self.subscription_service._build_panel_update_payload(
@@ -518,8 +544,92 @@ class TariffWorkerRegularMixin:
                 updated_panel,
             )
             return
+        self._warn_on_unapplied_panel_limits(
+            sub,
+            updated_panel,
+            hwid_device_limit=effective_limit if hwid_limit_changed else None,
+            traffic_limit_bytes=traffic_limit_for_panel if traffic_limit_changed else None,
+        )
         if traffic_limit_changed:
             sub.traffic_limit_bytes = traffic_limit_for_panel
+
+    def _panel_limit_patch_allowed(
+        self,
+        panel_uuid: str,
+        signature: str,
+        *,
+        subscription_id: int,
+        observed: str,
+    ) -> bool:
+        """Stop rewriting the same limits forever when the panel keeps drifting back.
+
+        Each panel write makes Remnawave emit ``user.modified``, so a value that
+        never sticks (something else rewrites it, or the panel ignores it) turns
+        into a webhook storm. Repeat a few times, then back off and say so.
+        """
+        if not panel_uuid:
+            return True
+        state = self._panel_limit_patches.get(panel_uuid)
+        now = time.monotonic()
+        if state is None or state.signature != signature:
+            self._panel_limit_patches[panel_uuid] = PanelLimitPatchState(
+                signature=signature,
+                attempts=1,
+                blocked_until=0.0,
+            )
+            return True
+        if state.blocked_until and now < state.blocked_until:
+            return False
+
+        attempts = state.attempts + 1
+        if attempts > PANEL_LIMIT_PATCH_MAX_ATTEMPTS:
+            state.attempts = attempts
+            state.blocked_until = now + PANEL_LIMIT_PATCH_BACKOFF_SECONDS
+            logger.error(
+                "TariffTrafficWorker: panel limits for subscription %s (panel %s) did not stick "
+                "after %s attempts (%s, panel still reports %s); pausing this sync for %s seconds. "
+                "Another writer or a stale panel read is the usual cause.",
+                subscription_id,
+                panel_uuid,
+                attempts - 1,
+                signature,
+                observed,
+                PANEL_LIMIT_PATCH_BACKOFF_SECONDS,
+            )
+            return False
+        state.attempts = attempts
+        state.blocked_until = 0.0
+        return True
+
+    @staticmethod
+    def _warn_on_unapplied_panel_limits(
+        sub: Subscription,
+        updated_panel: dict[str, Any],
+        *,
+        hwid_device_limit: int | None,
+        traffic_limit_bytes: int | None,
+    ) -> None:
+        """Tell apart "the panel refused our value" from "someone rewrites it later"."""
+        mismatches: list[str] = []
+        for field, requested in (
+            ("hwidDeviceLimit", hwid_device_limit),
+            ("trafficLimitBytes", traffic_limit_bytes),
+        ):
+            if requested is None:
+                continue
+            raw_applied = updated_panel.get(field)
+            try:
+                applied = int(raw_applied) if raw_applied is not None else None
+            except (TypeError, ValueError):
+                applied = None
+            if applied != int(requested):
+                mismatches.append(f"{field}:requested={requested} applied={applied}")
+        if mismatches:
+            logger.warning(
+                "TariffTrafficWorker: panel did not apply requested limits for subscription %s: %s",
+                getattr(sub, "subscription_id", None),
+                ", ".join(mismatches),
+            )
 
     async def _maybe_send_regular_reset_notice(
         self,
