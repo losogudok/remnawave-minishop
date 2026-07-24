@@ -13,15 +13,38 @@ import {
   Tag,
   UsersRound,
 } from "$components/ui/icons.js";
-import { ADMIN_SECTION_EXTENSIONS, ADMIN_SECTION_GROUP_EXTENSIONS } from "./extensionRegistry";
+import {
+  ADMIN_SECTION_EXTENSIONS,
+  ADMIN_SECTION_GROUP_EXTENSIONS,
+  ADMIN_SECTION_TABS,
+} from "./extensionRegistry";
 import {
   isFeatureBoundDescriptorVisible,
   requiredFeatureForDescriptor,
   type AdminSectionDescriptor,
   type AdminSectionGroupDescriptor,
+  type AdminSectionTabDescriptor,
 } from "./extensionTypes";
 
-export type { AdminSectionDescriptor, AdminSectionGroupDescriptor } from "./extensionTypes";
+export type {
+  AdminSectionDescriptor,
+  AdminSectionGroupDescriptor,
+  AdminSectionTabDescriptor,
+} from "./extensionTypes";
+
+/**
+ * Tabs an extension registered for one section, in render order. A locked tab
+ * stays listed when it opts into `visibleWhenLocked`, exactly like a section,
+ * so it can explain the lock instead of vanishing.
+ */
+export function adminSectionTabsFor(
+  sectionId: string,
+  availableFeatures: ReadonlySet<string>
+): AdminSectionTabDescriptor[] {
+  return ADMIN_SECTION_TABS.filter(
+    (tab) => tab.sectionId === sectionId && isFeatureBoundDescriptorVisible(tab, availableFeatures)
+  );
+}
 
 export function requiredFeatureForAdminSection(section: AdminSectionDescriptor): string {
   return requiredFeatureForDescriptor(section);

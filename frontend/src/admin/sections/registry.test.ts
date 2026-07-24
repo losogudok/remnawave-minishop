@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ADMIN_SECTION_GROUPS,
   ADMIN_SECTIONS,
+  adminSectionTabsFor,
   buildAdminSectionRouteAliases,
   defaultQueryForAdminSection,
   isAdminSectionVisible,
@@ -134,5 +135,18 @@ describe("admin extension section groups", () => {
         [{ id: "system", order: 1, i18nKey: "extension_system", fallbackLabel: "Override" }]
       )
     ).toEqual([{ id: "system", order: 40, i18nKey: "core_system", fallbackLabel: "System" }]);
+  });
+});
+
+describe("admin section tabs", () => {
+  it("ships none from core, so every section renders exactly as before", () => {
+    for (const item of ADMIN_SECTIONS) {
+      expect(adminSectionTabsFor(item.id, new Set(["reports"]))).toEqual([]);
+    }
+  });
+
+  it("returns nothing for a section no extension targets", () => {
+    expect(adminSectionTabsFor("promos", new Set())).toEqual([]);
+    expect(adminSectionTabsFor("", new Set())).toEqual([]);
   });
 });

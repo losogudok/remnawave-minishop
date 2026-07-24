@@ -9,6 +9,7 @@
   import BrandMark from "$lib/webapp/BrandMark.svelte";
   import AdminHeaderActions from "./AdminHeaderActions.svelte";
   import AdminLazyModals from "./AdminLazyModals.svelte";
+  import AdminSectionTabs from "./AdminSectionTabs.svelte";
   import ConfigAlertsBanner from "./ConfigAlertsBanner.svelte";
   import { dynamicComponent, type DynamicComponent } from "./adminLazyComponents";
   import type { AdminSectionDescriptor } from "./sections/registry";
@@ -436,45 +437,58 @@
           in:fade={sectionFade()}
           out:fade={sectionFade()}
         >
-          {#if activeSectionComponent}
-            {@const ActiveSectionComponent = activeSectionComponent}
-            <ActiveSectionComponent
-              {at}
-              {availableFeatures}
-              {brand}
-              {currentLang}
-              {fmtDate}
-              {fmtDateShort}
-              {fmtMoney}
-              {featureAvailable}
-              {featuresResolved}
-              onSettingsSaved={onSaveSettings}
-              onTranslationsSaved={onSaveTranslations}
-              {paymentStatusVariant}
-              {panelStatusBadge}
-              {resolvedAvatarUrl}
-              {routePrefix}
-              {settingsPath}
-              {userDisplayName}
-              {userInitials}
-              {userSecondaryName}
-              {appFaviconUrl}
-              {appFaviconUseCustom}
-              {onOpenUserCard}
-              {onOpenUsersFilter}
-              {onUsersFiltersChange}
-              {onOpenSettingsPath}
-              {onSettingsPathChange}
-              {initialTicketId}
-              onNavigateSection={onSetActive}
-            />
-          {:else if activeSectionLoading}
-            <div class="admin-section-loading" aria-busy="true" aria-live="polite">
-              <span class="admin-skeleton admin-skeleton-line admin-skeleton-line-short"></span>
-              <span class="admin-skeleton admin-skeleton-line admin-skeleton-line-strong"></span>
-              <span class="admin-skeleton admin-skeleton-line"></span>
-            </div>
-          {/if}
+          <AdminSectionTabs
+            sectionId={active}
+            {at}
+            {availableFeatures}
+            {featuresResolved}
+            {routePrefix}
+            {onOpenUserCard}
+            onNavigateSection={onSetActive}
+          >
+            {#snippet section()}
+              {#if activeSectionComponent}
+                {@const ActiveSectionComponent = activeSectionComponent}
+                <ActiveSectionComponent
+                  {at}
+                  {availableFeatures}
+                  {brand}
+                  {currentLang}
+                  {fmtDate}
+                  {fmtDateShort}
+                  {fmtMoney}
+                  {featureAvailable}
+                  {featuresResolved}
+                  onSettingsSaved={onSaveSettings}
+                  onTranslationsSaved={onSaveTranslations}
+                  {paymentStatusVariant}
+                  {panelStatusBadge}
+                  {resolvedAvatarUrl}
+                  {routePrefix}
+                  {settingsPath}
+                  {userDisplayName}
+                  {userInitials}
+                  {userSecondaryName}
+                  {appFaviconUrl}
+                  {appFaviconUseCustom}
+                  {onOpenUserCard}
+                  {onOpenUsersFilter}
+                  {onUsersFiltersChange}
+                  {onOpenSettingsPath}
+                  {onSettingsPathChange}
+                  {initialTicketId}
+                  onNavigateSection={onSetActive}
+                />
+              {:else if activeSectionLoading}
+                <div class="admin-section-loading" aria-busy="true" aria-live="polite">
+                  <span class="admin-skeleton admin-skeleton-line admin-skeleton-line-short"></span>
+                  <span class="admin-skeleton admin-skeleton-line admin-skeleton-line-strong"
+                  ></span>
+                  <span class="admin-skeleton admin-skeleton-line"></span>
+                </div>
+              {/if}
+            {/snippet}
+          </AdminSectionTabs>
         </div>
       {/key}
     </main>

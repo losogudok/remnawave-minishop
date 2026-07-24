@@ -74,6 +74,23 @@ export interface AdminSectionDescriptor extends FeatureBoundDescriptor {
   routeDefaults?: readonly AdminSectionRouteDefault[];
 }
 
+/**
+ * A tab added to an existing section. Extensions use this to widen a core
+ * screen (promo codes, users, payments, …) without patching its source: core
+ * only learns that a section may carry tabs, never what an extension puts in
+ * them. A section with no registered tabs renders exactly as before.
+ */
+export interface AdminSectionTabDescriptor extends FeatureBoundDescriptor {
+  /** Unique among the tabs registered for the same section. */
+  id: string;
+  /** Id of the section this tab is attached to. */
+  sectionId: string;
+  order: number;
+  i18nKey: string;
+  fallbackLabel: string;
+  component: Component<AdminSectionComponentProps>;
+}
+
 export interface AdminUserDetailPanelProps {
   at: TranslateFn;
   user: AdminUser;

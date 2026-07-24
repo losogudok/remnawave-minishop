@@ -266,7 +266,34 @@ export const userDetailPanels = {
 };
 ```
 
-Компонент вкладки получает `at`, `user`, `userDetail`, `featureAvailable`, `active` и `routePrefix`.
+Именованный экспорт `sectionTabs` добавляет вкладку в **уже существующий** раздел админки —
+свой или базовый (`promos`, `users`, `payments`, …). Так расширение дополняет базовый экран, не
+патча его исходники: ядро знает только о том, что раздел *может* нести вкладки, но не о том, что
+именно в них лежит.
+
+```ts
+import ExampleCodes from "./ExampleCodes.svelte";
+
+export const sectionTabs = {
+  id: "example-codes",
+  sectionId: "promos",
+  order: 10,
+  i18nKey: "section_tab_example_codes",
+  fallbackLabel: "Issued codes",
+  requiredFeature: "example.codes",
+  component: ExampleCodes,
+};
+```
+
+Первой вкладкой всегда остаётся сам раздел, подписанный своим `titleI18nKey`. Пока ни одно
+расширение не зарегистрировало вкладку для раздела, полоса вкладок не рендерится и раздел
+выглядит ровно как раньше. Компонент вкладки получает тот же контракт, что и компонент секции
+(`AdminSectionComponentProps`): `at`, `featureAvailable`, `featuresResolved`, `availableFeatures`,
+`routePrefix`, `onNavigateSection`, `onOpenUserCard` — внутренние props конкретного раздела ему не
+передаются, поэтому вкладка не привязывается к его устройству.
+
+Компонент вкладки карточки пользователя получает `at`, `user`, `userDetail`, `featureAvailable`,
+`active` и `routePrefix`.
 Extension-компонент полной секции получает `featureAvailable`, отсортированный массив
 `availableFeatures` и `onNavigateSection(sectionId)` вместе с общими props админки. Первый флаг
 отражает `requiredFeature` самой секции, а массив позволяет проверить дополнительные возможности
