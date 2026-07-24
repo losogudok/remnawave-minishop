@@ -241,6 +241,18 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
             "Maximum subscriptions inspected in one premium fast tick. 0 removes the cap."
         ),
     )
+    TARIFF_PREMIUM_DROP_CONNECTIONS: bool = Field(
+        default=True,
+        description=(
+            "Ask the panel to tear down live connections on premium nodes once premium "
+            "access is limited. Requires CAP_NET_ADMIN on the Remnawave nodes."
+        ),
+    )
+    TARIFF_PREMIUM_DROP_CONNECTIONS_COOLDOWN_SECONDS: int = Field(
+        default=300,
+        ge=0,
+        description="Minimum delay between two connection teardowns of the same subscription.",
+    )
     BACKUP_ENABLED: bool = Field(
         default=False,
         description="Run periodic backup jobs from the worker container.",

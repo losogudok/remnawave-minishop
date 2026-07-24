@@ -116,6 +116,9 @@ class TariffWorkerCoreMixin:
         self.i18n = i18n
         self._stopped = asyncio.Event()
         self._premium_nodes_cache: dict[tuple[str, ...], dict[str, Any]] = {}
+        self._premium_node_names: dict[str, str] = {}
+        self._premium_leak_usage: dict[int, dict[str, int]] = {}
+        self._premium_drop_connections_at: dict[int, float] = {}
         self._premium_node_usage_tick_cache: dict[
             tuple[str, str, str],
             dict[str, dict[Any, int]] | None,

@@ -104,6 +104,17 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
             warning_key: str,
             audit_content: str,
         ) -> None: ...
+        async def _sync_premium_connection_state(
+            self,
+            sub: Subscription,
+            *,
+            should_limit: bool,
+            newly_limited: bool,
+            node_uuids: list[str],
+            start_date: str,
+            end_date: str,
+            panel_username: str | None,
+        ) -> None: ...
 
     async def _sync_premium_squad_limit(
         self,
@@ -349,6 +360,17 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
                     previous_period_start=previous_premium_period_start,
                     traffic_strategy=effective_strategy,
                 )
+            # The panel already carries the desired squads, so a subscription that
+            # still burns premium traffic here is holding live sessions.
+            await self._sync_premium_connection_state(
+                sub,
+                should_limit=should_limit,
+                newly_limited=access_state_changed and should_limit,
+                node_uuids=node_uuids,
+                start_date=start_date,
+                end_date=end_date,
+                panel_username=panel_username,
+            )
             return
 
         self._log_premium_squad_panel_patch(
@@ -377,6 +399,15 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
                     previous_period_start=previous_premium_period_start,
                     traffic_strategy=effective_strategy,
                 )
+            await self._sync_premium_connection_state(
+                sub,
+                should_limit=should_limit,
+                newly_limited=access_state_changed and should_limit,
+                node_uuids=node_uuids,
+                start_date=start_date,
+                end_date=end_date,
+                panel_username=panel_username,
+            )
         logger.info(
             "Premium squad access %s for user %s tariff %s: %s/%s bytes",
             "limited" if should_limit else "restored",

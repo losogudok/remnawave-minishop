@@ -2,7 +2,7 @@ import json
 import tempfile
 import time
 import unittest
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -40,6 +40,7 @@ def _settings(**overrides):
         "TARIFFS_CONFIG_PATH": "data/tariffs.json",
         "SUBSCRIPTION_MINI_APP_URL": "https://shop.example.com/app",
         "REDIS_URL": "redis://redis:6379/0",
+        "REDIS_KEY_PREFIX": "remnawave-tg-shop",
         "SMTP_USERNAME": None,
         "SMTP_PASSWORD": None,
         "SMTP_FROM_EMAIL": None,
@@ -325,6 +326,40 @@ class PanelAlertsTests(unittest.IsolatedAsyncioTestCase):
     async def test_healthy_panel_produces_no_alerts(self):
         panel_service = SimpleNamespace(get_system_stats=AsyncMock(return_value={"cpu": 1}))
         self.assertEqual(await health.panel_alerts(panel_service, _settings()), [])
+
+
+class PremiumEnforcementAlertsTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _record(age_seconds: float) -> dict:
+        seen_at = datetime.now(UTC) - timedelta(seconds=age_seconds)
+        return {
+            "node-1": {
+                "name": "Premium A",
+                "last_seen_at": seen_at.isoformat(),
+                "subscriptions": [41],
+            }
+        }
+
+    async def test_recent_leak_is_reported_with_node_names(self):
+        with patch.object(
+            health,
+            "cache_get_json",
+            AsyncMock(return_value=self._record(60)),
+        ):
+            alerts = await health.premium_enforcement_alerts(_settings())
+
+        self.assertEqual(_alert_ids(alerts), ["premium_squad_enforcement_leak"])
+        self.assertEqual(alerts[0].params, {"nodes": "Premium A", "count": 1})
+        self.assertEqual(alerts[0].severity, health.SEVERITY_WARNING)
+
+    async def test_stale_leak_is_not_reported(self):
+        stale = self._record(health.PREMIUM_LEAK_ALERT_MAX_AGE_SECONDS + 60)
+        with patch.object(health, "cache_get_json", AsyncMock(return_value=stale)):
+            self.assertEqual(await health.premium_enforcement_alerts(_settings()), [])
+
+    async def test_missing_record_produces_no_alert(self):
+        with patch.object(health, "cache_get_json", AsyncMock(return_value=None)):
+            self.assertEqual(await health.premium_enforcement_alerts(_settings()), [])
 
 
 class CollectAlertsTests(unittest.IsolatedAsyncioTestCase):

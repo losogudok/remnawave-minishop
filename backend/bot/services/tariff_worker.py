@@ -6,6 +6,7 @@ from db.dal import subscription_dal, tariff_dal, user_dal
 from .tariff_worker_core import TariffWorkerCoreMixin
 from .tariff_worker_legacy import TariffWorkerLegacyMixin
 from .tariff_worker_premium import TariffWorkerPremiumMixin
+from .tariff_worker_premium_enforcement import TariffWorkerPremiumEnforcementMixin
 from .tariff_worker_premium_fast import TariffWorkerPremiumFastMixin
 from .tariff_worker_regular import TariffWorkerRegularMixin
 
@@ -28,6 +29,7 @@ POSTGRES_RETRYABLE_ERROR_NAMES = {"DeadlockDetectedError", "SerializationError"}
 class TariffTrafficWorker(
     TariffWorkerRegularMixin,
     TariffWorkerPremiumMixin,
+    TariffWorkerPremiumEnforcementMixin,
     TariffWorkerPremiumFastMixin,
     TariffWorkerLegacyMixin,
     TariffWorkerCoreMixin,
@@ -47,6 +49,7 @@ __all__ = [
     "TARIFF_WORKER_PANEL_CONCURRENCY",
     "TARIFF_WORKER_SQUAD_CONFIRMATION_CACHE_TTL_SECONDS",
     "TariffTrafficWorker",
+    "TariffWorkerPremiumEnforcementMixin",
     "TariffWorkerPremiumFastMixin",
     "asyncio",
     "logging",

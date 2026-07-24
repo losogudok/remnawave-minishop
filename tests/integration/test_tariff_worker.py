@@ -2107,6 +2107,139 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(ticks, ["traffic_period", "legacy_throttle_recovery", "premium_fast"])
 
+    def _premium_enforcement_worker(self, *, drop_enabled=True, cooldown=0):
+        settings = SimpleNamespace(
+            DEFAULT_LANGUAGE="en",
+            SUBSCRIPTION_MINI_APP_URL="",
+            email_auth_configured=False,
+            tariff_traffic_warning_levels=[85],
+            USER_TRAFFIC_STRATEGY="MONTH",
+            TARIFF_PREMIUM_DROP_CONNECTIONS=drop_enabled,
+            TARIFF_PREMIUM_DROP_CONNECTIONS_COOLDOWN_SECONDS=cooldown,
+        )
+        panel_service = AsyncMock(spec=PanelApiService)
+        panel_service.get_internal_squad_accessible_nodes = AsyncMock(
+            return_value=[{"uuid": "node-1", "name": "Premium A"}]
+        )
+        panel_service.update_user_details_on_panel = AsyncMock(return_value={"response": {}})
+        panel_service.drop_user_connections = AsyncMock(return_value=True)
+        subscription_service = SubscriptionService(settings, panel_service)
+        subscription_service.premium_access_for_tariff = AsyncMock(
+            return_value={"node_labels": ["Premium A"], "squad_labels": []}
+        )
+        worker = TariffTrafficWorker(
+            settings=settings,
+            session_factory=SimpleNamespace(),
+            panel_service=panel_service,
+            subscription_service=subscription_service,
+        )
+        worker._user_lang = AsyncMock(return_value="en")
+        worker._maybe_warn_premium_squad_limit = AsyncMock()
+        worker._maybe_send_premium_reset_notice = AsyncMock()
+        return worker, panel_service
+
+    @staticmethod
+    def _premium_enforcement_subscription(*, used_gb, limited):
+        return SimpleNamespace(
+            subscription_id=41,
+            user_id=123,
+            panel_user_uuid="panel-uuid",
+            premium_baseline_bytes=25 * (1024**3),
+            premium_topup_balance_bytes=0,
+            premium_topup_used_bytes=0,
+            premium_used_bytes=used_gb * (1024**3),
+            premium_is_limited=limited,
+            premium_period_start_at=datetime(2026, 6, 1, tzinfo=UTC),
+            premium_unlimited_override=False,
+            premium_bonus_bytes=0,
+        )
+
+    async def _run_premium_sync(self, worker, sub, *, node_usage_gb):
+        worker.panel_service.get_node_users_bandwidth_stats = AsyncMock(
+            return_value={
+                "topUsers": [{"username": "tg_123", "total": int(node_usage_gb * (1024**3))}]
+            }
+        )
+        worker._premium_node_usage_tick_cache = {}
+        with patch(
+            "bot.services.tariff_worker_premium.tariff_dal.sum_traffic_topups",
+            new=AsyncMock(return_value=None),
+        ):
+            await worker._sync_premium_squad_limit(
+                AsyncMock(),
+                sub,
+                _PremiumTariff(),
+                datetime(2026, 6, 15, tzinfo=UTC),
+                panel_username="tg_123",
+                panel_user_dict={
+                    "activeInternalSquads": [{"uuid": "squad-1"}, {"uuid": "premium-squad"}]
+                },
+            )
+
+    async def test_premium_limit_drops_live_connections_on_premium_nodes(self):
+        worker, panel_service = self._premium_enforcement_worker()
+        sub = self._premium_enforcement_subscription(used_gb=10, limited=False)
+
+        await self._run_premium_sync(worker, sub, node_usage_gb=30)
+
+        self.assertTrue(sub.premium_is_limited)
+        panel_service.drop_user_connections.assert_awaited_once_with("panel-uuid", ["node-1"])
+
+    async def test_premium_limit_does_not_drop_connections_when_disabled(self):
+        worker, panel_service = self._premium_enforcement_worker(drop_enabled=False)
+        sub = self._premium_enforcement_subscription(used_gb=10, limited=False)
+
+        await self._run_premium_sync(worker, sub, node_usage_gb=30)
+
+        self.assertTrue(sub.premium_is_limited)
+        panel_service.drop_user_connections.assert_not_awaited()
+
+    async def test_premium_traffic_after_limit_warns_and_drops_again(self):
+        worker, panel_service = self._premium_enforcement_worker()
+        sub = self._premium_enforcement_subscription(used_gb=10, limited=False)
+
+        # First pass limits the subscription and records the per-node baseline.
+        await self._run_premium_sync(worker, sub, node_usage_gb=30)
+        panel_service.drop_user_connections.reset_mock()
+
+        # The client keeps spending on the premium node despite being limited.
+        with (
+            patch(
+                "bot.services.tariff_worker_premium_enforcement.cache_get_json",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "bot.services.tariff_worker_premium_enforcement.cache_set_json",
+                new=AsyncMock(),
+            ) as cache_set,
+            self.assertLogs(
+                "bot.services.tariff_worker_premium_enforcement", level="WARNING"
+            ) as logs,
+        ):
+            worker.settings.REDIS_URL = "redis://localhost:6379/0"
+            worker.settings.REDIS_KEY_PREFIX = "test"
+            await self._run_premium_sync(worker, sub, node_usage_gb=35)
+
+        panel_service.drop_user_connections.assert_awaited_once_with("panel-uuid", ["node-1"])
+        self.assertTrue(any("CAP_NET_ADMIN" in line for line in logs.output))
+        recorded = cache_set.await_args.args[2]
+        self.assertEqual(recorded["node-1"]["name"], "Premium A")
+        self.assertEqual(recorded["node-1"]["subscriptions"], [41])
+
+    async def test_premium_leak_watch_is_dropped_when_access_is_restored(self):
+        worker, _panel_service = self._premium_enforcement_worker()
+        sub = self._premium_enforcement_subscription(used_gb=10, limited=False)
+
+        await self._run_premium_sync(worker, sub, node_usage_gb=30)
+        self.assertIn(41, worker._premium_leak_usage)
+
+        # A top-up lifted the limit: the per-node baseline must not linger.
+        sub.premium_topup_balance_bytes = 50 * (1024**3)
+        await self._run_premium_sync(worker, sub, node_usage_gb=30)
+
+        self.assertFalse(sub.premium_is_limited)
+        self.assertNotIn(41, worker._premium_leak_usage)
+
     async def test_premium_usage_keeps_stored_total_when_node_stats_are_unavailable(self):
         settings = SimpleNamespace(
             DEFAULT_LANGUAGE="en",

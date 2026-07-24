@@ -17,10 +17,14 @@ class _PremiumNodesTariff(Protocol):
 class TariffWorkerPremiumUsageMixin:
     panel_service: PanelApiService
     _premium_nodes_cache: dict[tuple[str, ...], dict[str, Any]]
+    _premium_node_names: dict[str, str]
     _premium_node_usage_tick_cache: dict[
         tuple[str, str, str],
         dict[str, dict[Any, int]] | None,
     ]
+
+    def _premium_node_label(self, node_uuid: str) -> str:
+        return self._premium_node_names.get(str(node_uuid)) or str(node_uuid)
 
     async def _premium_node_uuids_for_tariff(self, tariff: _PremiumNodesTariff) -> list[str]:
         cache_key = tuple(sorted(tariff.premium_squad_uuids or []))
@@ -42,6 +46,9 @@ class TariffWorkerPremiumUsageMixin:
                 node_uuid = node.get("uuid") or node.get("nodeUuid") or node.get("node_uuid")
                 if node_uuid:
                     nodes.append(str(node_uuid))
+                    node_name = node.get("name") or node.get("nodeName")
+                    if node_name:
+                        self._premium_node_names[str(node_uuid)] = str(node_name)
         deduped = list(dict.fromkeys(nodes))
         self._premium_nodes_cache[cache_key] = {"ts": now_ts, "nodes": deduped}
         return deduped
@@ -55,8 +62,26 @@ class TariffWorkerPremiumUsageMixin:
         *,
         panel_username: str | None = None,
     ) -> int | None:
-        total = 0
-        found = False
+        usage_by_node = await self._premium_usage_by_node(
+            user_uuid,
+            node_uuids,
+            start_date,
+            end_date,
+            panel_username=panel_username,
+        )
+        return sum(usage_by_node.values())
+
+    async def _premium_usage_by_node(
+        self,
+        user_uuid: str,
+        node_uuids: list[str],
+        start_date: str,
+        end_date: str,
+        *,
+        panel_username: str | None = None,
+    ) -> dict[str, int]:
+        """Premium bytes per node, skipping nodes whose stats request failed."""
+        usage: dict[str, int] = {}
         username = (panel_username or "").strip() or None
         for node_uuid in node_uuids:
             lookup = await self._premium_usage_lookup_for_node(node_uuid, start_date, end_date)
@@ -78,14 +103,8 @@ class TariffWorkerPremiumUsageMixin:
                     lookup["by_uuid_username"].get((user_uuid_str, username), 0) or 0
                 )
 
-            node_total = uuid_total + username_total - overlap_total
-            if node_total or (
-                user_uuid_str in lookup["by_uuid"]
-                or (username and username in lookup["by_username"])
-            ):
-                total += node_total
-                found = True
-        return total if found else 0
+            usage[str(node_uuid)] = uuid_total + username_total - overlap_total
+        return usage
 
     def _premium_usage_with_partial_stats_floor(
         self,

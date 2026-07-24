@@ -674,6 +674,69 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(users)
         self.assertEqual(calls, ["/users/stream", "/users", "/users/stream", "/users"])
 
+    async def test_drop_user_connections_targets_only_given_nodes(self):
+        service = self._make_service()
+        service._request = AsyncMock(return_value={"response": {"eventSent": True}})
+
+        dropped = await service.drop_user_connections("user-uuid", ["node-1", "node-2"])
+
+        self.assertTrue(dropped)
+        service._request.assert_awaited_once_with(
+            "POST",
+            "/ip-control/drop-connections",
+            json={
+                "dropBy": {"by": "userUuids", "userUuids": ["user-uuid"]},
+                "targetNodes": {
+                    "target": "specificNodes",
+                    "nodeUuids": ["node-1", "node-2"],
+                },
+            },
+            log_full_response=False,
+        )
+
+    async def test_drop_user_connections_without_nodes_targets_all_nodes(self):
+        service = self._make_service()
+        service._request = AsyncMock(return_value={"response": {"eventSent": True}})
+
+        await service.drop_user_connections("user-uuid")
+
+        payload = service._request.await_args.kwargs["json"]
+        self.assertEqual(payload["targetNodes"], {"target": "allNodes"})
+
+    async def test_drop_user_connections_tolerates_panel_without_connected_nodes(self):
+        service = self._make_service()
+        service._request = AsyncMock(
+            return_value={
+                "error": True,
+                "status_code": 404,
+                "details": {"message": "Connected nodes not found", "errorCode": "A219"},
+            }
+        )
+
+        with self.assertNoLogs("bot.services.panel_api_users", level="ERROR"):
+            dropped = await service.drop_user_connections("user-uuid", ["node-1"])
+
+        self.assertFalse(dropped)
+
+    async def test_drop_user_connections_warns_when_panel_lacks_the_endpoint(self):
+        service = self._make_service()
+        service._request = AsyncMock(
+            return_value={
+                "error": True,
+                "status_code": 404,
+                "details": {
+                    "message": "Cannot POST /api/ip-control/drop-connections",
+                    "error": "Not Found",
+                },
+            }
+        )
+
+        with self.assertLogs("bot.services.panel_api_users", level="WARNING") as logs:
+            dropped = await service.drop_user_connections("user-uuid", ["node-1"])
+
+        self.assertFalse(dropped)
+        self.assertTrue(any("ip-control" in line for line in logs.output))
+
 
 if __name__ == "__main__":
     unittest.main()
