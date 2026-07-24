@@ -1,7 +1,7 @@
 import logging
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from aiogram import Bot
@@ -23,6 +23,7 @@ from config.settings import Settings
 from db.dal import tariff_dal
 from db.models import Subscription
 
+from .tariff_worker_premium_usage import TariffWorkerPremiumUsageMixin
 from .tariff_worker_shared import (
     PREMIUM_WARNING_DEPLETED_LEVEL,
     PREMIUM_WARNING_LEVEL_OFFSET,
@@ -42,17 +43,12 @@ class _PremiumTariff(Protocol):
     def name(self, lang: str, fallback: str = "ru") -> str: ...
 
 
-class TariffWorkerPremiumMixin:
+class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
     settings: Settings
     panel_service: PanelApiService
     subscription_service: SubscriptionService
     bot: Bot | None
     i18n: JsonI18n | None
-    _premium_nodes_cache: dict[tuple[str, ...], dict[str, Any]]
-    _premium_node_usage_tick_cache: dict[
-        tuple[str, str, str],
-        dict[str, dict[Any, int]] | None,
-    ]
     _premium_squad_match_cache: dict[tuple[str, tuple[str, ...]], float]
 
     if TYPE_CHECKING:
@@ -202,6 +198,14 @@ class TariffWorkerPremiumMixin:
         )
         if premium_used is None:
             return
+        premium_used = self._premium_usage_with_partial_stats_floor(
+            sub,
+            premium_used,
+            node_uuids,
+            start_date,
+            end_date,
+            same_period=same_period,
+        )
 
         panel_next_reset_at = self._panel_next_traffic_reset_at(
             premium_panel_user_dict,
@@ -851,130 +855,3 @@ class TariffWorkerPremiumMixin:
                 logger=logger,
                 telegram_failure_message="Failed to send premium traffic warning to user %s",
             )
-
-    async def _premium_node_uuids_for_tariff(self, tariff: _PremiumTariff) -> list[str]:
-        cache_key = tuple(sorted(tariff.premium_squad_uuids or []))
-        cached = self._premium_nodes_cache.get(cache_key)
-        now_ts = datetime.now(UTC).timestamp()
-        cached_nodes = cached.get("nodes") if cached else None
-        cached_ts = cached.get("ts") if cached else None
-        if cached and cached_nodes is not None and now_ts - float(cached_ts or 0) < 600:
-            return [str(node) for node in cached_nodes] if isinstance(cached_nodes, list) else []
-
-        nodes: list[str] = []
-        for squad_uuid in tariff.premium_squad_uuids or []:
-            accessible = (
-                await self.panel_service.get_internal_squad_accessible_nodes(squad_uuid) or []
-            )
-            for node in accessible:
-                if not isinstance(node, dict):
-                    continue
-                node_uuid = node.get("uuid") or node.get("nodeUuid") or node.get("node_uuid")
-                if node_uuid:
-                    nodes.append(str(node_uuid))
-        deduped = list(dict.fromkeys(nodes))
-        self._premium_nodes_cache[cache_key] = {"ts": now_ts, "nodes": deduped}
-        return deduped
-
-    async def _premium_usage_for_user(
-        self,
-        user_uuid: str,
-        node_uuids: list[str],
-        start_date: str,
-        end_date: str,
-        *,
-        panel_username: str | None = None,
-    ) -> int | None:
-        total = 0
-        found = False
-        username = (panel_username or "").strip() or None
-        for node_uuid in node_uuids:
-            lookup = await self._premium_usage_lookup_for_node(node_uuid, start_date, end_date)
-            if not lookup:
-                continue
-
-            uuid_total = 0
-            username_total = 0
-            overlap_total = 0
-            if user_uuid:
-                user_uuid_str = str(user_uuid)
-                uuid_total = int(lookup["by_uuid"].get(user_uuid_str, 0) or 0)
-            else:
-                user_uuid_str = ""
-            if username:
-                username_total = int(lookup["by_username"].get(username, 0) or 0)
-            if user_uuid_str and username:
-                overlap_total = int(
-                    lookup["by_uuid_username"].get((user_uuid_str, username), 0) or 0
-                )
-
-            node_total = uuid_total + username_total - overlap_total
-            if node_total or (
-                user_uuid_str in lookup["by_uuid"]
-                or (username and username in lookup["by_username"])
-            ):
-                total += node_total
-                found = True
-        return total if found else 0
-
-    async def _premium_usage_lookup_for_node(
-        self,
-        node_uuid: str,
-        start_date: str,
-        end_date: str,
-    ) -> dict | None:
-        stats_cache_key = (node_uuid, start_date, end_date)
-        if stats_cache_key not in self._premium_node_usage_tick_cache:
-            stats = await self.panel_service.get_node_users_bandwidth_stats(
-                node_uuid,
-                start=start_date,
-                end=end_date,
-            )
-            self._premium_node_usage_tick_cache[stats_cache_key] = self._build_premium_usage_lookup(
-                stats
-            )
-        return self._premium_node_usage_tick_cache.get(stats_cache_key)
-
-    @staticmethod
-    def _build_premium_usage_lookup(stats: dict | None) -> dict | None:
-        if not isinstance(stats, dict):
-            return None
-        entries = stats.get("topUsers") or stats.get("usersStats") or stats.get("users") or []
-        if not isinstance(entries, list):
-            return None
-
-        by_uuid: dict[str, int] = {}
-        by_username: dict[str, int] = {}
-        by_uuid_username: dict[tuple[str, str], int] = {}
-        for entry in entries:
-            if not isinstance(entry, dict):
-                continue
-            user_obj_raw = entry.get("user")
-            user_obj: dict[str, Any] = user_obj_raw if isinstance(user_obj_raw, dict) else {}
-            entry_uuid = (
-                user_obj.get("uuid")
-                or entry.get("userUuid")
-                or entry.get("uuid")
-                or entry.get("user_uuid")
-            )
-            entry_username = (
-                user_obj.get("username") or entry.get("username") or entry.get("userUsername")
-            )
-            value = entry.get("total")
-            if value is None:
-                value = int(entry.get("download", 0) or 0) + int(entry.get("upload", 0) or 0)
-            total = int(value or 0)
-            uuid_key = str(entry_uuid) if entry_uuid else ""
-            username_key = str(entry_username) if entry_username else ""
-            if uuid_key:
-                by_uuid[uuid_key] = by_uuid.get(uuid_key, 0) + total
-            if username_key:
-                by_username[username_key] = by_username.get(username_key, 0) + total
-            if uuid_key and username_key:
-                pair = (uuid_key, username_key)
-                by_uuid_username[pair] = by_uuid_username.get(pair, 0) + total
-        return {
-            "by_uuid": by_uuid,
-            "by_username": by_username,
-            "by_uuid_username": by_uuid_username,
-        }

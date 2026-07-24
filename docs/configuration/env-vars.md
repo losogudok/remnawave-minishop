@@ -134,6 +134,9 @@ Trust-all вариант записывается как
 | `TARIFF_WORKER_LOCK_TTL_SECONDS` | TTL Redis lock для tariff worker. |
 | `TARIFF_WORKER_TICK_SECONDS` | Интервал tariff worker. |
 | `TARIFF_WORKER_BULK_PANEL_FETCH_THRESHOLD` | Порог активных подписок для bulk fetch пользователей панели. |
+| `TARIFF_PREMIUM_FAST_TICK_SECONDS` | Интервал быстрой проверки premium-лимита между полными тиками tariff worker. По умолчанию `60`; `0` или значение не меньше `TARIFF_WORKER_TICK_SECONDS` отключает быструю проверку. |
+| `TARIFF_PREMIUM_FAST_WATCH_PERCENT` | Процент израсходованного premium-трафика, с которого подписка попадает в быструю проверку. По умолчанию `80`. |
+| `TARIFF_PREMIUM_FAST_BATCH_LIMIT` | Максимум подписок в одном быстром тике. По умолчанию `200`, `0` снимает ограничение. |
 | `BACKUP_ENABLED` | Включает периодические бэкапы в worker-контейнере. По умолчанию `False`. |
 | `BACKUP_INTERVAL_SECONDS` | Интервал между бэкапами. По умолчанию `3600`; запуск выравнивается на границу часа: 12:00, 13:00 и т.д. |
 | `BACKUP_CHAT_ID` | Telegram chat ID для архивов. Если пусто, используется `LOG_CHAT_ID`. |

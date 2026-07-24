@@ -218,6 +218,29 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
     TARIFF_WORKER_LOCK_TTL_SECONDS: int = Field(default=240)
     TARIFF_WORKER_TICK_SECONDS: int = Field(default=300)
     TARIFF_WORKER_BULK_PANEL_FETCH_THRESHOLD: int = Field(default=50)
+    TARIFF_PREMIUM_FAST_TICK_SECONDS: int = Field(
+        default=60,
+        ge=0,
+        description=(
+            "Interval of the premium squad re-check between full tariff worker ticks. "
+            "0 disables the fast lane and premium limits follow TARIFF_WORKER_TICK_SECONDS."
+        ),
+    )
+    TARIFF_PREMIUM_FAST_WATCH_PERCENT: int = Field(
+        default=80,
+        ge=0,
+        le=100,
+        description=(
+            "Premium usage percentage from which a subscription joins the fast re-check lane."
+        ),
+    )
+    TARIFF_PREMIUM_FAST_BATCH_LIMIT: int = Field(
+        default=200,
+        ge=0,
+        description=(
+            "Maximum subscriptions inspected in one premium fast tick. 0 removes the cap."
+        ),
+    )
     BACKUP_ENABLED: bool = Field(
         default=False,
         description="Run periodic backup jobs from the worker container.",

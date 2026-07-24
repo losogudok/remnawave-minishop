@@ -96,6 +96,8 @@ class TariffWorkerCoreMixin:
         def _fmt_bytes(self, value: int) -> str: ...
         async def traffic_period_tick(self, session: AsyncSession) -> None: ...
         async def legacy_throttle_recovery_tick(self, session: AsyncSession) -> None: ...
+        async def premium_fast_tick(self, session: AsyncSession) -> None: ...
+        def premium_fast_tick_seconds(self) -> int: ...
 
     def __init__(
         self,
@@ -389,6 +391,10 @@ class TariffWorkerCoreMixin:
     async def run(self) -> None:
         if not self.settings.tariffs_config:
             return
+        full_tick_seconds = max(1, int(self.settings.TARIFF_WORKER_TICK_SECONDS or 0))
+        fast_tick_seconds = self.premium_fast_tick_seconds()
+        sleep_seconds = fast_tick_seconds or full_tick_seconds
+        next_full_tick_at = 0.0
         while not self._stopped.is_set():
             try:
                 async with redis_lock(
@@ -400,24 +406,35 @@ class TariffWorkerCoreMixin:
                         logger.info("TariffTrafficWorker tick skipped: Redis lock is held")
                     else:
                         started = time.monotonic()
-                        await self._run_db_tick_with_retry(
-                            "traffic_period",
-                            self.traffic_period_tick,
-                        )
-                        await self._run_db_tick_with_retry(
-                            "legacy_throttle_recovery",
-                            self.legacy_throttle_recovery_tick,
-                        )
+                        full_tick_due = not fast_tick_seconds or started >= next_full_tick_at
+                        if full_tick_due:
+                            await self._run_db_tick_with_retry(
+                                "traffic_period",
+                                self.traffic_period_tick,
+                            )
+                            await self._run_db_tick_with_retry(
+                                "legacy_throttle_recovery",
+                                self.legacy_throttle_recovery_tick,
+                            )
+                            next_full_tick_at = time.monotonic() + full_tick_seconds
+                        else:
+                            # Between full ticks only the subscriptions that are about to
+                            # exhaust their premium quota are re-checked.
+                            await self._run_db_tick_with_retry(
+                                "premium_fast",
+                                self.premium_fast_tick,
+                            )
                         logger.info(
-                            "metric worker_tick_duration_seconds=%.3f worker=tariff",
+                            "metric worker_tick_duration_seconds=%.3f worker=tariff kind=%s",
                             time.monotonic() - started,
+                            "full" if full_tick_due else "premium_fast",
                         )
             except Exception:
                 logger.exception("TariffTrafficWorker tick failed")
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(
                     self._stopped.wait(),
-                    timeout=self.settings.TARIFF_WORKER_TICK_SECONDS,
+                    timeout=sleep_seconds,
                 )
 
     def stop(self) -> None:
