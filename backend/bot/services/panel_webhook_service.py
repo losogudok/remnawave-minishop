@@ -186,7 +186,9 @@ class PanelWebhookService:
             return
 
         if event_name not in ACTIONABLE_EVENTS:
-            logger.info(
+            # Routine: the panel emits these on every write (user.modified fires for
+            # each PATCH), and we only forward them to plugins. Debug, not INFO.
+            logger.debug(
                 "Panel webhook event %s ignored: event is not used for subscription "
                 "notifications; %s",
                 event_name,
@@ -890,7 +892,31 @@ class PanelWebhookService:
                 secret=fingerprint_secret or "",
             )
             event_id = f"{event_id}:{fingerprint}"
+        elif event_name not in ACTIONABLE_EVENTS:
+            # Events we only forward to plugins repeat for the same user as often
+            # as the panel is written to (every PATCH emits ``user.modified``), so
+            # ``event:user`` would collapse a whole dedupe window into one event.
+            # Dedupe on content instead: a redelivery of the same payload is a
+            # duplicate, a new modification is not.
+            event_id = f"{event_id}:{cls._payload_fingerprint(user_payload, meta)}"
         return event_id
+
+    @staticmethod
+    def _payload_fingerprint(
+        user_payload: dict[str, Any],
+        meta: dict[str, Any] | None,
+    ) -> str:
+        try:
+            normalized = json.dumps(
+                {"user": user_payload, "meta": meta or {}},
+                ensure_ascii=True,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            )
+        except (TypeError, ValueError):
+            normalized = repr(sorted(user_payload.items()))
+        return hashlib.sha256(normalized.encode()).hexdigest()[:24]
 
     async def _run_event_in_background(
         self,

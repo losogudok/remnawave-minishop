@@ -433,6 +433,7 @@ class TariffWorkerRegularMixin:
         hwid_limit_changed = effective_limit is not None and panel_limit_int != effective_limit
 
         traffic_limit_for_panel: int | None = None
+        panel_traffic_limit_int: int | None = None
         traffic_limit_changed = False
         if tariff.billing_model == "period" and (
             active_extra > 0 or previous_active_extra != active_extra
@@ -472,6 +473,38 @@ class TariffWorkerRegularMixin:
             ),
             hwid_device_limit=effective_limit if hwid_limit_changed else None,
             include_default_squads=False,
+        )
+        # Every panel PATCH makes Remnawave emit user.modified, so name the reason:
+        # a value that never converges shows up here as the same reason each tick.
+        logger.info(
+            "Sync panel PATCH: source=%s user_id=%s panel_uuid=%s reasons=%s changes=%s",
+            "tariff_device_limits",
+            getattr(sub, "user_id", None),
+            sub.panel_user_uuid,
+            ",".join(
+                reason
+                for reason, changed in (
+                    ("hwid_device_limit", hwid_limit_changed),
+                    ("traffic_limit_bytes", traffic_limit_changed),
+                )
+                if changed
+            ),
+            " ".join(
+                change
+                for change in (
+                    (
+                        f"hwidDeviceLimit:{panel_limit_int}->{effective_limit}"
+                        if hwid_limit_changed
+                        else ""
+                    ),
+                    (
+                        f"trafficLimitBytes:{panel_traffic_limit_int}->{traffic_limit_for_panel}"
+                        if traffic_limit_changed
+                        else ""
+                    ),
+                )
+                if change
+            ),
         )
         updated_panel = await self.panel_service.update_user_details_on_panel(
             sub.panel_user_uuid,
