@@ -3023,5 +3023,9 @@
   "admin_user_trial_active": "active",
   "admin_user_trial_used_at": "Used {date}",
   "payments_desc_traffic_package_premium": "Traffic package {gb} GB (premium)",
-  "payments_desc_traffic_package_regular": "Traffic package {gb} GB (standard)"
+  "payments_desc_traffic_package_regular": "Traffic package {gb} GB (standard)",
+  "admin_broadcast_promo_group_shared": "Shared codes",
+  "admin_broadcast_promo_group_personal": "Personal codes",
+  "admin_promo_reach_personal": "Personal",
+  "admin_promo_reach_personal_hint": "One activation only — issued for a single customer, do not broadcast it."
 }

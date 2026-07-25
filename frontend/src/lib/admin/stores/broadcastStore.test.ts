@@ -150,4 +150,26 @@ describe("broadcastStore", () => {
       { kind: "url", label: "Open", url: "https://example.com", promo_code: "" },
     ]);
   });
+
+  it("keeps single-use promo codes in their own dropdown group, below the shared ones", async () => {
+    const api = vi.fn().mockResolvedValue({
+      ok: true,
+      promos: [
+        { code: "SOLO", is_active: true, max_activations: 1, current_activations: 0 },
+        { code: "SALE10", is_active: true, max_activations: 100, current_activations: 5 },
+        { code: "SPENT", is_active: true, max_activations: 1, current_activations: 1 },
+        { code: "OFF", is_active: false, max_activations: 50, current_activations: 0 },
+      ],
+    });
+    const store = makeStore(api);
+
+    await store.loadPromoOptions();
+
+    // A code with one activation is somebody's personal code: it stays
+    // selectable but never sits among the codes meant for an audience.
+    expect(store.broadcastPromoOptions).toEqual([
+      { value: "SALE10", label: "SALE10 · 5/100", group: "Shared codes" },
+      { value: "SOLO", label: "SOLO · 0/1", group: "Personal codes" },
+    ]);
+  });
 });

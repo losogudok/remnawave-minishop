@@ -139,8 +139,8 @@
         class="input"
         type="text"
         value={emailSubject}
-        placeholder={at("broadcast_email_subject", {}, "Email subject")}
-        aria-label={at("broadcast_email_subject", {}, "Email subject")}
+        placeholder={at("broadcast_email_subject_label", {}, "Email subject")}
+        aria-label={at("broadcast_email_subject_label", {}, "Email subject")}
         oninput={(event) => (emailSubject = (event.currentTarget as HTMLInputElement).value)}
       />
     {/if}

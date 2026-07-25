@@ -3023,5 +3023,9 @@
   "admin_user_trial_active": "активен",
   "admin_user_trial_used_at": "Брал {date}",
   "payments_desc_traffic_package_premium": "Пакет трафика {gb} ГБ (премиум)",
-  "payments_desc_traffic_package_regular": "Пакет трафика {gb} ГБ (обычный)"
+  "payments_desc_traffic_package_regular": "Пакет трафика {gb} ГБ (обычный)",
+  "admin_broadcast_promo_group_shared": "Общие коды",
+  "admin_broadcast_promo_group_personal": "Персональные коды",
+  "admin_promo_reach_personal": "Персональный",
+  "admin_promo_reach_personal_hint": "Только одна активация — код выдан одному пользователю, не отправляйте его в рассылку."
 }

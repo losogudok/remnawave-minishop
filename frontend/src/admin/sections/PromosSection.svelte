@@ -149,7 +149,14 @@
     promoEditEffectKind !== "bonus_days" || Boolean(promoEditDraft.bonus_requires_payment)
   );
 
-  $effect(() => promosTable.setRows(promos));
+  // Shared codes lead, personal ones cluster below, so a page never mixes a
+  // code meant for everyone with a code minted for one person.
+  const groupedPromos = $derived([
+    ...promos.filter((promo) => !promoIsPersonal(promo)),
+    ...promos.filter((promo) => promoIsPersonal(promo)),
+  ]);
+
+  $effect(() => promosTable.setRows(groupedPromos));
   $effect(() => {
     if (promoCreateOpen && !previousCreateOpen) {
       promoCreateEffectKind = effectKind(promoDraft);
@@ -384,6 +391,17 @@
     return parts.join(", ") || "-";
   }
 
+  /**
+   * A code only one customer can redeem.
+   *
+   * A promo code has no owner column, so a single allowed activation is the
+   * neutral signal: whoever redeems it first spends it. Plugins issue such
+   * codes per customer, and they must not be broadcast to an audience.
+   */
+  function promoIsPersonal(promo: Promo): boolean {
+    return Number(promo.max_activations) === 1;
+  }
+
   function promoType(promo: Promo | PromoPatch): string {
     const hasBonus = Number(promo.bonus_days || 0) > 0;
     const hasDiscount = Number(promo.discount_percent || 0) > 0;
@@ -532,7 +550,21 @@
               {p.code}
             </td>
             <td data-label={at("promo_col_type", {}, "Type")}>
-              <AdminBadge variant="muted">{promoType(p)}</AdminBadge>
+              <div class="admin-promo-type">
+                <AdminBadge variant="muted">{promoType(p)}</AdminBadge>
+                {#if promoIsPersonal(p)}
+                  <AdminBadge
+                    variant="warning"
+                    title={at(
+                      "promo_reach_personal_hint",
+                      {},
+                      "One activation only — issued for a single customer, do not broadcast it."
+                    )}
+                  >
+                    {at("promo_reach_personal", {}, "Personal")}
+                  </AdminBadge>
+                {/if}
+              </div>
             </td>
             <td class="admin-cell-wrap" data-label={at("promo_col_effect", {}, "Effect")}>
               {effectText(p)}

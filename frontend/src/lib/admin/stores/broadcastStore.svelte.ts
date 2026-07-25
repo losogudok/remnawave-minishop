@@ -56,7 +56,7 @@ export type BroadcastButtonDraft = {
   url: string;
   promoCode: string;
 };
-export type BroadcastPromoOption = { value: string; label: string };
+export type BroadcastPromoOption = { value: string; label: string; group?: string };
 /** A message addressed to one customer, composed outside the broadcast draft. */
 export type SingleUserMessage = {
   userId: number;
@@ -154,6 +154,17 @@ function promoUsable(promo: PromoListItem): boolean {
   const current = Number(promo.current_activations);
   if (Number.isFinite(max) && max > 0 && Number.isFinite(current) && current >= max) return false;
   return true;
+}
+
+/**
+ * A code only one customer can redeem.
+ *
+ * A promo code has no owner column, so a single allowed activation is the
+ * neutral signal: whoever redeems it first spends it, which makes such a code
+ * wrong for a broadcast even though the API accepts it.
+ */
+function promoIsPersonal(promo: PromoListItem): boolean {
+  return Number(promo.max_activations) === 1;
 }
 
 function promoOptionLabel(promo: PromoListItem): string {
@@ -697,10 +708,22 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
         const res = await api(buildAdminPromosPath(params));
         if (isPromosListResponse(res)) {
           const promos = res.promos || [];
-          const options = promos
+          const sharedGroup = at("broadcast_promo_group_shared", {}, "Shared codes");
+          const personalGroup = at("broadcast_promo_group_personal", {}, "Personal codes");
+          const usable = promos
             .filter(promoUsable)
-            .map((promo) => ({ value: String(promo.code || ""), label: promoOptionLabel(promo) }))
+            .map((promo) => ({
+              value: String(promo.code || ""),
+              label: promoOptionLabel(promo),
+              group: promoIsPersonal(promo) ? personalGroup : sharedGroup,
+            }))
             .filter((option) => option.value);
+          // Shared codes lead the list; single-use ones sit apart so nobody
+          // attaches a personal code to a whole audience by accident.
+          const options = [
+            ...usable.filter((option) => option.group === sharedGroup),
+            ...usable.filter((option) => option.group === personalGroup),
+          ];
           updateState((s) => ({
             ...s,
             broadcastPromoOptions: options,
