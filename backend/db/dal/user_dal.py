@@ -22,6 +22,7 @@ from ..models import (
 )
 from ._sqlalchemy import rowcount
 from .user_broadcast_dal import (  # noqa: F401
+    count_active_subscriptions_per_tariff,
     count_all_active_users_for_broadcast,
     count_users_with_active_subscription_for_broadcast,
     count_users_with_expired_subscription,
@@ -38,6 +39,7 @@ from .user_broadcast_dal import (  # noqa: F401
     get_top_users_by_referrals_count,
     get_top_users_by_traffic_used,
     get_user_ids_with_active_subscription,
+    get_user_ids_with_active_subscription_on_tariff,
     get_user_ids_with_expired_subscription,
     get_user_ids_without_active_subscription,
     get_user_ids_without_any_subscription,

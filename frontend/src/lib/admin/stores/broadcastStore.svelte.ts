@@ -30,6 +30,7 @@ export type BroadcastTargetOption = {
   disabled?: boolean;
   locked?: boolean;
   group?: string;
+  icon?: string;
 };
 type BroadcastAudienceDescriptor = {
   target: string;
@@ -39,6 +40,7 @@ type BroadcastAudienceDescriptor = {
   available: boolean;
   groupLabelKey: string | null;
   groupFallbackLabel: string | null;
+  icon: string | null;
 };
 type StoredCounts = {
   counts: BroadcastCounts;
@@ -194,6 +196,7 @@ function asBroadcastAudiences(value: unknown): BroadcastAudienceDescriptor[] {
         available: raw.available !== false,
         groupLabelKey: String(raw.group_label_key || "").trim() || null,
         groupFallbackLabel: String(raw.group_fallback_label || "").trim() || null,
+        icon: String(raw.icon || "").trim() || null,
       };
     })
     .filter((item) => {
@@ -214,11 +217,35 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
   let promoOptionsPromise: Promise<void> | null = null;
   let shortcodesPromise: Promise<void> | null = null;
   let buttonIdCounter = 0;
+  const subscriptionGroup = () =>
+    at("broadcast_audience_group_subscription", {}, "Subscription status");
+  const rolesGroup = () => at("broadcast_audience_group_roles", {}, "Roles");
+
   const CORE_BROADCAST_TARGET_OPTIONS: BroadcastTargetOption[] = [
-    { value: "all", label: at("broadcast_target_all", {}, "All active") },
-    { value: "active", label: at("broadcast_target_active", {}, "With subscription") },
-    { value: "inactive", label: at("broadcast_target_inactive", {}, "No subscription") },
-    { value: "expired", label: at("broadcast_target_expired", {}, "Expired subscription") },
+    {
+      value: "all",
+      label: at("broadcast_target_all", {}, "All active"),
+      group: subscriptionGroup(),
+      icon: "users",
+    },
+    {
+      value: "active",
+      label: at("broadcast_target_active", {}, "With subscription"),
+      group: subscriptionGroup(),
+      icon: "shield-check",
+    },
+    {
+      value: "inactive",
+      label: at("broadcast_target_inactive", {}, "No subscription"),
+      group: subscriptionGroup(),
+      icon: "user",
+    },
+    {
+      value: "expired",
+      label: at("broadcast_target_expired", {}, "Expired subscription"),
+      group: subscriptionGroup(),
+      icon: "calendar-days",
+    },
     {
       value: "active_never_connected",
       label: at(
@@ -226,14 +253,20 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
         {},
         "With subscription, no VPN connections"
       ),
+      group: subscriptionGroup(),
+      icon: "shield",
     },
     {
       value: "never",
       label: at("broadcast_target_never", {}, "No subscription, no history"),
+      group: subscriptionGroup(),
+      icon: "moon",
     },
     {
       value: "admins",
       label: at("broadcast_target_admins", {}, "Administrators (broadcast test)"),
+      group: rolesGroup(),
+      icon: "crown",
     },
   ];
 
@@ -252,6 +285,7 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
             value: audience.target,
             label: at(audience.labelKey, {}, audience.fallbackLabel),
             ...(group ? { group } : {}),
+            ...(audience.icon ? { icon: audience.icon } : {}),
             ...(!audience.available ? { disabled: true, locked: true } : {}),
           };
         }),

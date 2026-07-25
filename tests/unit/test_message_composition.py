@@ -4,7 +4,7 @@ messages, and plugin-owned sequences."""
 from __future__ import annotations
 
 import unittest
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 from aiogram.types import InlineKeyboardMarkup
@@ -229,3 +229,71 @@ class SingleUserAudienceTests(unittest.TestCase):
         from bot.services.audience_segmentation import AUDIENCE_USER_PREFIX
 
         self.assertEqual(AUDIENCE_USER_PREFIX, "user:")
+
+
+class TariffAudienceTests(unittest.TestCase):
+    def test_a_tariff_target_round_trips(self) -> None:
+        from bot.services.audience_segmentation import (
+            audience_target_for_tariff,
+            audience_target_tariff_key,
+        )
+
+        target = audience_target_for_tariff("Pro-Plus")
+
+        self.assertEqual(target, "tariff:pro-plus")
+        self.assertEqual(audience_target_tariff_key(target), "pro-plus")
+        self.assertEqual(audience_target_tariff_key("TARIFF:pro-plus"), "pro-plus")
+
+    def test_only_a_well_formed_tariff_target_is_recognized(self) -> None:
+        from bot.services.audience_segmentation import audience_target_tariff_key
+
+        for value in ("all", "tariff:", "tariffs:x", "tariff:with space", ""):
+            with self.subTest(value=value):
+                self.assertIsNone(audience_target_tariff_key(value))
+
+    def test_offered_tariffs_become_grouped_audiences(self) -> None:
+        from sqlalchemy.orm import sessionmaker
+
+        from bot.services.audience_segmentation import AudienceSegmentationService
+
+        service = AudienceSegmentationService(
+            cast(sessionmaker, None),
+            tariffs=[("basic", "Basic"), ("pro", "Pro")],
+        )
+        definitions = service.audiences()
+
+        self.assertEqual(
+            [definition.target for definition in definitions],
+            ["tariff:basic", "tariff:pro"],
+        )
+        self.assertEqual({definition.icon for definition in definitions}, {"tag"})
+        self.assertEqual(
+            {definition.group_label_key for definition in definitions},
+            {"broadcast_audience_group_tariffs"},
+        )
+        # A tariff nobody offers is not addressable, so a stale draft cannot
+        # silently resolve to an empty audience.
+        self.assertTrue(service.has_target("tariff:pro"))
+        self.assertFalse(service.has_target("tariff:legacy"))
+
+    def test_the_tariff_prefix_is_reserved_from_plugins(self) -> None:
+        from sqlalchemy.orm import sessionmaker
+
+        from bot.services.audience_segmentation import (
+            AudienceProvider,
+            AudienceSegmentationService,
+        )
+
+        async def resolve() -> list[int]:
+            return []
+
+        service = AudienceSegmentationService(cast(sessionmaker, None))
+        with self.assertRaisesRegex(ValueError, "reserved by core"):
+            service.register_provider(
+                AudienceProvider(
+                    target="tariff:pro",
+                    label_key="x",
+                    fallback_label="X",
+                    resolve_user_ids=resolve,
+                )
+            )

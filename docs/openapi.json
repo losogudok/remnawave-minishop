@@ -483,6 +483,18 @@
             "default": null,
             "title": "Group Label Key"
           },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Icon"
+          },
           "label_key": {
             "title": "Label Key",
             "type": "string"

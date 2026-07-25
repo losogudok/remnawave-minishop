@@ -1899,6 +1899,11 @@ export interface components {
        * @default null
        */
       group_label_key: string | null;
+      /**
+       * Icon
+       * @default null
+       */
+      icon: string | null;
       /** Label Key */
       label_key: string;
       /**

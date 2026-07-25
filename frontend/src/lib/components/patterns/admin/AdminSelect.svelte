@@ -1,6 +1,8 @@
 <script lang="ts">
   import { Check, ChevronDown, LockKeyhole } from "$components/ui/icons.js";
   import { Select } from "$components/ui/primitives.js";
+  import { dynamicComponent } from "$lib/../admin/adminLazyComponents";
+  import { SELECT_ITEM_ICONS, type SelectItemIcon } from "./selectItemIcons";
 
   type SelectItem = {
     value: string;
@@ -8,6 +10,8 @@
     disabled?: boolean;
     locked?: boolean;
     group?: string;
+    /** Neutral icon name; an unknown name simply renders no glyph. */
+    icon?: SelectItemIcon | string;
   };
   type Props = {
     value?: string;
@@ -39,6 +43,12 @@
 
   const selected = $derived(items.find((item) => item.value === value));
 
+  function iconFor(name: string | undefined): unknown {
+    return name ? SELECT_ITEM_ICONS[name] : undefined;
+  }
+
+  const selectedIcon = $derived(iconFor(selected?.icon));
+
   function handleValueChange(next: string) {
     value = next;
     onValueChange(next);
@@ -50,6 +60,10 @@
     class={`admin-select-trigger ${className}`.trim()}
     aria-label={ariaLabel || placeholder}
   >
+    {#if selectedIcon}
+      {@const SelectedIcon = dynamicComponent(selectedIcon)}
+      <SelectedIcon size={14} class="admin-select-item-icon" />
+    {/if}
     <span>{selected?.label || placeholder}</span>
     <ChevronDown size={14} class="admin-select-icon" />
   </Select.Trigger>
@@ -60,12 +74,17 @@
           {#if item.group && item.group !== items[index - 1]?.group}
             <div class="admin-select-group-label" aria-hidden="true">{item.group}</div>
           {/if}
+          {@const itemIcon = iconFor(item.icon)}
           <Select.Item
             value={item.value}
             label={item.label}
             disabled={item.disabled}
             class="admin-select-item"
           >
+            {#if itemIcon}
+              {@const ItemIcon = dynamicComponent(itemIcon)}
+              <ItemIcon size={14} class="admin-select-item-icon" />
+            {/if}
             <span>{item.label}</span>
             {#if item.locked}
               <LockKeyhole size={14} class="admin-select-item-lock" />
@@ -79,15 +98,41 @@
 </Select.Root>
 
 <style>
+  /* A group reads as a section: the caption is paired with a hairline that
+     runs to the edge, and every group after the first is separated from the
+     items above it. */
   .admin-select-group-label {
-    color: var(--muted-foreground, currentColor);
-    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--admin-muted, currentColor);
+    font-size: 11px;
     font-weight: 600;
-    padding: 0.5rem 0.625rem 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.5rem 0.625rem 0.3rem;
+  }
+
+  .admin-select-group-label::after {
+    content: "";
+    flex: 1 1 auto;
+    height: 1px;
+    background: var(--admin-border, currentColor);
+  }
+
+  .admin-select-group-label:not(:first-child) {
+    margin-top: 4px;
+    border-top: 1px solid var(--admin-border, currentColor);
+    padding-top: 0.6rem;
   }
 
   :global(.admin-select-item-lock) {
     margin-left: auto;
     opacity: 0.7;
+  }
+
+  :global(.admin-select-item-icon) {
+    flex: 0 0 auto;
+    opacity: 0.85;
   }
 </style>

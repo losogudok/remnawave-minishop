@@ -87,6 +87,7 @@ class AdminBroadcastAudienceOut(HttpResponseModel):
     available: bool = True
     group_label_key: str | None = None
     group_fallback_label: str | None = None
+    icon: str | None = None
 
 
 class AdminBroadcastAudienceCountsOut(HttpResponseModel):

@@ -35,6 +35,20 @@ _AUDIENCE_TARGET_PATTERN = re.compile(r"^[a-z][a-z0-9_.:-]{0,63}$")
 # broadcast delivery path (channels, buttons, personalization) for one person.
 AUDIENCE_USER_PREFIX = "user:"
 _AUDIENCE_USER_PATTERN = re.compile(r"^user:(\d{1,19})$")
+# Addresses everyone holding an active subscription on one configured tariff.
+AUDIENCE_TARIFF_PREFIX = "tariff:"
+_AUDIENCE_TARIFF_PATTERN = re.compile(r"^tariff:([a-z0-9_.:-]{1,56})$")
+
+
+def audience_target_for_tariff(tariff_key: str) -> str:
+    return f"{AUDIENCE_TARIFF_PREFIX}{str(tariff_key).strip().lower()}"
+
+
+def audience_target_tariff_key(target: str) -> str | None:
+    """The addressed tariff key, or ``None`` when the target is not a tariff."""
+
+    match = _AUDIENCE_TARIFF_PATTERN.fullmatch(str(target or "").strip().lower())
+    return match.group(1) if match else None
 
 
 def audience_target_for_user(user_id: int) -> str:
@@ -70,6 +84,8 @@ class AudienceProvider:
     group_label_key: str | None = None
     group_fallback_label: str | None = None
     order: int = 100
+    # Neutral icon name the admin UI maps to a glyph; unknown names render none.
+    icon: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +97,7 @@ class AudienceDefinition:
     available: bool = True
     group_label_key: str | None = None
     group_fallback_label: str | None = None
+    icon: str | None = None
 
 
 class AudienceSegmentationService:
@@ -90,10 +107,17 @@ class AudienceSegmentationService:
         *,
         panel_service: Any = None,
         admin_ids: Sequence[int] | None = None,
+        tariffs: Sequence[tuple[str, str]] | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.panel_service = panel_service
         self.admin_ids = [int(admin_id) for admin_id in dict.fromkeys(admin_ids or [])]
+        # ``(key, display name)`` of the tariffs offered as audiences.
+        self.tariffs = [
+            (str(key).strip().lower(), str(name).strip())
+            for key, name in (tariffs or [])
+            if str(key).strip()
+        ]
         self._providers: dict[str, AudienceProvider] = {}
 
     def register_provider(self, provider: AudienceProvider) -> None:
@@ -102,7 +126,9 @@ class AudienceSegmentationService:
         target = self._normalize_target(provider.target)
         if not _AUDIENCE_TARGET_PATTERN.fullmatch(target):
             raise ValueError(f"Invalid audience target: {provider.target!r}")
-        if target in AUDIENCE_TARGETS or target.startswith(AUDIENCE_USER_PREFIX):
+        if target in AUDIENCE_TARGETS or target.startswith(
+            (AUDIENCE_USER_PREFIX, AUDIENCE_TARIFF_PREFIX)
+        ):
             raise ValueError(f"Audience target is reserved by core: {target!r}")
         if target in self._providers:
             raise ValueError(f"Audience target is already registered: {target!r}")
@@ -127,6 +153,7 @@ class AudienceSegmentationService:
             group_label_key=group_label_key,
             group_fallback_label=group_fallback_label,
             order=int(provider.order),
+            icon=str(provider.icon or "").strip() or None,
         )
 
     def unregister_provider(self, target: str) -> bool:
@@ -138,11 +165,15 @@ class AudienceSegmentationService:
         normalized = self._normalize_target(target)
         if audience_target_user_id(normalized) is not None:
             return True
+        if self._tariff_key(normalized) is not None:
+            return True
         return normalized in AUDIENCE_TARGETS or normalized in self._providers
 
     def is_target_available(self, target: str) -> bool:
         normalized = self._normalize_target(target)
         if audience_target_user_id(normalized) is not None:
+            return True
+        if self._tariff_key(normalized) is not None:
             return True
         if normalized in AUDIENCE_TARGETS:
             return True
@@ -168,9 +199,34 @@ class AudienceSegmentationService:
                     available=available,
                     group_label_key=provider.group_label_key,
                     group_fallback_label=provider.group_fallback_label,
+                    icon=provider.icon,
                 )
             )
+        definitions.extend(self._tariff_audiences())
         return definitions
+
+    def _tariff_key(self, target: str) -> str | None:
+        """The tariff a target addresses, when that tariff is actually offered."""
+
+        key = audience_target_tariff_key(target)
+        if key is None:
+            return None
+        return key if any(key == offered for offered, _ in self.tariffs) else None
+
+    def _tariff_audiences(self) -> list[AudienceDefinition]:
+        return [
+            AudienceDefinition(
+                target=audience_target_for_tariff(key),
+                label_key=f"broadcast_target_tariff_{key.replace('-', '_')}",
+                fallback_label=name or key,
+                order=700 + index,
+                available=True,
+                group_label_key="broadcast_audience_group_tariffs",
+                group_fallback_label="Specific tariff",
+                icon="tag",
+            )
+            for index, (key, name) in enumerate(self.tariffs)
+        ]
 
     async def resolve_user_ids(self, target: str) -> list[int]:
         normalized = self._normalize_target(target)
@@ -180,6 +236,15 @@ class AudienceSegmentationService:
                 if await user_dal.get_user_by_id(session, single_user_id) is None:
                     raise AudienceNotFoundError(normalized)
             return [single_user_id]
+        tariff_key = self._tariff_key(normalized)
+        if tariff_key is not None:
+            async with self.session_factory() as session:
+                return [
+                    int(user_id)
+                    for user_id in await user_dal.get_user_ids_with_active_subscription_on_tariff(
+                        session, tariff_key
+                    )
+                ]
         provider = self._providers.get(normalized)
         if provider is not None:
             if not self._provider_is_available(provider):
@@ -233,6 +298,10 @@ class AudienceSegmentationService:
                 AUDIENCE_ACTIVE_NEVER_CONNECTED: None,
                 AUDIENCE_ADMINS: len(self.admin_ids),
             }
+            if self.tariffs:
+                per_tariff = await user_dal.count_active_subscriptions_per_tariff(session)
+                for key, _name in self.tariffs:
+                    counts[audience_target_for_tariff(key)] = int(per_tariff.get(key, 0))
             if self.panel_service is not None:
                 counts[AUDIENCE_ACTIVE_NEVER_CONNECTED] = len(
                     await self._user_ids_with_active_subscription_never_connected(session)
