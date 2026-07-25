@@ -151,12 +151,14 @@ describe("broadcastStore", () => {
     ]);
   });
 
-  it("keeps single-use promo codes in their own dropdown group, below the shared ones", async () => {
+  it("keeps codes owned by a customer in their own dropdown group, below the shared ones", async () => {
     const api = vi.fn().mockResolvedValue({
       ok: true,
       promos: [
-        { code: "SOLO", is_active: true, max_activations: 1, current_activations: 0 },
+        { code: "SOLO", is_active: true, max_activations: 1, current_activations: 0, user_id: 42 },
         { code: "SALE10", is_active: true, max_activations: 100, current_activations: 5 },
+        // One allowed activation without an owner is an ordinary shared code.
+        { code: "ONCE", is_active: true, max_activations: 1, current_activations: 0 },
         { code: "SPENT", is_active: true, max_activations: 1, current_activations: 1 },
         { code: "OFF", is_active: false, max_activations: 50, current_activations: 0 },
       ],
@@ -165,10 +167,9 @@ describe("broadcastStore", () => {
 
     await store.loadPromoOptions();
 
-    // A code with one activation is somebody's personal code: it stays
-    // selectable but never sits among the codes meant for an audience.
     expect(store.broadcastPromoOptions).toEqual([
       { value: "SALE10", label: "SALE10 · 5/100", group: "Shared codes" },
+      { value: "ONCE", label: "ONCE · 0/1", group: "Shared codes" },
       { value: "SOLO", label: "SOLO · 0/1", group: "Personal codes" },
     ]);
   });

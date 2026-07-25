@@ -3027,5 +3027,10 @@
   "admin_broadcast_promo_group_shared": "Shared codes",
   "admin_broadcast_promo_group_personal": "Personal codes",
   "admin_promo_reach_personal": "Personal",
-  "admin_promo_reach_personal_hint": "One activation only — issued for a single customer, do not broadcast it."
+  "admin_promo_reach_personal_hint": "Issued for one customer — do not send it to an audience.",
+  "admin_promo_kind_shared": "Shared",
+  "admin_promo_kind_personal": "Personal",
+  "admin_promo_kind_all": "All",
+  "admin_promo_owner_id": "ID {id}",
+  "admin_promo_owner_hint": "Issued for this customer"
 }

@@ -157,14 +157,14 @@ function promoUsable(promo: PromoListItem): boolean {
 }
 
 /**
- * A code only one customer can redeem.
+ * A code minted for one named customer.
  *
- * A promo code has no owner column, so a single allowed activation is the
- * neutral signal: whoever redeems it first spends it, which makes such a code
- * wrong for a broadcast even though the API accepts it.
+ * Ownership is explicit: only ``user_id`` marks a code as personal. A code
+ * that merely allows a single activation is still an ordinary shared code and
+ * stays in the shared group.
  */
 function promoIsPersonal(promo: PromoListItem): boolean {
-  return Number(promo.max_activations) === 1;
+  return Boolean(promo.user_id);
 }
 
 function promoOptionLabel(promo: PromoListItem): string {

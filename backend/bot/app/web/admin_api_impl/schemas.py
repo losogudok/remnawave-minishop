@@ -431,6 +431,11 @@ class PromoOut(HttpResponseModel):
     valid_until: datetime | None = None
     created_at: datetime | None = None
     created_by_admin_id: int | None = None
+    # Set by whoever issued the code for one customer; the sole personal
+    # signal. Read-only here: the admin API never assigns or clears an owner.
+    user_id: int | None = None
+    user_username: str | None = None
+    user_name: str | None = None
 
     @classmethod
     def from_orm_promo(
@@ -439,6 +444,7 @@ class PromoOut(HttpResponseModel):
         *,
         bot_link: str | None = None,
         webapp_link: str | None = None,
+        owner: tuple[str | None, str | None] | None = None,
     ) -> PromoOut:
         effects = PromoEffects.from_model(promo)
         return cls(
@@ -468,6 +474,9 @@ class PromoOut(HttpResponseModel):
             created_by_admin_id=int(promo.created_by_admin_id)
             if promo.created_by_admin_id
             else None,
+            user_id=int(promo.user_id) if getattr(promo, "user_id", None) else None,
+            user_username=owner[0] if owner else None,
+            user_name=owner[1] if owner else None,
         )
 
 

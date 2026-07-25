@@ -55,6 +55,23 @@ def _migration_0047_add_hwid_traffic_bonus_snapshots(connection: Connection) -> 
             )
 
 
+def _migration_0048_add_promo_code_owner(connection: Connection) -> None:
+    """Record the customer a promo code was minted for, when it has one.
+
+    Nullable by design: an ordinary code belongs to no one, and a single
+    allowed activation says nothing about ownership. Only this column marks a
+    code as personal.
+    """
+
+    inspector = inspect(connection)
+    columns = {column["name"] for column in inspector.get_columns("promo_codes")}
+    if "user_id" not in columns:
+        connection.execute(text("ALTER TABLE promo_codes ADD COLUMN user_id BIGINT"))
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_promo_codes_user_id ON promo_codes (user_id)")
+    )
+
+
 CHAIN_0046_0060: list[Migration] = [
     Migration(
         id="0046_add_recurring_payment_attribution",
@@ -65,5 +82,10 @@ CHAIN_0046_0060: list[Migration] = [
         id="0047_add_hwid_traffic_bonus_snapshots",
         description="Persist traffic bonus snapshots for HWID device purchases",
         upgrade=_migration_0047_add_hwid_traffic_bonus_snapshots,
+    ),
+    Migration(
+        id="0048_add_promo_code_owner",
+        description="Record the customer a personal promo code was issued for",
+        upgrade=_migration_0048_add_promo_code_owner,
     ),
 ]

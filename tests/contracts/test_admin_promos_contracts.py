@@ -11,7 +11,12 @@ from aiohttp import web
 import bot.app.web.admin_api  # noqa: F401 - populates admin_api_impl module namespaces
 from bot.app.web.admin_api_impl import common as common_module
 from bot.app.web.admin_api_impl import promos as promos_module
-from bot.app.web.admin_api_impl.schemas import PromoActivationOut, PromoOut
+from bot.app.web.admin_api_impl.schemas import (
+    PromoActivationOut,
+    PromoCreateBody,
+    PromoOut,
+    PromoUpdateBody,
+)
 
 
 class _FakeRequest:
@@ -100,6 +105,98 @@ def test_promo_response_can_include_application_links():
     assert payload["webapp_link"] == "https://app.example.com/webapp?lang=ru&startapp=promo_SAVE20"
 
 
+def test_promo_list_pages_each_kind_separately_and_names_the_owner():
+    promo = _promo(user_id=77, code="OWNED")
+
+    async def run():
+        session = _FakeSession()
+        request = _FakeRequest(
+            {},
+            app={
+                "async_session_factory": lambda: session,
+                "settings": _settings(),
+                "bot_username": "shop_bot",
+            },
+            query={"kind": "personal", "page": "0", "page_size": "25"},
+        )
+        with (
+            patch.object(promos_module, "_require_admin_user_id", return_value=100),
+            patch.object(
+                promos_module.promo_code_dal,
+                "get_all_promo_codes_with_details",
+                AsyncMock(return_value=[promo]),
+            ) as list_promos,
+            patch.object(
+                promos_module.promo_code_dal,
+                "get_promo_codes_count",
+                AsyncMock(return_value=1),
+            ) as count_promos,
+            patch.object(
+                promos_module.user_reads_dal,
+                "get_user_labels",
+                AsyncMock(return_value={77: ("neo", "Thomas Anderson")}),
+            ) as labels,
+        ):
+            return (
+                await promos_module.admin_promos_list_route(request),
+                list_promos,
+                count_promos,
+                labels,
+            )
+
+    response, list_promos, count_promos, labels = asyncio.run(run())
+
+    # The tab is a server-side filter, so its paging and total never mix kinds.
+    assert list_promos.await_args.kwargs["personal"] is True
+    assert count_promos.await_args.kwargs["personal"] is True
+    assert labels.await_args.args[1] == [77]
+    row = _json_body(response)["promos"][0]
+    assert (row["user_id"], row["user_username"], row["user_name"]) == (
+        77,
+        "neo",
+        "Thomas Anderson",
+    )
+
+
+def test_promo_list_without_a_kind_lists_every_code():
+    async def run():
+        session = _FakeSession()
+        request = _FakeRequest(
+            {},
+            app={
+                "async_session_factory": lambda: session,
+                "settings": _settings(),
+                "bot_username": "shop_bot",
+            },
+            query={},
+        )
+        with (
+            patch.object(promos_module, "_require_admin_user_id", return_value=100),
+            patch.object(
+                promos_module.promo_code_dal,
+                "get_all_promo_codes_with_details",
+                AsyncMock(return_value=[]),
+            ) as list_promos,
+            patch.object(
+                promos_module.promo_code_dal,
+                "get_promo_codes_count",
+                AsyncMock(return_value=0),
+            ),
+        ):
+            await promos_module.admin_promos_list_route(request)
+            return list_promos
+
+    assert asyncio.run(run()).await_args.kwargs["personal"] is None
+
+
+def test_promo_owner_is_read_only_for_the_admin_api():
+    # Core stores and shows the owner; nothing in the admin API assigns or
+    # clears one, so a personal code can only be minted by whoever issues it.
+    assert "user_id" not in PromoCreateBody.model_fields
+    assert "user_id" not in PromoUpdateBody.model_fields
+    assert "user_id" in PromoOut.model_fields
+
+
 def test_promo_create_rejects_malformed_json():
     async def run():
         request = _FakeRequest(ValueError("bad json"))
@@ -163,6 +260,8 @@ def test_promo_create_uses_typed_body_and_response_model():
         "max_activations": 3,
         "valid_until": None,
         "created_by_admin_id": 100,
+        # No owner was named, so the code stays shared.
+        "user_id": None,
         "is_active": True,
     }
     session.commit.assert_awaited_once()

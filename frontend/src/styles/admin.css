@@ -7098,6 +7098,29 @@
   min-width: 900px;
 }
 
+.admin-promo-kind-tabs {
+  margin-bottom: 12px;
+}
+
+.admin-promo-owner {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--admin-muted);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.admin-promo-owner:hover {
+  color: var(--admin-accent);
+  text-decoration: underline;
+}
+
 .admin-promo-type {
   display: inline-flex;
   align-items: center;

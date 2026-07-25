@@ -4768,6 +4768,42 @@
             "default": null,
             "title": "Traffic Multiplier"
           },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Id"
+          },
+          "user_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Name"
+          },
+          "user_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Username"
+          },
           "valid_until": {
             "anyOf": [
               {
@@ -9277,6 +9313,10 @@
                       "const": true,
                       "type": "boolean"
                     },
+                    "owned_total": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
                     "page": {
                       "minimum": 0,
                       "type": "integer"
@@ -9302,7 +9342,8 @@
                     "promos",
                     "page",
                     "page_size",
-                    "total"
+                    "total",
+                    "owned_total"
                   ],
                   "type": "object"
                 }

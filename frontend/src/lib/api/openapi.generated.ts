@@ -3803,6 +3803,21 @@ export interface components {
        */
       traffic_multiplier: number | null;
       /**
+       * User Id
+       * @default null
+       */
+      user_id: number | null;
+      /**
+       * User Name
+       * @default null
+       */
+      user_name: string | null;
+      /**
+       * User Username
+       * @default null
+       */
+      user_username: string | null;
+      /**
        * Valid Until
        * @default null
        */
@@ -5879,6 +5894,7 @@ export interface operations {
           "application/json": {
             /** @constant */
             ok: true;
+            owned_total: number;
             page: number;
             page_size: number;
             promos: components["schemas"]["PromoOut"][];

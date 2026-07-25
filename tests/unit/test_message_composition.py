@@ -29,10 +29,12 @@ def _resolve(
     *buttons: MessageButtonInput,
     mini_app_url: str = MINI_APP_HTTPS,
 ) -> list[MessageButton]:
-    return resolve_message_buttons(
-        list(buttons),
-        mini_app_url=mini_app_url,
-        bot_username="shop_bot",
+    return list(
+        resolve_message_buttons(
+            list(buttons),
+            mini_app_url=mini_app_url,
+            bot_username="shop_bot",
+        )
     )
 
 

@@ -3027,5 +3027,10 @@
   "admin_broadcast_promo_group_shared": "Общие коды",
   "admin_broadcast_promo_group_personal": "Персональные коды",
   "admin_promo_reach_personal": "Персональный",
-  "admin_promo_reach_personal_hint": "Только одна активация — код выдан одному пользователю, не отправляйте его в рассылку."
+  "admin_promo_reach_personal_hint": "Код выдан одному пользователю — не отправляйте его в рассылку.",
+  "admin_promo_kind_shared": "Общие",
+  "admin_promo_kind_personal": "Персональные",
+  "admin_promo_kind_all": "Все",
+  "admin_promo_owner_id": "ID {id}",
+  "admin_promo_owner_hint": "Код выдан этому пользователю"
 }
