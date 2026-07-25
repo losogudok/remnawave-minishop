@@ -1,9 +1,10 @@
-<script lang="ts">
+<script
+  lang="ts"
+  generics="Row extends { id: number; kind: string; label: string; url: string; promoCode: string }"
+>
   import { AdminButton, AdminSelect } from "$components/patterns/admin/index.js";
   import { Input, Sortable } from "$components/ui/index.js";
   import { Plus, Trash2 } from "$components/ui/icons.js";
-
-  import type { BroadcastButtonDraft, BroadcastButtonKind } from "../stores/broadcastStore.svelte";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
   type SelectOption = { value: string; label: string; disabled?: boolean; group?: string };
@@ -22,7 +23,7 @@
     onReorder,
     onRequestPromoOptions,
   }: {
-    buttons: BroadcastButtonDraft[];
+    buttons: Row[];
     at: TranslateFn;
     max?: number;
     promoOptions?: SelectOption[];
@@ -32,7 +33,7 @@
     extraKinds?: SelectOption[];
     onAdd: () => void;
     onRemove: (index: number) => void;
-    onUpdate: (index: number, fields: Partial<BroadcastButtonDraft>) => void;
+    onUpdate: (index: number, fields: Partial<Row>) => void;
     onReorder: (from: number, to: number) => void;
     onRequestPromoOptions?: () => void;
   } = $props();
@@ -69,16 +70,16 @@
   <Sortable
     items={buttons}
     class="admin-row-editor-line admin-row-editor-broadcast"
-    getKey={(button: BroadcastButtonDraft) => button.id}
+    getKey={(button: Row) => button.id}
     handleLabel={at("broadcast_button_reorder", {}, "Drag to reorder buttons")}
     {onReorder}
   >
-    {#snippet children(button: BroadcastButtonDraft, index: number)}
+    {#snippet children(button: Row, index: number)}
       <AdminSelect
         value={button.kind}
         items={kindOptions}
         ariaLabel={at("broadcast_buttons_label", {}, "Buttons")}
-        onValueChange={(value) => onUpdate(index, { kind: value as BroadcastButtonKind })}
+        onValueChange={(value) => onUpdate(index, { kind: value } as Partial<Row>)}
       />
       <Input
         class="input"
@@ -86,7 +87,9 @@
         maxlength={64}
         placeholder={at("broadcast_button_label_placeholder", {}, "Button label")}
         oninput={(event) =>
-          onUpdate(index, { label: (event.currentTarget as HTMLInputElement).value })}
+          onUpdate(index, {
+            label: (event.currentTarget as HTMLInputElement).value,
+          } as Partial<Row>)}
       />
       {#if needsPromoCode(button.kind)}
         <AdminSelect
@@ -96,7 +99,7 @@
             ? at("broadcast_button_promo_loading", {}, "Loading codes...")
             : at("broadcast_button_promo_select", {}, "Select a code")}
           ariaLabel={at("broadcast_button_promo_select", {}, "Select a code")}
-          onValueChange={(value) => onUpdate(index, { promoCode: value })}
+          onValueChange={(value) => onUpdate(index, { promoCode: value } as Partial<Row>)}
         />
       {:else if button.kind === "url"}
         <Input
@@ -104,7 +107,9 @@
           value={button.url}
           placeholder={at("broadcast_button_url_placeholder", {}, "https://…")}
           oninput={(event) =>
-            onUpdate(index, { url: (event.currentTarget as HTMLInputElement).value })}
+            onUpdate(index, {
+              url: (event.currentTarget as HTMLInputElement).value,
+            } as Partial<Row>)}
         />
       {:else}
         <span class="admin-muted admin-row-editor-static">
