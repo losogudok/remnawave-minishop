@@ -68,6 +68,24 @@ class MessageCompositionTests(unittest.TestCase):
         self.assertIsNotNone(inline.web_app)
         self.assertIsNone(inline.url)
 
+    def test_webapp_kind_opens_an_arbitrary_target_inside_telegram(self) -> None:
+        resolved = _resolve(
+            MessageButtonInput(kind="webapp", label="Plans", url=f"{MINI_APP_HTTPS}?startapp=plans")
+        )
+
+        self.assertEqual(resolved[0].telegram_web_app_url, f"{MINI_APP_HTTPS}?startapp=plans")
+        markup = telegram_markup_for_buttons(resolved)
+        assert markup is not None
+        self.assertIsNotNone(markup.inline_keyboard[0][0].web_app)
+
+    def test_webapp_kind_degrades_to_a_link_without_https(self) -> None:
+        resolved = _resolve(MessageButtonInput(kind="webapp", label="Plans", url=MINI_APP_HTTP))
+
+        self.assertIsNone(resolved[0].telegram_web_app_url)
+        markup = telegram_markup_for_buttons(resolved)
+        assert markup is not None
+        self.assertEqual(markup.inline_keyboard[0][0].url, MINI_APP_HTTP)
+
     def test_promo_webapp_falls_back_to_a_startapp_deeplink_without_https(self) -> None:
         resolved = _resolve(
             MessageButtonInput(kind="promo_webapp", label="Apply", promo_code="SAVE10"),

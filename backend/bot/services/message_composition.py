@@ -23,9 +23,15 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 MESSAGE_CHANNELS = ("telegram", "email")
 BUTTON_KIND_URL = "url"
+BUTTON_KIND_WEBAPP = "webapp"
 BUTTON_KIND_PROMO_BOT = "promo_bot"
 BUTTON_KIND_PROMO_WEBAPP = "promo_webapp"
-MESSAGE_BUTTON_KINDS = (BUTTON_KIND_URL, BUTTON_KIND_PROMO_BOT, BUTTON_KIND_PROMO_WEBAPP)
+MESSAGE_BUTTON_KINDS = (
+    BUTTON_KIND_URL,
+    BUTTON_KIND_WEBAPP,
+    BUTTON_KIND_PROMO_BOT,
+    BUTTON_KIND_PROMO_WEBAPP,
+)
 MAX_MESSAGE_BUTTONS = 4
 MAX_BUTTON_LABEL_LENGTH = 64
 # Telegram limits /start payloads to 64 chars; the "promo_" prefix leaves 58.
@@ -102,17 +108,26 @@ def promo_bot_deeplink(bot_username: str | None, code: str | None) -> str | None
     return f"https://t.me/{quote(username, safe='')}?start=promo_{quote(normalized_code, safe='')}"
 
 
-def promo_webapp_link(base_url: str | None, code: str | None) -> str | None:
-    """Mini App link that prefills a promo code through ``startapp``."""
+def mini_app_startapp_link(base_url: str | None, payload: str | None) -> str | None:
+    """Mini App link carrying a ``startapp`` payload, preserving existing query."""
 
     raw = str(base_url or "").strip()
-    normalized_code = str(code or "").strip()
-    if not raw or not normalized_code:
+    value = str(payload or "").strip()
+    if not raw or not value:
         return None
     parts = urlsplit(raw)
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
-    query["startapp"] = f"promo_{normalized_code}"
+    query["startapp"] = value
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+def promo_webapp_link(base_url: str | None, code: str | None) -> str | None:
+    """Mini App link that prefills a promo code through ``startapp``."""
+
+    normalized_code = str(code or "").strip()
+    if not normalized_code:
+        return None
+    return mini_app_startapp_link(base_url, f"promo_{normalized_code}")
 
 
 def promo_startapp_deeplink(bot_username: str | None, code: str | None) -> str | None:
@@ -123,6 +138,10 @@ def promo_startapp_deeplink(bot_username: str | None, code: str | None) -> str |
     if not username or not normalized_code:
         return None
     return f"https://t.me/{username}?startapp=promo_{normalized_code}"
+
+
+def _is_https(url: str) -> bool:
+    return url.lower().startswith("https://")
 
 
 def _clean_bot_username(bot_username: str | None) -> str:
@@ -138,13 +157,22 @@ def _resolve_button(
     mini_app_url: str | None,
     bot_username: str | None,
 ) -> MessageButton:
-    if button.kind == BUTTON_KIND_URL:
+    if button.kind in {BUTTON_KIND_URL, BUTTON_KIND_WEBAPP}:
         url = button.url
         if not url:
             raise MessageValidationError("button_url_required", button.label)
         if not url.lower().startswith(("https://", "http://")):
             raise MessageValidationError("button_url_invalid", url)
-        return MessageButton(label=button.label, url=url, kind=button.kind)
+        # A "webapp" target belongs inside the Mini App. Telegram only accepts
+        # https for web_app buttons, so a plain-http target degrades to a
+        # normal link rather than being rejected.
+        web_app_url = url if button.kind == BUTTON_KIND_WEBAPP and _is_https(url) else None
+        return MessageButton(
+            label=button.label,
+            url=url,
+            kind=button.kind,
+            telegram_web_app_url=web_app_url,
+        )
 
     code = button.promo_code
     if not code:
@@ -165,7 +193,7 @@ def _resolve_button(
         # Telegram only accepts https targets for web_app buttons; with a
         # plain-http Mini App URL fall back to a t.me startapp deep link so the
         # code still opens inside the Mini App (authorized), not a browser tab.
-        if webapp_link.lower().startswith("https://"):
+        if _is_https(webapp_link):
             telegram_web_app_url = webapp_link
         elif username:
             return MessageButton(
