@@ -1943,7 +1943,9 @@ export interface components {
      *     ``kind`` selects how the button URL is produced:
      *     - ``url`` — explicit ``url`` field;
      *     - ``promo_bot`` — deep link into the bot applying ``promo_code``;
-     *     - ``promo_webapp`` — link into the Mini App checkout with ``promo_code``.
+     *     - ``promo_webapp`` — link into the Mini App checkout with ``promo_code``;
+     *     - ``webapp_section`` — link that opens the Mini App screen named by
+     *       ``section`` (invite, support, devices, …).
      */
     AdminBroadcastButtonBody: {
       /**
@@ -1961,6 +1963,11 @@ export interface components {
        * @default
        */
       promo_code: string;
+      /**
+       * Section
+       * @default
+       */
+      section: string;
       /**
        * Url
        * @default

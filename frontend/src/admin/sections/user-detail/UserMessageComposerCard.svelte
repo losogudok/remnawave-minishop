@@ -36,11 +36,15 @@
   const channels = $derived(
     [telegramEnabled ? "telegram" : "", emailEnabled ? "email" : ""].filter(Boolean)
   );
+  /** The field a button kind actually needs filled in before it can be sent. */
+  function buttonTarget(button: BroadcastButtonDraft): string {
+    if (button.kind === "url") return button.url.trim();
+    if (button.kind === "webapp_section") return button.section.trim();
+    return button.promoCode.trim();
+  }
+
   const buttonsValid = $derived(
-    buttons.every(
-      (button) =>
-        button.label.trim() && (button.kind === "url" ? button.url.trim() : button.promoCode.trim())
-    )
+    buttons.every((button) => button.label.trim() && Boolean(buttonTarget(button)))
   );
   const canSend = $derived(
     !busy && userId !== null && Boolean(text.trim()) && channels.length > 0 && buttonsValid
@@ -56,7 +60,14 @@
     if (buttons.length >= MAX_BUTTONS) return;
     buttons = [
       ...buttons,
-      { id: Date.now() + buttons.length, kind: "url", label: "", url: "", promoCode: "" },
+      {
+        id: Date.now() + buttons.length,
+        kind: "url",
+        label: "",
+        url: "",
+        promoCode: "",
+        section: "",
+      },
     ];
   }
 

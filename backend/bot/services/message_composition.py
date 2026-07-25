@@ -26,11 +26,24 @@ BUTTON_KIND_URL = "url"
 BUTTON_KIND_WEBAPP = "webapp"
 BUTTON_KIND_PROMO_BOT = "promo_bot"
 BUTTON_KIND_PROMO_WEBAPP = "promo_webapp"
+BUTTON_KIND_WEBAPP_SECTION = "webapp_section"
 MESSAGE_BUTTON_KINDS = (
     BUTTON_KIND_URL,
     BUTTON_KIND_WEBAPP,
     BUTTON_KIND_PROMO_BOT,
     BUTTON_KIND_PROMO_WEBAPP,
+    BUTTON_KIND_WEBAPP_SECTION,
+)
+# Mini App screens an authored button may point at. The admin panel is
+# deliberately absent: these buttons go out to customers.
+MINI_APP_SECTIONS = (
+    "home",
+    "install",
+    "trial",
+    "invite",
+    "devices",
+    "support",
+    "settings",
 )
 MAX_MESSAGE_BUTTONS = 4
 MAX_BUTTON_LABEL_LENGTH = 64
@@ -59,6 +72,7 @@ class MessageButtonSpec(Protocol):
     label: str
     url: str
     promo_code: str
+    section: str
 
 
 @dataclass(frozen=True)
@@ -69,6 +83,7 @@ class MessageButtonInput:
     label: str
     url: str = ""
     promo_code: str = ""
+    section: str = ""
 
 
 @dataclass(frozen=True)
@@ -85,6 +100,7 @@ class MessageButton:
     url: str
     kind: str
     promo_code: str = ""
+    section: str = ""
     telegram_web_app_url: str | None = None
 
 
@@ -119,6 +135,15 @@ def mini_app_startapp_link(base_url: str | None, payload: str | None) -> str | N
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
     query["startapp"] = value
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+def mini_app_section_link(base_url: str | None, section: str | None) -> str | None:
+    """Mini App link that opens one of its screens through ``startapp``."""
+
+    normalized = str(section or "").strip().lower()
+    if normalized not in MINI_APP_SECTIONS:
+        return None
+    return mini_app_startapp_link(base_url, normalized)
 
 
 def promo_webapp_link(base_url: str | None, code: str | None) -> str | None:
@@ -174,6 +199,9 @@ def _resolve_button(
             telegram_web_app_url=web_app_url,
         )
 
+    if button.kind == BUTTON_KIND_WEBAPP_SECTION:
+        return _resolve_section_button(button, mini_app_url=mini_app_url, bot_username=bot_username)
+
     code = button.promo_code
     if not code:
         raise MessageValidationError("button_promo_code_required", button.label)
@@ -218,6 +246,41 @@ def _resolve_button(
             kind=button.kind,
             promo_code=code,
         )
+    raise MessageValidationError("webapp_url_unavailable")
+
+
+def _resolve_section_button(
+    button: MessageButtonSpec,
+    *,
+    mini_app_url: str | None,
+    bot_username: str | None,
+) -> MessageButton:
+    """Open a Mini App screen, preferring the in-Telegram ``web_app`` target."""
+
+    section = str(button.section or "").strip().lower()
+    if not section:
+        raise MessageValidationError("button_section_required", button.label)
+    if section not in MINI_APP_SECTIONS:
+        raise MessageValidationError("button_section_invalid", section)
+
+    username = _clean_bot_username(bot_username)
+    # A t.me startapp link still opens the Mini App authorized, so it is the
+    # fallback whenever the configured Mini App URL is unusable as a web_app
+    # target (plain http) or missing entirely.
+    fallback = f"https://t.me/{username}?startapp={section}" if username else ""
+    link = mini_app_section_link(mini_app_url, section)
+    if link and _is_https(link):
+        return MessageButton(
+            label=button.label,
+            url=link,
+            kind=button.kind,
+            section=section,
+            telegram_web_app_url=link,
+        )
+    if fallback:
+        return MessageButton(label=button.label, url=fallback, kind=button.kind, section=section)
+    if link:
+        return MessageButton(label=button.label, url=link, kind=button.kind, section=section)
     raise MessageValidationError("webapp_url_unavailable")
 
 

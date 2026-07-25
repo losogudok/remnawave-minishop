@@ -3032,5 +3032,14 @@
   "admin_promo_kind_personal": "Personal",
   "admin_promo_kind_all": "All",
   "admin_promo_owner_id": "ID {id}",
-  "admin_promo_owner_hint": "Issued for this customer"
+  "admin_promo_owner_hint": "Issued for this customer",
+  "admin_broadcast_button_kind_webapp_section": "Web app screen",
+  "admin_broadcast_button_section_select": "Select a screen",
+  "admin_broadcast_button_section_home": "Home",
+  "admin_broadcast_button_section_install": "Install",
+  "admin_broadcast_button_section_trial": "Trial",
+  "admin_broadcast_button_section_invite": "Invite friends",
+  "admin_broadcast_button_section_devices": "Devices",
+  "admin_broadcast_button_section_support": "Support",
+  "admin_broadcast_button_section_settings": "Settings"
 }

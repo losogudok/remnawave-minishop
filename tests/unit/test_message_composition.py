@@ -38,6 +38,35 @@ def _resolve(
     )
 
 
+class MiniAppSectionButtonTests(unittest.TestCase):
+    def test_section_button_opens_the_screen_inside_telegram(self) -> None:
+        [button] = _resolve(
+            MessageButtonInput(kind="webapp_section", label="Invite", section="invite")
+        )
+
+        # An https Mini App target becomes a web_app button, so the screen
+        # opens authorized inside Telegram instead of an external browser.
+        self.assertEqual(button.url, f"{MINI_APP_HTTPS}?startapp=invite")
+        self.assertEqual(button.telegram_web_app_url, button.url)
+        self.assertEqual(button.section, "invite")
+
+    def test_plain_http_mini_app_falls_back_to_a_startapp_deep_link(self) -> None:
+        [button] = _resolve(
+            MessageButtonInput(kind="webapp_section", label="Support", section="support"),
+            mini_app_url=MINI_APP_HTTP,
+        )
+
+        # Telegram refuses http web_app targets, so the t.me deep link keeps
+        # the screen opening inside the Mini App rather than a browser tab.
+        self.assertEqual(button.url, "https://t.me/shop_bot?startapp=support")
+        self.assertIsNone(button.telegram_web_app_url)
+
+    def test_unknown_and_admin_sections_are_rejected(self) -> None:
+        for section in ("", "plans", "admin", "Admin"):
+            with self.subTest(section=section), self.assertRaises(MessageValidationError):
+                _resolve(MessageButtonInput(kind="webapp_section", label="Go", section=section))
+
+
 class MessageCompositionTests(unittest.TestCase):
     def test_plain_dataclass_inputs_need_no_http_schema(self) -> None:
         """A plugin composes buttons without importing the admin HTTP models."""

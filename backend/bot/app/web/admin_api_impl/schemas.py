@@ -277,15 +277,18 @@ class AdminBroadcastButtonBody(HttpBodyModel):
     ``kind`` selects how the button URL is produced:
     - ``url`` — explicit ``url`` field;
     - ``promo_bot`` — deep link into the bot applying ``promo_code``;
-    - ``promo_webapp`` — link into the Mini App checkout with ``promo_code``.
+    - ``promo_webapp`` — link into the Mini App checkout with ``promo_code``;
+    - ``webapp_section`` — link that opens the Mini App screen named by
+      ``section`` (invite, support, devices, …).
     """
 
     kind: str = "url"
     label: str = ""
     url: str = ""
     promo_code: str = ""
+    section: str = ""
 
-    @field_validator("kind", mode="before")
+    @field_validator("kind", "section", mode="before")
     @classmethod
     def _normalize_kind(cls, value: Any) -> str:
         return _strip_text(value).lower()

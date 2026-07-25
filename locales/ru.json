@@ -3032,5 +3032,14 @@
   "admin_promo_kind_personal": "Персональные",
   "admin_promo_kind_all": "Все",
   "admin_promo_owner_id": "ID {id}",
-  "admin_promo_owner_hint": "Код выдан этому пользователю"
+  "admin_promo_owner_hint": "Код выдан этому пользователю",
+  "admin_broadcast_button_kind_webapp_section": "Экран веб-приложения",
+  "admin_broadcast_button_section_select": "Выберите экран",
+  "admin_broadcast_button_section_home": "Главная",
+  "admin_broadcast_button_section_install": "Установка",
+  "admin_broadcast_button_section_trial": "Пробный период",
+  "admin_broadcast_button_section_invite": "Пригласить друзей",
+  "admin_broadcast_button_section_devices": "Устройства",
+  "admin_broadcast_button_section_support": "Поддержка",
+  "admin_broadcast_button_section_settings": "Настройки"
 }

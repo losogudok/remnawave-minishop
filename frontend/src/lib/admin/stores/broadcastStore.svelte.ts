@@ -48,13 +48,15 @@ type StoredCounts = {
   emailAvailable: boolean | null;
   audiences: BroadcastAudienceDescriptor[] | null;
 };
-export type BroadcastButtonKind = "url" | "promo_bot" | "promo_webapp";
+export type BroadcastButtonKind = "url" | "promo_bot" | "promo_webapp" | "webapp_section";
 export type BroadcastButtonDraft = {
   id: number;
   kind: BroadcastButtonKind;
   label: string;
   url: string;
   promoCode: string;
+  /** Web app screen a ``webapp_section`` button opens. */
+  section: string;
 };
 export type BroadcastPromoOption = { value: string; label: string; group?: string };
 /** A message addressed to one customer, composed outside the broadcast draft. */
@@ -130,6 +132,7 @@ function buttonDraftValid(button: BroadcastButtonDraft): boolean {
     const url = button.url.trim().toLowerCase();
     return url.startsWith("https://") || url.startsWith("http://");
   }
+  if (button.kind === "webapp_section") return Boolean(button.section.trim());
   return /^[A-Za-z0-9_-]{1,58}$/.test(button.promoCode.trim());
 }
 
@@ -138,7 +141,9 @@ function buttonsForPayload(buttons: BroadcastButtonDraft[]) {
     kind: button.kind,
     label: button.label.trim(),
     url: button.kind === "url" ? button.url.trim() : "",
-    promo_code: button.kind === "url" ? "" : button.promoCode.trim(),
+    promo_code:
+      button.kind === "url" || button.kind === "webapp_section" ? "" : button.promoCode.trim(),
+    section: button.kind === "webapp_section" ? button.section.trim() : "",
   }));
 }
 
@@ -655,7 +660,7 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
       ...s,
       broadcastButtons: [
         ...s.broadcastButtons,
-        { id: buttonIdCounter, kind: "url", label: "", url: "", promoCode: "" },
+        { id: buttonIdCounter, kind: "url", label: "", url: "", promoCode: "", section: "" },
       ],
     }));
   }

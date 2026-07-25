@@ -1,6 +1,6 @@
 <script
   lang="ts"
-  generics="Row extends { id: number; kind: string; label: string; url: string; promoCode: string }"
+  generics="Row extends { id: number; kind: string; label: string; url: string; promoCode: string; section: string }"
 >
   import { AdminButton, AdminSelect } from "$components/patterns/admin/index.js";
   import { Input, Sortable } from "$components/ui/index.js";
@@ -48,9 +48,23 @@
       value: "promo_webapp",
       label: at("broadcast_button_kind_promo_webapp", {}, "Promo code — in web app"),
     },
+    {
+      value: "webapp_section",
+      label: at("broadcast_button_kind_webapp_section", {}, "Web app screen"),
+    },
     ...extraKinds,
   ]);
-  // A kind outside the shared three is host-owned and carries no promo code.
+  // Screens a customer-facing button may open; the admin panel is not one.
+  const sectionOptions = $derived([
+    { value: "home", label: at("broadcast_button_section_home", {}, "Home") },
+    { value: "install", label: at("broadcast_button_section_install", {}, "Install") },
+    { value: "trial", label: at("broadcast_button_section_trial", {}, "Trial") },
+    { value: "invite", label: at("broadcast_button_section_invite", {}, "Invite friends") },
+    { value: "devices", label: at("broadcast_button_section_devices", {}, "Devices") },
+    { value: "support", label: at("broadcast_button_section_support", {}, "Support") },
+    { value: "settings", label: at("broadcast_button_section_settings", {}, "Settings") },
+  ]);
+  // A kind outside the shared ones is host-owned and carries no promo code.
   const sharedKinds = new Set(["url", "promo_bot", "promo_webapp"]);
   const hasPromoButtons = $derived(
     buttons.some((button) => button.kind !== "url" && sharedKinds.has(button.kind))
@@ -100,6 +114,14 @@
             : at("broadcast_button_promo_select", {}, "Select a code")}
           ariaLabel={at("broadcast_button_promo_select", {}, "Select a code")}
           onValueChange={(value) => onUpdate(index, { promoCode: value } as Partial<Row>)}
+        />
+      {:else if button.kind === "webapp_section"}
+        <AdminSelect
+          value={button.section}
+          items={sectionOptions}
+          placeholder={at("broadcast_button_section_select", {}, "Select a screen")}
+          ariaLabel={at("broadcast_button_section_select", {}, "Select a screen")}
+          onValueChange={(value) => onUpdate(index, { section: value } as Partial<Row>)}
         />
       {:else if button.kind === "url"}
         <Input
