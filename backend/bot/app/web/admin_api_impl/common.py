@@ -2,12 +2,13 @@ import contextlib
 import json
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 from aiohttp import web
 
 from bot.app.web.response_helpers import json_response
 from bot.services import panel_activity as _panel_activity
+from bot.services.message_composition import promo_bot_deeplink, promo_webapp_link
 from config.settings import Settings
 from config.tariffs_config import TariffsConfig
 from config.traffic_strategy import normalize_traffic_limit_strategy
@@ -430,19 +431,10 @@ def _build_admin_webapp_referral_link(
 
 
 def _build_admin_promo_bot_link(bot_username: str | None, code: str | None) -> str | None:
-    username = str(bot_username or "").strip().lstrip("@")
-    normalized_code = str(code or "").strip()
-    if not username or username == "your_bot_username" or not normalized_code:
-        return None
-    return f"https://t.me/{quote(username, safe='')}?start=promo_{quote(normalized_code, safe='')}"
+    """Admin-facing alias of the shared promo deep-link builder."""
+    return promo_bot_deeplink(bot_username, code)
 
 
 def _build_admin_promo_webapp_link(base_url: str | None, code: str | None) -> str | None:
-    raw = str(base_url or "").strip()
-    normalized_code = str(code or "").strip()
-    if not raw or not normalized_code:
-        return None
-    parts = urlsplit(raw)
-    query = dict(parse_qsl(parts.query, keep_blank_values=True))
-    query["startapp"] = f"promo_{normalized_code}"
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+    """Admin-facing alias of the shared Mini App promo-link builder."""
+    return promo_webapp_link(base_url, code)

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from aiogram import Bot
 
 from bot.services.message_audit import log_user_message_delivery
+from bot.services.message_composition import MessageButton, telegram_markup_for_buttons
 from bot.services.telegram_notifications import (
     mark_telegram_notifications_status,
     telegram_notification_status_from_error,
@@ -29,7 +30,16 @@ class OutboundMessagingService:
         parse_mode: str | None = "HTML",
         disable_web_page_preview: bool = True,
         event_type: str = "outbound_message_sent",
+        buttons: list[MessageButton] | None = None,
     ) -> bool:
+        """Deliver an authored message to one user over Telegram.
+
+        ``buttons`` are attached as a real inline keyboard, which is what makes
+        a Mini App target open inside Telegram instead of an external browser.
+        Callers that only have text keep working unchanged.
+        """
+
+        markup = telegram_markup_for_buttons(list(buttons or []))
         queue_manager = get_queue_manager()
         if queue_manager is not None:
             await send_message_via_queue(
@@ -38,6 +48,7 @@ class OutboundMessagingService:
                 MessageContent(content_type="text", text=text),
                 parse_mode=parse_mode,
                 disable_web_page_preview=disable_web_page_preview,
+                reply_markup=markup,
             )
             await log_user_message_delivery(
                 session,
@@ -58,6 +69,7 @@ class OutboundMessagingService:
                 text,
                 parse_mode=parse_mode,
                 disable_web_page_preview=disable_web_page_preview,
+                reply_markup=markup,
             )
         except Exception as exc:
             status = telegram_notification_status_from_error(exc)

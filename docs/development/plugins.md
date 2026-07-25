@@ -266,6 +266,30 @@ export const userDetailPanels = {
 };
 ```
 
+### Composing an outbound message
+
+`bot.services.message_composition` — нейтральный контракт авторского сообщения, общий для
+рассылки, сообщения одному пользователю и цепочек плагина. Плагин собирает кнопки из простых
+значений, без импорта админских HTTP-схем:
+
+```python
+from bot.services.message_composition import MessageButtonInput, resolve_message_buttons
+
+buttons = resolve_message_buttons(
+    [MessageButtonInput(kind="promo_webapp", label="Применить код", promo_code=code)],
+    mini_app_url=settings.SUBSCRIPTION_MINI_APP_URL,
+    bot_username=bot_username,
+)
+await outbound_messaging.send_text(session, user_id=uid, text=text, buttons=buttons)
+```
+
+Виды кнопок — `url`, `promo_bot` (`/start promo_<CODE>` в боте), `promo_webapp` (открывает Mini App
+с предзаполненным кодом). Для `promo_webapp` контракт сам выбирает Telegram-кнопку `web_app`, чтобы
+цель открывалась **внутри** Mini App с его авторизацией, а не во внешнем браузере; при плоском
+`http`-адресе Mini App происходит откат на `t.me?startapp=`. Ошибки авторинга приходят как
+`MessageValidationError` со стабильным `code`. `normalize_message_channels` валидирует набор каналов
+(`telegram`, `email`), `email_links_for_buttons` даёт пары `(label, url)` для письма.
+
 Именованный экспорт `sectionTabs` добавляет вкладку в **уже существующий** раздел админки —
 свой или базовый (`promos`, `users`, `payments`, …). Так расширение дополняет базовый экран, не
 патча его исходники: ядро знает только о том, что раздел *может* нести вкладки, но не о том, что
