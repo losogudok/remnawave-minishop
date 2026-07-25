@@ -147,7 +147,7 @@ describe("broadcastStore", () => {
     const payload = JSON.parse(api.mock.calls[0][1].body);
     expect(api.mock.calls[0][0]).toBe("/admin/broadcast/preview");
     expect(payload.buttons).toEqual([
-      { kind: "url", label: "Open", url: "https://example.com", promo_code: "" },
+      { kind: "url", label: "Open", url: "https://example.com", promo_code: "", section: "" },
     ]);
   });
 

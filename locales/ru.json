@@ -3041,5 +3041,6 @@
   "admin_broadcast_button_section_invite": "Пригласить друзей",
   "admin_broadcast_button_section_devices": "Устройства",
   "admin_broadcast_button_section_support": "Поддержка",
-  "admin_broadcast_button_section_settings": "Настройки"
+  "admin_broadcast_button_section_settings": "Настройки",
+  "admin_broadcast_button_section_plans": "Тарифы и оплата"
 }

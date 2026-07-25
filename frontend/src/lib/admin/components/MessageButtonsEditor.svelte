@@ -56,6 +56,7 @@
   ]);
   // Screens a customer-facing button may open; the admin panel is not one.
   const sectionOptions = $derived([
+    { value: "plans", label: at("broadcast_button_section_plans", {}, "Plans and checkout") },
     { value: "home", label: at("broadcast_button_section_home", {}, "Home") },
     { value: "install", label: at("broadcast_button_section_install", {}, "Install") },
     { value: "trial", label: at("broadcast_button_section_trial", {}, "Trial") },

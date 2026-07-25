@@ -75,6 +75,15 @@ export function sectionFromPath(pathname: unknown, routePrefix: unknown = ""): W
   return normalizeSection(section);
 }
 
+/**
+ * Checkout route.
+ *
+ * Plan selection is a modal over the home screen rather than a screen of its
+ * own, so this path is not a section: it renders home and opens the modal,
+ * then the URL settles back on home.
+ */
+export const PLANS_PATH = "/plans";
+
 export function publicInstallTokenFromPath(pathname: unknown): string {
   const normalized = String(pathname || "")
     .trim()

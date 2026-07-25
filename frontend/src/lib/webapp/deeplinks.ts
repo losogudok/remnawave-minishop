@@ -1,4 +1,5 @@
 import { normalizedEmail } from "./formatters.js";
+import { PLANS_PATH, stripRoutePrefix } from "./routes.js";
 
 export type RenewalDeeplink = {
   tariffKey: string;
@@ -66,15 +67,27 @@ function normalizeCheckoutPromoParam(value: string | null): string {
   return lower.startsWith("promo_") ? raw.slice("promo_".length).trim() : raw;
 }
 
+/**
+ * A start parameter is a promo code only when it says so.
+ *
+ * The same parameter also carries app routes (`plans`, `invite`, `ticket_7`),
+ * and treating one of those as a code made the app open checkout and complain
+ * about an invalid promo instead of going where the link pointed.
+ */
+function startParamPromoCode(value: string | null): string {
+  const raw = String(value || "").trim();
+  return raw.toLowerCase().startsWith("promo_") ? raw.slice("promo_".length).trim() : "";
+}
+
 export function readCheckoutPromoDeeplink(): string {
   const params = currentSearchParams();
   return (
     normalizeCheckoutPromoParam(params.get("promo_code")) ||
     normalizeCheckoutPromoParam(params.get("promo")) ||
-    normalizeCheckoutPromoParam(params.get("startapp")) ||
-    normalizeCheckoutPromoParam(params.get("start_param")) ||
-    normalizeCheckoutPromoParam(params.get("tgWebAppStartParam")) ||
-    normalizeCheckoutPromoParam(telegramStartParam())
+    startParamPromoCode(params.get("startapp")) ||
+    startParamPromoCode(params.get("start_param")) ||
+    startParamPromoCode(params.get("tgWebAppStartParam")) ||
+    startParamPromoCode(telegramStartParam())
   );
 }
 
@@ -87,6 +100,11 @@ export function stripCheckoutPromoQueryFromUrl() {
   for (const key of keys) url.searchParams.delete(key);
   const search = url.searchParams.toString();
   window.history.replaceState(null, "", `${url.pathname}${search ? `?${search}` : ""}${url.hash}`);
+}
+
+/** Marks the checkout route, which opens plan selection over the home screen. */
+export function isPlansRoute(pathname: string, routePrefix = ""): boolean {
+  return stripRoutePrefix(pathname, routePrefix).toLowerCase().replace(/\/+$/, "") === PLANS_PATH;
 }
 
 export function stripTopupQueryFromUrl() {

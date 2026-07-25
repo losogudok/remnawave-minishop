@@ -34,10 +34,12 @@ MESSAGE_BUTTON_KINDS = (
     BUTTON_KIND_PROMO_WEBAPP,
     BUTTON_KIND_WEBAPP_SECTION,
 )
-# Mini App screens an authored button may point at. The admin panel is
-# deliberately absent: these buttons go out to customers.
+# Mini App screens an authored button may point at. "plans" opens checkout
+# with plan and period selection. The admin panel is deliberately absent:
+# these buttons go out to customers.
 MINI_APP_SECTIONS = (
     "home",
+    "plans",
     "install",
     "trial",
     "invite",

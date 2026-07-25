@@ -3041,5 +3041,6 @@
   "admin_broadcast_button_section_invite": "Invite friends",
   "admin_broadcast_button_section_devices": "Devices",
   "admin_broadcast_button_section_support": "Support",
-  "admin_broadcast_button_section_settings": "Settings"
+  "admin_broadcast_button_section_settings": "Settings",
+  "admin_broadcast_button_section_plans": "Plans and checkout"
 }

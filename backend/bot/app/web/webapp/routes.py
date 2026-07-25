@@ -110,6 +110,9 @@ def setup_subscription_webapp_routes(app: web.Application) -> None:
     app.router.add_get("/", index_route)
     app.router.add_get("/login/password", index_route)
     app.router.add_get("/home", index_route)
+    # Checkout has no screen of its own; the app renders home and opens plan
+    # selection, so the path only has to reach the SPA.
+    app.router.add_get("/plans", index_route)
     app.router.add_get("/install", index_route)
     app.router.add_get("/trial", index_route)
     app.router.add_get("/open-app", app_deeplink_route)
