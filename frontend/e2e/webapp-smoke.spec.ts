@@ -607,13 +607,20 @@ async function openUserDetailFromCurrentSection(
     );
   }
 
-  setPhase(`${phasePrefix}:message-confirm`);
-  await actionsPanel.locator("textarea").fill("E2E smoke message");
-  await actionsPanel.locator('[data-admin-action="request-user-message"]').click();
-  const messageDialog = page.locator(".dialog-card.admin-user-message-confirm-dialog");
-  await expect(messageDialog).toBeVisible();
-  await assertFormFieldsNamed(page, `${phasePrefix}:message-confirm`);
-  await closeDialog(messageDialog);
+  setPhase(`${phasePrefix}:message-composer`);
+  // Messaging one customer moved out of the actions sheet into its own tab,
+  // where the shared composer carries channels and buttons.
+  await userDialog
+    .locator('.admin-tabs-trigger:has-text("message"), [value="message"]')
+    .first()
+    .click();
+  const composerCard = userDialog.locator(".admin-user-action-sheet--message");
+  await expect(composerCard).toBeVisible();
+  await expect(composerCard.locator(".ProseMirror")).toBeVisible();
+  await expect(composerCard.locator('[data-admin-action="send-user-message"]')).toBeDisabled();
+  await assertFormFieldsNamed(page, `${phasePrefix}:message-composer`);
+  await userDialog.locator('[value="actions"]').first().click();
+  await expect(actionsPanel).toBeVisible();
 
   setPhase(`${phasePrefix}:ban-confirm`);
   await actionsPanel.locator('[data-admin-action="request-user-ban-toggle"]').click();

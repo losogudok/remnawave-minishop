@@ -522,55 +522,6 @@ export function createUsersStore({
     }
   }
 
-  async function sendUserMessage() {
-    const s = readStateSnapshot();
-    if (!s.openedUser || !s.userMessageDraft.trim()) return;
-    applyState((st) => ({ ...st, userActionBusy: true }));
-    try {
-      const res = await api(buildAdminUserActionPath(s.openedUser.user_id, "message"), {
-        method: "POST",
-        body: JSON.stringify({ text: s.userMessageDraft }),
-      });
-      if (res?.ok) {
-        invalidateUsersQueries(s.openedUser.user_id);
-        onToast(at("message_sent", {}, "Message sent"));
-        applyState((st) => ({
-          ...st,
-          userMessageDraft: "",
-          userMessageConfirmOpen: false,
-        }));
-      } else onToast(adminErrorMessage(res, at, at("message_send_failed", {}, "Could not send")));
-    } finally {
-      applyState((st) => ({ ...st, userActionBusy: false }));
-    }
-  }
-
-  function requestSendUserMessage() {
-    applyState((s) => {
-      if (!s.openedUser || !s.userMessageDraft.trim()) return s;
-      return { ...s, userMessageConfirmOpen: true };
-    });
-  }
-
-  async function previewUserMessage() {
-    const s = readStateSnapshot();
-    if (!s.openedUser || !s.userMessageDraft.trim()) return;
-    applyState((st) => ({ ...st, userActionBusy: true }));
-    try {
-      const res = await api(buildAdminUserActionPath(s.openedUser.user_id, "message/preview"), {
-        method: "POST",
-        body: JSON.stringify({ text: s.userMessageDraft }),
-      });
-      if (res?.ok) onToast(at("message_preview_sent", {}, "Preview sent to Telegram"));
-      else
-        onToast(
-          adminErrorMessage(res, at, at("message_preview_failed", {}, "Failed to send preview"))
-        );
-    } finally {
-      applyState((st) => ({ ...st, userActionBusy: false }));
-    }
-  }
-
   async function sendTelegramProfileLink() {
     const s = readStateSnapshot();
     if (!s.openedUser) return;
@@ -958,9 +909,6 @@ export function createUsersStore({
     copyToClipboard,
     requestBanToggle,
     applyBanToggle,
-    sendUserMessage,
-    requestSendUserMessage,
-    previewUserMessage,
     sendTelegramProfileLink,
     extendUser,
     changeUserTariff,

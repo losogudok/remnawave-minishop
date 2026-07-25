@@ -251,12 +251,10 @@
   const openedUser = $derived(usersState.openedUser);
   const openedUserDetail = $derived(usersState.openedUserDetail);
   const userDetailLoading = $derived(usersState.userDetailLoading);
-  const userMessageDraft = $derived(usersState.userMessageDraft);
   const userActionBusy = $derived(usersState.userActionBusy);
   const userDeleteOpen = $derived(usersState.userDeleteOpen);
   const userSubscriptionReissueOpen = $derived(usersState.userSubscriptionReissueOpen);
   const userBanConfirmOpen = $derived(usersState.userBanConfirmOpen);
-  const userMessageConfirmOpen = $derived(usersState.userMessageConfirmOpen);
   const userTariffHwidConfirmOpen = $derived(usersState.userTariffHwidConfirmOpen);
   const userReferralsOpen = $derived(usersState.userReferralsOpen);
   const userReferralsLoading = $derived(usersState.userReferralsLoading);
@@ -558,7 +556,6 @@
   {userLogsLoading}
   {userLogsLoaded}
   {userActionBusy}
-  {userMessageDraft}
   {extendTariffItems}
   {extendTariffsLoading}
   {userExtendDaysValid}
@@ -616,8 +613,6 @@
   {avatarPreviewOpen}
   {avatarPreviewUrl}
   {avatarPreviewName}
-  {userMessageConfirmOpen}
-  {userMessageDraft}
   {userBanConfirmOpen}
   {userTariffHwidConfirmOpen}
   {tariffHwidCurrentLabel}

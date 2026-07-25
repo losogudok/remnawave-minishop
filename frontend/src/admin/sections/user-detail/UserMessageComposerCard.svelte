@@ -1,17 +1,11 @@
 <script lang="ts">
-  import {
-    AdminButton,
-    AdminSectionHeader,
-    AdminSelect,
-  } from "$components/patterns/admin/index.js";
+  import { AdminButton, AdminSectionHeader } from "$components/patterns/admin/index.js";
   import { Input } from "$components/ui/index.js";
-  import { Plus, Send, Trash2 } from "$components/ui/icons.js";
+  import { Send } from "$components/ui/icons.js";
+  import MessageButtonsEditor from "$lib/admin/components/MessageButtonsEditor.svelte";
   import MessageComposer from "$lib/admin/components/MessageComposer.svelte";
   import { getBroadcastStore } from "$lib/admin/context";
-  import type {
-    BroadcastButtonDraft,
-    BroadcastButtonKind,
-  } from "$lib/admin/stores/broadcastStore.svelte";
+  import type { BroadcastButtonDraft } from "$lib/admin/stores/broadcastStore.svelte";
 
   import type { TranslateFn } from "./userDetailTypes";
 
@@ -39,17 +33,6 @@
   let busy = $state(false);
   let result = $state<{ kind: "ok" | "error"; message: string } | null>(null);
 
-  const kindItems = $derived([
-    { value: "url", label: at("broadcast_button_kind_url", {}, "Link") },
-    {
-      value: "promo_bot",
-      label: at("broadcast_button_kind_promo_bot", {}, "Promo code — in bot"),
-    },
-    {
-      value: "promo_webapp",
-      label: at("broadcast_button_kind_promo_webapp", {}, "Promo code — in web app"),
-    },
-  ]);
   const channels = $derived(
     [telegramEnabled ? "telegram" : "", emailEnabled ? "email" : ""].filter(Boolean)
   );
@@ -85,6 +68,14 @@
 
   function removeButton(index: number): void {
     buttons = buttons.filter((_, position) => position !== index);
+  }
+
+  function moveButton(from: number, to: number): void {
+    if (from === to || from < 0 || to < 0 || from >= buttons.length || to >= buttons.length) return;
+    const next = [...buttons];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    buttons = next;
   }
 
   async function send(): Promise<void> {
@@ -154,74 +145,28 @@
       />
     {/if}
 
-    <div class="admin-user-message-buttons">
-      <div class="admin-user-message-buttons-head">
-        <span>{at("broadcast_buttons_label", {}, "Buttons")}</span>
-        <AdminButton
-          size="sm"
-          variant="ghost"
-          disabled={buttons.length >= MAX_BUTTONS}
-          onclick={addButton}
-        >
-          <Plus size={14} />
-          {at("broadcast_button_add", {}, "Add button")}
-        </AdminButton>
-      </div>
-      {#each buttons as button, index (index)}
-        <div class="admin-user-message-button">
-          <AdminSelect
-            value={button.kind}
-            items={kindItems}
-            ariaLabel={at("broadcast_buttons_label", {}, "Buttons")}
-            onValueChange={(value) => updateButton(index, { kind: value as BroadcastButtonKind })}
-          />
-          <Input
-            class="input"
-            type="text"
-            value={button.label}
-            placeholder={at("broadcast_button_label", {}, "Button label")}
-            aria-label={at("broadcast_button_label", {}, "Button label")}
-            oninput={(event) =>
-              updateButton(index, {
-                label: (event.currentTarget as HTMLInputElement).value,
-              })}
-          />
-          {#if button.kind === "url"}
-            <Input
-              class="input"
-              type="text"
-              value={button.url}
-              placeholder="https://"
-              aria-label={at("broadcast_button_kind_url", {}, "Link")}
-              oninput={(event) =>
-                updateButton(index, {
-                  url: (event.currentTarget as HTMLInputElement).value,
-                })}
-            />
-          {:else}
-            <Input
-              class="input"
-              type="text"
-              value={button.promoCode}
-              placeholder={at("broadcast_button_promo_code", {}, "Promo code")}
-              aria-label={at("broadcast_button_promo_code", {}, "Promo code")}
-              oninput={(event) =>
-                updateButton(index, {
-                  promoCode: (event.currentTarget as HTMLInputElement).value,
-                })}
-            />
-          {/if}
-          <AdminButton
-            variant="dangerSoft"
-            size="icon"
-            title={at("broadcast_button_remove", {}, "Remove button")}
-            aria-label={at("broadcast_button_remove", {}, "Remove button")}
-            onclick={() => removeButton(index)}
-          >
-            <Trash2 size={14} />
-          </AdminButton>
-        </div>
-      {/each}
+    <div class="admin-field-label">
+      <span>{at("broadcast_buttons_label", {}, "Buttons")}</span>
+      <small class="admin-muted">
+        {at(
+          "broadcast_buttons_hint",
+          {},
+          "Up to 4 buttons: inline buttons in Telegram, link buttons in email. Promo codes activate in one tap."
+        )}
+      </small>
+      <MessageButtonsEditor
+        {buttons}
+        {at}
+        max={MAX_BUTTONS}
+        promoOptions={broadcastStore.broadcastPromoOptions}
+        promoOptionsLoading={broadcastStore.broadcastPromoOptionsLoading}
+        promoOptionsLoaded={broadcastStore.broadcastPromoOptionsLoaded}
+        onAdd={addButton}
+        onRemove={removeButton}
+        onUpdate={updateButton}
+        onReorder={moveButton}
+        onRequestPromoOptions={broadcastStore.loadPromoOptions}
+      />
     </div>
 
     {#if result}
@@ -258,38 +203,5 @@
 
   .admin-user-message-channels small {
     font-size: 11px;
-  }
-
-  .admin-user-message-buttons {
-    display: grid;
-    gap: 8px;
-  }
-
-  .admin-user-message-buttons-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    font-size: 12px;
-    color: var(--admin-muted);
-  }
-
-  .admin-user-message-button {
-    display: grid;
-    grid-template-columns: 170px minmax(0, 1fr) minmax(0, 1fr) auto;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .admin-user-message-button :global(.input),
-  .admin-user-message-button :global(.admin-select-trigger) {
-    height: 36px;
-    min-height: 36px;
-  }
-
-  @media (max-width: 720px) {
-    .admin-user-message-button {
-      grid-template-columns: minmax(0, 1fr) auto;
-    }
   }
 </style>

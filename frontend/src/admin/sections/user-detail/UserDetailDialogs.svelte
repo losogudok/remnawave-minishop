@@ -9,7 +9,7 @@
     AdminTable,
     AdminTableSkeleton,
   } from "$components/patterns/admin/index.js";
-  import { ExternalLink, Key, RefreshCw, Send, Trash2, UserMinus } from "$components/ui/icons.js";
+  import { ExternalLink, Key, RefreshCw, Trash2, UserMinus } from "$components/ui/icons.js";
   import type { AdminUser } from "$lib/admin/stores/usersStore";
   import type { DateFormatter, TranslateFn } from "./userDetailTypes";
 
@@ -31,8 +31,6 @@
     avatarPreviewOpen?: boolean;
     avatarPreviewUrl?: string;
     avatarPreviewName?: string;
-    userMessageConfirmOpen?: boolean;
-    userMessageDraft?: string;
     userBanConfirmOpen?: boolean;
     userTariffHwidConfirmOpen?: boolean;
     tariffHwidCurrentLabel?: string;
@@ -60,8 +58,6 @@
     avatarPreviewOpen = false,
     avatarPreviewUrl = "",
     avatarPreviewName = "",
-    userMessageConfirmOpen = false,
-    userMessageDraft = "",
     userBanConfirmOpen = false,
     userTariffHwidConfirmOpen = false,
     tariffHwidCurrentLabel = "",
@@ -187,34 +183,6 @@
       />
     </div>
   {/if}
-</Dialog>
-
-<Dialog
-  open={userMessageConfirmOpen}
-  title={at("user_msg_confirm_title", {}, "Send message to user?")}
-  description={openedUser
-    ? at("user_msg_confirm_recipient", { name: userDisplayName(openedUser) }, "Recipient: {name}")
-    : ""}
-  closeLabel={at("close", {}, "Close")}
-  onclose={() => usersStore.updateState({ userMessageConfirmOpen: false })}
-  class="admin-dialog admin-user-message-confirm-dialog"
->
-  <ScrollArea class="admin-confirm-message-preview" maxHeight="min(280px, 45vh)">
-    {userMessageDraft}
-  </ScrollArea>
-  <div class="admin-dialog-actions">
-    <AdminButton onclick={() => usersStore.updateState({ userMessageConfirmOpen: false })}
-      >{at("btn_cancel", {}, "Cancel")}</AdminButton
-    >
-    <AdminButton
-      variant="primary"
-      onclick={usersStore.sendUserMessage}
-      disabled={userActionBusy || !userMessageDraft.trim()}
-    >
-      <Send size={14} />
-      {at("btn_confirm_send", {}, "Confirm send")}
-    </AdminButton>
-  </div>
 </Dialog>
 
 <Dialog

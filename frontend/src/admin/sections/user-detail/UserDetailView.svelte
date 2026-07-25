@@ -63,7 +63,6 @@
     userLogsLoading,
     userLogsLoaded,
     userActionBusy,
-    userMessageDraft,
     extendTariffItems,
     extendTariffsLoading,
     userExtendDaysValid,
@@ -141,7 +140,6 @@
     userLogsLoading: boolean;
     userLogsLoaded: boolean;
     userActionBusy: boolean;
-    userMessageDraft: string;
     extendTariffItems: SelectOption[];
     extendTariffsLoading: boolean;
     userExtendDaysValid: boolean;
@@ -301,7 +299,6 @@
               {openedUser}
               {openedUserDetail}
               {userActionBusy}
-              {userMessageDraft}
               {extendTariffItems}
               {extendTariffsLoading}
               {userExtendDaysValid}

@@ -1,16 +1,13 @@
 <script lang="ts">
   import { getBroadcastStore } from "$lib/admin/context";
-  import { Checkbox, Input, Sortable } from "$components/ui/index.js";
-  import { Plus, Send, Trash2 } from "$components/ui/icons.js";
+  import { Checkbox, Input } from "$components/ui/index.js";
+  import { Send } from "$components/ui/icons.js";
   import { onMount } from "svelte";
   import { Label } from "$components/ui/primitives.js";
   import { AdminButton, AdminSelect } from "$components/patterns/admin/index.js";
+  import MessageButtonsEditor from "$lib/admin/components/MessageButtonsEditor.svelte";
   import MessageComposer from "$lib/admin/components/MessageComposer.svelte";
   import { previewHtmlFromWire } from "$lib/admin/telegramHtml";
-  import type {
-    BroadcastButtonDraft,
-    BroadcastButtonKind,
-  } from "$lib/admin/stores/broadcastStore.svelte";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
 
@@ -66,7 +63,6 @@
   const promoOptions = $derived(broadcastStore.broadcastPromoOptions);
   const promoOptionsLoading = $derived(Boolean(broadcastStore.broadcastPromoOptionsLoading));
   const promoOptionsLoaded = $derived(Boolean(broadcastStore.broadcastPromoOptionsLoaded));
-  const hasPromoButtons = $derived(broadcastButtons.some((button) => button.kind !== "url"));
   const submitEnabled = $derived(broadcastStore.canSubmit());
   const handleTargetChange = (value: string) => {
     broadcastStore.updateField({ broadcastTarget: value, broadcastTargetError: null });
@@ -92,18 +88,6 @@
   }
 
   const broadcastTargetOptions = $derived(broadcastStore.BROADCAST_TARGET_OPTIONS);
-
-  const buttonKindOptions = $derived([
-    { value: "url", label: at("broadcast_button_kind_url", {}, "Link") },
-    {
-      value: "promo_bot",
-      label: at("broadcast_button_kind_promo_bot", {}, "Promo code — in bot"),
-    },
-    {
-      value: "promo_webapp",
-      label: at("broadcast_button_kind_promo_webapp", {}, "Promo code — in web app"),
-    },
-  ]);
 
   // Append the resolved audience size to each option once counts are loaded.
   const targetOptions = $derived(
@@ -275,82 +259,19 @@
             "Up to 4 buttons: inline buttons in Telegram, link buttons in email. Promo codes activate in one tap."
           )}</small
         >
-        <div class="admin-row-editor">
-          <Sortable
-            items={broadcastButtons}
-            class="admin-row-editor-line admin-row-editor-broadcast"
-            getKey={(button: BroadcastButtonDraft) => button.id}
-            handleLabel={at("broadcast_button_reorder", {}, "Drag to reorder buttons")}
-            onReorder={broadcastStore.moveButton}
-          >
-            {#snippet children(button: BroadcastButtonDraft, index: number)}
-              <AdminSelect
-                value={button.kind}
-                items={buttonKindOptions}
-                ariaLabel={at("broadcast_buttons_label", {}, "Buttons")}
-                onValueChange={(value) =>
-                  broadcastStore.updateButton(index, { kind: value as BroadcastButtonKind })}
-              />
-              <Input
-                class="input"
-                value={button.label}
-                maxlength={64}
-                placeholder={at("broadcast_button_label_placeholder", {}, "Button label")}
-                oninput={(e) =>
-                  broadcastStore.updateButton(index, {
-                    label: (e.currentTarget as HTMLInputElement).value,
-                  })}
-              />
-              {#if button.kind === "url"}
-                <Input
-                  class="input"
-                  value={button.url}
-                  placeholder={at("broadcast_button_url_placeholder", {}, "https://…")}
-                  oninput={(e) =>
-                    broadcastStore.updateButton(index, {
-                      url: (e.currentTarget as HTMLInputElement).value,
-                    })}
-                />
-              {:else}
-                <AdminSelect
-                  value={button.promoCode}
-                  items={promoOptions}
-                  placeholder={promoOptionsLoading
-                    ? at("broadcast_button_promo_loading", {}, "Loading codes...")
-                    : at("broadcast_button_promo_select", {}, "Select a code")}
-                  ariaLabel={at("broadcast_button_promo_select", {}, "Select a code")}
-                  onValueChange={(value) =>
-                    broadcastStore.updateButton(index, { promoCode: value })}
-                />
-              {/if}
-              <AdminButton
-                size="sm"
-                variant="danger"
-                aria-label={at("broadcast_button_remove", {}, "Remove button")}
-                onclick={() => broadcastStore.removeButton(index)}
-              >
-                <Trash2 size={13} />
-              </AdminButton>
-            {/snippet}
-          </Sortable>
-        </div>
-        {#if hasPromoButtons && promoOptionsLoaded && !promoOptions.length}
-          <small class="admin-muted"
-            >{at(
-              "broadcast_no_promos_hint",
-              {},
-              "No active codes — create one in the Promo codes section first"
-            )}</small
-          >
-        {/if}
-        {#if broadcastButtons.length < broadcastStore.MAX_BROADCAST_BUTTONS}
-          <div>
-            <AdminButton variant="ghost" onclick={broadcastStore.addButton}>
-              <Plus size={14} />
-              {at("broadcast_button_add", {}, "Add button")}
-            </AdminButton>
-          </div>
-        {/if}
+        <MessageButtonsEditor
+          buttons={broadcastButtons}
+          {at}
+          max={broadcastStore.MAX_BROADCAST_BUTTONS}
+          {promoOptions}
+          {promoOptionsLoading}
+          {promoOptionsLoaded}
+          onAdd={broadcastStore.addButton}
+          onRemove={broadcastStore.removeButton}
+          onUpdate={broadcastStore.updateButton}
+          onReorder={broadcastStore.moveButton}
+          onRequestPromoOptions={broadcastStore.loadPromoOptions}
+        />
       </div>
       <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
         <AdminButton
