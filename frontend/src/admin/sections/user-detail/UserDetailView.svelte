@@ -6,6 +6,7 @@
   import { isFeatureBoundDescriptorVisible, requiredFeatureForDescriptor } from "../extensionTypes";
   import UserActivityTab from "./UserActivityTab.svelte";
   import UserActionsTab from "./UserActionsTab.svelte";
+  import UserMessageComposerCard from "./UserMessageComposerCard.svelte";
   import UserDetailAside from "./UserDetailAside.svelte";
   import UserLogsTab from "./UserLogsTab.svelte";
   import UserSubscriptionTab from "./UserSubscriptionTab.svelte";
@@ -251,6 +252,9 @@
               <Tabs.Trigger value="actions" class="admin-tabs-trigger"
                 >{at("user_tab_actions", {}, "Actions")}</Tabs.Trigger
               >
+              <Tabs.Trigger value="message" class="admin-tabs-trigger"
+                >{at("user_tab_message", {}, "Message")}</Tabs.Trigger
+              >
               {#each visibleExtensionPanels as panel (panel.id)}
                 <Tabs.Trigger value={`extension:${panel.id}`} class="admin-tabs-trigger">
                   {at(panel.i18nKey, {}, panel.fallbackLabel)}
@@ -338,6 +342,14 @@
               {userExternalSquadUuidDraft}
               {updateUserExternalSquadUuid}
             />
+
+            <Tabs.Content value="message" class="admin-tabs-content">
+              <UserMessageComposerCard
+                {at}
+                userId={openedUser?.user_id ?? null}
+                hasEmail={Boolean(openedUser?.email)}
+              />
+            </Tabs.Content>
 
             {#each visibleExtensionPanels as panel (panel.id)}
               {@const PanelComponent = panel.component}

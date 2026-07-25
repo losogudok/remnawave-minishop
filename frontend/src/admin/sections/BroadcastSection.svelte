@@ -5,7 +5,7 @@
   import { onMount } from "svelte";
   import { Label } from "$components/ui/primitives.js";
   import { AdminButton, AdminSelect } from "$components/patterns/admin/index.js";
-  import BroadcastEditor from "$lib/admin/components/BroadcastEditor.svelte";
+  import MessageComposer from "$lib/admin/components/MessageComposer.svelte";
   import { previewHtmlFromWire } from "$lib/admin/telegramHtml";
   import type {
     BroadcastButtonDraft,
@@ -214,7 +214,7 @@
       <div class="admin-field-label">
         <span>{at("broadcast_label_text", {}, "Message Text")}</span>
         <small>{at("broadcast_hint_text", {}, "Telegram HTML formatting supported")}</small>
-        <BroadcastEditor
+        <MessageComposer
           value={broadcastText}
           onInput={(next) => broadcastStore.updateField({ broadcastText: next })}
           shortcodes={broadcastStore.broadcastShortcodes}

@@ -203,3 +203,29 @@ class OutboundButtonSeamTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SingleUserAudienceTests(unittest.TestCase):
+    def test_a_single_user_target_round_trips(self) -> None:
+        from bot.services.audience_segmentation import (
+            audience_target_for_user,
+            audience_target_user_id,
+        )
+
+        target = audience_target_for_user(4242)
+
+        self.assertEqual(target, "user:4242")
+        self.assertEqual(audience_target_user_id(target), 4242)
+        self.assertEqual(audience_target_user_id("USER:4242"), 4242)
+
+    def test_only_a_numeric_single_user_target_is_recognized(self) -> None:
+        from bot.services.audience_segmentation import audience_target_user_id
+
+        for value in ("all", "user:", "user:abc", "user:12x", "users:12", "", "user:-1"):
+            with self.subTest(value=value):
+                self.assertIsNone(audience_target_user_id(value))
+
+    def test_the_single_user_prefix_is_reserved_from_plugins(self) -> None:
+        from bot.services.audience_segmentation import AUDIENCE_USER_PREFIX
+
+        self.assertEqual(AUDIENCE_USER_PREFIX, "user:")

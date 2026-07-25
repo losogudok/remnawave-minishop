@@ -31,6 +31,21 @@ AUDIENCE_TARGETS = {
 }
 PANEL_ACTIVITY_LOOKUP_CONCURRENCY = 10
 _AUDIENCE_TARGET_PATTERN = re.compile(r"^[a-z][a-z0-9_.:-]{0,63}$")
+# Addresses exactly one existing user, so the message composer can reuse the
+# broadcast delivery path (channels, buttons, personalization) for one person.
+AUDIENCE_USER_PREFIX = "user:"
+_AUDIENCE_USER_PATTERN = re.compile(r"^user:(\d{1,19})$")
+
+
+def audience_target_for_user(user_id: int) -> str:
+    return f"{AUDIENCE_USER_PREFIX}{int(user_id)}"
+
+
+def audience_target_user_id(target: str) -> int | None:
+    """The addressed user id, or ``None`` when the target is not a single user."""
+
+    match = _AUDIENCE_USER_PATTERN.fullmatch(str(target or "").strip().lower())
+    return int(match.group(1)) if match else None
 
 
 class AudienceNotFoundError(ValueError):
@@ -87,7 +102,7 @@ class AudienceSegmentationService:
         target = self._normalize_target(provider.target)
         if not _AUDIENCE_TARGET_PATTERN.fullmatch(target):
             raise ValueError(f"Invalid audience target: {provider.target!r}")
-        if target in AUDIENCE_TARGETS:
+        if target in AUDIENCE_TARGETS or target.startswith(AUDIENCE_USER_PREFIX):
             raise ValueError(f"Audience target is reserved by core: {target!r}")
         if target in self._providers:
             raise ValueError(f"Audience target is already registered: {target!r}")
@@ -121,10 +136,14 @@ class AudienceSegmentationService:
 
     def has_target(self, target: str) -> bool:
         normalized = self._normalize_target(target)
+        if audience_target_user_id(normalized) is not None:
+            return True
         return normalized in AUDIENCE_TARGETS or normalized in self._providers
 
     def is_target_available(self, target: str) -> bool:
         normalized = self._normalize_target(target)
+        if audience_target_user_id(normalized) is not None:
+            return True
         if normalized in AUDIENCE_TARGETS:
             return True
         provider = self._providers.get(normalized)
@@ -155,6 +174,12 @@ class AudienceSegmentationService:
 
     async def resolve_user_ids(self, target: str) -> list[int]:
         normalized = self._normalize_target(target)
+        single_user_id = audience_target_user_id(normalized)
+        if single_user_id is not None:
+            async with self.session_factory() as session:
+                if await user_dal.get_user_by_id(session, single_user_id) is None:
+                    raise AudienceNotFoundError(normalized)
+            return [single_user_id]
         provider = self._providers.get(normalized)
         if provider is not None:
             if not self._provider_is_available(provider):

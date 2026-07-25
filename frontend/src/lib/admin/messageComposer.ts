@@ -43,7 +43,7 @@ export const ShortcodeNode = Node.create({
   },
 });
 
-export function broadcastExtensions(placeholder: string) {
+export function composerExtensions(placeholder: string) {
   return [
     StarterKit.configure({
       heading: false,
@@ -64,6 +64,9 @@ export function broadcastExtensions(placeholder: string) {
     ShortcodeNode,
   ];
 }
+
+/** One shortcode the composer can insert, as advertised by the backend. */
+export type MessageShortcodeInfo = { name: string; cost: string; description: string };
 
 export type ToolbarMark = "bold" | "italic" | "underline" | "strike" | "code";
 

@@ -1,4 +1,5 @@
 import { adminErrorMessage } from "../errors.js";
+import type { MessageShortcodeInfo } from "../messageComposer";
 import {
   buildAdminBroadcastAudienceCountsPath,
   buildAdminBroadcastPath,
@@ -54,7 +55,16 @@ export type BroadcastButtonDraft = {
   promoCode: string;
 };
 export type BroadcastPromoOption = { value: string; label: string };
-export type BroadcastShortcodeInfo = { name: string; cost: string; description: string };
+/** A message addressed to one customer, composed outside the broadcast draft. */
+export type SingleUserMessage = {
+  userId: number;
+  text: string;
+  channels: string[];
+  emailSubject: string;
+  buttons: BroadcastButtonDraft[];
+};
+/** Kept as the broadcast-flavoured name of the shared composer type. */
+export type BroadcastShortcodeInfo = MessageShortcodeInfo;
 export type BroadcastPreviewResult = {
   renderedText: string;
   renderedSubject: string | null;
@@ -104,6 +114,7 @@ export type BroadcastStore = BroadcastState & {
   loadPromoOptions: () => Promise<void>;
   loadShortcodes: () => Promise<void>;
   sendPreview: (mode: "render" | "send_telegram", userId?: number | null) => Promise<void>;
+  sendToUser: (input: SingleUserMessage) => Promise<string | null>;
   canSubmit: () => boolean;
   BROADCAST_TARGET_OPTIONS: BroadcastTargetOption[];
   MAX_BROADCAST_BUTTONS: number;
@@ -285,6 +296,7 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
     loadPromoOptions,
     loadShortcodes,
     sendPreview,
+    sendToUser,
     canSubmit,
     BROADCAST_TARGET_OPTIONS: targetOptions(cachedCounts?.audiences || []),
     MAX_BROADCAST_BUTTONS,
@@ -424,6 +436,35 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
     if (!state.broadcastText.trim()) return false;
     if (!channelsForPayload(state).length) return false;
     return state.broadcastButtons.every(buttonDraftValid);
+  }
+
+  /** Sends to one addressed customer, leaving the broadcast draft untouched.
+   *
+   * Returns ``null`` on success, or a ready-to-display error message. The
+   * audience of one travels the same delivery path a broadcast does, so
+   * channels, buttons and shortcodes behave identically.
+   */
+  async function sendToUser(input: SingleUserMessage): Promise<string | null> {
+    const failure = at("user_message_failed", {}, "Message was not sent");
+    try {
+      const res = await api(buildAdminBroadcastPath(), {
+        method: "POST",
+        body: JSON.stringify({
+          target: `user:${Math.trunc(input.userId)}`,
+          text: input.text.trim(),
+          channels: input.channels,
+          email_subject: input.emailSubject.trim(),
+          buttons: buttonsForPayload(input.buttons),
+        } satisfies PostPayload<"/api/admin/broadcast">),
+      });
+      if (res?.ok) {
+        unwrap(res);
+        return null;
+      }
+      return adminErrorMessage(res, at, failure);
+    } catch {
+      return failure;
+    }
   }
 
   async function runBroadcast(): Promise<void> {

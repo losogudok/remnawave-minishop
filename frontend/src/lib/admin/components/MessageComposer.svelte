@@ -6,14 +6,14 @@
 
   import {
     applyLink,
-    broadcastExtensions,
+    composerExtensions,
     insertShortcode,
     toggleBlockquote,
     toggleCodeBlock,
     toggleMark,
     type ToolbarMark,
-  } from "../broadcastEditor";
-  import type { BroadcastShortcodeInfo } from "../stores/broadcastStore.svelte";
+    type MessageShortcodeInfo,
+  } from "../messageComposer";
   import { type Doc, docToTelegramHtml, telegramHtmlToDoc } from "../telegramHtml";
 
   // Tiptap's JSON is structurally the subset we serialize; narrow it once here.
@@ -32,7 +32,7 @@
   }: {
     value: string;
     onInput: (value: string) => void;
-    shortcodes: BroadcastShortcodeInfo[];
+    shortcodes: MessageShortcodeInfo[];
     onRequestShortcodes: () => void;
     at: TranslateFn;
     placeholder?: string;
@@ -81,7 +81,7 @@
     editorMounted = true;
     const instance = new Editor({
       element: host,
-      extensions: broadcastExtensions(placeholder),
+      extensions: composerExtensions(placeholder),
       content: telegramHtmlToDoc(value),
       onUpdate: ({ editor: current }) => {
         onInput(serialize(current));
