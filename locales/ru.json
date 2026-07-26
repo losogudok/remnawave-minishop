@@ -223,6 +223,16 @@
   "admin_broadcast_enter_message": "Введите сообщение для рассылки (HTML поддерживается):",
   "admin_broadcast_confirm_prompt_short": "Сообщение выше будет отправлено. Подтвердить отправку?",
   "broadcast_target_all_button": "👥 Все",
+  "message_button_home": "Открыть приложение",
+  "message_button_plans": "Открыть тарифы",
+  "message_button_install": "Подключить",
+  "message_button_trial": "Начать тестовый период",
+  "message_button_invite": "Пригласить друзей",
+  "message_button_devices": "Мои устройства",
+  "message_button_support": "Написать в поддержку",
+  "message_button_settings": "Настройки",
+  "message_button_promo": "Применить промокод",
+  "message_button_open": "Открыть",
   "broadcast_target_active_button": "✅ Активные",
   "broadcast_target_inactive_button": "⌛ Неактивные",
   "broadcast_target_expired_button": "⏰ Просроченные",
@@ -3042,5 +3052,7 @@
   "admin_broadcast_button_section_devices": "Устройства",
   "admin_broadcast_button_section_support": "Поддержка",
   "admin_broadcast_button_section_settings": "Настройки",
-  "admin_broadcast_button_section_plans": "Тарифы и оплата"
+  "admin_broadcast_button_section_plans": "Тарифы и оплата",
+  "broadcast_language_label": "Язык",
+  "broadcast_button_label_auto": "Стандартная подпись на языке клиента"
 }

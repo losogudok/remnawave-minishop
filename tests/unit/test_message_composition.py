@@ -4,19 +4,21 @@ messages, and plugin-owned sequences."""
 from __future__ import annotations
 
 import unittest
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 from unittest.mock import patch
 
 from aiogram.types import InlineKeyboardMarkup
 
 from bot.services import outbound_messaging
 from bot.services.message_composition import (
+    MESSAGE_BUTTON_LABEL_KEYS,
     MessageButton,
     MessageButtonInput,
     MessageValidationError,
     email_links_for_buttons,
     message_promo_codes,
     normalize_message_channels,
+    resolve_localized_text,
     resolve_message_buttons,
     telegram_markup_for_buttons,
 )
@@ -336,3 +338,140 @@ class TariffAudienceTests(unittest.TestCase):
                     resolve_user_ids=resolve,
                 )
             )
+
+
+class MessageButtonLanguageTests(unittest.TestCase):
+    """A button reaches a customer, so its caption follows their language."""
+
+    LOCALES: ClassVar[dict[str, dict[str, str]]] = {
+        "ru": {"message_button_plans": "Открыть тарифы", "message_button_promo": "Промокод"},
+        "en": {"message_button_plans": "Open plans", "message_button_promo": "Promo code"},
+        "de": {"message_button_plans": "Tarife ansehen", "message_button_promo": "Gutschein"},
+    }
+
+    def _translate(self, language: str | None, key: str) -> str:
+        return self.LOCALES.get(str(language or "en"), {}).get(key, "")
+
+    def test_a_button_without_an_authored_caption_speaks_the_recipients_language(self) -> None:
+        button = MessageButtonInput(kind="webapp_section", section="plans")
+
+        for language, expected in (
+            ("ru", "Открыть тарифы"),
+            ("en", "Open plans"),
+            ("de", "Tarife ansehen"),
+        ):
+            with self.subTest(language=language):
+                resolved = resolve_message_buttons(
+                    [cast(Any, button)],
+                    mini_app_url=MINI_APP_HTTPS,
+                    bot_username="shop_bot",
+                    language=language,
+                    translate=self._translate,
+                )
+                self.assertEqual(resolved[0].label, expected)
+
+    def test_a_language_nobody_prepared_still_gets_a_caption(self) -> None:
+        # Falling through to the deployment default beats an empty button.
+        resolved = resolve_message_buttons(
+            [cast(Any, MessageButtonInput(kind="webapp_section", section="plans"))],
+            mini_app_url=MINI_APP_HTTPS,
+            bot_username="shop_bot",
+            language="fr",
+            translate=self._translate,
+            default_language="en",
+        )
+
+        self.assertEqual(resolved[0].label, "Open plans")
+
+    def test_an_authored_caption_wins_over_the_prepared_one(self) -> None:
+        button = MessageButtonInput(
+            kind="webapp_section", section="plans", labels={"de": "Meine Tarife"}
+        )
+
+        resolved = resolve_message_buttons(
+            [cast(Any, button)],
+            mini_app_url=MINI_APP_HTTPS,
+            bot_username="shop_bot",
+            language="de",
+            translate=self._translate,
+        )
+
+        self.assertEqual(resolved[0].label, "Meine Tarife")
+
+    def test_one_authored_caption_covers_every_language(self) -> None:
+        # An author who wrote a single caption meant it for everybody.
+        button = MessageButtonInput(kind="webapp_section", section="plans", label="Shop")
+
+        for language in ("ru", "de", "fr"):
+            with self.subTest(language=language):
+                resolved = resolve_message_buttons(
+                    [cast(Any, button)],
+                    mini_app_url=MINI_APP_HTTPS,
+                    bot_username="shop_bot",
+                    language=language,
+                    translate=self._translate,
+                )
+                self.assertEqual(resolved[0].label, "Shop")
+
+    def test_a_regional_caption_falls_back_to_its_base_language(self) -> None:
+        button = MessageButtonInput(kind="webapp_section", section="plans", labels={"pt": "Planos"})
+
+        resolved = resolve_message_buttons(
+            [cast(Any, button)],
+            mini_app_url=MINI_APP_HTTPS,
+            bot_username="shop_bot",
+            language="pt-BR",
+            translate=self._translate,
+        )
+
+        self.assertEqual(resolved[0].label, "Planos")
+
+    def test_a_caller_without_translations_still_requires_a_caption(self) -> None:
+        # This is exactly how every caller behaved before prepared captions
+        # existed, so adding them cannot turn an old mistake into a silent send.
+        with self.assertRaises(MessageValidationError) as raised:
+            resolve_message_buttons(
+                [cast(Any, MessageButtonInput(kind="webapp_section", section="plans"))],
+                mini_app_url=MINI_APP_HTTPS,
+                bot_username="shop_bot",
+            )
+
+        self.assertEqual(raised.exception.code, "button_label_required")
+
+    def test_every_prepared_caption_exists_in_both_base_locales(self) -> None:
+        import json
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2] / "locales"
+        for language in ("ru", "en"):
+            data = json.loads((root / f"{language}.json").read_text(encoding="utf-8"))
+            for key in MESSAGE_BUTTON_LABEL_KEYS:
+                with self.subTest(language=language, key=key):
+                    self.assertTrue(str(data.get(key, "")).strip())
+
+
+class LocalizedTextTests(unittest.TestCase):
+    def test_the_recipients_language_wins(self) -> None:
+        values = {"ru": "Привет", "en": "Hello"}
+
+        self.assertEqual(resolve_localized_text(values, language="ru"), "Привет")
+        self.assertEqual(resolve_localized_text(values, language="en"), "Hello")
+
+    def test_an_untranslated_language_falls_back_to_the_default(self) -> None:
+        values = {"ru": "Привет", "en": "Hello"}
+
+        self.assertEqual(
+            resolve_localized_text(values, language="fr", default_language="en"), "Hello"
+        )
+
+    def test_a_customer_is_never_left_with_nothing(self) -> None:
+        self.assertEqual(
+            resolve_localized_text({"de": "Hallo"}, language="fr", default_language="en"), "Hallo"
+        )
+        self.assertEqual(resolve_localized_text({}, language="fr"), "")
+
+    def test_blank_variants_are_not_written_languages(self) -> None:
+        # An empty tab in the editor means "not written yet", not "send empty".
+        self.assertEqual(
+            resolve_localized_text({"ru": "   ", "en": "Hello"}, language="ru"), "Hello"
+        )

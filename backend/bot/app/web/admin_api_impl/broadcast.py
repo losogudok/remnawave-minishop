@@ -51,11 +51,13 @@ from .auth import (
     _require_admin_user_id,
 )
 from .broadcast_content import (
+    BroadcastButton,
     BroadcastValidationError,
     broadcast_promo_codes,
     email_links_for_buttons,
     normalize_broadcast_channels,
     resolve_broadcast_buttons,
+    resolve_localized_text,
     telegram_markup_for_buttons,
 )
 from .common import (
@@ -230,14 +232,24 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
     settings: Settings = get_settings(request)
     text = str(body.text or "").strip()
     target = str(body.target or "all").strip().lower()
-    if not text:
+    # The message exists in as many languages as the author wrote; ``text`` is
+    # the one they wrote for everybody. Either alone is enough to send.
+    texts = dict(body.texts)
+    if text:
+        texts.setdefault(str(settings.DEFAULT_LANGUAGE or "").strip().lower() or "en", text)
+    if not texts:
         return _error(400, "empty_text")
+    i18n = get_i18n(request)
     try:
         channels = normalize_broadcast_channels(body.channels)
+        # Resolved once up front so an unusable button is a 400 before anything
+        # is queued; the per-language captions are resolved again per recipient.
         buttons = resolve_broadcast_buttons(
             body.buttons,
             settings=settings,
             bot_username=get_bot_username(request),
+            language=settings.DEFAULT_LANGUAGE,
+            i18n=i18n,
         )
     except BroadcastValidationError as exc:
         return _error(400, exc.code, exc.detail)
@@ -258,19 +270,27 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
         return _error(503, "panel_service_unavailable")
 
     email_subject = str(body.email_subject or "")
-    unknown = unknown_shortcodes(text)
-    if email_enabled:
-        unknown |= unknown_shortcodes(email_subject)
+    email_subjects = dict(body.email_subjects)
+    if email_subject:
+        email_subjects.setdefault(
+            str(settings.DEFAULT_LANGUAGE or "").strip().lower() or "en", email_subject
+        )
+    # Every language variant is checked, not just the default one: a broken
+    # shortcode or tag in one of them would only surface for the customers who
+    # read that language.
+    checked = [*texts.values(), *(email_subjects.values() if email_enabled else [])]
+    unknown: set[str] = set()
+    needed: set[str] = set()
+    for variant in checked:
+        unknown |= unknown_shortcodes(variant)
+        needed |= known_shortcodes(variant)
     if unknown:
         return _error(400, "unknown_shortcode", ", ".join(sorted(unknown)))
-    html_error = telegram_html_error(text)
-    if html_error:
-        return _error(400, "invalid_telegram_html", html_error)
-    needed = known_shortcodes(text)
-    if email_enabled:
-        needed |= known_shortcodes(email_subject)
+    for variant in texts.values():
+        html_error = telegram_html_error(variant)
+        if html_error:
+            return _error(400, "invalid_telegram_html", html_error)
     personalize = bool(needed)
-    i18n = get_i18n(request)
     bot_username = get_bot_username(request)
 
     audience_service = _resolve_audience_service(request)
@@ -281,7 +301,6 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
     except AudienceUnavailableError:
         return _error(403, "audience_unavailable", target)
     promo_codes = broadcast_promo_codes(buttons)
-    markup = telegram_markup_for_buttons(buttons)
 
     async_session_factory: sessionmaker = get_session_factory(request)
     sent = 0
@@ -302,14 +321,37 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
                 _resolve_panel_service(request),
             )
 
-        def _render(template: str, uid: int, fallback_lang: str | None, *, escape: bool) -> str:
+        def _language(uid: int, fallback_lang: str | None) -> str:
             ctx = contexts.get(uid)
-            lang = (
+            return str(
                 (ctx.language_code if ctx else None) or fallback_lang or settings.DEFAULT_LANGUAGE
             )
+
+        def _variant(variants: dict[str, str], lang: str) -> str:
+            return resolve_localized_text(
+                variants, language=lang, default_language=settings.DEFAULT_LANGUAGE
+            )
+
+        # Buttons are resolved once per language rather than per recipient:
+        # captions only depend on the language, and a broadcast can address
+        # many thousands of people.
+        button_cache: dict[str, list[BroadcastButton]] = {}
+
+        def _buttons(lang: str) -> list[BroadcastButton]:
+            if lang not in button_cache:
+                button_cache[lang] = resolve_broadcast_buttons(
+                    body.buttons,
+                    settings=settings,
+                    bot_username=bot_username,
+                    language=lang,
+                    i18n=i18n,
+                )
+            return button_cache[lang]
+
+        def _render(template: str, uid: int, lang: str, *, escape: bool) -> str:
             return render_broadcast_text(
                 template,
-                ctx,
+                contexts.get(uid),
                 lang=lang,
                 i18n=i18n,
                 settings=settings,
@@ -322,7 +364,9 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
                 session, user_ids
             )
             for uid, chat_id in telegram_recipients:
-                message_text = _render(text, uid, None, escape=True) if personalize else text
+                lang = _language(uid, None)
+                variant = _variant(texts, lang)
+                message_text = _render(variant, uid, lang, escape=True) if personalize else variant
                 if len(message_text) > TELEGRAM_MESSAGE_MAX_LENGTH:
                     failed += 1
                     logger.warning(
@@ -338,7 +382,7 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
                         MessageContent(content_type="text", text=message_text),
                         parse_mode="HTML",
                         disable_web_page_preview=True,
-                        reply_markup=markup,
+                        reply_markup=telegram_markup_for_buttons(_buttons(lang)),
                     )
                     sent += 1
                 except Exception as exc:
@@ -355,26 +399,25 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
             for uid, email, language in await user_dal.get_email_recipients_for_broadcast(
                 session, user_ids
             ):
-                if personalize:
-                    rendered_text = _render(text, uid, language, escape=True)
-                    rendered_subject = (
-                        _render(email_subject, uid, language, escape=False)
-                        if email_subject
-                        else None
+                lang = _language(uid, language)
+                variant = _variant(texts, lang)
+                subject_variant = _variant(email_subjects, lang)
+                recipients.append(
+                    BroadcastEmailRecipient(
+                        user_id=uid,
+                        email=email,
+                        language_code=language,
+                        message_text=(
+                            _render(variant, uid, lang, escape=True) if personalize else variant
+                        ),
+                        subject=(
+                            _render(subject_variant, uid, lang, escape=False)
+                            if personalize and subject_variant
+                            else (subject_variant or None)
+                        ),
+                        buttons=email_links_for_buttons(_buttons(lang)),
                     )
-                    recipients.append(
-                        BroadcastEmailRecipient(
-                            user_id=uid,
-                            email=email,
-                            language_code=language,
-                            message_text=rendered_text,
-                            subject=rendered_subject,
-                        )
-                    )
-                else:
-                    recipients.append(
-                        BroadcastEmailRecipient(user_id=uid, email=email, language_code=language)
-                    )
+                )
             email_queued = schedule_broadcast_emails(
                 settings=settings,
                 i18n=i18n,

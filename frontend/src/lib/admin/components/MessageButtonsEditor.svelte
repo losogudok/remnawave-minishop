@@ -1,6 +1,6 @@
 <script
   lang="ts"
-  generics="Row extends { id: number; kind: string; label: string; url: string; promoCode: string; section: string }"
+  generics="Row extends { id: number; kind: string; label: string; url: string; promoCode: string; section: string; labels?: Record<string, string> }"
 >
   import { AdminButton, AdminSelect } from "$components/patterns/admin/index.js";
   import { Input, Sortable } from "$components/ui/index.js";
@@ -8,6 +8,18 @@
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
   type SelectOption = { value: string; label: string; disabled?: boolean; group?: string };
+
+  /** Caption being authored: the active language's, or the shared one. */
+  function captionOf(button: Row): string {
+    return language ? (button.labels?.[language] ?? "") : button.label;
+  }
+
+  // Writing per language keeps the shared caption untouched, so a host that
+  // never sets a language keeps editing exactly the field it always did.
+  function captionPatch(button: Row, value: string): Partial<Row> {
+    if (!language) return { label: value } as Partial<Row>;
+    return { labels: { ...(button.labels ?? {}), [language]: value } } as Partial<Row>;
+  }
 
   let {
     buttons,
@@ -22,9 +34,16 @@
     onUpdate,
     onReorder,
     onRequestPromoOptions,
+    language = "",
   }: {
     buttons: Row[];
     at: TranslateFn;
+    /**
+     * Language whose caption is being authored. When set, the field edits that
+     * language's caption and leaving it empty falls back to the prepared
+     * caption for the button's kind, translated for each recipient.
+     */
+    language?: string;
     max?: number;
     promoOptions?: SelectOption[];
     promoOptionsLoading?: boolean;
@@ -98,13 +117,15 @@
       />
       <Input
         class="input"
-        value={button.label}
+        value={captionOf(button)}
         maxlength={64}
-        placeholder={at("broadcast_button_label_placeholder", {}, "Button label")}
+        placeholder={at(
+          "broadcast_button_label_auto",
+          {},
+          "Default caption in the customer's language"
+        )}
         oninput={(event) =>
-          onUpdate(index, {
-            label: (event.currentTarget as HTMLInputElement).value,
-          } as Partial<Row>)}
+          onUpdate(index, captionPatch(button, (event.currentTarget as HTMLInputElement).value))}
       />
       {#if needsPromoCode(button.kind)}
         <AdminSelect

@@ -114,6 +114,24 @@ class PromoUpdateBody(HttpBodyModel):
         return text or None
 
 
+def _normalize_localized_text(value: Any) -> dict[str, str]:
+    """One entry per language code, empty variants dropped.
+
+    An empty tab is how the editor says "this language is not written yet";
+    storing it would send an empty message to exactly those customers.
+    """
+
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, str] = {}
+    for language, text in value.items():
+        code = str(language or "").strip().lower().replace("_", "-")
+        body = _strip_text(text)
+        if code and body:
+            normalized[code] = body
+    return dict(sorted(normalized.items()))
+
+
 def _strip_text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -287,6 +305,12 @@ class AdminBroadcastButtonBody(HttpBodyModel):
     url: str = ""
     promo_code: str = ""
     section: str = ""
+    labels: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("labels", mode="before")
+    @classmethod
+    def _normalize_labels(cls, value: Any) -> dict[str, str]:
+        return _normalize_localized_text(value)
 
     @field_validator("kind", "section", mode="before")
     @classmethod
@@ -301,7 +325,18 @@ class AdminBroadcastButtonBody(HttpBodyModel):
 
 class AdminBroadcastBody(HttpBodyModel):
     text: Any = ""
+    # One message per language code. ``text`` stays the caption written for
+    # every language and is what a client that knows nothing about languages
+    # keeps sending.
+    texts: dict[str, str] = Field(default_factory=dict)
+    email_subjects: dict[str, str] = Field(default_factory=dict)
     target: Any = "all"
+
+    @field_validator("texts", "email_subjects", mode="before")
+    @classmethod
+    def _normalize_localized(cls, value: Any) -> dict[str, str]:
+        return _normalize_localized_text(value)
+
     channels: list[str] = Field(default_factory=lambda: ["telegram"])
     email_subject: Any = ""
     buttons: list[AdminBroadcastButtonBody] = Field(default_factory=list)
@@ -326,7 +361,15 @@ class AdminBroadcastBody(HttpBodyModel):
 
 class AdminBroadcastPreviewBody(HttpBodyModel):
     text: Any = ""
+    texts: dict[str, str] = Field(default_factory=dict)
     email_subject: Any = ""
+    email_subjects: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("texts", "email_subjects", mode="before")
+    @classmethod
+    def _normalize_localized(cls, value: Any) -> dict[str, str]:
+        return _normalize_localized_text(value)
+
     user_id: int | None = None
     mode: str = "render"
     buttons: list[AdminBroadcastButtonBody] = Field(default_factory=list)

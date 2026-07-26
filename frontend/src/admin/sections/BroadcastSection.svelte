@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getBroadcastStore } from "$lib/admin/context";
+  import { getBroadcastStore, getTranslationsStore } from "$lib/admin/context";
   import { Checkbox, Input } from "$components/ui/index.js";
   import { Send } from "$components/ui/icons.js";
   import { onMount } from "svelte";
@@ -7,12 +7,46 @@
   import { AdminButton, AdminSelect } from "$components/patterns/admin/index.js";
   import MessageButtonsEditor from "$lib/admin/components/MessageButtonsEditor.svelte";
   import MessageComposer from "$lib/admin/components/MessageComposer.svelte";
+  import MessageLocaleTabs from "$lib/admin/components/MessageLocaleTabs.svelte";
   import { previewHtmlFromWire } from "$lib/admin/telegramHtml";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
 
   let { at }: { at: TranslateFn } = $props();
   const broadcastStore = getBroadcastStore();
+  const translationsStore = getTranslationsStore();
+
+  // The tab set is whatever the deployment has, so adding a language on the
+  // translations screen adds a tab here without touching this file. The
+  // request fires once and its guard is deliberately non-reactive: reading the
+  // store's own state here would re-run on every mutation the load causes.
+  let languagesRequested = false;
+  $effect(() => {
+    if (languagesRequested) return;
+    languagesRequested = true;
+    void translationsStore.loadTranslations();
+  });
+  const languages = $derived(translationsStore.translationLanguages ?? []);
+  const activeLanguage = $derived(broadcastStore.broadcastLanguage || languages[0]?.code || "");
+  const localizedTexts = $derived(broadcastStore.broadcastTexts ?? {});
+  const activeText = $derived(
+    activeLanguage ? (localizedTexts[activeLanguage] ?? "") : broadcastStore.broadcastText
+  );
+  const writtenLanguages = $derived(
+    Object.entries(localizedTexts)
+      .filter(([, value]) => String(value ?? "").trim())
+      .map(([code]) => code)
+  );
+
+  function setText(next: string): void {
+    if (!activeLanguage) {
+      broadcastStore.updateField({ broadcastText: next });
+      return;
+    }
+    broadcastStore.updateField({
+      broadcastTexts: { ...localizedTexts, [activeLanguage]: next },
+    });
+  }
 
   // Sample values for the client-side live preview only; the server preview
   // uses real recipient data.
@@ -41,9 +75,7 @@
   const previewBusy = $derived(Boolean(broadcastStore.broadcastPreviewBusy));
   const previewResult = $derived(broadcastStore.broadcastPreviewResult);
   const clientPreviewHtml = $derived(
-    broadcastStore.broadcastText.trim()
-      ? previewHtmlFromWire(broadcastStore.broadcastText, PREVIEW_SAMPLES)
-      : ""
+    activeText.trim() ? previewHtmlFromWire(activeText, PREVIEW_SAMPLES) : ""
   );
 
   const broadcastTarget = $derived(broadcastStore.broadcastTarget);
@@ -198,9 +230,16 @@
       <div class="admin-field-label">
         <span>{at("broadcast_label_text", {}, "Message Text")}</span>
         <small>{at("broadcast_hint_text", {}, "Telegram HTML formatting supported")}</small>
+        <MessageLocaleTabs
+          {languages}
+          active={activeLanguage}
+          written={writtenLanguages}
+          {at}
+          onSelect={(code) => broadcastStore.updateField({ broadcastLanguage: code })}
+        />
         <MessageComposer
-          value={broadcastText}
-          onInput={(next) => broadcastStore.updateField({ broadcastText: next })}
+          value={activeText}
+          onInput={setText}
           shortcodes={broadcastStore.broadcastShortcodes}
           onRequestShortcodes={broadcastStore.loadShortcodes}
           {at}
@@ -215,7 +254,7 @@
             <AdminButton
               size="sm"
               variant="ghost"
-              disabled={previewBusy || !broadcastText.trim()}
+              disabled={previewBusy || !activeText.trim()}
               onclick={() => broadcastStore.sendPreview("render")}
             >
               {at("broadcast_preview_render", {}, "Refresh with data")}
@@ -223,7 +262,7 @@
             <AdminButton
               size="sm"
               variant="ghost"
-              disabled={previewBusy || !broadcastText.trim()}
+              disabled={previewBusy || !activeText.trim()}
               onclick={() => broadcastStore.sendPreview("send_telegram")}
             >
               {at("broadcast_preview_send", {}, "Send to my Telegram")}
@@ -260,6 +299,7 @@
           )}</small
         >
         <MessageButtonsEditor
+          language={activeLanguage}
           buttons={broadcastButtons}
           {at}
           max={broadcastStore.MAX_BROADCAST_BUTTONS}

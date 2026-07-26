@@ -537,6 +537,13 @@
             "default": "",
             "title": "Email Subject"
           },
+          "email_subjects": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Email Subjects",
+            "type": "object"
+          },
           "target": {
             "default": "all",
             "title": "Target"
@@ -544,6 +551,13 @@
           "text": {
             "default": "",
             "title": "Text"
+          },
+          "texts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Texts",
+            "type": "object"
           }
         },
         "title": "AdminBroadcastBody",
@@ -561,6 +575,13 @@
             "default": "",
             "title": "Label",
             "type": "string"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "object"
           },
           "promo_code": {
             "default": "",
@@ -594,6 +615,13 @@
             "default": "",
             "title": "Email Subject"
           },
+          "email_subjects": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Email Subjects",
+            "type": "object"
+          },
           "mode": {
             "default": "render",
             "title": "Mode",
@@ -602,6 +630,13 @@
           "text": {
             "default": "",
             "title": "Text"
+          },
+          "texts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Texts",
+            "type": "object"
           },
           "user_id": {
             "anyOf": [

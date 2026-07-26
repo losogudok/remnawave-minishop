@@ -413,3 +413,39 @@ class BroadcastEmailDeliveryTest(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BroadcastLocalizedContentTests(unittest.TestCase):
+    """A broadcast reaches people who chose different languages."""
+
+    def test_a_message_is_accepted_per_language(self) -> None:
+        body = AdminBroadcastBody.model_validate(
+            {"texts": {"RU": " Привет ", "en-US": "Hi", "de": "   "}}
+        )
+
+        # Codes are normalized and an unwritten language is not stored, since
+        # storing it would send an empty message to exactly those customers.
+        self.assertEqual(body.texts, {"en-us": "Hi", "ru": "Привет"})
+
+    def test_a_button_caption_is_accepted_per_language(self) -> None:
+        button = AdminBroadcastButtonBody.model_validate(
+            {"kind": "webapp_section", "section": "plans", "labels": {"DE": " Tarife ", "fr": ""}}
+        )
+
+        self.assertEqual(button.labels, {"de": "Tarife"})
+
+    def test_a_button_may_carry_no_caption_at_all(self) -> None:
+        # The prepared caption for its kind then speaks each recipient's own
+        # language, which is the point of having prepared captions.
+        button = AdminBroadcastButtonBody.model_validate(
+            {"kind": "webapp_section", "section": "plans"}
+        )
+
+        self.assertEqual(button.label, "")
+        self.assertEqual(button.labels, {})
+
+    def test_a_single_text_still_works_unchanged(self) -> None:
+        body = AdminBroadcastBody.model_validate({"text": " hi ", "target": "all"})
+
+        self.assertEqual(body.text, "hi")
+        self.assertEqual(body.texts, {})

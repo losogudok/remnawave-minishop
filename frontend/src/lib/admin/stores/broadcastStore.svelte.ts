@@ -57,6 +57,12 @@ export type BroadcastButtonDraft = {
   promoCode: string;
   /** Web app screen a ``webapp_section`` button opens. */
   section: string;
+  /**
+   * Author's own caption per language code. Empty everywhere is the normal
+   * case: the button then shows the prepared caption for its kind in the
+   * recipient's own language.
+   */
+  labels?: Record<string, string>;
 };
 export type BroadcastPromoOption = { value: string; label: string; group?: string };
 /** A message addressed to one customer, composed outside the broadcast draft. */
@@ -80,6 +86,8 @@ export type BroadcastState = {
   broadcastTarget: string;
   broadcastTargetError: string | null;
   broadcastText: string;
+  broadcastTexts: Record<string, string>;
+  broadcastLanguage: string;
   broadcastBusy: boolean;
   broadcastResult: BroadcastResult | null;
   broadcastCounts: BroadcastCounts | null;
@@ -91,6 +99,7 @@ export type BroadcastState = {
   broadcastEmailAvailable: boolean;
   broadcastEmailAvailabilityKnown: boolean;
   broadcastEmailSubject: string;
+  broadcastEmailSubjects: Record<string, string>;
   broadcastButtons: BroadcastButtonDraft[];
   broadcastPromoOptions: BroadcastPromoOption[];
   broadcastPromoOptionsLoading: boolean;
@@ -127,7 +136,10 @@ export type BroadcastStore = BroadcastState & {
 export const MAX_BROADCAST_BUTTONS = 4;
 
 function buttonDraftValid(button: BroadcastButtonDraft): boolean {
-  if (!button.label.trim() || button.label.trim().length > 64) return false;
+  // An empty caption is no longer a mistake: the button then shows the
+  // prepared caption for its kind in the recipient's own language.
+  if (button.label.trim().length > 64) return false;
+  if (Object.values(button.labels ?? {}).some((label) => label.trim().length > 64)) return false;
   if (button.kind === "url") {
     const url = button.url.trim().toLowerCase();
     return url.startsWith("https://") || url.startsWith("http://");
@@ -136,10 +148,22 @@ function buttonDraftValid(button: BroadcastButtonDraft): boolean {
   return /^[A-Za-z0-9_-]{1,58}$/.test(button.promoCode.trim());
 }
 
+function localizedForPayload(values: Record<string, string> | undefined): Record<string, string> {
+  const payload: Record<string, string> = {};
+  for (const [language, text] of Object.entries(values ?? {})) {
+    const body = String(text ?? "").trim();
+    // An empty tab means "not written yet"; sending it would deliver an empty
+    // caption to exactly the customers who read that language.
+    if (body) payload[language.toLowerCase()] = body;
+  }
+  return payload;
+}
+
 function buttonsForPayload(buttons: BroadcastButtonDraft[]) {
   return buttons.map((button) => ({
     kind: button.kind,
     label: button.label.trim(),
+    labels: localizedForPayload(button.labels),
     url: button.kind === "url" ? button.url.trim() : "",
     promo_code:
       button.kind === "url" || button.kind === "webapp_section" ? "" : button.promoCode.trim(),
@@ -314,6 +338,8 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
     broadcastTarget: "all",
     broadcastTargetError: null,
     broadcastText: "",
+    broadcastTexts: {},
+    broadcastLanguage: "",
     broadcastBusy: false,
     broadcastResult: null,
     broadcastCounts: cachedCounts?.counts || null,
@@ -326,6 +352,7 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
     broadcastEmailAvailable: cachedCounts?.emailAvailable ?? false,
     broadcastEmailAvailabilityKnown: typeof cachedCounts?.emailAvailable === "boolean",
     broadcastEmailSubject: "",
+    broadcastEmailSubjects: {},
     broadcastButtons: [],
     broadcastPromoOptions: [],
     broadcastPromoOptionsLoading: false,
@@ -483,7 +510,13 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
 
   function canSubmit(): boolean {
     if (state.broadcastBusy) return false;
-    if (!state.broadcastText.trim()) return false;
+    // One written language is enough to send: requiring all of them would
+    // block a shop that serves one.
+    if (
+      !state.broadcastText.trim() &&
+      !Object.keys(localizedForPayload(state.broadcastTexts)).length
+    )
+      return false;
     if (!channelsForPayload(state).length) return false;
     return state.broadcastButtons.every(buttonDraftValid);
   }
@@ -518,21 +551,26 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
   }
 
   async function runBroadcast(): Promise<void> {
-    const { target, text, emailSubject, buttons, channels } = snapshotForPayload({
-      target: state.broadcastTarget,
-      text: state.broadcastText,
-      emailSubject: state.broadcastEmailSubject,
-      buttons: state.broadcastButtons,
-      channels: channelsForPayload(state),
-    });
+    const { target, text, texts, emailSubject, emailSubjects, buttons, channels } =
+      snapshotForPayload({
+        target: state.broadcastTarget,
+        text: state.broadcastText,
+        texts: state.broadcastTexts,
+        emailSubject: state.broadcastEmailSubject,
+        emailSubjects: state.broadcastEmailSubjects,
+        buttons: state.broadcastButtons,
+        channels: channelsForPayload(state),
+      });
     updateState((s) => ({ ...s, broadcastBusy: true, broadcastResult: null }));
 
     try {
       const body = {
         target,
         text,
+        texts: localizedForPayload(texts),
         channels,
         email_subject: emailSubject.trim(),
+        email_subjects: localizedForPayload(emailSubjects),
         buttons: buttonsForPayload(buttons),
       } satisfies PostPayload<"/api/admin/broadcast">;
       const res = await api(buildAdminBroadcastPath(), {
@@ -544,6 +582,8 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
         updateState((s) => ({
           ...s,
           broadcastText: "",
+          broadcastTexts: {},
+          broadcastLanguage: "",
           broadcastButtons: [],
           broadcastEmailSubject: "",
           broadcastResult: {
@@ -608,8 +648,9 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
     userId: number | null = null
   ): Promise<void> {
     if (state.broadcastPreviewBusy) return;
-    const text = state.broadcastText.trim();
-    if (!text) {
+    const written = localizedForPayload(state.broadcastTexts);
+    const text = state.broadcastText.trim() || written[state.broadcastLanguage] || "";
+    if (!text && !Object.keys(written).length) {
       onToast(at("broadcast_preview_empty", {}, "Enter text to preview"));
       return;
     }
@@ -618,7 +659,9 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
       const buttons = snapshotForPayload(state.broadcastButtons);
       const body = {
         text,
+        texts: localizedForPayload(state.broadcastTexts),
         email_subject: state.broadcastEmailSubject.trim(),
+        email_subjects: localizedForPayload(state.broadcastEmailSubjects),
         user_id: userId,
         mode,
         buttons: buttonsForPayload(buttons),

@@ -1925,6 +1925,10 @@ export interface components {
        * @default
        */
       email_subject: unknown;
+      /** Email Subjects */
+      email_subjects?: {
+        [key: string]: string;
+      };
       /**
        * Target
        * @default all
@@ -1935,6 +1939,10 @@ export interface components {
        * @default
        */
       text: unknown;
+      /** Texts */
+      texts?: {
+        [key: string]: string;
+      };
     };
     /**
      * AdminBroadcastButtonBody
@@ -1958,6 +1966,10 @@ export interface components {
        * @default
        */
       label: string;
+      /** Labels */
+      labels?: {
+        [key: string]: string;
+      };
       /**
        * Promo Code
        * @default
@@ -1983,6 +1995,10 @@ export interface components {
        * @default
        */
       email_subject: unknown;
+      /** Email Subjects */
+      email_subjects?: {
+        [key: string]: string;
+      };
       /**
        * Mode
        * @default render
@@ -1993,6 +2009,10 @@ export interface components {
        * @default
        */
       text: unknown;
+      /** Texts */
+      texts?: {
+        [key: string]: string;
+      };
       /**
        * User Id
        * @default null

@@ -8,12 +8,16 @@ the admin HTTP layer already uses and binds them to the admin settings object.
 
 from __future__ import annotations
 
+from bot.middlewares.i18n import JsonI18n
 from bot.services.message_composition import (
     BUTTON_KIND_PROMO_BOT,
     BUTTON_KIND_PROMO_WEBAPP,
     BUTTON_KIND_URL,
     MAX_BUTTON_LABEL_LENGTH,
+    MESSAGE_BUTTON_LABEL_KEYS,
     email_links_for_buttons,
+    message_button_label_key,
+    resolve_localized_text,
     resolve_message_buttons,
     telegram_markup_for_buttons,
 )
@@ -50,12 +54,15 @@ __all__ = [
     "BUTTON_KIND_URL",
     "MAX_BROADCAST_BUTTONS",
     "MAX_BUTTON_LABEL_LENGTH",
+    "MESSAGE_BUTTON_LABEL_KEYS",
     "BroadcastButton",
     "BroadcastValidationError",
     "broadcast_promo_codes",
     "email_links_for_buttons",
+    "message_button_label_key",
     "normalize_broadcast_channels",
     "resolve_broadcast_buttons",
+    "resolve_localized_text",
     "telegram_markup_for_buttons",
 ]
 
@@ -65,9 +72,21 @@ def resolve_broadcast_buttons(
     *,
     settings: Settings,
     bot_username: str | None,
+    language: str | None = None,
+    i18n: JsonI18n | None = None,
 ) -> list[BroadcastButton]:
+    """Resolve buttons for one recipient language.
+
+    Without an ``i18n`` the prepared captions cannot be looked up, so a button
+    must carry an authored one — which is how every caller behaved before
+    prepared captions existed.
+    """
+
     return resolve_message_buttons(
         list(buttons),
         mini_app_url=settings.SUBSCRIPTION_MINI_APP_URL,
         bot_username=bot_username,
+        language=language,
+        translate=(lambda lang, key: i18n.gettext(lang, key)) if i18n is not None else None,
+        default_language=settings.DEFAULT_LANGUAGE,
     )

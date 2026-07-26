@@ -223,6 +223,16 @@
   "admin_broadcast_enter_message": "Enter the broadcast message (HTML supported):",
   "admin_broadcast_confirm_prompt_short": "The message above will be sent. Confirm?",
   "broadcast_target_all_button": "👥 All",
+  "message_button_home": "Open the app",
+  "message_button_plans": "Open plans",
+  "message_button_install": "Connect",
+  "message_button_trial": "Start the trial",
+  "message_button_invite": "Invite friends",
+  "message_button_devices": "My devices",
+  "message_button_support": "Contact support",
+  "message_button_settings": "Settings",
+  "message_button_promo": "Apply the promo code",
+  "message_button_open": "Open",
   "broadcast_target_active_button": "✅ Active",
   "broadcast_target_inactive_button": "⌛ Inactive",
   "broadcast_target_expired_button": "⏰ Expired",
@@ -3042,5 +3052,7 @@
   "admin_broadcast_button_section_devices": "Devices",
   "admin_broadcast_button_section_support": "Support",
   "admin_broadcast_button_section_settings": "Settings",
-  "admin_broadcast_button_section_plans": "Plans and checkout"
+  "admin_broadcast_button_section_plans": "Plans and checkout",
+  "broadcast_language_label": "Language",
+  "broadcast_button_label_auto": "Default caption in the customer's language"
 }

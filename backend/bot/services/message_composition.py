@@ -15,7 +15,8 @@ workers, and extensions without importing any of them.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from typing import Protocol
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
@@ -49,6 +50,27 @@ MINI_APP_SECTIONS = (
 )
 MAX_MESSAGE_BUTTONS = 4
 MAX_BUTTON_LABEL_LENGTH = 64
+
+# A button reaches a customer, so its caption belongs in their language rather
+# than in whichever one the author happened to write it in. Every kind and
+# every Mini App screen has a prepared caption in the locale files; an author
+# who wants different wording overrides it, per language or once for all.
+BUTTON_LABEL_KEY_PREFIX = "message_button_"
+_SECTION_LABEL_KEYS = {
+    section: f"{BUTTON_LABEL_KEY_PREFIX}{section}" for section in MINI_APP_SECTIONS
+}
+_KIND_LABEL_KEYS = {
+    BUTTON_KIND_PROMO_BOT: f"{BUTTON_LABEL_KEY_PREFIX}promo",
+    BUTTON_KIND_PROMO_WEBAPP: f"{BUTTON_LABEL_KEY_PREFIX}promo",
+    BUTTON_KIND_WEBAPP: f"{BUTTON_LABEL_KEY_PREFIX}open",
+    BUTTON_KIND_URL: f"{BUTTON_LABEL_KEY_PREFIX}open",
+}
+# Every prepared caption a button may resolve to. Exposed so the admin UI can
+# offer them without restating the list, and so a test can assert each one is
+# translated in every base locale.
+MESSAGE_BUTTON_LABEL_KEYS = tuple(
+    dict.fromkeys([*_SECTION_LABEL_KEYS.values(), *_KIND_LABEL_KEYS.values()])
+)
 # Telegram limits /start payloads to 64 chars; the "promo_" prefix leaves 58.
 _PROMO_CODE_DEEPLINK_RE = re.compile(r"^[A-Za-z0-9_-]{1,58}$")
 _BOT_USERNAME_FALLBACK = "your_bot_username"
@@ -79,13 +101,97 @@ class MessageButtonSpec(Protocol):
 
 @dataclass(frozen=True)
 class MessageButtonInput:
-    """Plain implementation of the spec for non-HTTP callers."""
+    """Plain implementation of the spec for non-HTTP callers.
+
+    ``labels`` holds an author's own caption per language code and ``label``
+    the single caption they wrote for every language. Leaving both empty is
+    the normal case: the button then speaks the recipient's language through
+    the prepared caption for its kind or section.
+    """
 
     kind: str
-    label: str
+    label: str = ""
     url: str = ""
     promo_code: str = ""
     section: str = ""
+    labels: Mapping[str, str] = field(default_factory=dict)
+
+
+def message_button_label_key(kind: str, section: str = "") -> str:
+    """Locale key holding the prepared caption for this kind of button."""
+
+    normalized_section = str(section or "").strip().lower()
+    if normalized_section in _SECTION_LABEL_KEYS:
+        return _SECTION_LABEL_KEYS[normalized_section]
+    return _KIND_LABEL_KEYS.get(str(kind or "").strip(), f"{BUTTON_LABEL_KEY_PREFIX}open")
+
+
+def resolve_localized_text(
+    values: Mapping[str, str] | None,
+    *,
+    language: str | None,
+    default_language: str | None = None,
+) -> str:
+    """Pick the variant a recipient should read.
+
+    Falls back from the exact language to its base (``pt-br`` to ``pt``), then
+    to the deployment default, then to any language that was actually written.
+    The last step is what stops a customer whose language nobody translated
+    from receiving nothing at all.
+    """
+
+    written = {
+        str(code or "").strip().lower().replace("_", "-"): str(text or "").strip()
+        for code, text in (values or {}).items()
+        if str(text or "").strip()
+    }
+    if not written:
+        return ""
+    for raw in (language, default_language):
+        code = str(raw or "").strip().lower().replace("_", "-")
+        if not code:
+            continue
+        if written.get(code):
+            return written[code]
+        base = code.split("-", 1)[0]
+        if written.get(base):
+            return written[base]
+    return next(value for _code, value in sorted(written.items()))
+
+
+def message_button_label(
+    button: MessageButtonSpec,
+    *,
+    language: str | None,
+    translate: Callable[[str | None, str], str] | None = None,
+    default_language: str | None = None,
+) -> str:
+    """Caption this button shows to a recipient reading ``language``.
+
+    An author's wording always wins over the prepared caption — per language
+    first, then the single caption they wrote for all of them. Only when they
+    wrote none does the button fall back to the prepared translation, so a
+    deployment that adds a language gets working captions without anyone
+    editing existing messages.
+    """
+
+    authored = resolve_localized_text(
+        getattr(button, "labels", None), language=language, default_language=default_language
+    )
+    if authored:
+        return authored
+    single = str(getattr(button, "label", "") or "").strip()
+    if single:
+        return single
+    if translate is None:
+        return ""
+    key = message_button_label_key(button.kind, getattr(button, "section", ""))
+    prepared = str(translate(language, key) or "").strip()
+    if prepared:
+        return prepared
+    # A language whose locale file has no entry for this key yet: the prepared
+    # caption in the deployment default still beats an empty button.
+    return str(translate(default_language, key) or "").strip() if default_language else ""
 
 
 @dataclass(frozen=True)
@@ -181,13 +287,14 @@ def _clean_bot_username(bot_username: str | None) -> str:
 def _resolve_button(
     button: MessageButtonSpec,
     *,
+    label: str,
     mini_app_url: str | None,
     bot_username: str | None,
 ) -> MessageButton:
     if button.kind in {BUTTON_KIND_URL, BUTTON_KIND_WEBAPP}:
         url = button.url
         if not url:
-            raise MessageValidationError("button_url_required", button.label)
+            raise MessageValidationError("button_url_required", label)
         if not url.lower().startswith(("https://", "http://")):
             raise MessageValidationError("button_url_invalid", url)
         # A "webapp" target belongs inside the Mini App. Telegram only accepts
@@ -195,18 +302,20 @@ def _resolve_button(
         # normal link rather than being rejected.
         web_app_url = url if button.kind == BUTTON_KIND_WEBAPP and _is_https(url) else None
         return MessageButton(
-            label=button.label,
+            label=label,
             url=url,
             kind=button.kind,
             telegram_web_app_url=web_app_url,
         )
 
     if button.kind == BUTTON_KIND_WEBAPP_SECTION:
-        return _resolve_section_button(button, mini_app_url=mini_app_url, bot_username=bot_username)
+        return _resolve_section_button(
+            button, label=label, mini_app_url=mini_app_url, bot_username=bot_username
+        )
 
     code = button.promo_code
     if not code:
-        raise MessageValidationError("button_promo_code_required", button.label)
+        raise MessageValidationError("button_promo_code_required", label)
     if not _PROMO_CODE_DEEPLINK_RE.fullmatch(code):
         raise MessageValidationError("button_promo_code_invalid", code)
 
@@ -215,7 +324,7 @@ def _resolve_button(
         bot_link = promo_bot_deeplink(username, code)
         if not bot_link:
             raise MessageValidationError("bot_username_unavailable")
-        return MessageButton(label=button.label, url=bot_link, kind=button.kind, promo_code=code)
+        return MessageButton(label=label, url=bot_link, kind=button.kind, promo_code=code)
 
     # promo_webapp: same code-prefill link the Promos section shows for a code.
     webapp_link = promo_webapp_link(mini_app_url, code)
@@ -227,7 +336,7 @@ def _resolve_button(
             telegram_web_app_url = webapp_link
         elif username:
             return MessageButton(
-                label=button.label,
+                label=label,
                 url=f"https://t.me/{username}?startapp=promo_{code}",
                 kind=button.kind,
                 promo_code=code,
@@ -235,7 +344,7 @@ def _resolve_button(
         else:
             telegram_web_app_url = None
         return MessageButton(
-            label=button.label,
+            label=label,
             url=webapp_link,
             kind=button.kind,
             promo_code=code,
@@ -243,7 +352,7 @@ def _resolve_button(
         )
     if username:
         return MessageButton(
-            label=button.label,
+            label=label,
             url=f"https://t.me/{username}?startapp=promo_{code}",
             kind=button.kind,
             promo_code=code,
@@ -254,6 +363,7 @@ def _resolve_button(
 def _resolve_section_button(
     button: MessageButtonSpec,
     *,
+    label: str,
     mini_app_url: str | None,
     bot_username: str | None,
 ) -> MessageButton:
@@ -261,7 +371,7 @@ def _resolve_section_button(
 
     section = str(button.section or "").strip().lower()
     if not section:
-        raise MessageValidationError("button_section_required", button.label)
+        raise MessageValidationError("button_section_required", label)
     if section not in MINI_APP_SECTIONS:
         raise MessageValidationError("button_section_invalid", section)
 
@@ -273,16 +383,16 @@ def _resolve_section_button(
     link = mini_app_section_link(mini_app_url, section)
     if link and _is_https(link):
         return MessageButton(
-            label=button.label,
+            label=label,
             url=link,
             kind=button.kind,
             section=section,
             telegram_web_app_url=link,
         )
     if fallback:
-        return MessageButton(label=button.label, url=fallback, kind=button.kind, section=section)
+        return MessageButton(label=label, url=fallback, kind=button.kind, section=section)
     if link:
-        return MessageButton(label=button.label, url=link, kind=button.kind, section=section)
+        return MessageButton(label=label, url=link, kind=button.kind, section=section)
     raise MessageValidationError("webapp_url_unavailable")
 
 
@@ -291,7 +401,19 @@ def resolve_message_buttons(
     *,
     mini_app_url: str | None,
     bot_username: str | None,
+    language: str | None = None,
+    translate: Callable[[str | None, str], str] | None = None,
+    default_language: str | None = None,
 ) -> list[MessageButton]:
+    """Resolve every button into the links and caption one recipient sees.
+
+    ``language`` is the recipient's, so callers that address several languages
+    resolve once per language rather than once per message. Without a
+    ``translate`` the prepared captions cannot be looked up and an authored
+    caption becomes mandatory, which keeps older callers behaving exactly as
+    before.
+    """
+
     if len(buttons) > MAX_MESSAGE_BUTTONS:
         raise MessageValidationError("too_many_buttons", str(MAX_MESSAGE_BUTTONS))
 
@@ -299,12 +421,20 @@ def resolve_message_buttons(
     for button in buttons:
         if button.kind not in MESSAGE_BUTTON_KINDS:
             raise MessageValidationError("button_kind_invalid", button.kind)
-        if not button.label:
+        label = message_button_label(
+            button,
+            language=language,
+            translate=translate,
+            default_language=default_language,
+        )
+        if not label:
             raise MessageValidationError("button_label_required")
-        if len(button.label) > MAX_BUTTON_LABEL_LENGTH:
-            raise MessageValidationError("button_label_too_long", button.label)
+        if len(label) > MAX_BUTTON_LABEL_LENGTH:
+            raise MessageValidationError("button_label_too_long", label)
         resolved.append(
-            _resolve_button(button, mini_app_url=mini_app_url, bot_username=bot_username)
+            _resolve_button(
+                button, label=label, mini_app_url=mini_app_url, bot_username=bot_username
+            )
         )
     return resolved
 
