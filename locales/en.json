@@ -2031,6 +2031,9 @@
   "admin_broadcast_button_kind_promo_bot": "Promo code — in bot",
   "admin_broadcast_button_kind_promo_webapp": "Promo code — in web app",
   "admin_broadcast_button_label_placeholder": "Button label",
+  "admin_broadcast_button_no_target": "Target is chosen automatically",
+  "admin_broadcast_language_label": "Language",
+  "admin_broadcast_button_label_auto": "Default caption in the customer's language",
   "admin_broadcast_button_url_placeholder": "https://…",
   "admin_broadcast_button_reorder": "Drag to reorder buttons",
   "admin_broadcast_button_promo_select": "Select a code",
@@ -3024,6 +3027,8 @@
   "admin_user_hwid_limit_save": "Save",
   "admin_user_hwid_limit_status": "Current: {current}",
   "admin_user_hwid_limit_unlimited": "Unlimited",
+  "admin_user_hwid_limit_with_extra": "{total} ({base} + {extra})",
+  "admin_user_hwid_limit_count": "{count}",
   "admin_user_label_hwid_devices": "HWID devices",
   "admin_user_label_trial": "Trial",
   "admin_user_label_trial_count": "Trials",
@@ -3052,7 +3057,5 @@
   "admin_broadcast_button_section_devices": "Devices",
   "admin_broadcast_button_section_support": "Support",
   "admin_broadcast_button_section_settings": "Settings",
-  "admin_broadcast_button_section_plans": "Plans and checkout",
-  "broadcast_language_label": "Language",
-  "broadcast_button_label_auto": "Default caption in the customer's language"
+  "admin_broadcast_button_section_plans": "Plans and checkout"
 }

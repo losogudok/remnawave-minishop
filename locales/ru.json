@@ -2031,6 +2031,9 @@
   "admin_broadcast_button_kind_promo_bot": "Промокод — в боте",
   "admin_broadcast_button_kind_promo_webapp": "Промокод — в веб-аппе",
   "admin_broadcast_button_label_placeholder": "Текст кнопки",
+  "admin_broadcast_button_no_target": "Цель выбирается автоматически",
+  "admin_broadcast_language_label": "Язык",
+  "admin_broadcast_button_label_auto": "Стандартная подпись на языке клиента",
   "admin_broadcast_button_url_placeholder": "https://…",
   "admin_broadcast_button_reorder": "Перетащите, чтобы изменить порядок кнопок",
   "admin_broadcast_button_promo_select": "Выберите промокод",
@@ -3024,6 +3027,8 @@
   "admin_user_hwid_limit_save": "Сохранить",
   "admin_user_hwid_limit_status": "Сейчас: {current}",
   "admin_user_hwid_limit_unlimited": "Безлимит",
+  "admin_user_hwid_limit_with_extra": "{total} ({base} + {extra})",
+  "admin_user_hwid_limit_count": "{count}",
   "admin_user_label_hwid_devices": "HWID-устройства",
   "admin_user_label_trial": "Пробник / триал",
   "admin_user_label_trial_count": "Триалов",
@@ -3052,7 +3057,5 @@
   "admin_broadcast_button_section_devices": "Устройства",
   "admin_broadcast_button_section_support": "Поддержка",
   "admin_broadcast_button_section_settings": "Настройки",
-  "admin_broadcast_button_section_plans": "Тарифы и оплата",
-  "broadcast_language_label": "Язык",
-  "broadcast_button_label_auto": "Стандартная подпись на языке клиента"
+  "admin_broadcast_button_section_plans": "Тарифы и оплата"
 }
