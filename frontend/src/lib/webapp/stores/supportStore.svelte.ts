@@ -1,3 +1,5 @@
+import type { TicketMessageButtonLike } from "$components/patterns/webapp/types";
+
 import { withRoutePrefix } from "../routes.js";
 import type {
   ApiClient,
@@ -33,6 +35,8 @@ type MessageRecord = Record<string, unknown> & {
   author_name?: string;
   author_role?: string;
   body?: string;
+  body_format?: string;
+  buttons?: TicketMessageButtonLike[];
   created_at?: string;
   is_internal_note?: boolean;
   message_id?: number;
@@ -426,7 +430,7 @@ export function createSupportStore({
     }
     typingHeartbeat.stop(ticketId);
     try {
-      const res = await postTicketReply(ticketId, { body });
+      const res = await postTicketReply(ticketId, { body, body_format: "html" });
       if (!res?.ok) throw res;
       const payload = unwrap(res);
       if (state.openedTicketId === ticketId) {

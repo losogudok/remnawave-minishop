@@ -69,6 +69,7 @@ EXPECTED_CORE_MIGRATION_IDS = [
     "0046_add_recurring_payment_attribution",
     "0047_add_hwid_traffic_bonus_snapshots",
     "0048_add_promo_code_owner",
+    "0049_add_support_message_rich_body",
 ]
 
 

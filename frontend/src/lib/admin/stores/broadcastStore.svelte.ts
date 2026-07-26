@@ -1,5 +1,5 @@
 import { adminErrorMessage } from "../errors.js";
-import type { MessageShortcodeInfo } from "../messageComposer";
+import type { MessageShortcodeInfo } from "$lib/richtext/editorSchema";
 import {
   buildAdminBroadcastAudienceCountsPath,
   buildAdminBroadcastPath,
@@ -159,7 +159,8 @@ function localizedForPayload(values: Record<string, string> | undefined): Record
   return payload;
 }
 
-function buttonsForPayload(buttons: BroadcastButtonDraft[]) {
+/** Drafted buttons as the message contract expects them, shared with support. */
+export function buttonsForPayload(buttons: BroadcastButtonDraft[]) {
   return buttons.map((button) => ({
     kind: button.kind,
     label: button.label.trim(),

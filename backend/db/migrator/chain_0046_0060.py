@@ -72,6 +72,29 @@ def _migration_0048_add_promo_code_owner(connection: Connection) -> None:
     )
 
 
+def _migration_0049_add_support_message_rich_body(connection: Connection) -> None:
+    """Let a ticket message carry markup and buttons.
+
+    Existing rows stay ``text``: they were written in a plain-text composer and
+    re-reading them as markup would turn characters their author typed into
+    formatting.
+    """
+
+    inspector = inspect(connection)
+    if "support_ticket_messages" not in set(inspector.get_table_names()):
+        return
+    columns = {column["name"] for column in inspector.get_columns("support_ticket_messages")}
+    additions = {
+        "body_format": "VARCHAR(8) NOT NULL DEFAULT 'text'",
+        "buttons": "TEXT",
+    }
+    for column, definition in additions.items():
+        if column not in columns:
+            connection.execute(
+                text(f"ALTER TABLE support_ticket_messages ADD COLUMN {column} {definition}")
+            )
+
+
 CHAIN_0046_0060: list[Migration] = [
     Migration(
         id="0046_add_recurring_payment_attribution",
@@ -87,5 +110,10 @@ CHAIN_0046_0060: list[Migration] = [
         id="0048_add_promo_code_owner",
         description="Record the customer a personal promo code was issued for",
         upgrade=_migration_0048_add_promo_code_owner,
+    ),
+    Migration(
+        id="0049_add_support_message_rich_body",
+        description="Store the markup format and attached buttons of a ticket message",
+        upgrade=_migration_0049_add_support_message_rich_body,
     ),
 ]

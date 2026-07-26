@@ -595,6 +595,14 @@ class SupportTicketMessage(Base):
     author_role = Column(String(16), nullable=False)
     author_user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=True, index=True)
     body = Column(Text, nullable=False)
+    # "text" for everything written before the rich composer; "html" for the
+    # Telegram-subset markup it produces. Stored rather than guessed so an old
+    # body containing literal tag characters keeps reading as literal text.
+    body_format = Column(String(8), nullable=False, default="text", server_default="text")
+    # Resolved buttons attached by an admin, as a JSON array of objects: the
+    # caption plus the link every channel opens. Resolved at send time so the
+    # chat, Telegram and e-mail agree even after the promo code is edited.
+    buttons = Column(Text, nullable=True)
     is_internal_note = Column(Boolean, nullable=False, default=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     read_by_user_at = Column(DateTime(timezone=True), nullable=True)

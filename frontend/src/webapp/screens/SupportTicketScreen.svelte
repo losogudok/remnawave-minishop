@@ -9,6 +9,9 @@
     TicketMessageBubble,
     TypingIndicator,
   } from "$components/patterns/webapp/index.js";
+  import type { TicketMessageButtonLike } from "$components/patterns/webapp/types";
+  import { webappRichTextLabels } from "$lib/webapp/richTextLabels.js";
+  import { wireTextLength } from "$lib/richtext/telegramHtml";
   import {
     clearSupportDraft,
     readSupportDraft,
@@ -21,6 +24,8 @@
     author_name?: string;
     author_role?: string;
     body?: string;
+    body_format?: string;
+    buttons?: TicketMessageButtonLike[];
     created_at?: string;
     is_internal_note?: boolean;
     message_id?: number;
@@ -52,6 +57,7 @@
   let lastMessageKey = $state("");
   let replyDraftKey = $state("");
 
+  const labels = $derived(webappRichTextLabels(t));
   const openedTicket = $derived(supportStore.openedTicket);
   const messages = $derived(supportStore.messages);
   const detailLoading = $derived(supportStore.detailLoading);
@@ -65,14 +71,14 @@
   $effect.pre(() => {
     if (!nextReplyDraftKey || nextReplyDraftKey === replyDraftKey) return;
     const draft = readSupportDraft("reply", draftScope, ticketId);
-    reply = typeof draft?.body === "string" ? draft.body.slice(0, maxBodyLength) : "";
+    reply = typeof draft?.body === "string" ? draft.body : "";
     replyDraftKey = nextReplyDraftKey;
   });
 
   $effect(() => {
     if (!nextReplyDraftKey || replyDraftKey !== nextReplyDraftKey || closed) return;
-    const body = String(reply || "").slice(0, maxBodyLength);
-    if (body.trim()) writeSupportDraft("reply", draftScope, ticketId, { body });
+    const body = String(reply || "");
+    if (wireTextLength(body, "html")) writeSupportDraft("reply", draftScope, ticketId, { body });
     else clearSupportDraft("reply", draftScope, ticketId);
   });
 
@@ -204,6 +210,8 @@
               <TicketMessageBubble
                 role={message.author_role}
                 body={message.body}
+                bodyFormat={message.body_format}
+                buttons={message.buttons}
                 createdAt={message.created_at}
                 isInternalNote={message.is_internal_note}
                 supportBrand={brand}
@@ -227,6 +235,7 @@
 
       <TicketComposer
         bind:value={reply}
+        {labels}
         maxLength={maxBodyLength}
         disabled={closed}
         {sending}

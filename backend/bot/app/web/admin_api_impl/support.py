@@ -1,10 +1,12 @@
 from typing import Annotated, Any, Literal
 
 from aiohttp import web
-from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 from sqlalchemy.orm import sessionmaker
 
 from bot.app.web.context import (
+    get_bot_username,
+    get_i18n,
     get_session_factory,
     get_settings,
     get_support_service,
@@ -24,8 +26,21 @@ from bot.app.web.support_schemas import (
     AdminSupportUserOut,
     AdminSupportUserSnapshotOut,
     EmptyObjectOut,
+    SupportMessageButtonOut,
     SupportTicketOut,
     SupportTypingIn,
+)
+from bot.services.broadcast_personalization import (
+    known_shortcodes,
+    load_broadcast_contexts,
+    render_broadcast_text,
+    telegram_html_error,
+    unknown_shortcodes,
+)
+from bot.services.support_message_body import SupportBodyError
+from bot.services.support_message_buttons import (
+    MAX_SUPPORT_MESSAGE_BUTTONS,
+    encode_support_buttons,
 )
 from bot.services.support_presence import is_support_typing, set_support_typing
 from bot.services.support_service import TicketNotFound
@@ -35,19 +50,33 @@ from db.models import SupportTicket, SupportTicketMessage, User
 from .auth import (
     _require_admin_user_id,
 )
+from .broadcast import _resolve_panel_service
+from .broadcast_content import (
+    BroadcastValidationError,
+    resolve_broadcast_buttons,
+)
 from .common import (
     _error,
     _ok,
 )
+from .schemas import AdminBroadcastButtonBody
 
-TicketBodyString = Annotated[str, StringConstraints(min_length=1, max_length=4000)]
+# The transport cap only: the message cap counts visible characters and is
+# applied after sanitizing, so markup does not eat into what an admin may say.
+TicketBodyString = Annotated[str, StringConstraints(min_length=1, max_length=32000)]
 
 
 class AdminTicketReplyPayload(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     body: TicketBodyString
+    body_format: Literal["text", "html"] = "text"
     is_internal_note: bool = False
+    # Buttons reach the customer, so an internal note never carries any; the
+    # service drops them rather than the admin having to remember.
+    buttons: list[AdminBroadcastButtonBody] = Field(
+        default_factory=list, max_length=MAX_SUPPORT_MESSAGE_BUTTONS
+    )
 
     @field_validator("body")
     @classmethod
@@ -106,6 +135,7 @@ register_contract(
             AdminSupportUserOut,
             AdminSupportUserSnapshotOut,
             EmptyObjectOut,
+            SupportMessageButtonOut,
         ),
     ),
 )
@@ -119,7 +149,13 @@ register_contract(
                 "message": schema_ref(AdminSupportMessageOut),
             }
         ),
-        models=(AdminTicketReplyPayload, AdminSupportMessageOut, SupportTicketOut),
+        models=(
+            AdminBroadcastButtonBody,
+            AdminTicketReplyPayload,
+            AdminSupportMessageOut,
+            SupportMessageButtonOut,
+            SupportTicketOut,
+        ),
     ),
 )
 register_contract(
@@ -256,6 +292,54 @@ async def admin_support_ticket_detail_route(request: web.Request) -> web.Respons
     )
 
 
+async def _personalize_reply_body(
+    request: web.Request,
+    *,
+    text: str,
+    recipient_id: int,
+) -> tuple[str, str]:
+    """Substitute shortcodes for the ticket owner, and report their language.
+
+    A ticket has exactly one recipient, so unlike a broadcast the reply is
+    rendered once and *stored* rendered: the admin and the customer must be
+    looking at the same message, and a link resolved months later would point
+    somewhere else.
+    """
+
+    settings = get_settings(request)
+    needed = known_shortcodes(text)
+    contexts = {}
+    if needed:
+        async_session_factory: sessionmaker = get_session_factory(request)
+        async with async_session_factory() as session:
+            contexts = await load_broadcast_contexts(
+                session,
+                settings,
+                [recipient_id],
+                needed,
+                _resolve_panel_service(request),
+            )
+            await session.commit()
+    ctx = contexts.get(recipient_id)
+    language = str(
+        (ctx.language_code if ctx else None) or settings.DEFAULT_LANGUAGE or "en"
+    ).strip()
+    if not needed:
+        return text, language
+    return (
+        render_broadcast_text(
+            text,
+            ctx,
+            lang=language,
+            i18n=get_i18n(request),
+            settings=settings,
+            bot_username=get_bot_username(request),
+            escape=True,
+        ),
+        language,
+    )
+
+
 async def admin_support_ticket_reply_route(request: web.Request) -> web.Response:
     admin_id = _require_admin_user_id(request)
     ticket_id = int(request.match_info["id"])
@@ -264,16 +348,54 @@ async def admin_support_ticket_reply_route(request: web.Request) -> web.Response
         AdminTicketReplyPayload,
         validation_error_response_factory=_invalid_request_payload_response,
     )
+    unknown = sorted(unknown_shortcodes(payload.body))
+    if unknown:
+        return _error(400, "unknown_shortcode", ", ".join(unknown))
+    if payload.body_format == "html":
+        html_error = telegram_html_error(payload.body)
+        if html_error:
+            return _error(400, "invalid_telegram_html", html_error)
+
+    async_session_factory: sessionmaker = get_session_factory(request)
+    async with async_session_factory() as session:
+        ticket_row = await session.get(SupportTicket, ticket_id)
+        if ticket_row is None:
+            return _error(404, "not_found", "Ticket not found")
+        recipient_id = int(ticket_row.user_id)
+
+    body, language = await _personalize_reply_body(
+        request,
+        text=payload.body,
+        recipient_id=recipient_id,
+    )
+    encoded_buttons: str | None = None
+    if payload.buttons and not payload.is_internal_note:
+        try:
+            encoded_buttons = encode_support_buttons(
+                resolve_broadcast_buttons(
+                    payload.buttons,
+                    settings=get_settings(request),
+                    bot_username=get_bot_username(request),
+                    language=language,
+                    i18n=get_i18n(request),
+                )
+            )
+        except BroadcastValidationError as exc:
+            return _error(400, exc.code, exc.detail)
+
     try:
         ticket, message = await get_support_service(request).reply_as_admin(
             admin_id,
             ticket_id,
-            payload.body,
+            body,
             is_internal_note=payload.is_internal_note,
+            body_format=payload.body_format,
+            buttons=encoded_buttons,
         )
+    except SupportBodyError:
+        return _error(400, "empty_text", "Message is empty")
     except TicketNotFound:
         return _error(404, "not_found", "Ticket not found")
-    async_session_factory: sessionmaker = get_session_factory(request)
     async with async_session_factory() as session:
         admin = await user_dal.get_user_by_id(session, admin_id)
     await set_support_typing(get_settings(request), ticket_id, "admin", typing=False)

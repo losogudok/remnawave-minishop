@@ -2587,6 +2587,13 @@ export interface components {
       /** Body */
       body: string;
       /**
+       * Body Format
+       * @default text
+       */
+      body_format: string;
+      /** Buttons */
+      buttons?: components["schemas"]["SupportMessageButtonOut"][];
+      /**
        * Created At
        * @default null
        */
@@ -2886,6 +2893,14 @@ export interface components {
     AdminTicketReplyPayload: {
       /** Body */
       body: string;
+      /**
+       * Body Format
+       * @default text
+       * @enum {string}
+       */
+      body_format: "text" | "html";
+      /** Buttons */
+      buttons?: components["schemas"]["AdminBroadcastButtonBody"][];
       /**
        * Is Internal Note
        * @default false
@@ -3298,6 +3313,12 @@ export interface components {
     CreateTicketPayload: {
       /** Body */
       body: string;
+      /**
+       * Body Format
+       * @default text
+       * @enum {string}
+       */
+      body_format: "text" | "html";
       /**
        * Category
        * @default other
@@ -4051,6 +4072,28 @@ export interface components {
     } & {
       [key: string]: unknown;
     };
+    /**
+     * SupportMessageButtonOut
+     * @description A button the admin attached, already resolved to the link it opens.
+     */
+    SupportMessageButtonOut: {
+      /** Kind */
+      kind: string;
+      /** Label */
+      label: string;
+      /**
+       * Promo Code
+       * @default
+       */
+      promo_code: string;
+      /**
+       * Section
+       * @default
+       */
+      section: string;
+      /** Url */
+      url: string;
+    };
     /** SupportMessageOut */
     SupportMessageOut: {
       /** Author Role */
@@ -4062,6 +4105,13 @@ export interface components {
       author_user_id: number | null;
       /** Body */
       body: string;
+      /**
+       * Body Format
+       * @default text
+       */
+      body_format: string;
+      /** Buttons */
+      buttons?: components["schemas"]["SupportMessageButtonOut"][];
       /**
        * Created At
        * @default null
@@ -4602,6 +4652,12 @@ export interface components {
     TicketReplyPayload: {
       /** Body */
       body: string;
+      /**
+       * Body Format
+       * @default text
+       * @enum {string}
+       */
+      body_format: "text" | "html";
     };
     /** TrafficPackage */
     TrafficPackage: {

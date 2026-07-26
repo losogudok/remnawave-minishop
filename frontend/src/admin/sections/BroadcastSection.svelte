@@ -8,7 +8,7 @@
   import MessageButtonsEditor from "$lib/admin/components/MessageButtonsEditor.svelte";
   import MessageComposer from "$lib/admin/components/MessageComposer.svelte";
   import MessageLocaleTabs from "$lib/admin/components/MessageLocaleTabs.svelte";
-  import { previewHtmlFromWire } from "$lib/admin/telegramHtml";
+  import { previewHtmlFromWire } from "$lib/richtext/telegramHtml";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
 

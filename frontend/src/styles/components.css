@@ -1408,6 +1408,74 @@
   border-style: dashed;
 }
 
+/* A message body is rendered from a whitelist of inline tags plus quotes and
+   code blocks, so every one of them needs a size in the bubble. */
+.ticket-message-text p + p {
+  margin-top: 8px;
+}
+
+.ticket-message-text a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+
+.ticket-message-text code {
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  padding: 1px 4px;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.92em;
+}
+
+.ticket-message-text pre {
+  margin: 8px 0 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  padding: 8px 10px;
+  overflow-x: auto;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+  white-space: pre;
+}
+
+.ticket-message-text blockquote {
+  margin: 8px 0 0;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  padding-left: 10px;
+  color: var(--muted);
+}
+
+.ticket-message-text > :first-child {
+  margin-top: 0;
+}
+
+.ticket-message-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.ticket-message-button {
+  display: block;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  padding: 7px 12px;
+  color: var(--accent);
+  text-align: center;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.ticket-message-button:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
 .ticket-composer {
   display: grid;
   gap: 10px;

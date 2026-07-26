@@ -378,8 +378,10 @@ async function assertUserTicketScrolling(page: Page, nav: Locator): Promise<void
     .first();
   await expect(readReceipt).toBeVisible();
   await expect(readReceipt.locator(".lucide-check-check")).toBeVisible();
-  await composer.locator("textarea").fill("Проверка статуса доставки");
-  await composer.getByRole("button").click();
+  const composerInput = composer.locator(".rt-surface .ProseMirror");
+  await composerInput.click();
+  await composerInput.pressSequentially("Проверка статуса доставки");
+  await composer.locator(".ticket-composer-send").click();
   const sentReceipt = page
     .locator('.support-ticket-screen .ticket-message-receipt[title="Отправлено"]')
     .last();
@@ -900,35 +902,35 @@ test("webapp and admin sections, dialogs, tabs stay interactive without console 
 
   setPhase("admin-broadcast:shortcode-picker");
   await openAdminSection(page, "broadcast");
-  const shortcodeToggle = page.locator(".broadcast-tool-shortcode");
+  const shortcodeToggle = page.locator("[data-rt-shortcodes-toggle]");
   await expect(shortcodeToggle).toBeVisible();
   await shortcodeToggle.click();
-  const shortcodeList = page.locator(".broadcast-shortcode-list");
+  const shortcodeList = page.locator(".rt-menu-list");
   await expect(shortcodeList).toBeVisible();
   await expect(
-    shortcodeList.locator(".broadcast-shortcode-scroll .scroll-area__viewport")
+    shortcodeList.locator(".rt-menu-scroll .scroll-area__viewport")
   ).toBeVisible();
-  await shortcodeList.locator(".broadcast-shortcode-item").first().click();
-  await expect(page.locator(".broadcast-surface .broadcast-chip").first()).toBeVisible();
-  await page.locator("[data-broadcast-source-toggle]").click();
-  const broadcastSource = page.locator("textarea.broadcast-source");
+  await shortcodeList.locator(".rt-menu-item").first().click();
+  await expect(page.locator(".rt-surface .rt-chip").first()).toBeVisible();
+  await page.locator("[data-rt-source-toggle]").click();
+  const broadcastSource = page.locator("textarea.rt-source");
   await expect(broadcastSource).toBeVisible();
   await broadcastSource.evaluate((element) => {
     const textarea = element as HTMLTextAreaElement;
     textarea.focus();
     textarea.setSelectionRange(0, textarea.value.length);
   });
-  await page.locator('[data-broadcast-format="bold"]').click();
+  await page.locator('[data-rt-format="bold"]').click();
   await expect(broadcastSource).toHaveValue("<b>{first_name}</b>");
   await broadcastSource.evaluate((element) => {
     const textarea = element as HTMLTextAreaElement;
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   });
-  await page.locator('[data-broadcast-format="link"]').click();
+  await page.locator('[data-rt-format="link"]').click();
   await expect(broadcastSource).toHaveValue('<b>{first_name}</b><a href="https://">https://</a>');
-  await page.locator("[data-broadcast-source-toggle]").click();
-  await expect(page.locator(".broadcast-surface .broadcast-chip").first()).toBeVisible();
+  await page.locator("[data-rt-source-toggle]").click();
+  await expect(page.locator(".rt-surface .rt-chip").first()).toBeVisible();
 
   setPhase("admin-users:filter-dialog");
   await openAdminSection(page, "users");

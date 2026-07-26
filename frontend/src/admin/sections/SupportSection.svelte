@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { getAdminSupportStore } from "$lib/admin/context";
+  import { getAdminSupportStore, getBroadcastStore } from "$lib/admin/context";
+  import { buttonsForPayload } from "$lib/admin/stores/broadcastStore.svelte";
+  import type { BroadcastButtonDraft } from "$lib/admin/stores/broadcastStore.svelte";
   import { onMount, tick } from "svelte";
   import {
     AdminButton,
@@ -39,7 +41,11 @@
   } = $props();
 
   const supportStore = getAdminSupportStore();
+  // Shortcodes and promo codes are advertised once for every authored message,
+  // so the reply composer offers exactly what the broadcast screen offers.
+  const broadcastStore = getBroadcastStore();
   let reply = $state("");
+  let replyButtons = $state<BroadcastButtonDraft[]>([]);
   let messagesScrollEl = $state<HTMLElement | null>(null);
   let lastMessageScrollKey = $state("");
   const tickets: SupportTicket[] = $derived(supportStore.tickets || []);
@@ -82,6 +88,7 @@
   const openSupportUser = ((userId: number | string | undefined) =>
     onOpenUserCard(userId)) as ComponentCallback;
   const sendComposerReply = ((body: string) => void send(body)) as ComponentCallback;
+  const maxBodyLength = 4000;
 
   const statusTabs = $derived([
     {
@@ -135,6 +142,7 @@
   $effect(() => {
     if (!openedTicketId) {
       reply = "";
+      replyButtons = [];
       lastMessageScrollKey = "";
     }
   });
@@ -147,9 +155,13 @@
   });
 
   async function send(body: string): Promise<void> {
-    const sent = await supportStore.sendReply(body);
+    const sent = await supportStore.sendReply(body, {
+      bodyFormat: "html",
+      buttons: buttonsForPayload(replyButtons),
+    });
     if (!sent) return;
     reply = "";
+    replyButtons = [];
   }
 
   function scrollMessagesToBottom(): void {
@@ -166,6 +178,7 @@
 
   function closeTicketModal(): void {
     reply = "";
+    replyButtons = [];
     supportStore.closeTicketView();
   }
 
@@ -388,6 +401,8 @@
               <TicketMessageBubble
                 role={message.author_role}
                 body={message.body}
+                bodyFormat={message.body_format}
+                buttons={message.buttons}
                 createdAt={message.created_at ?? undefined}
                 isInternalNote={message.is_internal_note}
                 perspective="admin"
@@ -412,9 +427,17 @@
       {/if}
       <SupportComposer
         bind:value={reply}
+        bind:buttons={replyButtons}
         internal={composerInternalNote}
         {sending}
+        maxLength={maxBodyLength}
         {at}
+        shortcodes={broadcastStore.broadcastShortcodes}
+        promoOptions={broadcastStore.broadcastPromoOptions}
+        promoOptionsLoading={broadcastStore.broadcastPromoOptionsLoading}
+        promoOptionsLoaded={broadcastStore.broadcastPromoOptionsLoaded}
+        onRequestShortcodes={broadcastStore.loadShortcodes}
+        onRequestPromoOptions={broadcastStore.loadPromoOptions}
         onToggleInternal={supportStore.toggleInternalNote}
         onSend={sendComposerReply}
         onTyping={supportStore.notifyTyping}

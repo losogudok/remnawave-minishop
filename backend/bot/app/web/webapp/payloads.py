@@ -16,7 +16,11 @@ ChangeModeString = Annotated[str, StringConstraints(min_length=1, max_length=64)
 LanguageString = Annotated[str, StringConstraints(min_length=2, max_length=16)]
 DeviceTokenString = Annotated[str, StringConstraints(min_length=8, max_length=128)]
 TicketSubjectString = Annotated[str, StringConstraints(min_length=1, max_length=160)]
-TicketBodyString = Annotated[str, StringConstraints(min_length=1, max_length=4000)]
+# The transport cap, not the message cap: markup costs characters the reader
+# never sees, so the real limit is applied to the visible text after
+# sanitizing (``support_message_body``). This only stops absurd payloads.
+TicketBodyString = Annotated[str, StringConstraints(min_length=1, max_length=32000)]
+TicketBodyFormat = Literal["text", "html"]
 
 
 class WebAppEmailPayload(BaseModel):
@@ -160,6 +164,7 @@ class CreateTicketPayload(BaseModel):
     category: SupportCategory = "other"
     priority: Literal["normal", "high"] = "normal"
     body: TicketBodyString
+    body_format: TicketBodyFormat = "text"
 
     @field_validator("subject", "body")
     @classmethod
@@ -174,6 +179,7 @@ class TicketReplyPayload(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     body: TicketBodyString
+    body_format: TicketBodyFormat = "text"
 
     @field_validator("body")
     @classmethod

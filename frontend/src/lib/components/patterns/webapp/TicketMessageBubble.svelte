@@ -8,11 +8,16 @@
     MessageSquare,
     UserRound,
   } from "$components/ui/icons.js";
+  import { messageDisplayHtml } from "$lib/richtext/telegramHtml";
+
+  import type { TicketMessageButtonLike } from "./types.js";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
   type Props = {
     role?: string;
     body?: string;
+    bodyFormat?: string;
+    buttons?: TicketMessageButtonLike[];
     createdAt?: string;
     isInternalNote?: boolean;
     perspective?: "admin" | "user";
@@ -28,6 +33,8 @@
   let {
     role = "user",
     body = "",
+    bodyFormat = "text",
+    buttons = [],
     createdAt = "",
     isInternalNote = false,
     perspective = "user",
@@ -52,6 +59,10 @@
       : authorName || t(`wa_support_role_${messageRole}`, {}, messageRole)
   );
   const timeLabel = $derived(formatTime(createdAt));
+  // Built from the parsed structure, never from the raw string: only the tags
+  // the whitelist knows can reach the DOM, and bare URLs become tappable.
+  const bodyHtml = $derived(messageDisplayHtml(body, bodyFormat));
+  const messageButtons = $derived((buttons || []).filter((button) => button?.label && button?.url));
   const showSupportAvatar = $derived(!isInternalNote && messageRole === "admin");
   const showUserAvatar = $derived(!isInternalNote && messageRole === "user");
   const showReceipt = $derived(outgoing && !serviceMessage);
@@ -118,7 +129,22 @@
     </div>
 
     <div class="ticket-message-bubble">
-      <p>{body}</p>
+      <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+      <div class="ticket-message-text">{@html bodyHtml}</div>
+      {#if messageButtons.length}
+        <div class="ticket-message-buttons">
+          {#each messageButtons as button, index (`${index}:${button.url}`)}
+            <a
+              class="ticket-message-button"
+              href={button.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {button.label}
+            </a>
+          {/each}
+        </div>
+      {/if}
     </div>
   </div>
 </article>

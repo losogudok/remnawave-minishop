@@ -16,6 +16,7 @@ from bot.infra.event_payloads import SupportTicketCreatedPayload
 from bot.middlewares.i18n import JsonI18n
 from bot.services.email_auth_service import EmailAuthService
 from bot.services.notification_service import NotificationService
+from bot.services.support_message_body import BODY_FORMAT_TEXT, sanitize_support_body
 from config.settings import Settings
 from config.settings_models import SupportSettings
 from db.dal import message_log_dal, subscription_dal, support_dal, user_dal
@@ -163,6 +164,19 @@ class SupportService:
         _SUPPORT_NOTIFICATION_TASKS.add(task)
         task.add_done_callback(_SUPPORT_NOTIFICATION_TASKS.discard)
 
+    def _prepare_body(self, body: str, body_format: str) -> tuple[str, str]:
+        """Body as it will be stored, plus the format it is stored in.
+
+        Trimming happens here rather than at the call sites because a marked-up
+        body cannot be sliced at a character offset without splitting a tag.
+        """
+
+        return sanitize_support_body(
+            body,
+            body_format=body_format,
+            max_length=self.settings.support_settings.ticket_max_body_length,
+        )
+
     async def _ensure_user_allowed(self, session: AsyncSession, user_id: int) -> User:
         user = await user_dal.get_user_by_id(session, user_id)
         support_settings = self.settings.support_settings
@@ -177,8 +191,10 @@ class SupportService:
         category: str,
         priority: str,
         first_message_body: str,
+        body_format: str = BODY_FORMAT_TEXT,
     ) -> SupportTicket:
         support_settings = self.settings.support_settings
+        stored_body, stored_format = self._prepare_body(first_message_body, body_format)
         async with self.session_factory() as session:
             user = await self._ensure_user_allowed(session, user_id)
             limit = max(0, int(support_settings.ticket_rate_limit_per_hour or 0))
@@ -192,7 +208,8 @@ class SupportService:
                 subject[: support_settings.ticket_max_subject_length],
                 category,
                 priority,
-                first_message_body[: support_settings.ticket_max_body_length],
+                stored_body,
+                first_message_format=stored_format,
             )
             snapshot = await self.build_user_snapshot(user, session=session)
             await session.commit()
@@ -210,8 +227,9 @@ class SupportService:
             await self.notification_service.notify_new_support_ticket(
                 ticket,
                 user,
-                first_message_body,
+                stored_body,
                 snapshot,
+                body_format=stored_format,
             )
         except Exception:
             logger.exception("Failed to notify about support ticket %s", ticket.ticket_id)
@@ -222,8 +240,10 @@ class SupportService:
         user_id: int,
         ticket_id: int,
         body: str,
+        body_format: str = BODY_FORMAT_TEXT,
     ) -> tuple[SupportTicket, SupportTicketMessage]:
         support_settings = self.settings.support_settings
+        stored_body, stored_format = self._prepare_body(body, body_format)
         async with self.session_factory() as session:
             user = await self._ensure_user_allowed(session, user_id)
             ticket, _messages = await support_dal.get_ticket(session, ticket_id)
@@ -234,7 +254,8 @@ class SupportService:
                 ticket_id,
                 "user",
                 user_id,
-                body[: support_settings.ticket_max_body_length],
+                stored_body,
+                body_format=stored_format,
             )
             if message is None:
                 raise TicketNotFound("not_found")
@@ -281,8 +302,10 @@ class SupportService:
         body: str,
         *,
         is_internal_note: bool = False,
+        body_format: str = BODY_FORMAT_TEXT,
+        buttons: str | None = None,
     ) -> tuple[SupportTicket, SupportTicketMessage]:
-        support_settings = self.settings.support_settings
+        stored_body, stored_format = self._prepare_body(body, body_format)
         async with self.session_factory() as session:
             ticket, _messages = await support_dal.get_ticket(
                 session,
@@ -297,8 +320,10 @@ class SupportService:
                 ticket_id,
                 "admin",
                 admin_id,
-                body[: support_settings.ticket_max_body_length],
+                stored_body,
                 is_internal_note=is_internal_note,
+                body_format=stored_format,
+                buttons=buttons if not is_internal_note else None,
             )
             if message is None:
                 raise TicketNotFound("not_found")

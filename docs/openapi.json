@@ -2004,6 +2004,18 @@
             "title": "Body",
             "type": "string"
           },
+          "body_format": {
+            "default": "text",
+            "title": "Body Format",
+            "type": "string"
+          },
+          "buttons": {
+            "items": {
+              "$ref": "#/components/schemas/SupportMessageButtonOut"
+            },
+            "title": "Buttons",
+            "type": "array"
+          },
           "created_at": {
             "anyOf": [
               {
@@ -2783,10 +2795,27 @@
       "AdminTicketReplyPayload": {
         "properties": {
           "body": {
-            "maxLength": 4000,
+            "maxLength": 32000,
             "minLength": 1,
             "title": "Body",
             "type": "string"
+          },
+          "body_format": {
+            "default": "text",
+            "enum": [
+              "text",
+              "html"
+            ],
+            "title": "Body Format",
+            "type": "string"
+          },
+          "buttons": {
+            "items": {
+              "$ref": "#/components/schemas/AdminBroadcastButtonBody"
+            },
+            "maxItems": 4,
+            "title": "Buttons",
+            "type": "array"
           },
           "is_internal_note": {
             "default": false,
@@ -3584,9 +3613,18 @@
       "CreateTicketPayload": {
         "properties": {
           "body": {
-            "maxLength": 4000,
+            "maxLength": 32000,
             "minLength": 1,
             "title": "Body",
+            "type": "string"
+          },
+          "body_format": {
+            "default": "text",
+            "enum": [
+              "text",
+              "html"
+            ],
+            "title": "Body Format",
             "type": "string"
           },
           "category": {
@@ -5350,6 +5388,40 @@
         "title": "SupportCountsOut",
         "type": "object"
       },
+      "SupportMessageButtonOut": {
+        "description": "A button the admin attached, already resolved to the link it opens.",
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "promo_code": {
+            "default": "",
+            "title": "Promo Code",
+            "type": "string"
+          },
+          "section": {
+            "default": "",
+            "title": "Section",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "url",
+          "kind"
+        ],
+        "title": "SupportMessageButtonOut",
+        "type": "object"
+      },
       "SupportMessageOut": {
         "properties": {
           "author_role": {
@@ -5371,6 +5443,18 @@
           "body": {
             "title": "Body",
             "type": "string"
+          },
+          "body_format": {
+            "default": "text",
+            "title": "Body Format",
+            "type": "string"
+          },
+          "buttons": {
+            "items": {
+              "$ref": "#/components/schemas/SupportMessageButtonOut"
+            },
+            "title": "Buttons",
+            "type": "array"
           },
           "created_at": {
             "anyOf": [
@@ -6605,9 +6689,18 @@
       "TicketReplyPayload": {
         "properties": {
           "body": {
-            "maxLength": 4000,
+            "maxLength": 32000,
             "minLength": 1,
             "title": "Body",
+            "type": "string"
+          },
+          "body_format": {
+            "default": "text",
+            "enum": [
+              "text",
+              "html"
+            ],
+            "title": "Body Format",
             "type": "string"
           }
         },
