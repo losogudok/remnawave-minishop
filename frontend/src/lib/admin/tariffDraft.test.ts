@@ -9,6 +9,7 @@ import {
   packageRowsFromPackageSet,
   packageSetFromRows,
   tariffFromDraft,
+  tributeProductsFromRows,
 } from "./tariffDraft";
 
 describe("tariffDraft", () => {
@@ -86,15 +87,55 @@ describe("tariffDraft", () => {
       monthly_gb: 500,
       traffic_limit_strategy: "WEEK",
       topup_packages: { rub: [{ gb: 10, price: 199 }] },
+      tribute: {
+        link: "https://t.me/tribute/app?startapp=pro",
+        subscription_id: 101,
+        period_ids: { 1: 1001, 3: 1003 },
+        traffic_products: {
+          10: {
+            product_id: 501,
+            link: "https://tribute.tg/products/501",
+          },
+        },
+      },
     };
 
     const draft = draftFromTariff(tariff, "rub");
     expect(draft.key).toBe("pro");
     expect(draft.legacyKeys).toEqual(["premium"]);
     expect(draft.traffic_limit_strategy).toBe("WEEK");
+    expect(draft.tributeLink).toBe("https://t.me/tribute/app?startapp=pro");
+    expect(draft.tributeSubscriptionId).toBe(101);
+    expect(draft.topupRows).toEqual([
+      {
+        gb: 10,
+        price: 199,
+        prices: undefined,
+        min_price: "",
+        stars: "",
+        stars_prices: undefined,
+        stars_min_price: "",
+        tribute_product_id: 501,
+        tribute_product_link: "https://tribute.tg/products/501",
+      },
+    ]);
     expect(draft.periodRows).toEqual([
-      { months: 1, rub: 200, stars: 90, referral_inviter: 3, referral_referee: 1 },
-      { months: 3, rub: 550, stars: "", referral_inviter: "", referral_referee: "" },
+      {
+        months: 1,
+        rub: 200,
+        stars: 90,
+        referral_inviter: 3,
+        referral_referee: 1,
+        tribute_period_id: 1001,
+      },
+      {
+        months: 3,
+        rub: 550,
+        stars: "",
+        referral_inviter: "",
+        referral_referee: "",
+        tribute_period_id: 1003,
+      },
     ]);
 
     draft.squadUuids = " a\nb, c ";
@@ -110,6 +151,86 @@ describe("tariffDraft", () => {
       monthly_gb: 500,
       traffic_limit_strategy: "WEEK",
       topup_packages: { rub: [{ gb: 10, price: 199 }] },
+      tribute: {
+        link: "https://t.me/tribute/app?startapp=pro",
+        subscription_id: 101,
+        period_ids: { 1: 1001, 3: 1003 },
+        traffic_products: {
+          10: {
+            product_id: 501,
+            link: "https://tribute.tg/products/501",
+          },
+        },
+      },
+    });
+  });
+
+  it("round-trips Tribute digital products for traffic and premium packages", () => {
+    const tariff = {
+      key: "traffic",
+      billing_model: "traffic",
+      traffic_packages: { rub: [{ gb: 10.5, price: 200 }] },
+      premium_squad_uuids: ["premium"],
+      premium_topup_packages: { rub: [{ gb: 5, price: 150 }] },
+      tribute: {
+        traffic_products: {
+          10.5: {
+            product_id: 501,
+            link: "https://tribute.tg/products/501",
+          },
+        },
+        premium_traffic_products: {
+          5: {
+            product_id: 502,
+            link: "https://t.me/tribute/app?startapp=product-502",
+          },
+        },
+      },
+    };
+
+    const draft = draftFromTariff(tariff);
+
+    expect(draft.trafficRows[0]).toMatchObject({
+      gb: 10.5,
+      tribute_product_id: 501,
+      tribute_product_link: "https://tribute.tg/products/501",
+    });
+    expect(draft.premiumTopupRows[0]).toMatchObject({
+      gb: 5,
+      tribute_product_id: 502,
+      tribute_product_link: "https://t.me/tribute/app?startapp=product-502",
+    });
+    expect(tariffFromDraft(draft)).toMatchObject({
+      tribute: {
+        traffic_products: {
+          10.5: {
+            product_id: 501,
+            link: "https://tribute.tg/products/501",
+          },
+        },
+        premium_traffic_products: {
+          5: {
+            product_id: 502,
+            link: "https://t.me/tribute/app?startapp=product-502",
+          },
+        },
+      },
+    });
+  });
+
+  it("serializes partial Tribute product rows for backend validation", () => {
+    expect(
+      tributeProductsFromRows(
+        [
+          { gb: "10.50", tribute_product_id: "501", tribute_product_link: " https://t.me/p " },
+          { gb: "20", tribute_product_id: "", tribute_product_link: "" },
+          { gb: "30", tribute_product_id: "502", tribute_product_link: "" },
+        ],
+        "gb"
+      )
+    ).toEqual({
+      10.5: { product_id: 501, link: "https://t.me/p" },
+      30: { product_id: 502, link: "" },
     });
   });
 
@@ -131,6 +252,7 @@ describe("tariffDraft", () => {
       conversion_rate_rub_per_gb: 12.5,
     });
     expect(tariff).not.toHaveProperty("traffic_limit_strategy");
+    expect(tariff).not.toHaveProperty("tribute");
   });
 
   it("preserves the global fallback for legacy period tariffs without a strategy", () => {

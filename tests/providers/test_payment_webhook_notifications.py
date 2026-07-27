@@ -35,6 +35,18 @@ class PaymentWebhookNotificationTests(IsolatedAsyncioTestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
+        # Finalization locks the current entitlement row before mutating it.
+        # These tests drive the notification path with a mock session, so the
+        # lock is stubbed to "no active subscription" unless a test says
+        # otherwise.
+        self.lock_active_subscription = AsyncMock(return_value=None)
+        subscription_patcher = patch(
+            "bot.payment_providers.shared.success.subscription_dal"
+            ".get_active_subscription_by_user_id_for_update",
+            self.lock_active_subscription,
+        )
+        subscription_patcher.start()
+        self.addCleanup(subscription_patcher.stop)
 
     async def test_failed_payment_notification_emits_cancel_event(self):
         bot = SimpleNamespace(send_message=AsyncMock())

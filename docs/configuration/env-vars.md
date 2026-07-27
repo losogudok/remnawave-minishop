@@ -286,7 +286,7 @@ Xray-Core 26.3.27+, `NET_ADMIN`, nftables, корректный sniffing и вк
 
 | Переменная | Назначение |
 | --- | --- |
-| `PAYMENT_METHODS_ORDER` | Порядок кнопок оплаты: `severpay,wata,freekassa,platega,yookassa,stars,cryptopay,heleket,paykilla,lava,pally,cloudpayments,stripe`. |
+| `PAYMENT_METHODS_ORDER` | Порядок кнопок оплаты: `severpay,wata,freekassa,platega,yookassa,stars,cryptopay,heleket,paykilla,lava,pally,cloudpayments,stripe,tribute`. |
 | `SUBSCRIPTION_PURCHASE_DESCRIPTION_ENABLED` | Показывать описание подписки перед выбором срока. |
 | `SUBSCRIPTION_PURCHASE_DESCRIPTION_RU` / `SUBSCRIPTION_PURCHASE_DESCRIPTION_EN` | Локализованное описание подписки. |
 | `PAYMENT_REQUEST_TIMEOUT_SECONDS` | Общий таймаут одного API-запроса к платёжному провайдеру, в секундах. По умолчанию `20`. |
@@ -308,6 +308,7 @@ Xray-Core 26.3.27+, `NET_ADMIN`, nftables, корректный sniffing и вк
 | `PALLY_ENABLED` | Включает Pally / PayPalych. |
 | `CLOUDPAYMENTS_ENABLED` | Включает CloudPayments. |
 | `OVERPAY_ENABLED` | Включает Overpay. |
+| `TRIBUTE_ENABLED` | Включает платежи Tribute через Shop API и/или Creator fallback. |
 
 Конкретные ключи отображения:
 
@@ -402,6 +403,12 @@ PAYMENT_STRIPE_WEBAPP_ICON
 PAYMENT_STRIPE_TELEGRAM_LABEL_RU
 PAYMENT_STRIPE_TELEGRAM_LABEL_EN
 PAYMENT_STRIPE_TELEGRAM_EMOJI
+PAYMENT_TRIBUTE_WEBAPP_LABEL_RU
+PAYMENT_TRIBUTE_WEBAPP_LABEL_EN
+PAYMENT_TRIBUTE_WEBAPP_ICON
+PAYMENT_TRIBUTE_TELEGRAM_LABEL_RU
+PAYMENT_TRIBUTE_TELEGRAM_LABEL_EN
+PAYMENT_TRIBUTE_TELEGRAM_EMOJI
 ```
 
 ### YooKassa
@@ -471,6 +478,31 @@ PAYMENT_STRIPE_TELEGRAM_EMOJI
 | `CRYPTOPAY_NETWORK` | `mainnet` или `testnet`. |
 | `CRYPTOPAY_CURRENCY_TYPE` | `fiat` или `crypto`. |
 | `CRYPTOPAY_ASSET` | Актив, например `RUB`, `USDT`, `BTC`. |
+
+### Tribute
+
+| Переменная | Назначение |
+| --- | --- |
+| `TRIBUTE_ENABLED` | Включить провайдера Tribute и обработку его webhook. |
+| `TRIBUTE_API_KEY` | API key Tribute для Shop/Creator API; тем же секретом проверяется HMAC-SHA256 в `trbt-signature`. |
+| `TRIBUTE_SHOP_ENABLED` | Использовать Shop API как основной режим: создавать динамические заказы на точную локальную сумму. Требует настроенного Tribute Shop для этого API key. |
+| `TRIBUTE_SHOP_ID` | Положительный числовой ID конкретного Shop. Обязателен при `TRIBUTE_SHOP_ENABLED=true`; передаётся при создании заказа и проверяется в каждом Shop webhook. |
+
+При `TRIBUTE_SHOP_ENABLED=true` рекуррентные Shop Orders доступны только для локальных
+сроков 1/3/6/12 месяцев; одноразовые заказы используются для трафика, premium-трафика,
+отдельных HWID-устройств и доплаты за смену тарифа. Сумма берётся из локального расчёта
+Minishop. Shop API принимает от `100` до `300000` минимальных денежных единиц
+(копеек/центов); Minishop отклоняет заказ вне этого диапазона до сетевого запроса.
+
+Ссылки и ID не являются глобальными env-настройками. Они задают фиксированный Creator
+fallback в редакторе тарифа: `tribute.link`, `tribute.subscription_id` и `period_ids`
+для подписок, а также `traffic_products`/`premium_traffic_products` с `product_id` и
+ссылкой для Digital Products. Цены fallback настраиваются в Tribute и локально в API
+Tribute не отправляются.
+
+Shop-заказы в Stars, Token Charging/`paymentToken`, предоплаченный баланс и Creator
+donations интеграцией Minishop не поддерживаются. Подробнее о сценариях и lifecycle —
+в [настройке Tribute](../features/payments.md#tribute).
 
 ### Heleket
 

@@ -254,6 +254,7 @@ async def run_callback_payment[ServiceT: LinkFlowService](
         if descriptor.callback_context is not None
         else None
     )
+    entitlement_context_snapshot = parts.entitlement_context_snapshot
     payment_description = describe_payment(translator, parts)
     record_payload = build_payment_record_payload(
         user_id=callback.from_user.id,
@@ -265,6 +266,7 @@ async def run_callback_payment[ServiceT: LinkFlowService](
         provider=descriptor.provider_key,
         sale_mode=parts.sale_mode,
         hwid_quote=hwid_quote,
+        entitlement_context_snapshot=entitlement_context_snapshot,
     )
 
     reusable_payment = None
@@ -291,6 +293,7 @@ async def run_callback_payment[ServiceT: LinkFlowService](
             purchased_gb=reuse_amounts.purchased_gb,
             purchased_hwid_devices=reuse_amounts.purchased_hwid_devices,
             tariff_key=reuse_amounts.tariff_key,
+            entitlement_context_snapshot=entitlement_context_snapshot,
             since_minutes=reuse_since_minutes,
         )
     if reusable_payment is not None:

@@ -6,6 +6,11 @@
   import Dialog from "$components/ui/dialog.svelte";
   import { EmptyCard, PaymentMethodGrid } from "$components/patterns/webapp/index.js";
   import CheckoutPromoRow from "../CheckoutPromoRow.svelte";
+  import {
+    checkoutPromoAffectsQuotedPlan,
+    checkoutPromoBlockVisible,
+    selectPaymentMethodWithPromoReset,
+  } from "$lib/webapp/checkoutPromoPolicy.js";
   import { formatCompactNumber } from "$lib/webapp/formatters.js";
   import {
     planKey as planKeyFn,
@@ -112,6 +117,35 @@
       .toLowerCase()
       .includes("stars");
   }
+  function providerManagesPrice() {
+    const normalizedMethod = String(selectedMethod || "").toLowerCase();
+    if (
+      selectedPlan?.externally_managed_price_method_ids?.some(
+        (methodId) => String(methodId).toLowerCase() === normalizedMethod
+      )
+    ) {
+      return true;
+    }
+    return Boolean(
+      methods.find((method) => String(method.id || "").toLowerCase() === normalizedMethod)
+        ?.price_managed_externally
+    );
+  }
+  function tributeShopSubscriptionSelected(methodId = selectedMethod) {
+    return (
+      String(methodId || "").toLowerCase() === "tribute" &&
+      !providerManagesPrice() &&
+      isSubscriptionPlan(selectedPlan)
+    );
+  }
+  function selectPaymentMethod(methodId: string) {
+    selectPaymentMethodWithPromoReset(
+      methodId,
+      selectedPlan,
+      (nextMethod) => (selectedMethod = nextMethod),
+      clearCheckoutPromo
+    );
+  }
   function hwidRenewalFor(plan: PlanView | null) {
     return plan?.hwid_renewal?.available ? plan.hwid_renewal : null;
   }
@@ -121,7 +155,15 @@
   }
   function hwidRenewalAvailableForMethod(plan: PlanView | null) {
     const renewal = hwidRenewalFor(plan);
-    if (!subscription?.active || !isSubscriptionPlan(plan) || !renewal) return false;
+    if (
+      providerManagesPrice() ||
+      tributeShopSubscriptionSelected() ||
+      !subscription?.active ||
+      !isSubscriptionPlan(plan) ||
+      !renewal
+    ) {
+      return false;
+    }
     if (methodUsesStars()) return Number(renewal.stars_price || 0) > 0;
     return Number(renewal.price || 0) > 0;
   }
@@ -142,6 +184,7 @@
     return priceLabelFn(planWithSelectedHwidRenewal(plan), selectedMethod);
   }
   function checkoutPaymentPriceLabel(plan: PlanView | null) {
+    if (providerManagesPrice()) return t("wa_price_managed_by_provider");
     const promoPrice = checkoutPromoPriceParts(planWithSelectedHwidRenewal(plan));
     if (promoPrice) return promoPrice.discounted;
     if (checkoutPromoAppliedCode && checkoutPromoPriceText) return checkoutPromoPriceText;
@@ -183,9 +226,9 @@
     return true;
   }
   function checkoutPromoAffectsPlan(plan: PlanView | null) {
-    return (
-      checkoutPromoDiscount() > 0 &&
-      checkoutPromoScopeMatches(plan) &&
+    return checkoutPromoAffectsQuotedPlan(
+      checkoutPromoDiscount(),
+      checkoutPromoScopeMatches(plan),
       checkoutPromoThresholdMatches(plan)
     );
   }
@@ -285,7 +328,10 @@
   }
 
   function checkoutPromoBlock() {
-    return Boolean(checkoutPromoAppliedCode || checkoutPromoStatus || selectedPlan);
+    return checkoutPromoBlockVisible(
+      providerManagesPrice(),
+      Boolean(checkoutPromoAppliedCode || checkoutPromoStatus || selectedPlan)
+    );
   }
 
   function paymentTitle() {
@@ -453,7 +499,7 @@
             methods={paymentMethods}
             {selectedMethod}
             {t}
-            onSelect={(id) => (selectedMethod = id)}
+            onSelect={selectPaymentMethod}
           />
         {:else}
           <EmptyCard>{t("wa_payment_methods_not_configured")}</EmptyCard>
@@ -566,7 +612,7 @@
           methods={paymentMethods}
           {selectedMethod}
           {t}
-          onSelect={(id) => (selectedMethod = id)}
+          onSelect={selectPaymentMethod}
         />
       {:else}
         <EmptyCard>{t("wa_payment_methods_not_configured")}</EmptyCard>

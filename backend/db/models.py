@@ -292,11 +292,156 @@ class Payment(Base):
     checkout_charged_months = Column(Integer, nullable=True)
     checkout_charged_gb = Column(Float, nullable=True)
     checkout_quoted_at = Column(DateTime(timezone=True), nullable=True)
+    tariff_change_quote_snapshot = Column(Text, nullable=True)
+    entitlement_context_snapshot = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
     user = relationship("User", back_populates="payments")
     promo_code_used = relationship("PromoCode", back_populates="payments_where_used")
+
+
+class TributeEntitlement(Base):
+    """Provider-side subscription binding kept stable across tariff config edits."""
+
+    __tablename__ = "tribute_entitlements"
+    __table_args__ = (
+        UniqueConstraint(
+            "tribute_subscription_id",
+            "trb_user_id",
+            name="uq_tribute_entitlements_subscription_user",
+        ),
+        Index(
+            "ix_tribute_entitlements_telegram_subscription",
+            "telegram_user_id",
+            "tribute_subscription_id",
+        ),
+    )
+
+    entitlement_id = Column(Integer, primary_key=True, autoincrement=True)
+    tribute_subscription_id = Column(BigInteger, nullable=False, index=True)
+    tribute_period_id = Column(BigInteger, nullable=False)
+    trb_user_id = Column(String(128), nullable=False)
+    telegram_user_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=True, index=True)
+    tariff_key = Column(String, nullable=True, index=True)
+    duration_months = Column(Integer, nullable=True)
+    subscription_type = Column(String(16), nullable=True)
+    status = Column(String(32), nullable=False, default="active", index=True)
+    active_until = Column(DateTime(timezone=True), nullable=False, index=True)
+    last_event_name = Column(String(64), nullable=False)
+    last_event_created_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    last_event_fingerprint = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    user = relationship("User")
+
+
+class TributeWebhookEvent(Base):
+    """Immutable, privacy-minimized receipt used for webhook idempotency."""
+
+    __tablename__ = "tribute_webhook_events"
+
+    event_id = Column(Integer, primary_key=True, autoincrement=True)
+    fingerprint = Column(String(64), nullable=False, unique=True, index=True)
+    event_name = Column(String(64), nullable=False, index=True)
+    tribute_subscription_id = Column(BigInteger, nullable=False, index=True)
+    tribute_period_id = Column(BigInteger, nullable=False)
+    trb_user_id = Column(String(128), nullable=False)
+    telegram_user_id = Column(BigInteger, nullable=False, index=True)
+    event_created_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    event_sent_at = Column(DateTime(timezone=True), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    price = Column(BigInteger, nullable=False)
+    amount = Column(BigInteger, nullable=False)
+    currency = Column(String(16), nullable=False)
+    status = Column(String(32), nullable=False, default="processing", index=True)
+    status_reason = Column(String(128), nullable=True)
+    payment_id = Column(
+        Integer,
+        ForeignKey("payments.payment_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+
+    payment = relationship("Payment")
+
+
+class TributeProductPurchase(Base):
+    """Immutable SKU snapshot and lifecycle for one Tribute Digital Product purchase."""
+
+    __tablename__ = "tribute_product_purchases"
+
+    purchase_row_id = Column(Integer, primary_key=True, autoincrement=True)
+    tribute_purchase_id = Column(BigInteger, nullable=False, unique=True, index=True)
+    tribute_transaction_id = Column(BigInteger, nullable=False)
+    tribute_product_id = Column(BigInteger, nullable=False, index=True)
+    trb_user_id = Column(String(128), nullable=True)
+    telegram_user_id = Column(BigInteger, nullable=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=True, index=True)
+    tariff_key = Column(String, nullable=True, index=True)
+    sale_mode = Column(String(64), nullable=True)
+    units = Column(Float, nullable=True)
+    amount = Column(BigInteger, nullable=False)
+    currency = Column(String(16), nullable=False)
+    status = Column(String(32), nullable=False, default="processing", index=True)
+    status_reason = Column(String(128), nullable=True)
+    payment_id = Column(
+        Integer,
+        ForeignKey("payments.payment_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    purchase_created_at = Column(DateTime(timezone=True), nullable=True)
+    fulfilled_at = Column(DateTime(timezone=True), nullable=True)
+    refunded_at = Column(DateTime(timezone=True), nullable=True)
+    refund_reason = Column(String(512), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    user = relationship("User")
+    payment = relationship("Payment")
+
+
+class TributeShopWebhookEvent(Base):
+    """Durable receipt for one semantic Tribute Shop webhook delivery."""
+
+    __tablename__ = "tribute_shop_webhook_events"
+
+    event_id = Column(Integer, primary_key=True, autoincrement=True)
+    fingerprint = Column(String(64), nullable=False, unique=True, index=True)
+    event_name = Column(String(64), nullable=False, index=True)
+    order_uuid = Column(String(36), nullable=False, index=True)
+    event_created_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    event_sent_at = Column(DateTime(timezone=True), nullable=False)
+    amount = Column(BigInteger, nullable=True)
+    currency = Column(String(16), nullable=True)
+    transaction_id = Column(BigInteger, nullable=True, index=True)
+    status = Column(String(32), nullable=False, default="processing", index=True)
+    status_reason = Column(String(128), nullable=True)
+    payment_id = Column(
+        Integer,
+        ForeignKey("payments.payment_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+
+    payment = relationship("Payment")
 
 
 class TrafficTopup(Base):

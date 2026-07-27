@@ -17,6 +17,7 @@ from . import (
     severpay,
     stars,
     stripe,
+    tribute,
     wata,
     yookassa,
 )
@@ -46,6 +47,7 @@ PAYMENT_PROVIDER_SPECS: tuple[PaymentProviderSpec, ...] = (
     cloudpayments.SPEC,
     overpay.SPEC,
     stripe.SPEC,
+    tribute.SPEC,
     qa.SPEC,
 )
 

@@ -4315,6 +4315,8 @@ export interface components {
       traffic_limit_strategy: ("NO_RESET" | "DAY" | "WEEK" | "MONTH" | "MONTH_ROLLING") | null;
       /** @default null */
       traffic_packages: components["schemas"]["PackageSet"] | null;
+      /** @default null */
+      tribute: components["schemas"]["TributeTariffConfig"] | null;
     };
     /** TariffsSaveBody */
     TariffsSaveBody: {
@@ -4665,6 +4667,38 @@ export interface components {
       gb: number;
       /** Price */
       price: number;
+    };
+    /** TributeProductConfig */
+    TributeProductConfig: {
+      /** Link */
+      link: string;
+      /** Product Id */
+      product_id: number;
+    };
+    /** TributeTariffConfig */
+    TributeTariffConfig: {
+      /**
+       * Link
+       * @default null
+       */
+      link: string | null;
+      /** Period Ids */
+      period_ids?: {
+        [key: string]: number;
+      };
+      /** Premium Traffic Products */
+      premium_traffic_products?: {
+        [key: string]: components["schemas"]["TributeProductConfig"];
+      };
+      /**
+       * Subscription Id
+       * @default null
+       */
+      subscription_id: number | null;
+      /** Traffic Products */
+      traffic_products?: {
+        [key: string]: components["schemas"]["TributeProductConfig"];
+      };
     };
     /** WebAppAutoRenewPayload */
     WebAppAutoRenewPayload: {
@@ -7510,15 +7544,19 @@ export interface operations {
             /** @constant */
             ok: true;
             plans?: {
+              available_payment_method_ids?: string[];
               billing_model?: string;
               currency?: string;
               description?: string;
               device_count?: number;
+              externally_managed_price_method_ids?: string[];
               hwid_device_limit?: number | null;
               hwid_device_packages?: {
+                available_payment_method_ids?: string[];
                 billing_model?: string;
                 currency?: string;
                 device_count?: number;
+                externally_managed_price_method_ids?: string[];
                 id?: string;
                 months?: number;
                 price?: number;
@@ -7637,17 +7675,25 @@ export interface operations {
               minimum_amount?: number;
               minimum_amount_text?: string;
               name?: string;
+              price_managed_externally?: boolean;
+              shop_limit_currency?: string;
+              shop_max_amount?: number;
+              shop_min_amount?: number;
             }[];
             plans: {
+              available_payment_method_ids?: string[];
               billing_model?: string;
               currency?: string;
               description?: string;
               device_count?: number;
+              externally_managed_price_method_ids?: string[];
               hwid_device_limit?: number | null;
               hwid_device_packages?: {
+                available_payment_method_ids?: string[];
                 billing_model?: string;
                 currency?: string;
                 device_count?: number;
+                externally_managed_price_method_ids?: string[];
                 id?: string;
                 months?: number;
                 price?: number;
@@ -8432,12 +8478,14 @@ export interface operations {
             ok: true;
             targets: {
               actions: {
+                available_payment_method_ids?: string[];
                 converted_gb?: number;
                 converted_hwid_days?: number;
                 converted_hwid_gb?: number;
                 converted_hwid_value_rub?: number;
                 currency?: string;
                 days_after?: number;
+                externally_managed_price_method_ids?: string[];
                 kind?: string;
                 mode?: string;
                 months?: number;
@@ -8520,15 +8568,19 @@ export interface operations {
             /** @constant */
             ok: true;
             plans?: {
+              available_payment_method_ids?: string[];
               billing_model?: string;
               currency?: string;
               description?: string;
               device_count?: number;
+              externally_managed_price_method_ids?: string[];
               hwid_device_limit?: number | null;
               hwid_device_packages?: {
+                available_payment_method_ids?: string[];
                 billing_model?: string;
                 currency?: string;
                 device_count?: number;
+                externally_managed_price_method_ids?: string[];
                 id?: string;
                 months?: number;
                 price?: number;

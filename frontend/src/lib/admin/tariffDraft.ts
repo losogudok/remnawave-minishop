@@ -32,6 +32,8 @@ export interface TariffDraft extends UnknownRecord {
   premium_monthly_gb: string | number;
   hwid_device_limit: string | number;
   conversion_rate_rub_per_gb: string | number;
+  tributeLink: string;
+  tributeSubscriptionId: string | number;
   periodRows: DraftRow[];
   topupRows: DraftRow[];
   premiumTopupRows: DraftRow[];
@@ -45,6 +47,7 @@ type ParsedPeriodRow = {
   stars: number | null;
   referral_inviter: number | null;
   referral_referee: number | null;
+  tribute_period_id: number | null;
 };
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -94,17 +97,59 @@ export function emptyTariffDraft(): TariffDraft {
     premium_monthly_gb: "",
     hwid_device_limit: "",
     conversion_rate_rub_per_gb: "",
+    tributeLink: "",
+    tributeSubscriptionId: "",
     periodRows: [
-      { months: 1, rub: 200, stars: "", referral_inviter: 3, referral_referee: 1 },
-      { months: 3, rub: 600, stars: "", referral_inviter: 7, referral_referee: 3 },
-      { months: 6, rub: 1200, stars: "", referral_inviter: 15, referral_referee: 7 },
-      { months: 12, rub: 2400, stars: "", referral_inviter: 30, referral_referee: 15 },
+      {
+        months: 1,
+        rub: 200,
+        stars: "",
+        referral_inviter: 3,
+        referral_referee: 1,
+        tribute_period_id: "",
+      },
+      {
+        months: 3,
+        rub: 600,
+        stars: "",
+        referral_inviter: 7,
+        referral_referee: 3,
+        tribute_period_id: "",
+      },
+      {
+        months: 6,
+        rub: 1200,
+        stars: "",
+        referral_inviter: 15,
+        referral_referee: 7,
+        tribute_period_id: "",
+      },
+      {
+        months: 12,
+        rub: 2400,
+        stars: "",
+        referral_inviter: 30,
+        referral_referee: 15,
+        tribute_period_id: "",
+      },
     ],
     topupRows: [],
     premiumTopupRows: [],
     trafficRows: [
-      { gb: 10, price: 199, stars: "" },
-      { gb: 50, price: 799, stars: "" },
+      {
+        gb: 10,
+        price: 199,
+        stars: "",
+        tribute_product_id: "",
+        tribute_product_link: "",
+      },
+      {
+        gb: 50,
+        price: 799,
+        stars: "",
+        tribute_product_id: "",
+        tribute_product_link: "",
+      },
     ],
     hwidRows: [],
   };
@@ -154,6 +199,22 @@ export function rowsFromPackages(
 function packageValueSignature(value: unknown): string {
   const num = Number(value);
   return Number.isFinite(num) ? String(num) : String(value || "");
+}
+
+function rowsWithTributeProducts(
+  rows: DraftRow[],
+  valueKey: string,
+  productsValue: unknown
+): DraftRow[] {
+  const products = asRecord(productsValue);
+  return rows.map((row) => {
+    const product = asRecord(products[packageValueSignature(row[valueKey])]);
+    return {
+      ...row,
+      tribute_product_id: scalarDraftValue(product.product_id),
+      tribute_product_link: String(product.link || ""),
+    };
+  });
 }
 
 export function packageRowsFromPackageSet(
@@ -213,6 +274,8 @@ export function draftFromTariff(tariff: UnknownRecord, defaultCurrency = "rub"):
   const prices = asRecord(tariff.prices);
   const defaultPrices = asRecord(prices[currency]);
   const rubPrices = asRecord(tariff.prices_rub);
+  const tribute = asRecord(tariff.tribute);
+  const tributePeriodIds = asRecord(tribute.period_ids);
   // enabled_periods comes first so its order (the configured purchase order)
   // is preserved; any extra price-only months are appended afterwards.
   const months = new Set([
@@ -220,6 +283,7 @@ export function draftFromTariff(tariff: UnknownRecord, defaultCurrency = "rub"):
     ...Object.keys(defaultPrices).map(Number),
     ...(currency === "rub" ? Object.keys(asRecord(tariff.prices_rub)).map(Number) : []),
     ...Object.keys(asRecord(tariff.prices_stars)).map(Number),
+    ...Object.keys(tributePeriodIds).map(Number),
   ]);
   const periodRows = [...months]
     .filter((month) => Number.isFinite(month) && month > 0)
@@ -232,6 +296,7 @@ export function draftFromTariff(tariff: UnknownRecord, defaultCurrency = "rub"):
       stars: asRecord(tariff.prices_stars)[String(month)] ?? "",
       referral_inviter: asRecord(tariff.referral_bonus_days_inviter)[String(month)] ?? "",
       referral_referee: asRecord(tariff.referral_bonus_days_referee)[String(month)] ?? "",
+      tribute_period_id: tributePeriodIds[String(month)] ?? "",
     }));
   const names = asStringRecord(tariff.names);
   const descriptions = asStringRecord(tariff.descriptions);
@@ -259,14 +324,24 @@ export function draftFromTariff(tariff: UnknownRecord, defaultCurrency = "rub"):
     premium_monthly_gb: scalarDraftValue(tariff.premium_monthly_gb),
     hwid_device_limit: scalarDraftValue(tariff.hwid_device_limit),
     conversion_rate_rub_per_gb: scalarDraftValue(tariff.conversion_rate_rub_per_gb),
+    tributeLink: String(tribute.link || ""),
+    tributeSubscriptionId: scalarDraftValue(tribute.subscription_id),
     periodRows: periodRows.length ? periodRows : emptyTariffDraft().periodRows,
-    topupRows: packageRowsFromPackageSet(tariff.topup_packages as PackageSet, currency, "gb"),
-    premiumTopupRows: packageRowsFromPackageSet(
-      tariff.premium_topup_packages as PackageSet,
-      currency,
-      "gb"
+    topupRows: rowsWithTributeProducts(
+      packageRowsFromPackageSet(tariff.topup_packages as PackageSet, currency, "gb"),
+      "gb",
+      tribute.traffic_products
     ),
-    trafficRows: packageRowsFromPackageSet(tariff.traffic_packages as PackageSet, currency, "gb"),
+    premiumTopupRows: rowsWithTributeProducts(
+      packageRowsFromPackageSet(tariff.premium_topup_packages as PackageSet, currency, "gb"),
+      "gb",
+      tribute.premium_traffic_products
+    ),
+    trafficRows: rowsWithTributeProducts(
+      packageRowsFromPackageSet(tariff.traffic_packages as PackageSet, currency, "gb"),
+      "gb",
+      tribute.traffic_products
+    ),
     hwidRows: packageRowsFromPackageSet(
       tariff.hwid_device_packages as PackageSet,
       currency,
@@ -365,6 +440,22 @@ export function packageSetFromRows(
   };
 }
 
+export function tributeProductsFromRows(rows: DraftRow[], valueKey: string): UnknownRecord {
+  const products: UnknownRecord = {};
+  for (const row of rows || []) {
+    const unit = parseNumber(row[valueKey]);
+    if (unit === null || unit <= 0) continue;
+    const productId = parseNumber(row.tribute_product_id);
+    const link = String(row.tribute_product_link || "").trim();
+    if (productId === null && !link) continue;
+    products[String(unit)] = {
+      product_id: productId,
+      link,
+    };
+  }
+  return products;
+}
+
 export function normalizeUuidList(value: unknown): string[] {
   if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
   return String(value || "")
@@ -409,6 +500,11 @@ export function tariffFromDraft(draft: TariffDraft, fallbackCurrency = "rub"): U
   const premiumTopupPackages = packageSetFromRows(draft.premiumTopupRows, "gb", defaultCurrency);
   if (premiumTopupPackages) tariff.premium_topup_packages = premiumTopupPackages;
   tariff.premium_topup_always_available = Boolean(draft.premium_topup_always_available);
+  const tribute: UnknownRecord = {};
+  const premiumTrafficProducts = tributeProductsFromRows(draft.premiumTopupRows, "gb");
+  if (Object.keys(premiumTrafficProducts).length) {
+    tribute.premium_traffic_products = premiumTrafficProducts;
+  }
 
   if (tariff.billing_model === "period") {
     const trafficLimitStrategy = String(draft.traffic_limit_strategy || "").trim();
@@ -421,6 +517,7 @@ export function tariffFromDraft(draft: TariffDraft, fallbackCurrency = "rub"): U
         stars: parseNumber(row.stars, 0),
         referral_inviter: parseIntNumber(row.referral_inviter),
         referral_referee: parseIntNumber(row.referral_referee),
+        tribute_period_id: parseNumber(row.tribute_period_id),
       }))
       .filter(hasPositiveMonths)
       .filter((row) => {
@@ -449,14 +546,37 @@ export function tariffFromDraft(draft: TariffDraft, fallbackCurrency = "rub"): U
         .filter((row) => row.referral_referee !== null)
         .map((row) => [String(row.months), row.referral_referee])
     );
+    const tributeLink = String(draft.tributeLink || "").trim();
+    const tributeSubscriptionId = parseNumber(draft.tributeSubscriptionId);
+    const tributePeriodIds = Object.fromEntries(
+      rows
+        .filter((row) => row.tribute_period_id !== null)
+        .map((row) => [String(row.months), row.tribute_period_id])
+    );
+    if (tributeLink || tributeSubscriptionId !== null || Object.keys(tributePeriodIds).length > 0) {
+      tribute.link = tributeLink;
+      tribute.subscription_id = tributeSubscriptionId;
+      tribute.period_ids = tributePeriodIds;
+    }
     const topupPackages = packageSetFromRows(draft.topupRows, "gb", defaultCurrency);
     if (topupPackages) tariff.topup_packages = topupPackages;
+    const trafficProducts = tributeProductsFromRows(draft.topupRows, "gb");
+    if (Object.keys(trafficProducts).length) {
+      tribute.traffic_products = trafficProducts;
+    }
     tariff.topup_always_available = Boolean(draft.topup_always_available);
   } else {
     const trafficPackages = packageSetFromRows(draft.trafficRows, "gb", defaultCurrency);
     if (trafficPackages) tariff.traffic_packages = trafficPackages;
+    const trafficProducts = tributeProductsFromRows(draft.trafficRows, "gb");
+    if (Object.keys(trafficProducts).length) {
+      tribute.traffic_products = trafficProducts;
+    }
     const conversion = parseNumber(draft.conversion_rate_rub_per_gb);
     if (conversion !== null) tariff.conversion_rate_rub_per_gb = conversion;
+  }
+  if (Object.keys(tribute).length) {
+    tariff.tribute = tribute;
   }
 
   return tariff;

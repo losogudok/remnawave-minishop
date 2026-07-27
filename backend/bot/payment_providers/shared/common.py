@@ -171,6 +171,7 @@ def build_payment_record_payload(
     is_auto_renew: bool = False,
     renewal_subscription_id: int | None = None,
     renewal_cycle_end: Any = None,
+    entitlement_context_snapshot: str | None = None,
 ) -> dict:
     """Assemble the payment-record dict that every callback handler used to inline.
 
@@ -213,6 +214,8 @@ def build_payment_record_payload(
                 "hwid_traffic_bonus_bytes": hwid_quote.get("traffic_bonus_bytes"),
             }
         )
+    if entitlement_context_snapshot is not None:
+        payload["entitlement_context_snapshot"] = entitlement_context_snapshot
     return payload
 
 
@@ -361,6 +364,8 @@ async def create_base_payment_record(
     checkout_charged_months: int | None = None,
     checkout_charged_gb: float | None = None,
     checkout_quoted_at: Any | None = None,
+    tariff_change_quote_snapshot: str | None = None,
+    entitlement_context_snapshot: str | None = None,
 ) -> Payment:
     payment = await payment_dal.create_payment_record(
         session,
@@ -396,6 +401,8 @@ async def create_base_payment_record(
             "checkout_charged_months": checkout_charged_months,
             "checkout_charged_gb": checkout_charged_gb,
             "checkout_quoted_at": checkout_quoted_at,
+            "tariff_change_quote_snapshot": tariff_change_quote_snapshot,
+            "entitlement_context_snapshot": entitlement_context_snapshot,
         },
     )
     await session.commit()
@@ -449,6 +456,8 @@ async def create_webapp_payment_record(
         checkout_charged_months=ctx.checkout_charged_months,
         checkout_charged_gb=ctx.checkout_charged_gb,
         checkout_quoted_at=ctx.checkout_quoted_at,
+        tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
+        entitlement_context_snapshot=ctx.entitlement_context_snapshot,
     )
 
 
@@ -483,6 +492,8 @@ async def reusable_webapp_payment_response(
         tariff_key=amounts.tariff_key,
         promo_code_id=ctx.promo_code_id,
         promo_effect_summary=ctx.promo_effect_summary,
+        tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
+        entitlement_context_snapshot=ctx.entitlement_context_snapshot,
         since_minutes=since_minutes,
     )
     if payment is None:

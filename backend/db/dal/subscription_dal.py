@@ -42,6 +42,43 @@ async def get_active_subscription_by_user_id(
     return result.scalars().first()
 
 
+async def get_active_subscription_by_user_id_for_update(
+    session: AsyncSession,
+    user_id: int,
+) -> Subscription | None:
+    """Lock the current entitlement row before a payment mutates it."""
+
+    stmt = (
+        select(Subscription)
+        .where(
+            Subscription.user_id == user_id,
+            Subscription.is_active == True,
+            Subscription.end_date > datetime.now(UTC),
+        )
+        .order_by(Subscription.end_date.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    result = await session.execute(stmt)
+    return result.scalars().first()
+
+
+async def get_subscription_by_id_for_update(
+    session: AsyncSession,
+    subscription_id: int,
+) -> Subscription | None:
+    """Lock an exact renewal target, including just-expired subscriptions."""
+
+    stmt = (
+        select(Subscription)
+        .where(Subscription.subscription_id == int(subscription_id))
+        .limit(1)
+        .with_for_update()
+    )
+    result = await session.execute(stmt)
+    return result.scalars().first()
+
+
 async def user_has_active_subscription_after(
     session: AsyncSession,
     user_id: int,

@@ -167,6 +167,7 @@ class YooKassaService:
             is_auto_renew=True,
             renewal_subscription_id=context.subscription_id,
             renewal_cycle_end=context.renewal_cycle_end,
+            entitlement_context_snapshot=context.entitlement_context_snapshot,
         )
         payment_payload["idempotence_key"] = idempotence_key
         try:

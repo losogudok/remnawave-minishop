@@ -52,6 +52,7 @@ from .common import (
     _telegram_avatar_url,
 )
 from .serializers_billing_options import (
+    _attach_payment_methods_to_plans,
     _serialize_hwid_device_packages,
     _serialize_payment_methods,
     _serialize_tariff_change_target,
@@ -805,7 +806,7 @@ def _serialize_plans(
                     if stars_price is not None and int(stars_price) > 0:
                         plan["stars_price"] = int(stars_price)
                     plans.append(plan)
-        return plans
+        return _attach_payment_methods_to_plans(settings, plans)
 
     if settings.traffic_sale_mode:
         active_traffic_packages = traffic_packages or settings.traffic_packages
@@ -829,7 +830,7 @@ def _serialize_plans(
             if stars_price is not None and int(stars_price) > 0:
                 plan["stars_price"] = int(stars_price)
             plans.append(plan)
-        return plans
+        return _attach_payment_methods_to_plans(settings, plans)
 
     active_subscription_options = subscription_options or settings.subscription_options
     active_stars_subscription_options = (
@@ -851,4 +852,4 @@ def _serialize_plans(
         if stars_price is not None and int(stars_price) > 0:
             plan["stars_price"] = int(stars_price)
         plans.append(plan)
-    return plans
+    return _attach_payment_methods_to_plans(settings, plans)

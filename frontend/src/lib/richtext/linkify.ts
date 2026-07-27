@@ -14,7 +14,7 @@ import { escapeHtml } from "./escape.js";
 
 // Deliberately conservative: an explicit scheme, a bare `www.` host, or an
 // e-mail address. Guessing that any `word.word` is a domain turns ordinary
-// sentences ("см. файл config.py") into broken links.
+// sentences ("see file config.py") into broken links.
 const LINK_RE = /(?:https?:\/\/|www\.)[^\s<>"'`]+|[\w!#$%&'*+/=?^`{|}~.-]+@[\w-]+(?:\.[\w-]+)+/gi;
 
 // Trailing punctuation almost always belongs to the sentence, not the URL.

@@ -25,6 +25,7 @@ from bot.payment_providers import (
 from bot.payment_providers.shared import (
     PaymentCallbackParts,
     format_number_for_payload,
+    parse_entitlement_context_snapshot,
     payment_record_amounts,
     payment_units_for_activation,
     quote_hwid_callback_parts,
@@ -72,6 +73,7 @@ _PROVIDER_MODULES = {
     "pally": "PallyService",
     "cloudpayments": "CloudPaymentsService",
     "stripe": "StripeService",
+    "tribute": "TributeService",
     "qa": "QaPaymentService",
 }
 
@@ -169,6 +171,7 @@ def test_service_keys_and_statuses_come_from_provider_specs():
         "cloudpayments_service",
         "overpay_service",
         "stripe_service",
+        "tribute_service",
         "qa_service",
     }
     assert set(pending_statuses()) >= {
@@ -187,6 +190,7 @@ def test_service_keys_and_statuses_come_from_provider_specs():
         "pending_cloudpayments",
         "pending_overpay",
         "pending_stripe",
+        "pending_tribute",
         "pending_qa",
     }
 
@@ -296,6 +300,8 @@ def test_subscription_hwid_renewal_token_adds_quote_to_callback_parts():
     service = SimpleNamespace(
         quote_hwid_device_renewal_for_subscription=AsyncMock(
             return_value={
+                "subscription_id": 11,
+                "tariff_key": "basic",
                 "device_count": 2,
                 "price": 50,
                 "valid_from": "2099-02-01",
@@ -305,25 +311,40 @@ def test_subscription_hwid_renewal_token_adds_quote_to_callback_parts():
     )
     session = AsyncMock()
 
-    parts, quote = asyncio.run(
-        quote_hwid_callback_parts(
-            session=session,
-            user_id=77,
-            parts=PaymentCallbackParts(
-                months=1,
-                price=100,
-                sale_mode="subscription@basic|hwid_renewal",
-            ),
-            subscription_service=service,
-            currency="rub",
+    with patch(
+        "bot.payment_providers.shared.callbacks."
+        "subscription_dal.get_active_subscription_by_user_id",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                subscription_id=11,
+                tariff_key="basic",
+                provider="yookassa",
+                auto_renew_enabled=False,
+            )
+        ),
+    ):
+        parts, quote = asyncio.run(
+            quote_hwid_callback_parts(
+                session=session,
+                user_id=77,
+                parts=PaymentCallbackParts(
+                    months=1,
+                    price=100,
+                    sale_mode="subscription@basic|hwid_renewal",
+                ),
+                subscription_service=service,
+                currency="rub",
+            )
         )
-    )
 
     assert parts is not None
     assert quote is not None
     assert parts.months == 1
     assert parts.price == 150
     assert quote["device_count"] == 2
+    snapshot = parse_entitlement_context_snapshot(parts.entitlement_context_snapshot)
+    assert snapshot is not None
+    assert snapshot.active_subscription_id == 11
     service.quote_hwid_device_renewal_for_subscription.assert_awaited_once_with(
         session,
         user_id=77,
@@ -343,26 +364,62 @@ def test_subscription_callback_uses_current_server_price():
         tariffs_config=SimpleNamespace(require=lambda key: tariff if key == "standard" else None)
     )
 
-    quoted_parts, quote = asyncio.run(
-        quote_hwid_callback_parts(
-            session=AsyncMock(),
-            user_id=42,
-            parts=PaymentCallbackParts(
-                months=1,
-                price=1,
-                sale_mode="subscription@standard",
-            ),
-            subscription_service=SimpleNamespace(),
-            currency="rub",
-            settings=settings,
+    with patch(
+        "bot.payment_providers.shared.callbacks."
+        "subscription_dal.get_active_subscription_by_user_id",
+        AsyncMock(return_value=None),
+    ):
+        quoted_parts, quote = asyncio.run(
+            quote_hwid_callback_parts(
+                session=AsyncMock(),
+                user_id=42,
+                parts=PaymentCallbackParts(
+                    months=1,
+                    price=1,
+                    sale_mode="subscription@standard",
+                ),
+                subscription_service=SimpleNamespace(),
+                currency="rub",
+                settings=settings,
+            )
         )
-    )
 
     assert quote is None
     assert quoted_parts is not None
     assert quoted_parts.months == 1
     assert quoted_parts.price == 299
     assert quoted_parts.sale_mode == "subscription@standard"
+
+
+def test_subscription_callback_is_blocked_during_active_tribute_recurrence():
+    subscription_service = SimpleNamespace(quote_hwid_device_renewal_for_subscription=AsyncMock())
+    active_subscription = SimpleNamespace(
+        provider="tribute",
+        auto_renew_enabled=True,
+    )
+
+    with patch(
+        "bot.payment_providers.shared.callbacks."
+        "subscription_dal.get_active_subscription_by_user_id",
+        AsyncMock(return_value=active_subscription),
+    ):
+        quoted_parts, quote = asyncio.run(
+            quote_hwid_callback_parts(
+                session=AsyncMock(),
+                user_id=42,
+                parts=PaymentCallbackParts(
+                    months=1,
+                    price=100,
+                    sale_mode="subscription@standard|hwid_renewal",
+                ),
+                subscription_service=subscription_service,
+                currency="rub",
+            )
+        )
+
+    assert quoted_parts is None
+    assert quote is None
+    subscription_service.quote_hwid_device_renewal_for_subscription.assert_not_awaited()
 
 
 def test_tariff_upgrade_callback_uses_current_server_quote():

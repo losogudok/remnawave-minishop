@@ -5,6 +5,8 @@ type TranslateFn = (key: string, params?: Record<string, string>, fallback?: str
 type TermUnitLabel = (value: number, unit: "month") => string;
 
 export type BillingPlan = WebappRecord & {
+  available_payment_method_ids?: string[] | null;
+  externally_managed_price_method_ids?: string[] | null;
   billing_model?: string | null;
   currency?: string | null;
   description?: string | null;
@@ -55,6 +57,7 @@ export type PaymentMethod = WebappRecord & {
   id?: string | number;
   min_amount?: number | string;
   min_currency?: string;
+  price_managed_externally?: boolean;
 };
 
 export const TELEGRAM_STARS_MINI_APP_REQUIRED = "telegram_stars_mini_app_required";
@@ -160,6 +163,12 @@ export function methodAvailableForPlan(
   if (!method) return true;
   if (method.disabled) return false;
   if (!plan) return true;
+  if (
+    Array.isArray(plan.available_payment_method_ids) &&
+    !plan.available_payment_method_ids.includes(String(method.id || "").toLowerCase())
+  ) {
+    return false;
+  }
   const minimum = Number(method?.min_amount || 0);
   const minimumCurrency = String(method?.min_currency || "").toUpperCase();
   const planCurrency = String(plan?.currency || "").toUpperCase();

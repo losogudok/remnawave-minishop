@@ -170,7 +170,11 @@ PAYMENT_METHOD_SCHEMA: dict[str, Any] = {
         "min_amount": NUMBER_SCHEMA,
         "minimum_amount": NUMBER_SCHEMA,
         "minimum_amount_text": STRING_SCHEMA,
+        "shop_min_amount": NUMBER_SCHEMA,
+        "shop_max_amount": NUMBER_SCHEMA,
+        "shop_limit_currency": STRING_SCHEMA,
         "currency": STRING_SCHEMA,
+        "price_managed_externally": BOOLEAN_SCHEMA,
     },
 }
 HWID_RENEWAL_SCHEMA: dict[str, Any] = {
@@ -208,6 +212,8 @@ HWID_DEVICE_PACKAGE_SCHEMA: dict[str, Any] = {
         "currency": STRING_SCHEMA,
         "title": STRING_SCHEMA,
         "subtitle": STRING_SCHEMA,
+        "available_payment_method_ids": STRING_ARRAY_SCHEMA,
+        "externally_managed_price_method_ids": STRING_ARRAY_SCHEMA,
     },
 }
 PLAN_SCHEMA: dict[str, Any] = {
@@ -240,6 +246,8 @@ PLAN_SCHEMA: dict[str, Any] = {
         "proration_ratio": NUMBER_SCHEMA,
         "traffic_bonus_gb": NUMBER_SCHEMA,
         "hwid_renewal": HWID_RENEWAL_SCHEMA,
+        "available_payment_method_ids": STRING_ARRAY_SCHEMA,
+        "externally_managed_price_method_ids": STRING_ARRAY_SCHEMA,
     },
 }
 PLAN_LIST_SCHEMA: dict[str, Any] = {"type": "array", "items": PLAN_SCHEMA}
@@ -301,6 +309,8 @@ TARIFF_CHANGE_ACTION_SCHEMA: dict[str, Any] = {
         "months": INTEGER_SCHEMA,
         "price": NUMBER_SCHEMA,
         "currency": STRING_SCHEMA,
+        "available_payment_method_ids": STRING_ARRAY_SCHEMA,
+        "externally_managed_price_method_ids": STRING_ARRAY_SCHEMA,
     },
 }
 TARIFF_SWITCH_OPTIONS_SCHEMA: dict[str, Any] = {

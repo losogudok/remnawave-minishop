@@ -21,7 +21,7 @@ from bot.services.panel_api_service import PanelApiService
 from bot.utils.config_link import prepare_config_links
 from bot.utils.install_links import ensure_user_install_guide_links
 from config.settings import Settings
-from db.dal import payment_dal, user_billing_dal, user_dal
+from db.dal import payment_dal, subscription_dal, user_billing_dal, user_dal
 
 from ..base import normalize_payment_currency_code
 from ..shared import (
@@ -34,6 +34,8 @@ from ..shared import (
     parse_positive_int_units,
     payment_amount_and_currency_match,
     payment_units_for_activation,
+    payment_uses_entitlement_context,
+    preflight_payment_entitlement,
     resolve_inviter_name,
     send_success_message_to_user,
 )
@@ -475,6 +477,84 @@ async def process_successful_payment(
             )
 
             return None
+
+        active_subscription = None
+        if payment_uses_entitlement_context(payment_record) or sale_mode_base in {
+            "subscription",
+            "tariff_upgrade",
+        }:
+            active_subscription = (
+                await subscription_dal.get_active_subscription_by_user_id_for_update(
+                    session,
+                    user_id,
+                )
+            )
+            if (
+                active_subscription is None
+                and payment_uses_entitlement_context(payment_record)
+                and bool(getattr(payment_record, "is_auto_renew", False))
+                and getattr(payment_record, "renewal_subscription_id", None) is not None
+            ):
+                renewal_subscription = await subscription_dal.get_subscription_by_id_for_update(
+                    session,
+                    int(payment_record.renewal_subscription_id),
+                )
+                if (
+                    renewal_subscription is not None
+                    and int(getattr(renewal_subscription, "user_id", 0) or 0) == user_id
+                ):
+                    active_subscription = renewal_subscription
+
+        payment_provider = (
+            str(getattr(payment_record, "provider", "") or "yookassa").strip().lower()
+        )
+        # The only payment allowed to land on a live Tribute recurrence is that
+        # recurrence's own subscription webhook. A Tribute tariff_upgrade is not
+        # it: an upgrade replaces the plan the recurrence was created for and
+        # Tribute cannot reprice an existing recurrence, so it is blocked like
+        # any other provider's.
+        tribute_subscription_event = (
+            sale_mode_base == "subscription" and payment_provider == "tribute"
+        )
+        if (
+            sale_mode_base in {"subscription", "tariff_upgrade"}
+            and not tribute_subscription_event
+            and active_subscription is not None
+            and str(getattr(active_subscription, "provider", "") or "").strip().lower() == "tribute"
+            and bool(getattr(active_subscription, "auto_renew_enabled", False))
+        ):
+            logger.error(
+                "Rejecting YooKassa payment %s because Tribute recurrence became active "
+                "before entitlement mutation.",
+                payment_db_id,
+            )
+            await payment_dal.update_payment_status_by_db_id(
+                session,
+                payment_db_id,
+                "activation_failed",
+                yk_payment_id_from_hook,
+            )
+            return None
+
+        if payment_uses_entitlement_context(payment_record):
+            entitlement_preflight = preflight_payment_entitlement(
+                payment_record,
+                active_subscription,
+            )
+            if not entitlement_preflight.allowed:
+                logger.error(
+                    "Rejecting YooKassa payment %s before entitlement mutation: %s (%s).",
+                    payment_db_id,
+                    entitlement_preflight.status,
+                    entitlement_preflight.reason,
+                )
+                await payment_dal.update_payment_status_by_db_id(
+                    session,
+                    payment_db_id,
+                    "activation_failed",
+                    yk_payment_id_from_hook,
+                )
+                return None
 
     except (TypeError, ValueError) as e:
         logger.error("Invalid metadata format for payment processing: %s - %s", metadata, e)

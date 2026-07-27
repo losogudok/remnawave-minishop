@@ -10,7 +10,9 @@ from bot.infra import events
 from bot.infra.event_payloads import AutoRenewFailureReason, SubscriptionAutoRenewFailedPayload
 from bot.middlewares.i18n import get_i18n_instance
 from bot.payment_providers.shared import (
+    EntitlementContextError,
     RecurringProviderService,
+    build_entitlement_context_snapshot,
     build_payment_description,
     make_translator,
 )
@@ -171,6 +173,22 @@ class RenewalMixin(SubscriptionServiceMixinContract):
                 )
                 hwid_quote = None
         if hwid_quote:
+            try:
+                quoted_subscription_id = int(hwid_quote.get("subscription_id"))
+            except (TypeError, ValueError):
+                logger.error(
+                    "HWID auto-renew quote has no subscription identity for user %s",
+                    sub.user_id,
+                )
+                return None
+            if quoted_subscription_id != int(sub.subscription_id) or str(
+                hwid_quote.get("tariff_key") or ""
+            ).strip() != (tariff_key or ""):
+                logger.error(
+                    "HWID auto-renew quote no longer matches subscription %s",
+                    sub.subscription_id,
+                )
+                return None
             amount = float(amount) + float(hwid_quote.get("price") or 0)
 
         return SubscriptionRenewalQuote(
@@ -269,6 +287,25 @@ class RenewalMixin(SubscriptionServiceMixinContract):
         sale_mode = quote.sale_mode
         amount = quote.amount
         hwid_quote = quote.hwid_quote
+        try:
+            entitlement_context_snapshot = build_entitlement_context_snapshot(
+                sale_mode=sale_mode,
+                active_subscription=sub,
+                bind_to_active_subscription=True,
+            )
+        except EntitlementContextError:
+            logger.exception(
+                "Auto-renew entitlement context is invalid for subscription %s",
+                sub.subscription_id,
+            )
+            await _emit_auto_renew_failure(
+                sub=sub,
+                provider=provider,
+                reason_code="renewal_quote_unavailable",
+                renewal_cycle_end=renewal_cycle_end,
+                retryable=True,
+            )
+            return False
 
         metadata = {
             "user_id": str(sub.user_id),
@@ -320,6 +357,7 @@ class RenewalMixin(SubscriptionServiceMixinContract):
                     description=description,
                     metadata=metadata,
                     hwid_quote=hwid_quote,
+                    entitlement_context_snapshot=entitlement_context_snapshot,
                     idempotence_key=_renewal_idempotence_key(
                         sub,
                         renewal_cycle_end=renewal_cycle_end,

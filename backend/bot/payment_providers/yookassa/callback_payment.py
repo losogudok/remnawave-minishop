@@ -166,6 +166,7 @@ async def pay_yk_callback_handler(
         back_callback=payment_methods_back_callback(_format_value(months), sale_mode, price_rub),
         sale_mode=sale_mode,
         hwid_quote=hwid_quote,
+        entitlement_context_snapshot=quoted_parts.entitlement_context_snapshot,
     )
     with contextlib.suppress(Exception):
         await callback.answer()
@@ -259,6 +260,7 @@ async def pay_yk_new_card_handler(
         back_callback=payment_methods_back_callback(_format_value(months), sale_mode, price_rub),
         sale_mode=sale_mode,
         hwid_quote=hwid_quote,
+        entitlement_context_snapshot=quoted_parts.entitlement_context_snapshot,
     )
     with contextlib.suppress(Exception):
         await callback.answer()

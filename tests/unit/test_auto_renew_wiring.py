@@ -6,7 +6,10 @@ from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, patch
 
 from bot.handlers.user.subscription import core as subscription_core
-from bot.payment_providers.shared import RecurringChargeResult
+from bot.payment_providers.shared import (
+    RecurringChargeResult,
+    parse_entitlement_context_snapshot,
+)
 from bot.services.subscription_service_impl.renewal import RenewalMixin
 
 
@@ -255,6 +258,9 @@ class ChargeRenewalHappyPathTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(context.metadata["user_id"], "77")
         self.assertEqual(context.metadata["auto_renew_for_subscription_id"], "555")
         self.assertEqual(context.metadata["subscription_months"], "1")
+        snapshot = parse_entitlement_context_snapshot(context.entitlement_context_snapshot)
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot.active_subscription_id, 555)
         self.assertTrue(context.idempotence_key.startswith("yk-auto-"))
         self.assertLessEqual(len(context.idempotence_key), 64)
 
@@ -359,6 +365,8 @@ class ChargeRenewalHappyPathTests(unittest.IsolatedAsyncioTestCase):
         valid_until = datetime(2099, 3, 1, tzinfo=UTC)
         mixin.quote_hwid_device_renewal_for_subscription = AsyncMock(
             return_value={
+                "subscription_id": 555,
+                "tariff_key": "standard",
                 "device_count": 2,
                 "price": 50.0,
                 "full_price": 50.0,
@@ -391,6 +399,9 @@ class ChargeRenewalHappyPathTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(context.amount, 449.0)
         self.assertEqual(context.sale_mode, "subscription@standard")
         self.assertEqual(context.hwid_quote["device_count"], 2)
+        snapshot = parse_entitlement_context_snapshot(context.entitlement_context_snapshot)
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot.active_subscription_id, 555)
         meta = context.metadata
         self.assertEqual(meta["sale_mode"], "subscription@standard")
         self.assertEqual(meta["hwid_devices"], "2")

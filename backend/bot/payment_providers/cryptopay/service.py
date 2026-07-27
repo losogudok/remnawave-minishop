@@ -217,6 +217,7 @@ class CryptoPayService(BaseProviderService):
         hwid_quote: dict[str, Any] | None = None,
         hwid_device_count: int | None = None,
         currency: str | None = None,
+        entitlement_context_snapshot: str | None = None,
     ) -> str | None:
         client = self.client
         if not self.configured or not client:
@@ -271,6 +272,7 @@ class CryptoPayService(BaseProviderService):
                     "hwid_traffic_bonus_bytes": hwid_quote.get("traffic_bonus_bytes")
                     if hwid_quote
                     else None,
+                    "entitlement_context_snapshot": entitlement_context_snapshot,
                 },
             )
             await session.commit()
@@ -541,6 +543,7 @@ async def pay_crypto_callback_handler(
         sale_mode=parts.sale_mode,
         hwid_quote=hwid_quote,
         currency=default_payment_currency_code_for_settings(settings),
+        entitlement_context_snapshot=parts.entitlement_context_snapshot,
     )
 
     if invoice_url:
@@ -602,6 +605,7 @@ async def create_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
         if ctx.hwid_valid_from and ctx.hwid_valid_until
         else None,
         hwid_device_count=ctx.hwid_device_count,
+        entitlement_context_snapshot=ctx.entitlement_context_snapshot,
     )
     if not url:
         return payment_failed()

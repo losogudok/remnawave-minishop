@@ -39,6 +39,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
         sale_mode: str = "subscription",
         traffic_gb: float | None = None,
         tariff_key: str | None = None,
+        authoritative_end_at: datetime | None = None,
     ) -> dict[str, Any] | None:
 
         sale_mode_context = parse_sale_mode_context(sale_mode, tariff_key)
@@ -299,7 +300,16 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                 )
                 promo_code_id_from_payment = None
 
-        final_end_date = start_date + timedelta(days=duration_days_total)
+        provider_end_at = self._as_aware_utc(authoritative_end_at)
+        if provider_end_at is not None:
+            # Webhook-driven subscription providers already calculated the
+            # paid entitlement boundary. Never derive a second calendar period
+            # locally or shrink access that another purchase has extended.
+            final_end_date = max(start_date, provider_end_at) + timedelta(
+                days=applied_promo_bonus_days
+            )
+        else:
+            final_end_date = start_date + timedelta(days=duration_days_total)
         if hwid_renewal_devices > 0 and hwid_renewal_valid_until and applied_promo_bonus_days:
             hwid_renewal_valid_until = hwid_renewal_valid_until + timedelta(
                 days=applied_promo_bonus_days

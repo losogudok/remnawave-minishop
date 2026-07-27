@@ -107,6 +107,26 @@ describe("webapp tariff helpers", () => {
     });
   });
 
+  it("limits payment methods to those available for the selected plan", () => {
+    const methods = [{ id: "card" }, { id: "tribute" }, { id: "stars" }];
+    const plan = {
+      tariff_key: "pro",
+      months: 1,
+      available_payment_method_ids: ["card", "tribute"],
+    };
+
+    expect(methodsForPlan(methods, plan)).toEqual([
+      { id: "card", disabled: false },
+      { id: "tribute", disabled: false },
+      { id: "stars", disabled: true },
+    ]);
+    expect(methodsForPlan(methods, { ...plan, available_payment_method_ids: [] })).toEqual([
+      { id: "card", disabled: true },
+      { id: "tribute", disabled: true },
+      { id: "stars", disabled: true },
+    ]);
+  });
+
   it("builds display labels for active and selectable tariffs", () => {
     expect(activeTariffName({ tariff_key: "pro" }, [{ tariff_key: "pro", title: "Pro" }])).toBe(
       "Pro"

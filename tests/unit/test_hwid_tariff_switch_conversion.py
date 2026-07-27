@@ -8,6 +8,9 @@ from unittest.mock import AsyncMock, patch
 
 from bot.services.panel_api_service import PanelApiService
 from bot.services.subscription_service_impl.core import SubscriptionService
+from bot.services.subscription_service_impl.tariff_change_quote import (
+    build_tariff_change_quote_snapshot,
+)
 from config.settings import Settings
 
 
@@ -206,6 +209,51 @@ class HwidTariffSwitchConversionTests(unittest.IsolatedAsyncioTestCase):
         change_payload = create_change.await_args.args[1]
         self.assertEqual(change_payload["converted_hwid_value_rub"], 50)
         self.assertEqual(change_payload["converted_hwid_days"], 7)
+
+    async def test_active_tribute_recurrence_blocks_every_tariff_switch_mode(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            service = _service(_settings(tmpdir))
+            user = SimpleNamespace(
+                user_id=42,
+                panel_user_uuid="panel-user",
+            )
+            sub = SimpleNamespace(
+                subscription_id=11,
+                user_id=42,
+                panel_user_uuid="panel-user",
+                tariff_key="basic",
+                provider="tribute",
+                auto_renew_enabled=True,
+            )
+            calculate = AsyncMock()
+
+            with (
+                patch(
+                    "bot.services.subscription_service_impl.lifecycle.user_dal.get_user_by_id",
+                    AsyncMock(return_value=user),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.lifecycle.subscription_dal.get_active_subscription_by_user_id",
+                    AsyncMock(return_value=sub),
+                ),
+                patch.object(
+                    service,
+                    "calculate_tariff_switch_options_with_hwid",
+                    calculate,
+                ),
+            ):
+                for mode in ("recalc_days", "paid_diff", "admin_assign"):
+                    with self.subTest(mode=mode):
+                        result = await service.switch_tariff_without_payment(
+                            AsyncMock(),
+                            user_id=42,
+                            target_tariff_key="pro",
+                            mode=mode,
+                            payment_id=85 if mode == "paid_diff" else None,
+                        )
+                        self.assertIsNone(result)
+
+            calculate.assert_not_awaited()
 
     async def test_admin_assign_converts_trial_subscription_to_admin_tariff(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -484,6 +532,128 @@ class HwidTariffSwitchConversionTests(unittest.IsolatedAsyncioTestCase):
         change_payload = create_change.await_args.args[1]
         self.assertEqual(change_payload["payment_id"], 99)
         self.assertEqual(change_payload["mode"], "paid_diff")
+
+    async def test_paid_switch_uses_frozen_quote_and_expires_only_quoted_hwid(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _settings(tmpdir)
+            service = _service(settings)
+            user = SimpleNamespace(
+                user_id=42,
+                telegram_id=42,
+                panel_user_uuid="panel-user",
+                email=None,
+                username="u",
+                first_name="U",
+                last_name="L",
+            )
+            sub = SimpleNamespace(
+                subscription_id=11,
+                user_id=42,
+                panel_user_uuid="panel-user",
+                panel_subscription_uuid="panel-sub",
+                tariff_key="basic",
+                start_date=datetime(2099, 1, 1, tzinfo=UTC),
+                end_date=datetime(2099, 2, 1, tzinfo=UTC),
+                effective_monthly_price_rub=100,
+                premium_topup_balance_bytes=0,
+                premium_topup_used_bytes=0,
+                premium_used_bytes=0,
+                topup_balance_bytes=0,
+                regular_bonus_bytes=0,
+                regular_unlimited_override=False,
+                traffic_used_bytes=0,
+                extra_hwid_devices=2,
+                hwid_device_limit=3,
+            )
+            updated = SimpleNamespace(**{**sub.__dict__, "tariff_key": "pro"})
+            updated.hwid_device_limit = 5
+            updated.extra_hwid_devices = 1
+            updated.traffic_limit_bytes = 200 * (1024**3)
+            updated.premium_is_limited = False
+            updated.effective_monthly_price_rub = 200
+            frozen_quote = build_tariff_change_quote_snapshot(
+                source_tariff_key="basic",
+                target_tariff_key="pro",
+                required_amount=50,
+                currency="RUB",
+                convertible_hwid_purchase_ids=[7],
+            )
+            current_quote = AsyncMock(
+                return_value={
+                    "mode": "period_to_period",
+                    "paid_diff_rub": 500,
+                    "convertible_hwid_purchase_ids": [7, 8],
+                }
+            )
+
+            with (
+                patch(
+                    "bot.services.subscription_service_impl.lifecycle.user_dal.get_user_by_id",
+                    AsyncMock(return_value=user),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.lifecycle."
+                    "subscription_dal.get_active_subscription_by_user_id",
+                    AsyncMock(return_value=sub),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.lifecycle."
+                    "payment_dal.get_payment_by_db_id",
+                    AsyncMock(
+                        return_value=SimpleNamespace(
+                            payment_id=99,
+                            user_id=42,
+                            amount=50,
+                            currency="RUB",
+                            sale_mode="tariff_upgrade@pro",
+                            tariff_key="pro",
+                            tariff_change_quote_snapshot=frozen_quote,
+                        )
+                    ),
+                ),
+                patch.object(
+                    service,
+                    "calculate_tariff_switch_options_with_hwid",
+                    current_quote,
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.lifecycle."
+                    "tariff_dal.expire_hwid_device_purchases",
+                    AsyncMock(),
+                ) as expire_hwid,
+                patch(
+                    "bot.services.subscription_service_impl.lifecycle."
+                    "tariff_dal.sum_active_hwid_devices",
+                    AsyncMock(return_value=1),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.lifecycle."
+                    "subscription_dal.update_subscription",
+                    AsyncMock(return_value=updated),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.lifecycle."
+                    "subscription_dal.deactivate_other_active_subscriptions",
+                    AsyncMock(),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.lifecycle."
+                    "tariff_dal.create_tariff_change",
+                    AsyncMock(),
+                ),
+            ):
+                result = await service.switch_tariff_without_payment(
+                    AsyncMock(),
+                    user_id=42,
+                    target_tariff_key="pro",
+                    mode="paid_diff",
+                    payment_id=99,
+                )
+
+        self.assertEqual(result["tariff_key"], "pro")
+        current_quote.assert_not_awaited()
+        expire_hwid.assert_awaited_once()
+        self.assertEqual(expire_hwid.await_args.kwargs["purchase_ids"], [7])
 
     async def test_paid_switch_without_payment_id_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmpdir:

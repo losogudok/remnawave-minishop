@@ -5919,6 +5919,17 @@
               }
             ],
             "default": null
+          },
+          "tribute": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TributeTariffConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -6726,6 +6737,78 @@
           "price"
         ],
         "title": "TrafficPackage",
+        "type": "object"
+      },
+      "TributeProductConfig": {
+        "properties": {
+          "link": {
+            "title": "Link",
+            "type": "string"
+          },
+          "product_id": {
+            "exclusiveMinimum": 0,
+            "title": "Product Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "product_id",
+          "link"
+        ],
+        "title": "TributeProductConfig",
+        "type": "object"
+      },
+      "TributeTariffConfig": {
+        "properties": {
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Link"
+          },
+          "period_ids": {
+            "additionalProperties": {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            "title": "Period Ids",
+            "type": "object"
+          },
+          "premium_traffic_products": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TributeProductConfig"
+            },
+            "title": "Premium Traffic Products",
+            "type": "object"
+          },
+          "subscription_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subscription Id"
+          },
+          "traffic_products": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TributeProductConfig"
+            },
+            "title": "Traffic Products",
+            "type": "object"
+          }
+        },
+        "title": "TributeTariffConfig",
         "type": "object"
       },
       "WebAppAutoRenewPayload": {
@@ -12807,6 +12890,12 @@
                       "items": {
                         "additionalProperties": false,
                         "properties": {
+                          "available_payment_method_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "billing_model": {
                             "type": "string"
                           },
@@ -12819,6 +12908,12 @@
                           "device_count": {
                             "type": "integer"
                           },
+                          "externally_managed_price_method_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "hwid_device_limit": {
                             "type": [
                               "integer",
@@ -12829,6 +12924,12 @@
                             "items": {
                               "additionalProperties": false,
                               "properties": {
+                                "available_payment_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
                                 "billing_model": {
                                   "type": "string"
                                 },
@@ -12837,6 +12938,12 @@
                                 },
                                 "device_count": {
                                   "type": "integer"
+                                },
+                                "externally_managed_price_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "id": {
                                   "type": "string"
@@ -13180,6 +13287,18 @@
                           },
                           "name": {
                             "type": "string"
+                          },
+                          "price_managed_externally": {
+                            "type": "boolean"
+                          },
+                          "shop_limit_currency": {
+                            "type": "string"
+                          },
+                          "shop_max_amount": {
+                            "type": "number"
+                          },
+                          "shop_min_amount": {
+                            "type": "number"
                           }
                         },
                         "type": "object"
@@ -13190,6 +13309,12 @@
                       "items": {
                         "additionalProperties": false,
                         "properties": {
+                          "available_payment_method_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "billing_model": {
                             "type": "string"
                           },
@@ -13202,6 +13327,12 @@
                           "device_count": {
                             "type": "integer"
                           },
+                          "externally_managed_price_method_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "hwid_device_limit": {
                             "type": [
                               "integer",
@@ -13212,6 +13343,12 @@
                             "items": {
                               "additionalProperties": false,
                               "properties": {
+                                "available_payment_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
                                 "billing_model": {
                                   "type": "string"
                                 },
@@ -13220,6 +13357,12 @@
                                 },
                                 "device_count": {
                                   "type": "integer"
+                                },
+                                "externally_managed_price_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "id": {
                                   "type": "string"
@@ -15243,6 +15386,12 @@
                             "items": {
                               "additionalProperties": false,
                               "properties": {
+                                "available_payment_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
                                 "converted_gb": {
                                   "type": "number"
                                 },
@@ -15260,6 +15409,12 @@
                                 },
                                 "days_after": {
                                   "type": "integer"
+                                },
+                                "externally_managed_price_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "kind": {
                                   "type": "string"
@@ -15463,6 +15618,12 @@
                       "items": {
                         "additionalProperties": false,
                         "properties": {
+                          "available_payment_method_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "billing_model": {
                             "type": "string"
                           },
@@ -15475,6 +15636,12 @@
                           "device_count": {
                             "type": "integer"
                           },
+                          "externally_managed_price_method_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "hwid_device_limit": {
                             "type": [
                               "integer",
@@ -15485,6 +15652,12 @@
                             "items": {
                               "additionalProperties": false,
                               "properties": {
+                                "available_payment_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
                                 "billing_model": {
                                   "type": "string"
                                 },
@@ -15493,6 +15666,12 @@
                                 },
                                 "device_count": {
                                   "type": "integer"
+                                },
+                                "externally_managed_price_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "id": {
                                   "type": "string"

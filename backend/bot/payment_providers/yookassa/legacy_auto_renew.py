@@ -8,6 +8,8 @@ from typing import Any, Protocol
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.payment_providers.shared import (
+    EntitlementContextError,
+    build_entitlement_context_snapshot,
     parse_positive_int_units,
     sale_mode_base,
     sale_mode_tariff_key,
@@ -184,6 +186,14 @@ async def ensure_legacy_auto_renew_payment(
         raise ValueError("Legacy auto-renew metadata does not match the renewal quote.")
 
     hwid_quote = _validated_hwid_quote(metadata, quote)
+    try:
+        entitlement_context_snapshot = build_entitlement_context_snapshot(
+            sale_mode=quote.sale_mode,
+            active_subscription=sub,
+            bind_to_active_subscription=True,
+        )
+    except EntitlementContextError as exc:
+        raise ValueError("Legacy auto-renew entitlement context is invalid.") from exc
     return await payment_dal.ensure_payment_with_provider_id(
         session,
         user_id=user_id,
@@ -220,4 +230,5 @@ async def ensure_legacy_auto_renew_payment(
             if hwid_quote and hwid_quote.get("traffic_bonus_bytes") is not None
             else None
         ),
+        entitlement_context_snapshot=entitlement_context_snapshot,
     )

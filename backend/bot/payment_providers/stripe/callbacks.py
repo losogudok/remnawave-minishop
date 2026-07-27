@@ -100,6 +100,7 @@ async def pay_stripe_callback_handler(
         purchased_gb=reuse_amounts.purchased_gb,
         purchased_hwid_devices=reuse_amounts.purchased_hwid_devices,
         tariff_key=reuse_amounts.tariff_key,
+        entitlement_context_snapshot=parts.entitlement_context_snapshot,
     )
     if reusable_payment is not None:
         reusable_url = await stripe_service.try_reuse_pending_payment(reusable_payment)
@@ -126,6 +127,7 @@ async def pay_stripe_callback_handler(
         provider="stripe",
         sale_mode=parts.sale_mode,
         hwid_quote=hwid_quote,
+        entitlement_context_snapshot=parts.entitlement_context_snapshot,
     )
     try:
         payment_record = await payment_dal.create_payment_record(session, record_payload)

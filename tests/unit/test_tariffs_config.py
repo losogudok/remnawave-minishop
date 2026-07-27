@@ -1,5 +1,6 @@
 import json
 import unittest
+from copy import deepcopy
 
 from config.tariffs_config import TariffsConfig, load_tariffs_config, normalize_currency_key
 
@@ -124,6 +125,337 @@ class TariffsConfigTests(unittest.TestCase):
         self.assertEqual(tariff.referral_inviter_bonus_days(2), 5)
         self.assertEqual(tariff.referral_referee_bonus_days(4), 2)
         self.assertIsNone(tariff.referral_inviter_bonus_days(8))
+
+    def test_tribute_config_normalizes_periods_and_resolves_target(self):
+        data = _valid_config()
+        data["tariffs"][0]["prices_rub"] = {"1": 150, "3": 400}
+        data["tariffs"][0]["enabled_periods"] = [1, 3]
+        data["tariffs"][0]["tribute"] = {
+            "link": " https://t.me/tribute/app?startapp=subscription ",
+            "subscription_id": 101,
+            "period_ids": {"01": 1001, "3.0": 1003},
+        }
+
+        config = TariffsConfig.model_validate(data)
+        tariff = config.require("standard")
+
+        self.assertIsNotNone(tariff.tribute)
+        self.assertEqual(tariff.tribute.link, "https://t.me/tribute/app?startapp=subscription")
+        self.assertEqual(tariff.tribute.period_ids, {"1": 1001, "3": 1003})
+        self.assertEqual(tariff.tribute.period_id_for_months(3), 1003)
+        self.assertEqual(tariff.tribute.months_for_period_id(1001), 1)
+        self.assertEqual(config.tribute_target(101, 1003), (tariff, 3))
+        self.assertIsNone(config.tribute_target(101, 9999))
+
+    def test_tribute_link_accepts_only_official_https_hosts(self):
+        valid_links = (
+            "https://telegram.me/tribute/app?startapp=subscription",
+            "https://tribute.tg/subscriptions/101",
+            "https://web.tribute.tg/subscriptions/101",
+            "https://web.tribute.tg:443/subscriptions/101",
+        )
+        for link in valid_links:
+            with self.subTest(link=link):
+                data = _valid_config()
+                data["tariffs"][0]["tribute"] = {
+                    "link": link,
+                    "subscription_id": 101,
+                    "period_ids": {"1": 1001},
+                }
+                config = TariffsConfig.model_validate(data)
+                self.assertEqual(config.require("standard").tribute.link, link)
+
+        invalid_links = (
+            "http://t.me/tribute/app?startapp=subscription",
+            "https://example.com/subscriptions/101",
+            "https://tribute.tg.evil.example/subscriptions/101",
+            "https://user:password@tribute.tg/subscriptions/101",
+            "https://tribute.tg:8443/subscriptions/101",
+        )
+        for link in invalid_links:
+            with self.subTest(link=link):
+                data = _valid_config()
+                data["tariffs"][0]["tribute"] = {
+                    "link": link,
+                    "subscription_id": 101,
+                    "period_ids": {"1": 1001},
+                }
+                with self.assertRaises(ValueError):
+                    TariffsConfig.model_validate(data)
+
+    def test_tribute_period_mapping_must_be_positive_unique_and_enabled(self):
+        invalid_period_maps = (
+            {"0": 1001},
+            {"1.5": 1001},
+            {"1": 1001, "01": 1002},
+            {"1": 1001, "3": 1001},
+            {"1": 0},
+        )
+        for period_ids in invalid_period_maps:
+            with self.subTest(period_ids=period_ids):
+                data = _valid_config()
+                data["tariffs"][0]["tribute"] = {
+                    "link": "https://t.me/tribute/app?startapp=subscription",
+                    "subscription_id": 101,
+                    "period_ids": period_ids,
+                }
+                with self.assertRaises(ValueError):
+                    TariffsConfig.model_validate(data)
+
+        data = _valid_config()
+        data["tariffs"][0]["tribute"] = {
+            "link": "https://t.me/tribute/app?startapp=subscription",
+            "subscription_id": 101,
+            "period_ids": {"3": 1003},
+        }
+        with self.assertRaisesRegex(ValueError, "must be enabled tariff periods"):
+            TariffsConfig.model_validate(data)
+
+    def test_tribute_subscription_id_must_be_positive(self):
+        data = _valid_config()
+        data["tariffs"][0]["tribute"] = {
+            "link": "https://t.me/tribute/app?startapp=subscription",
+            "subscription_id": 0,
+            "period_ids": {"1": 1001},
+        }
+
+        with self.assertRaises(ValueError):
+            TariffsConfig.model_validate(data)
+
+    def test_tribute_can_map_only_a_subset_of_enabled_periods(self):
+        data = _valid_config()
+        data["tariffs"][0]["prices_rub"] = {"1": 150, "3": 400}
+        data["tariffs"][0]["enabled_periods"] = [1, 3]
+        data["tariffs"][0]["tribute"] = {
+            "link": "https://t.me/tribute/app?startapp=subscription",
+            "subscription_id": 101,
+            "period_ids": {"3": 1003},
+        }
+
+        config = TariffsConfig.model_validate(data)
+
+        tribute = config.require("standard").tribute
+        self.assertIsNotNone(tribute)
+        self.assertEqual(tribute.period_ids, {"3": 1003})
+
+    def test_tribute_product_only_config_loads_for_traffic_tariff(self):
+        data = _valid_config()
+        data["tariffs"][1]["tribute"] = {
+            "traffic_products": {
+                "010.00": {
+                    "product_id": 501,
+                    "link": " https://web.tribute.tg/products/501 ",
+                }
+            }
+        }
+
+        config = TariffsConfig.model_validate(data)
+        tariff = config.require("traffic")
+        tribute = tariff.tribute
+
+        self.assertIsNotNone(tribute)
+        self.assertFalse(tribute.has_subscription)
+        self.assertEqual(list(tribute.traffic_products), ["10"])
+        product = tribute.product_for_units("traffic", 10)
+        self.assertIsNotNone(product)
+        self.assertEqual(product.product_id, 501)
+        self.assertEqual(product.link, "https://web.tribute.tg/products/501")
+        self.assertEqual(config.tribute_product_target(501), (tariff, "traffic", 10.0))
+
+    def test_tribute_products_map_period_topups_and_premium_topups(self):
+        data = _valid_config()
+        tariff_data = data["tariffs"][0]
+        tariff_data["topup_packages"] = {
+            "rub": [{"gb": 20.5, "price": 149}],
+            "stars": [{"gb": 20.5, "price": 75}],
+        }
+        tariff_data["premium_squad_uuids"] = ["premium-squad"]
+        tariff_data["premium_topup_packages"] = {
+            "rub": [{"gb": 5, "price": 99}],
+        }
+        tariff_data["tribute"] = {
+            "traffic_products": {
+                "20.500": {
+                    "product_id": 501,
+                    "link": "https://t.me/tribute/app?startapp=product-501",
+                }
+            },
+            "premium_traffic_products": {
+                "5.0": {
+                    "product_id": 502,
+                    "link": "https://tribute.tg/products/502",
+                }
+            },
+        }
+
+        config = TariffsConfig.model_validate(data)
+        tariff = config.require("standard")
+        tribute = tariff.tribute
+
+        self.assertIsNotNone(tribute)
+        self.assertEqual(list(tribute.traffic_products), ["20.5"])
+        self.assertEqual(list(tribute.premium_traffic_products), ["5"])
+        self.assertEqual(config.tribute_product_target(501), (tariff, "traffic", 20.5))
+        self.assertEqual(config.tribute_product_target(502), (tariff, "premium_traffic", 5.0))
+
+    def test_tribute_product_units_must_reference_logical_packages(self):
+        data = _valid_config()
+        data["tariffs"][1]["tribute"] = {
+            "traffic_products": {
+                "25": {
+                    "product_id": 501,
+                    "link": "https://tribute.tg/products/501",
+                }
+            }
+        }
+
+        with self.assertRaisesRegex(ValueError, "must reference existing traffic_packages"):
+            TariffsConfig.model_validate(data)
+
+        data = _valid_config()
+        data["tariffs"][0]["premium_squad_uuids"] = ["premium-squad"]
+        data["tariffs"][0]["premium_topup_packages"] = {
+            "rub": [{"gb": 5, "price": 99}],
+        }
+        data["tariffs"][0]["tribute"] = {
+            "premium_traffic_products": {
+                "10": {
+                    "product_id": 502,
+                    "link": "https://tribute.tg/products/502",
+                }
+            }
+        }
+        with self.assertRaisesRegex(ValueError, "must reference existing premium_topup_packages"):
+            TariffsConfig.model_validate(data)
+
+    def test_tribute_product_units_must_be_positive_and_canonical_unique(self):
+        invalid_product_maps = (
+            {
+                "0": {
+                    "product_id": 501,
+                    "link": "https://tribute.tg/products/501",
+                }
+            },
+            {
+                "1.5.0": {
+                    "product_id": 501,
+                    "link": "https://tribute.tg/products/501",
+                }
+            },
+            {
+                "10": {
+                    "product_id": 501,
+                    "link": "https://tribute.tg/products/501",
+                },
+                "10.0": {
+                    "product_id": 502,
+                    "link": "https://tribute.tg/products/502",
+                },
+            },
+        )
+        for traffic_products in invalid_product_maps:
+            with self.subTest(traffic_products=traffic_products):
+                data = _valid_config()
+                data["tariffs"][1]["tribute"] = {"traffic_products": traffic_products}
+                with self.assertRaises(ValueError):
+                    TariffsConfig.model_validate(data)
+
+    def test_tribute_product_requires_positive_id_and_official_link(self):
+        invalid_products = (
+            {"product_id": 0, "link": "https://tribute.tg/products/501"},
+            {"product_id": 501, "link": "http://tribute.tg/products/501"},
+            {"product_id": 501, "link": "https://example.com/products/501"},
+        )
+        for product in invalid_products:
+            with self.subTest(product=product):
+                data = _valid_config()
+                data["tariffs"][1]["tribute"] = {"traffic_products": {"10": product}}
+                with self.assertRaises(ValueError):
+                    TariffsConfig.model_validate(data)
+
+    def test_tribute_product_id_cannot_map_to_multiple_targets(self):
+        data = _valid_config()
+        data["tariffs"][0]["topup_packages"] = {
+            "rub": [{"gb": 20, "price": 149}],
+        }
+        data["tariffs"][0]["tribute"] = {
+            "traffic_products": {
+                "20": {
+                    "product_id": 501,
+                    "link": "https://tribute.tg/products/501",
+                }
+            }
+        }
+        data["tariffs"][1]["tribute"] = {
+            "traffic_products": {
+                "10": {
+                    "product_id": 501,
+                    "link": "https://tribute.tg/products/501",
+                }
+            }
+        }
+
+        with self.assertRaisesRegex(ValueError, "cannot map to both"):
+            TariffsConfig.model_validate(data)
+
+    def test_tribute_subscription_fields_must_be_complete(self):
+        invalid_configs = (
+            {"link": "https://tribute.tg/subscriptions/101"},
+            {"subscription_id": 101},
+            {"period_ids": {"1": 1001}},
+            {},
+        )
+        for tribute in invalid_configs:
+            with self.subTest(tribute=tribute):
+                data = _valid_config()
+                data["tariffs"][0]["tribute"] = tribute
+                with self.assertRaises(ValueError):
+                    TariffsConfig.model_validate(data)
+
+    def test_tribute_subscription_cannot_be_shared_between_tariffs(self):
+        data = _valid_config()
+        second_period_tariff = deepcopy(data["tariffs"][0])
+        second_period_tariff["key"] = "plus"
+        data["tariffs"].append(second_period_tariff)
+        data["tariffs"][0]["tribute"] = {
+            "link": "https://t.me/tribute/app?startapp=standard",
+            "subscription_id": 101,
+            "period_ids": {"1": 1001},
+        }
+        second_period_tariff["tribute"] = {
+            "link": "https://t.me/tribute/app?startapp=plus",
+            "subscription_id": 101,
+            "period_ids": {"1": 2001},
+        }
+
+        with self.assertRaisesRegex(ValueError, "cannot belong to both tariffs"):
+            TariffsConfig.model_validate(data)
+
+    def test_tribute_period_cannot_map_to_multiple_tariff_targets(self):
+        data = _valid_config()
+        second_period_tariff = deepcopy(data["tariffs"][0])
+        second_period_tariff["key"] = "plus"
+        data["tariffs"].append(second_period_tariff)
+        for tariff in (data["tariffs"][0], second_period_tariff):
+            tariff["tribute"] = {
+                "link": f"https://t.me/tribute/app?startapp={tariff['key']}",
+                "subscription_id": 101,
+                "period_ids": {"1": 1001},
+            }
+
+        with self.assertRaisesRegex(ValueError, "cannot map to both"):
+            TariffsConfig.model_validate(data)
+
+    def test_traffic_tariff_rejects_tribute_config(self):
+        data = _valid_config()
+        data["tariffs"][1]["tribute"] = {
+            "link": "https://t.me/tribute/app?startapp=traffic",
+            "subscription_id": 101,
+            "period_ids": {},
+        }
+
+        with self.assertRaisesRegex(ValueError, "only valid for period tariffs"):
+            TariffsConfig.model_validate(data)
 
     def test_negative_tariff_referral_bonus_rejected(self):
         data = _valid_config()

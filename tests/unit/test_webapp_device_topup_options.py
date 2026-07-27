@@ -241,6 +241,11 @@ class WebAppDeviceTopupOptionsTests(IsolatedAsyncioTestCase):
             "pricing_period_months": 3,
             "proration_ratio": 1.0,
             "full_price": 25,
+            # The invoice snapshots the entitlement the quote was priced
+            # against, so a subscription swapped between quote and payment is
+            # caught before activation.
+            "subscription_id": 777,
+            "tariff_key": "standard",
         }
         subscription_service = SimpleNamespace(
             hwid_device_traffic_bonus_gb=lambda count: 0.0,
@@ -340,6 +345,8 @@ class WebAppDeviceTopupOptionsTests(IsolatedAsyncioTestCase):
             "pricing_period_months": 1,
             "proration_ratio": 1.0,
             "full_price": 50,
+            "subscription_id": 777,
+            "tariff_key": "standard",
         }
         subscription_service = SimpleNamespace(
             quote_hwid_device_renewal_for_subscription=AsyncMock(return_value=hwid_quote)

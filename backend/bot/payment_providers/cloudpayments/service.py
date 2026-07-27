@@ -355,6 +355,7 @@ class CloudPaymentsService(HttpClientMixin):
             is_auto_renew=True,
             renewal_subscription_id=context.subscription_id,
             renewal_cycle_end=context.renewal_cycle_end,
+            entitlement_context_snapshot=context.entitlement_context_snapshot,
         )
         try:
             payment = await payment_dal.create_payment_record(context.session, payment_payload)

@@ -1,10 +1,19 @@
 import json
 import logging
 import math
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, RootModel, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    RootModel,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +23,9 @@ STARS_TARIFF_CURRENCY = "stars"
 Currency = str
 BillingModel = Literal["period", "traffic"]
 TrafficLimitStrategy = Literal["NO_RESET", "DAY", "WEEK", "MONTH", "MONTH_ROLLING"]
+TributeProductKind = Literal["traffic", "premium_traffic"]
+TRIBUTE_PRODUCT_KINDS: tuple[TributeProductKind, ...] = ("traffic", "premium_traffic")
+PositiveStrictInt = Annotated[int, Field(strict=True, gt=0)]
 
 
 def normalize_currency_key(value: Any, default: str = DEFAULT_TARIFF_CURRENCY) -> str:
@@ -205,6 +217,174 @@ class HwidDevicePackageSet(RootModel[dict[str, list[HwidDevicePackage]]]):
         return any(bool(packages) for packages in self.root.values())
 
 
+def _canonical_positive_decimal(value: Any, *, integer: bool, label: str) -> str:
+    text = str(value).strip()
+    try:
+        decimal_value = Decimal(text)
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"{label} keys must be positive numbers") from exc
+    if not decimal_value.is_finite() or decimal_value <= 0:
+        raise ValueError(f"{label} keys must be positive numbers")
+    if integer and decimal_value != decimal_value.to_integral_value():
+        raise ValueError(f"{label} keys must be positive integers")
+    if decimal_value == decimal_value.to_integral_value():
+        return str(int(decimal_value))
+    return format(decimal_value.normalize(), "f").rstrip("0").rstrip(".")
+
+
+def canonical_tribute_product_unit(value: Any) -> str:
+    return _canonical_positive_decimal(value, integer=False, label="Tribute product unit")
+
+
+def _normalize_tribute_map_keys(
+    value: Any,
+    *,
+    integer: bool,
+    label: str,
+) -> Any:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        return value
+
+    normalized: dict[str, Any] = {}
+    for raw_key, item in value.items():
+        key = _canonical_positive_decimal(raw_key, integer=integer, label=label)
+        if key in normalized:
+            raise ValueError(f"duplicate normalized {label} key: {key}")
+        normalized[key] = item
+    return normalized
+
+
+def validate_tribute_link(value: str) -> str:
+    link = value.strip()
+    if not link or any(character.isspace() for character in link):
+        raise ValueError("Tribute link must be a valid HTTPS URL")
+
+    parsed = urlsplit(link)
+    if parsed.scheme.lower() != "https":
+        raise ValueError("Tribute link must use HTTPS")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("Tribute link must not contain credentials")
+
+    hostname = (parsed.hostname or "").lower()
+    allowed_host = hostname in {"t.me", "telegram.me", "tribute.tg"} or hostname.endswith(
+        ".tribute.tg"
+    )
+    if not allowed_host:
+        raise ValueError("Tribute link must use an official Tribute or Telegram host")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("Tribute link contains an invalid port") from exc
+    if port not in {None, 443}:
+        raise ValueError("Tribute link must use the default HTTPS port")
+    return link
+
+
+class TributeProductConfig(BaseModel):
+    product_id: PositiveStrictInt
+    link: str
+
+    @field_validator("link")
+    @classmethod
+    def validate_link(cls, value: str) -> str:
+        return validate_tribute_link(value)
+
+
+class TributeTariffConfig(BaseModel):
+    link: str | None = None
+    subscription_id: PositiveStrictInt | None = None
+    period_ids: dict[str, PositiveStrictInt] = Field(default_factory=dict)
+    traffic_products: dict[str, TributeProductConfig] = Field(default_factory=dict)
+    premium_traffic_products: dict[str, TributeProductConfig] = Field(default_factory=dict)
+
+    @field_validator("link")
+    @classmethod
+    def validate_link(cls, value: str | None) -> str | None:
+        return validate_tribute_link(value) if value is not None else None
+
+    @field_validator("period_ids", mode="before")
+    @classmethod
+    def normalize_period_ids(cls, value: Any) -> Any:
+        return _normalize_tribute_map_keys(
+            value,
+            integer=True,
+            label="Tribute period month",
+        )
+
+    @field_validator("traffic_products", "premium_traffic_products", mode="before")
+    @classmethod
+    def normalize_product_units(cls, value: Any) -> Any:
+        return _normalize_tribute_map_keys(
+            value,
+            integer=False,
+            label="Tribute product unit",
+        )
+
+    @model_validator(mode="after")
+    def validate_config(self) -> "TributeTariffConfig":
+        if (self.link is None) != (self.subscription_id is None):
+            raise ValueError("Tribute subscription link and subscription_id must be set together")
+        if self.period_ids and not self.has_subscription:
+            raise ValueError("Tribute period IDs require subscription link and subscription_id")
+        period_ids = list(self.period_ids.values())
+        if len(period_ids) != len(set(period_ids)):
+            raise ValueError("Tribute period IDs must be unique within a tariff")
+        if (
+            not self.has_subscription
+            and not self.traffic_products
+            and not self.premium_traffic_products
+        ):
+            raise ValueError("Tribute tariff config must define a subscription or digital product")
+        return self
+
+    @property
+    def has_subscription(self) -> bool:
+        return self.subscription_id is not None
+
+    def period_id_for_months(self, months: int) -> int | None:
+        return self.period_ids.get(str(int(months)))
+
+    def months_for_period_id(self, period_id: int) -> int | None:
+        return next(
+            (
+                int(months)
+                for months, configured_period_id in self.period_ids.items()
+                if configured_period_id == period_id
+            ),
+            None,
+        )
+
+    def products(self, kind: TributeProductKind) -> dict[str, TributeProductConfig]:
+        if kind == "traffic":
+            return self.traffic_products
+        return self.premium_traffic_products
+
+    def product_for_units(
+        self,
+        kind: TributeProductKind,
+        units: float,
+    ) -> TributeProductConfig | None:
+        return self.products(kind).get(canonical_tribute_product_unit(units))
+
+    def product_target(self, product_id: int) -> tuple[TributeProductKind, float] | None:
+        for kind in TRIBUTE_PRODUCT_KINDS:
+            for units, product in self.products(kind).items():
+                if product.product_id == product_id:
+                    return kind, float(units)
+        return None
+
+    def iter_products(
+        self,
+    ) -> list[tuple[TributeProductKind, str, TributeProductConfig]]:
+        return [
+            (kind, units, product)
+            for kind in TRIBUTE_PRODUCT_KINDS
+            for units, product in self.products(kind).items()
+        ]
+
+
 class Tariff(BaseModel):
     key: str
     legacy_keys: list[str] = Field(default_factory=list)
@@ -226,6 +406,7 @@ class Tariff(BaseModel):
     referral_bonus_days_inviter: dict[str, int] = Field(default_factory=dict)
     referral_bonus_days_referee: dict[str, int] = Field(default_factory=dict)
     enabled_periods: list[int] = Field(default_factory=list)
+    tribute: TributeTariffConfig | None = None
     topup_packages: PackageSet | None = None
     # Admin toggle: offer regular-traffic top-ups regardless of how much of
     # the monthly limit is used (by default the offer unlocks only after
@@ -267,6 +448,12 @@ class Tariff(BaseModel):
             )
         if self.premium_monthly_gb and self.premium_monthly_gb > 0 and not self.premium_squad_uuids:
             raise ValueError(f"tariff {self.key}: premium_monthly_gb requires premium_squad_uuids")
+        if self.tribute is not None:
+            self._validate_tribute_products(
+                self.tribute.premium_traffic_products,
+                self.premium_topup_packages,
+                "premium_topup_packages",
+            )
 
         self.prices = self._normalize_prices_by_currency(self.prices)
         self.prices_rub = self._normalize_period_price_map(self.prices_rub, "prices_rub")
@@ -311,8 +498,31 @@ class Tariff(BaseModel):
                     raise ValueError(
                         f"period tariff {self.key}: period {months} needs a non-zero price"
                     )
+            if self.tribute is not None and self.tribute.has_subscription:
+                enabled_periods = set(self.enabled_periods)
+                unknown_periods = sorted(
+                    int(months)
+                    for months in self.tribute.period_ids
+                    if int(months) not in enabled_periods
+                )
+                if unknown_periods:
+                    raise ValueError(
+                        f"period tariff {self.key}: Tribute periods {unknown_periods} "
+                        "must be enabled tariff periods"
+                    )
+            if self.tribute is not None:
+                self._validate_tribute_products(
+                    self.tribute.traffic_products,
+                    self.topup_packages,
+                    "topup_packages",
+                )
             return self
 
+        if self.tribute is not None and self.tribute.has_subscription:
+            raise ValueError(
+                f"traffic tariff {self.key}: Tribute subscriptions are only valid "
+                "for period tariffs"
+            )
         if self.traffic_limit_strategy is not None:
             raise ValueError(
                 f"traffic tariff {self.key}: traffic_limit_strategy is only valid "
@@ -324,7 +534,36 @@ class Tariff(BaseModel):
             raise ValueError(
                 f"traffic tariff {self.key}: conversion_rate_per_gb is required without fiat packages"  # noqa: E501
             )
+        if self.tribute is not None:
+            self._validate_tribute_products(
+                self.tribute.traffic_products,
+                self.traffic_packages,
+                "traffic_packages",
+            )
         return self
+
+    def _validate_tribute_products(
+        self,
+        products: dict[str, TributeProductConfig],
+        package_set: PackageSet | None,
+        package_field: str,
+    ) -> None:
+        if not products:
+            return
+        available_units = {
+            canonical_tribute_product_unit(package.gb)
+            for packages in (package_set.root.values() if package_set is not None else [])
+            for package in packages
+        }
+        unknown_units = sorted(
+            set(products) - available_units,
+            key=lambda value: Decimal(value),
+        )
+        if unknown_units:
+            raise ValueError(
+                f"tariff {self.key}: Tribute product units {unknown_units} "
+                f"must reference existing {package_field}"
+            )
 
     def _normalize_period_price_map(
         self,
@@ -468,6 +707,9 @@ class TariffsConfig(BaseModel):
         if self.default_currency == STARS_TARIFF_CURRENCY:
             raise ValueError("default_currency must be a non-Stars payment currency")
         key_owners: dict[str, str] = {}
+        tribute_subscription_owners: dict[int, str] = {}
+        tribute_period_owners: dict[tuple[int, int], tuple[str, int]] = {}
+        tribute_product_owners: dict[int, tuple[str, TributeProductKind, str]] = {}
         for tariff in self.tariffs:
             for key in (tariff.key, *tariff.legacy_keys):
                 previous_owner = key_owners.get(key)
@@ -477,6 +719,44 @@ class TariffsConfig(BaseModel):
                         f"is used by {previous_owner} and {tariff.key}"
                     )
                 key_owners[key] = tariff.key
+            tribute = tariff.tribute
+            if tribute is None:
+                continue
+            subscription_id = tribute.subscription_id
+            if subscription_id is not None:
+                for months, period_id in tribute.period_ids.items():
+                    target = (tariff.key, int(months))
+                    provider_period = (subscription_id, period_id)
+                    previous_target = tribute_period_owners.get(provider_period)
+                    if previous_target is not None and previous_target != target:
+                        raise ValueError(
+                            "Tribute subscription period "
+                            f"{subscription_id}/{period_id} cannot map to both "
+                            f"{previous_target[0]}/{previous_target[1]} and "
+                            f"{target[0]}/{target[1]}"
+                        )
+                    tribute_period_owners[provider_period] = target
+                previous_subscription_owner = tribute_subscription_owners.get(subscription_id)
+                if (
+                    previous_subscription_owner is not None
+                    and previous_subscription_owner != tariff.key
+                ):
+                    raise ValueError(
+                        f"Tribute subscription {subscription_id} cannot belong to "
+                        f"both tariffs {previous_subscription_owner} and {tariff.key}"
+                    )
+                tribute_subscription_owners[subscription_id] = tariff.key
+            for kind, units, product in tribute.iter_products():
+                product_target_owner = (tariff.key, kind, units)
+                previous_product_target = tribute_product_owners.get(product.product_id)
+                if previous_product_target is not None:
+                    raise ValueError(
+                        f"Tribute product {product.product_id} cannot map to both "
+                        f"{previous_product_target[0]}/{previous_product_target[1]}/"
+                        f"{previous_product_target[2]} and {product_target_owner[0]}/"
+                        f"{product_target_owner[1]}/{product_target_owner[2]}"
+                    )
+                tribute_product_owners[product.product_id] = product_target_owner
         active = [tariff for tariff in self.tariffs if tariff.enabled]
         if not active:
             raise ValueError("at least one enabled tariff is required")
@@ -500,6 +780,30 @@ class TariffsConfig(BaseModel):
         if not tariff or not tariff.enabled:
             raise KeyError(f"Unknown or disabled tariff: {key}")
         return tariff
+
+    def tribute_target(self, subscription_id: int, period_id: int) -> tuple[Tariff, int] | None:
+        for tariff in self.tariffs:
+            tribute = tariff.tribute
+            if tribute is None or tribute.subscription_id != subscription_id:
+                continue
+            months = tribute.months_for_period_id(period_id)
+            if months is not None:
+                return tariff, months
+        return None
+
+    def tribute_product_target(
+        self,
+        product_id: int,
+    ) -> tuple[Tariff, TributeProductKind, float] | None:
+        for tariff in self.tariffs:
+            tribute = tariff.tribute
+            if tribute is None:
+                continue
+            target = tribute.product_target(product_id)
+            if target is not None:
+                kind, units = target
+                return tariff, kind, units
+        return None
 
     @property
     def default(self) -> Tariff:

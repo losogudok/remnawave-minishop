@@ -35,10 +35,13 @@ def _normalize_payment_status(status: Any) -> str:
 
 
 def _would_overwrite_succeeded_payment(current_status: Any, new_status: Any) -> bool:
-    return (
-        _normalize_payment_status(current_status) == _PAYMENT_STATUS_SUCCEEDED
-        and _normalize_payment_status(new_status) != _PAYMENT_STATUS_SUCCEEDED
-    )
+    normalized_new_status = _normalize_payment_status(new_status)
+    return _normalize_payment_status(
+        current_status
+    ) == _PAYMENT_STATUS_SUCCEEDED and normalized_new_status not in {
+        _PAYMENT_STATUS_SUCCEEDED,
+        "refunded",
+    }
 
 
 def _decimal_order_value(value: Any) -> Decimal | None:
@@ -77,6 +80,7 @@ def _validate_existing_provider_payment_order(
     hwid_proration_ratio: float | None,
     hwid_full_price: float | None,
     hwid_traffic_bonus_bytes: int | None,
+    entitlement_context_snapshot: str | None,
 ) -> None:
     """Ensure a provider id cannot be rebound to a different entitlement."""
     comparisons = {
@@ -136,6 +140,10 @@ def _validate_existing_provider_payment_order(
         "hwid_traffic_bonus_bytes": (
             getattr(payment, "hwid_traffic_bonus_bytes", None),
             hwid_traffic_bonus_bytes,
+        ),
+        "entitlement_context_snapshot": (
+            getattr(payment, "entitlement_context_snapshot", None),
+            entitlement_context_snapshot,
         ),
     }
     mismatched = [field for field, (stored, expected) in comparisons.items() if stored != expected]
@@ -341,6 +349,7 @@ async def ensure_payment_with_provider_id(
     hwid_proration_ratio: float | None = None,
     hwid_full_price: float | None = None,
     hwid_traffic_bonus_bytes: int | None = None,
+    entitlement_context_snapshot: str | None = None,
 ) -> Payment:
     """Atomically create or validate one order for a provider payment id."""
     provider_key = str(provider or "").strip().lower()
@@ -374,6 +383,7 @@ async def ensure_payment_with_provider_id(
             hwid_proration_ratio=hwid_proration_ratio,
             hwid_full_price=hwid_full_price,
             hwid_traffic_bonus_bytes=hwid_traffic_bonus_bytes,
+            entitlement_context_snapshot=entitlement_context_snapshot,
         )
         return existing
 
@@ -399,6 +409,7 @@ async def ensure_payment_with_provider_id(
         "hwid_proration_ratio": hwid_proration_ratio,
         "hwid_full_price": hwid_full_price,
         "hwid_traffic_bonus_bytes": hwid_traffic_bonus_bytes,
+        "entitlement_context_snapshot": entitlement_context_snapshot,
     }
     payment_payload.update(
         {field: value for field, value in optional_fields.items() if value is not None}
@@ -438,6 +449,7 @@ async def ensure_payment_with_provider_id(
         hwid_proration_ratio=hwid_proration_ratio,
         hwid_full_price=hwid_full_price,
         hwid_traffic_bonus_bytes=hwid_traffic_bonus_bytes,
+        entitlement_context_snapshot=entitlement_context_snapshot,
     )
     if created:
         logger.info(
@@ -546,6 +558,8 @@ async def find_recent_pending_provider_payment(
     tariff_key: str | None = None,
     promo_code_id: int | None = None,
     promo_effect_summary: str | None = None,
+    tariff_change_quote_snapshot: str | None = None,
+    entitlement_context_snapshot: str | None = None,
     since_minutes: int | None = None,
 ) -> Payment | None:
     """Return the most recent pending payment matching the given tariff parameters.
@@ -577,6 +591,14 @@ async def find_recent_pending_provider_payment(
         conditions.append(func.upper(Payment.currency) == str(currency).strip().upper())
     if sale_mode is not None:
         conditions.append(Payment.sale_mode == sale_mode)
+    if tariff_change_quote_snapshot is not None:
+        conditions.append(Payment.tariff_change_quote_snapshot == tariff_change_quote_snapshot)
+    else:
+        conditions.append(Payment.tariff_change_quote_snapshot.is_(None))
+    if entitlement_context_snapshot is not None:
+        conditions.append(Payment.entitlement_context_snapshot == entitlement_context_snapshot)
+    else:
+        conditions.append(Payment.entitlement_context_snapshot.is_(None))
     if tariff_key is not None:
         conditions.append(Payment.tariff_key == tariff_key)
     if promo_code_id is not None:

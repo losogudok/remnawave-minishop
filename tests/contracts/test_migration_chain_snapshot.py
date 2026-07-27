@@ -70,6 +70,9 @@ EXPECTED_CORE_MIGRATION_IDS = [
     "0047_add_hwid_traffic_bonus_snapshots",
     "0048_add_promo_code_owner",
     "0049_add_support_message_rich_body",
+    "0050_add_tribute_webhook_state",
+    "0051_add_tariff_change_quote_snapshots",
+    "0052_add_entitlement_context_snapshots",
 ]
 
 

@@ -18,6 +18,10 @@ from .entitlement_helpers import (
     record_traffic_topup_best_effort,
 )
 from .sale_mode import parse_sale_mode_context
+from .tariff_change_quote import (
+    TariffChangeQuoteSnapshot,
+    preflight_paid_tariff_change,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -180,13 +184,58 @@ class SubscriptionLifecycleSwitchMixin(SubscriptionServiceMixinContract):
         )
         if not sub:
             return None
+        if str(getattr(sub, "provider", "") or "").strip().lower() == "tribute" and bool(
+            getattr(sub, "auto_renew_enabled", False)
+        ):
+            logger.warning(
+                "Rejecting tariff switch for user %s while Tribute recurrence is active",
+                user_id,
+            )
+            return None
         before_tariff_key = sub.tariff_key
         now = datetime.now(UTC)
         trial_provider = str(getattr(sub, "provider", "") or "").strip().lower() == "trial"
         trial_status = str(getattr(sub, "status_from_panel", "") or "").strip().upper() == "TRIAL"
         convert_trial_admin_assignment = mode == "admin_assign" and (trial_provider or trial_status)
+        payment = None
+        quote_snapshot: TariffChangeQuoteSnapshot | None = None
+        if mode == "paid_diff":
+            if payment_id is None:
+                logger.warning(
+                    "Rejecting paid tariff switch for user %s -> %s without payment id",
+                    user_id,
+                    target.key,
+                )
+                return None
+            payment = await payment_dal.get_payment_by_db_id(session, payment_id)
+            if payment is not None:
+                preflight = preflight_paid_tariff_change(
+                    payment=payment,
+                    active_subscription=sub,
+                    tariffs_config=config,
+                    expected_user_id=user_id,
+                    expected_target_tariff_key=target.key,
+                )
+                quote_snapshot = preflight.snapshot
+                if not preflight.allowed:
+                    logger.warning(
+                        "Rejecting paid tariff switch for user %s -> %s: "
+                        "payment=%s preflight=%s reason=%s",
+                        user_id,
+                        target.key,
+                        payment_id,
+                        preflight.status,
+                        preflight.reason,
+                    )
+                    return None
         if mode == "admin_assign":
             options = dict(self.calculate_tariff_switch_options(sub, target))
+        elif quote_snapshot is not None:
+            options = {
+                "mode": quote_snapshot.transition_mode,
+                "paid_diff_rub": float(quote_snapshot.required_amount),
+                "convertible_hwid_purchase_ids": list(quote_snapshot.convertible_hwid_purchase_ids),
+            }
         else:
             options = await self.calculate_tariff_switch_options_with_hwid(session, sub, target)
         if not _tariff_switch_mode_matches_options(mode, options):
@@ -200,14 +249,6 @@ class SubscriptionLifecycleSwitchMixin(SubscriptionServiceMixinContract):
             )
             return None
         if mode == "paid_diff":
-            if payment_id is None:
-                logger.warning(
-                    "Rejecting paid tariff switch for user %s -> %s without payment id",
-                    user_id,
-                    target.key,
-                )
-                return None
-            payment = await payment_dal.get_payment_by_db_id(session, payment_id)
             sale_context = parse_sale_mode_context(
                 getattr(payment, "sale_mode", "") if payment else ""
             )
@@ -216,16 +257,18 @@ class SubscriptionLifecycleSwitchMixin(SubscriptionServiceMixinContract):
             )
             paid_amount = float(getattr(payment, "amount", 0) or 0)
             required_amount = float(options.get("paid_diff_rub") or 0)
-            if (
+            payment_is_invalid = (
                 not payment
                 or int(getattr(payment, "user_id", 0) or 0) != int(user_id)
                 or sale_context.base != "tariff_upgrade"
                 or payment_tariff_key != target.key
-                or paid_amount + 0.01 < required_amount
-            ):
+            )
+            if quote_snapshot is None:
+                payment_is_invalid = payment_is_invalid or paid_amount + 0.01 < required_amount
+            if payment_is_invalid:
                 logger.warning(
                     "Rejecting paid tariff switch for user %s -> %s: payment=%s "
-                    "paid_amount=%s required_amount=%s sale_mode=%s tariff_key=%s",
+                    "paid_amount=%s required_amount=%s sale_mode=%s tariff_key=%s snapshot=%s",
                     user_id,
                     target.key,
                     payment_id,
@@ -233,6 +276,7 @@ class SubscriptionLifecycleSwitchMixin(SubscriptionServiceMixinContract):
                     required_amount,
                     getattr(payment, "sale_mode", None) if payment else None,
                     getattr(payment, "tariff_key", None) if payment else None,
+                    quote_snapshot is not None,
                 )
                 return None
         converted_hwid_purchase_ids = list(options.get("convertible_hwid_purchase_ids") or [])
