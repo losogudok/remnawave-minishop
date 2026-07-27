@@ -3032,6 +3032,121 @@
         "title": "AdminTranslationsPatchBody",
         "type": "object"
       },
+      "AdminTributeProductOut": {
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Link"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "number"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_id",
+          "name",
+          "type",
+          "status",
+          "price",
+          "currency"
+        ],
+        "title": "AdminTributeProductOut",
+        "type": "object"
+      },
+      "AdminTributeSubscriptionOut": {
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/AdminTributeSubscriptionPeriodOut"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "subscription_id": {
+            "title": "Subscription Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "subscription_id",
+          "name",
+          "currency"
+        ],
+        "title": "AdminTributeSubscriptionOut",
+        "type": "object"
+      },
+      "AdminTributeSubscriptionPeriodOut": {
+        "properties": {
+          "months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Months"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "period_id": {
+            "title": "Period Id",
+            "type": "integer"
+          },
+          "price": {
+            "title": "Price",
+            "type": "number"
+          }
+        },
+        "required": [
+          "period_id",
+          "period",
+          "price"
+        ],
+        "title": "AdminTributeSubscriptionPeriodOut",
+        "type": "object"
+      },
       "AdminUserBanBody": {
         "properties": {
           "banned": {
@@ -10519,6 +10634,59 @@
           }
         ],
         "summary": "Admin Tariffs Save",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/tariffs/tribute/catalog": {
+      "get": {
+        "operationId": "get_admin_tariffs_tribute_catalog_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "products": {
+                      "items": {
+                        "$ref": "#/components/schemas/AdminTributeProductOut"
+                      },
+                      "type": "array"
+                    },
+                    "subscriptions": {
+                      "items": {
+                        "$ref": "#/components/schemas/AdminTributeSubscriptionOut"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "subscriptions",
+                    "products"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Tariffs Tribute Catalog",
         "tags": [
           "admin"
         ]

@@ -2,9 +2,18 @@
   import { getTariffsStore } from "$lib/admin/context";
   import { Input, Sortable } from "$components/ui/index.js";
   import { Label, Tabs } from "$components/ui/primitives.js";
-  import { AdminButton } from "$components/patterns/admin/index.js";
+  import { AdminButton, AdminSelect } from "$components/patterns/admin/index.js";
   import { Plus, Trash2 } from "$components/ui/icons.js";
   import type { TariffDraft, TariffsCatalog } from "$lib/admin/stores/tariffsStore";
+  import {
+    applySubscriptionToPeriodRows,
+    subscriptionOptionLabel,
+    type TributeDraftRow,
+    type TributeIssue,
+  } from "$lib/admin/tributeCatalog";
+  import TributeCatalogButton from "./TributeCatalogButton.svelte";
+  import TributeCatalogIssues from "./TributeCatalogIssues.svelte";
+  import TributeProductField from "./TributeProductField.svelte";
   import {
     currencyPriceAriaLabel as formatCurrencyPriceAriaLabel,
     currencyPriceColumnLabel as formatCurrencyPriceColumnLabel,
@@ -57,6 +66,39 @@
       tribute_product_id: "",
       tribute_product_link: "",
     });
+  }
+
+  // Creator bindings live in Tribute, not here: the catalog lookup fills the
+  // identifiers in and reports every divergence the admin must fix in Tribute.
+  const tributeCatalog = $derived(tariffsState.tributeCatalog);
+  const periodRows = $derived(tariffDraft.periodRows as TributeDraftRow[]);
+  const trafficRows = $derived(tariffDraft.trafficRows as TributeDraftRow[]);
+  const subscriptionOptions = $derived(
+    (tributeCatalog?.subscriptions || []).map((subscription) => ({
+      value: String(subscription.subscription_id),
+      label: subscriptionOptionLabel(subscription),
+    }))
+  );
+  // The draft itself is the selection: reopening the editor for another tariff
+  // then shows that tariff's binding instead of a stale local choice.
+  const selectedSubscriptionId = $derived(
+    String(periodRows.find((row) => row.tribute_subscription_id)?.tribute_subscription_id ?? "")
+  );
+
+  // A period left unbound looks exactly like one deliberately kept off Tribute,
+  // so only the binding pass can report that the subscription lacks it.
+  let missingPeriods = $state<TributeIssue[]>([]);
+
+  function applyTributeSubscription(value: string): void {
+    const subscription = (tributeCatalog?.subscriptions || []).find(
+      (item) => String(item.subscription_id) === value
+    );
+    if (!subscription) return;
+    const result = applySubscriptionToPeriodRows(subscription, periodRows, defaultCurrencyCode);
+    for (const update of result.updates) {
+      tariffsStore.updateDraftRow("periodRows", update.index, update.values);
+    }
+    missingPeriods = result.issues.filter((issue) => issue.kind === "missing_period");
   }
 </script>
 
@@ -208,7 +250,40 @@
               )}</small
             >
           </div>
+          <div class="admin-editor-section-actions">
+            <TributeCatalogButton {at} />
+          </div>
         </header>
+        {#if tributeCatalog}
+          <div class="admin-field-label">
+            <span>{at("tariff_tribute_pick_subscription", {}, "Subscription in Tribute")}</span>
+            <small
+              >{at(
+                "tariff_tribute_pick_subscription_hint",
+                {},
+                "Picking one fills the subscription and period IDs of every period below. The share link is not published by the API, so paste it yourself"
+              )}</small
+            >
+            {#if subscriptionOptions.length}
+              <AdminSelect
+                value={selectedSubscriptionId}
+                items={subscriptionOptions}
+                placeholder={at("tariff_tribute_pick_placeholder", {}, "Select a subscription")}
+                ariaLabel={at("tariff_tribute_pick_subscription", {}, "Subscription in Tribute")}
+                onValueChange={applyTributeSubscription}
+              />
+            {:else}
+              <span class="admin-muted"
+                >{at(
+                  "tariff_tribute_no_subscriptions",
+                  {},
+                  "Tribute has no published subscriptions on this API key"
+                )}</span
+              >
+            {/if}
+          </div>
+        {/if}
+        <TributeCatalogIssues {at} rows={periodRows} mode="period" extra={missingPeriods} />
         {#if tariffDraft.periodRows.length}
           <div class="admin-row-editor">
             <div
@@ -315,6 +390,9 @@
           >
         </div>
         <div class="admin-editor-section-actions">
+          {#if tributeEnabled}
+            <TributeCatalogButton {at} />
+          {/if}
           <AdminButton size="sm" onclick={addTrafficRow}
             ><Plus size={12} /> {at("tariff_btn_package", {}, "Package")}</AdminButton
           >
@@ -328,6 +406,7 @@
             "Optional. Map each fixed traffic package to a Tribute Digital Product. Configure its price in Tribute to match this package; the local price is not sent to Tribute"
           )}
         </p>
+        <TributeCatalogIssues {at} rows={trafficRows} mode="product" />
       {/if}
       {#if tariffDraft.trafficRows.length}
         <div class="admin-row-editor">
@@ -397,21 +476,7 @@
                 <span class="admin-row-editor-mobile-label" aria-hidden="true"
                   >{at("tariff_col_tribute_product_id", {}, "Tribute product ID")}</span
                 >
-                <Input
-                  class="input"
-                  type="number"
-                  min="1"
-                  step="1"
-                  placeholder={at("tariff_placeholder_tribute_product_id", {}, "e.g. 501")}
-                  value={row.tribute_product_id}
-                  oninput={draftRowInputHandler(
-                    tariffsStore,
-                    "trafficRows",
-                    index,
-                    "tribute_product_id"
-                  )}
-                  aria-label={at("tariff_label_tribute_product_id", {}, "Tribute product ID")}
-                />
+                <TributeProductField {at} field="trafficRows" {index} {row} />
                 <span class="admin-row-editor-mobile-label" aria-hidden="true"
                   >{at("tariff_col_tribute_product_link", {}, "Tribute product link")}</span
                 >

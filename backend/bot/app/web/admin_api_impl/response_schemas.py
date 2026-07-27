@@ -122,6 +122,31 @@ class AdminPanelInternalSquadOut(HttpResponseModel):
     active_inbounds_count: int | float | str | bool | None = None
 
 
+class AdminTributeSubscriptionPeriodOut(HttpResponseModel):
+    period_id: int
+    period: str
+    price: float
+    # ``null`` for a period Minishop cannot sell recurrently (weekly, trial…).
+    months: int | None = None
+
+
+class AdminTributeSubscriptionOut(HttpResponseModel):
+    subscription_id: int
+    name: str
+    currency: str
+    periods: list[AdminTributeSubscriptionPeriodOut] = Field(default_factory=list)
+
+
+class AdminTributeProductOut(HttpResponseModel):
+    product_id: int
+    name: str
+    type: str
+    status: str
+    price: float
+    currency: str
+    link: str | None = None
+
+
 class AdminSyncResultOut(HttpResponseModel):
     status: str
 

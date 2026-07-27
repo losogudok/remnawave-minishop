@@ -17,6 +17,10 @@
     type ReorderHandler,
     type TranslateFn,
   } from "./tariffEditorTabUtils.js";
+  import TributeCatalogButton from "./TributeCatalogButton.svelte";
+  import TributeCatalogIssues from "./TributeCatalogIssues.svelte";
+  import TributeProductField from "./TributeProductField.svelte";
+  import type { TributeDraftRow } from "$lib/admin/tributeCatalog";
 
   let { at }: { at: TranslateFn } = $props();
 
@@ -33,6 +37,8 @@
   // editor until the provider itself is switched on.
   const tributeEnabled = $derived(isTributeEnabled(tariffsState));
   const moveTopupRow: ReorderHandler = moveDraftRowHandler(tariffsStore, "topupRows");
+
+  const topupProductRows = $derived(tariffDraft.topupRows as TributeDraftRow[]);
 
   function addTopupRow(): void {
     tariffsStore.addDraftRow("topupRows", {
@@ -60,6 +66,9 @@
           >
         </div>
         <div class="admin-editor-section-actions">
+          {#if tributeEnabled}
+            <TributeCatalogButton {at} />
+          {/if}
           <AdminButton size="sm" onclick={addTopupRow}
             ><Plus size={12} /> {at("tariff_btn_package", {}, "Package")}</AdminButton
           >
@@ -94,6 +103,7 @@
             "Optional. Map each fixed traffic package to a Tribute Digital Product. Configure its price in Tribute to match this package; the local price is not sent to Tribute"
           )}
         </p>
+        <TributeCatalogIssues {at} rows={topupProductRows} mode="product" />
       {/if}
       {#if tariffDraft.topupRows.length}
         <div class="admin-row-editor">
@@ -163,21 +173,7 @@
                 <span class="admin-row-editor-mobile-label" aria-hidden="true"
                   >{at("tariff_col_tribute_product_id", {}, "Tribute product ID")}</span
                 >
-                <Input
-                  class="input"
-                  type="number"
-                  min="1"
-                  step="1"
-                  placeholder={at("tariff_placeholder_tribute_product_id", {}, "e.g. 501")}
-                  value={row.tribute_product_id}
-                  oninput={draftRowInputHandler(
-                    tariffsStore,
-                    "topupRows",
-                    index,
-                    "tribute_product_id"
-                  )}
-                  aria-label={at("tariff_label_tribute_product_id", {}, "Tribute product ID")}
-                />
+                <TributeProductField {at} field="topupRows" {index} {row} />
                 <span class="admin-row-editor-mobile-label" aria-hidden="true"
                   >{at("tariff_col_tribute_product_link", {}, "Tribute product link")}</span
                 >

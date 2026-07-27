@@ -223,6 +223,10 @@ class WebAppRouteContractTests(unittest.TestCase):
             ("PATCH", "/api/admin/translations"): "admin_translations_patch_route",
             ("GET", "/api/admin/tariffs"): "admin_tariffs_get_route",
             ("PUT", "/api/admin/tariffs"): "admin_tariffs_save_route",
+            (
+                "GET",
+                "/api/admin/tariffs/tribute/catalog",
+            ): "admin_tariffs_tribute_catalog_route",
             ("GET", "/api/admin/themes"): "admin_themes_get_route",
             ("PUT", "/api/admin/themes"): "admin_themes_save_route",
             ("POST", "/api/admin/appearance/logo"): "admin_appearance_logo_upload_route",

@@ -243,15 +243,26 @@ Minishop не использует Shop-оплату в Telegram Stars, `payment
   редакторе тарифа, в разделе «Подписка Tribute». Ссылка вида
   `https://t.me/tribute/app?startapp=ep_...` должна вести именно на ту подписку, которая
   продаёт этот срок. Если все сроки продаёт одна подписка, достаточно повторить её ссылку
-  и `subscription_id` в каждой строке. Список ID можно сверить через официальный
-  [Subscriptions API](https://wiki.tribute.tg/for-content-creators/api-documentation/subscriptions);
-  share-ссылка копируется из кабинета.
+  и `subscription_id` в каждой строке.
+- Числовых ID нет ни в кабинете Tribute, ни в share-ссылке: их выдаёт только Creator API.
+  Поэтому кнопка **«Подтянуть из Tribute»** в редакторе тарифа читает
+  [Subscriptions API](https://wiki.tribute.tg/for-content-creators/api-documentation/subscriptions)
+  и [Products API](https://wiki.tribute.tg/for-content-creators/info-products-and-content/api-integration)
+  тем же `TRIBUTE_API_KEY`. Выбор подписки подставляет `subscription_id` и `period_id`
+  во все локальные сроки: Tribute-периоды `monthly`, `quarterly`, `halfyearly` и `yearly`
+  сопоставляются с 1, 3, 6 и 12 месяцами. Периоды, которых нет в подписке, остаются
+  незаполненными и попадают в список расхождений. Share-ссылку API не отдаёт — её
+  по-прежнему копируют из кабинета вручную.
 - Для фиксированных пакетов обычного и premium-трафика можно указать `product_id` и
   ссылку заранее созданного
   [Digital Product](https://wiki.tribute.tg/for-content-creators/info-products-and-content/api-integration).
+  После загрузки каталога поле ID товара становится списком, а выбор подставляет ещё и
+  ссылку — её Products API, в отличие от подписок, публикует.
 - Цена и цикл таких подписок/товаров задаются в Tribute. Локальная цена отображается в
   Minishop, но не отправляется по Creator-ссылке, поэтому администратор должен вручную
-  поддерживать цены одинаковыми.
+  поддерживать цены одинаковыми. Загруженный каталог сверяется с текущим тарифом:
+  редактор показывает расхождение цены и валюты, а также ID, которых больше нет в Tribute
+  или которые продают другой срок.
 - Не удаляйте и не переиспользуйте `subscription_id`, `period_id` и `product_id`, пока
   возможна доставка отложенных webhook или возвратов по этим продажам. Сначала уберите
   ссылку из новых checkout, дождитесь окончания расчётного/возвратного окна Tribute и

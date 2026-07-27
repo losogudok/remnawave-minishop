@@ -144,6 +144,15 @@ from .config import (
 from .config import (
     tribute_supports_checkout as tribute_supports_checkout,
 )
+from .creator import (
+    TributeCreatorApiError as TributeCreatorApiError,
+)
+from .creator import (
+    TributeCreatorCatalog as TributeCreatorCatalog,
+)
+from .creator import (
+    TributeCreatorCatalogMixin,
+)
 from .models import (
     TributeDigitalProductPayload,
     TributeDigitalProductRefundPayload,
@@ -202,6 +211,7 @@ logger = logging.getLogger(__name__)
 
 
 class TributeService(
+    TributeCreatorCatalogMixin,
     TributeProductWebhookMixin,
     TributeShopWebhookMixin,
     TributeSubscriptionWebhookMixin,

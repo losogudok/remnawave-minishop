@@ -2,9 +2,11 @@ import { adminErrorMessage } from "../errors.js";
 import {
   buildAdminPanelInternalSquadsPath,
   buildAdminTariffsPath,
+  buildAdminTariffsTributeCatalogPath,
   unwrap,
   type ApiClient,
 } from "../../webapp/publicApi";
+import { normalizeTributeCatalog, type TributeCatalog } from "../tributeCatalog";
 import type { components } from "../../api/openapi.generated";
 import {
   emptyTariffDraft,
@@ -50,6 +52,9 @@ export type TariffsState = {
   selectedBaseSquad: string;
   selectedPremiumSquad: string;
   tariffEditorTab: TariffEditorTab;
+  tributeCatalog: TributeCatalog | null;
+  tributeCatalogLoading: boolean;
+  tributeCatalogError: string;
 };
 type TariffsStoreOptions = {
   api: AdminApi;
@@ -61,6 +66,7 @@ export type TariffsStore = TariffsState & {
   updateState: (updates: Partial<TariffsState>) => void;
   loadTariffs: () => Promise<void>;
   loadPanelSquads: () => Promise<void>;
+  loadTributeCatalog: () => Promise<void>;
   squadLabel: (uuid: string) => string;
   addSquadToDraft: (field: DraftSquadField, uuid: string) => void;
   removeSquadFromDraft: (field: DraftSquadField, uuid: string) => void;
@@ -140,9 +146,13 @@ export function createTariffsStore({
     selectedBaseSquad: "",
     selectedPremiumSquad: "",
     tariffEditorTab: "general",
+    tributeCatalog: null,
+    tributeCatalogLoading: false,
+    tributeCatalogError: "",
     updateState,
     loadTariffs,
     loadPanelSquads,
+    loadTributeCatalog,
     squadLabel,
     addSquadToDraft,
     removeSquadFromDraft,
@@ -212,6 +222,44 @@ export function createTariffsStore({
       updateStore((s) => ({ ...s, panelSquads: [] }));
     } finally {
       updateStore((s) => ({ ...s, panelSquadsLoading: false }));
+    }
+  }
+
+  /**
+   * Read the Tribute Creator catalog on demand.
+   *
+   * It stays an explicit action: the lookup leaves the deployment for Tribute's
+   * API, so it runs when an admin asks for it, not on every editor open.
+   */
+  async function loadTributeCatalog(): Promise<void> {
+    if (state.tributeCatalogLoading) return;
+
+    updateStore((s) => ({ ...s, tributeCatalogLoading: true, tributeCatalogError: "" }));
+    try {
+      const data = await api(buildAdminTariffsTributeCatalogPath());
+      if (isOkResponse(data)) {
+        const result = unwrap(data);
+        updateStore((s) => ({ ...s, tributeCatalog: normalizeTributeCatalog(result) }));
+      } else {
+        const message = adminErrorMessage(
+          data,
+          at,
+          at("tariff_tribute_catalog_failed", {}, "Failed to load the Tribute catalog")
+        );
+        updateStore((s) => ({ ...s, tributeCatalog: null, tributeCatalogError: message }));
+      }
+    } catch (error) {
+      updateStore((s) => ({
+        ...s,
+        tributeCatalog: null,
+        tributeCatalogError: adminErrorMessage(
+          error,
+          at,
+          at("tariff_tribute_catalog_failed", {}, "Failed to load the Tribute catalog")
+        ),
+      }));
+    } finally {
+      updateStore((s) => ({ ...s, tributeCatalogLoading: false }));
     }
   }
 

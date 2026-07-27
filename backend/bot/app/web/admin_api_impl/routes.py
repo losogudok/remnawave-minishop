@@ -65,6 +65,9 @@ from .tariffs import (
     admin_tariffs_get_route,
     admin_tariffs_save_route,
 )
+from .tariffs_tribute import (
+    admin_tariffs_tribute_catalog_route,
+)
 from .themes import (
     admin_appearance_favicon_upload_route,
     admin_appearance_logo_upload_route,
@@ -199,6 +202,7 @@ def setup_admin_routes(app: web.Application) -> None:
 
     router.add_get("/api/admin/tariffs", admin_tariffs_get_route)
     router.add_put("/api/admin/tariffs", admin_tariffs_save_route)
+    router.add_get("/api/admin/tariffs/tribute/catalog", admin_tariffs_tribute_catalog_route)
     router.add_get("/api/admin/themes", admin_themes_get_route)
     router.add_put("/api/admin/themes", admin_themes_save_route)
     router.add_post("/api/admin/appearance/logo", admin_appearance_logo_upload_route)

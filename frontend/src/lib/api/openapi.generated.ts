@@ -707,6 +707,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/admin/tariffs/tribute/catalog": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Tariffs Tribute Catalog */
+    get: operations["get_admin_tariffs_tribute_catalog_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/admin/themes": {
     parameters: {
       query?: never;
@@ -2986,6 +3003,51 @@ export interface components {
       deletes?: unknown;
       /** Updates */
       updates?: unknown;
+    };
+    /** AdminTributeProductOut */
+    AdminTributeProductOut: {
+      /** Currency */
+      currency: string;
+      /**
+       * Link
+       * @default null
+       */
+      link: string | null;
+      /** Name */
+      name: string;
+      /** Price */
+      price: number;
+      /** Product Id */
+      product_id: number;
+      /** Status */
+      status: string;
+      /** Type */
+      type: string;
+    };
+    /** AdminTributeSubscriptionOut */
+    AdminTributeSubscriptionOut: {
+      /** Currency */
+      currency: string;
+      /** Name */
+      name: string;
+      /** Periods */
+      periods?: components["schemas"]["AdminTributeSubscriptionPeriodOut"][];
+      /** Subscription Id */
+      subscription_id: number;
+    };
+    /** AdminTributeSubscriptionPeriodOut */
+    AdminTributeSubscriptionPeriodOut: {
+      /**
+       * Months
+       * @default null
+       */
+      months: number | null;
+      /** Period */
+      period: string;
+      /** Period Id */
+      period_id: number;
+      /** Price */
+      price: number;
     };
     /** AdminUserBanBody */
     AdminUserBanBody: {
@@ -6489,6 +6551,31 @@ export interface operations {
             /** @constant */
             ok: true;
           } & components["schemas"]["AdminTariffsOut"];
+        };
+      };
+    };
+  };
+  get_admin_tariffs_tribute_catalog_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            products: components["schemas"]["AdminTributeProductOut"][];
+            subscriptions: components["schemas"]["AdminTributeSubscriptionOut"][];
+          };
         };
       };
     };

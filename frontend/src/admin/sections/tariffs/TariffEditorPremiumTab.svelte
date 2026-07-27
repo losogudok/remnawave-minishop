@@ -22,6 +22,10 @@
     type SelectOption,
     type TranslateFn,
   } from "./tariffEditorTabUtils.js";
+  import TributeCatalogButton from "./TributeCatalogButton.svelte";
+  import TributeCatalogIssues from "./TributeCatalogIssues.svelte";
+  import TributeProductField from "./TributeProductField.svelte";
+  import type { TributeDraftRow } from "$lib/admin/tributeCatalog";
 
   let { at }: { at: TranslateFn } = $props();
 
@@ -44,6 +48,8 @@
   function addPremiumSquad(value: string): void {
     addDraftSquad(tariffsStore, "premiumSquadUuids", value);
   }
+
+  const premiumProductRows = $derived(tariffDraft.premiumTopupRows as TributeDraftRow[]);
 
   function addPremiumTopupRow(): void {
     tariffsStore.addDraftRow("premiumTopupRows", {
@@ -170,6 +176,9 @@
         >
       </div>
       <div class="admin-editor-section-actions">
+        {#if tributeEnabled}
+          <TributeCatalogButton {at} />
+        {/if}
         <AdminButton size="sm" onclick={addPremiumTopupRow}
           ><Plus size={12} /> {at("tariff_btn_package", {}, "Package")}</AdminButton
         >
@@ -204,6 +213,7 @@
           "Optional. Map each fixed traffic package to a Tribute Digital Product. Configure its price in Tribute to match this package; the local price is not sent to Tribute"
         )}
       </p>
+      <TributeCatalogIssues {at} rows={premiumProductRows} mode="product" />
     {/if}
     {#if tariffDraft.premiumTopupRows.length}
       <div class="admin-row-editor">
@@ -273,21 +283,7 @@
               <span class="admin-row-editor-mobile-label" aria-hidden="true"
                 >{at("tariff_col_tribute_product_id", {}, "Tribute product ID")}</span
               >
-              <Input
-                class="input"
-                type="number"
-                min="1"
-                step="1"
-                placeholder={at("tariff_placeholder_tribute_product_id", {}, "e.g. 501")}
-                value={row.tribute_product_id}
-                oninput={draftRowInputHandler(
-                  tariffsStore,
-                  "premiumTopupRows",
-                  index,
-                  "tribute_product_id"
-                )}
-                aria-label={at("tariff_label_tribute_product_id", {}, "Tribute product ID")}
-              />
+              <TributeProductField {at} field="premiumTopupRows" {index} {row} />
               <span class="admin-row-editor-mobile-label" aria-hidden="true"
                 >{at("tariff_col_tribute_product_link", {}, "Tribute product link")}</span
               >
