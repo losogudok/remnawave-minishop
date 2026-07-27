@@ -641,6 +641,11 @@
     // load, feature-gated sections stay hidden until the admin happens to
     // open a section that fetches settings on its own.
     void settingsStore.loadSettings();
+    // The sidebar shows how many support messages are waiting, so the panel —
+    // not the support screen — owns this poll. Started from the section, the
+    // count only ever arrived once the admin was already reading the tickets,
+    // which is exactly when the badge has nothing left to announce.
+    supportStore.startStatsPolling();
     const healthTimer: ReturnType<typeof window.setInterval> | null =
       typeof window !== "undefined"
         ? window.setInterval(() => void healthStore.loadHealth(), 5 * 60 * 1000)
@@ -648,6 +653,7 @@
     return () => {
       if (typeof window !== "undefined") window.removeEventListener("popstate", onPopState);
       if (healthTimer !== null) window.clearInterval(healthTimer);
+      supportStore.stopStatsPolling();
       adminQueryClient.unmount();
     };
   });

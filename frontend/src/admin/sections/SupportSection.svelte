@@ -149,8 +149,9 @@
 
   onMount(() => {
     supportStore.loadList();
+    // The panel already polls the counters for the sidebar badge; this only
+    // refreshes them for the summary the moment the screen opens.
     supportStore.loadStats();
-    supportStore.startStatsPolling();
     if (initialTicketId) supportStore.openTicket(initialTicketId, { skipPush: true });
   });
 
