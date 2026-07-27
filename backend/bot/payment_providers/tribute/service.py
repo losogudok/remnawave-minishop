@@ -903,6 +903,7 @@ SPEC = PaymentProviderSpec(
     webapp_label="Tribute",
     webapp_labels={"ru": "Tribute", "en": "Tribute"},
     webapp_icon="Gem",
+    logo_url="/provider-logos/tribute.png",
     telegram_labels={"ru": "Tribute", "en": "Tribute"},
     telegram_emoji="💎",
     router=router,
