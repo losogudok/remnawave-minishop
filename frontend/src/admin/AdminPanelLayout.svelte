@@ -17,6 +17,7 @@
   import type { TranslationsSavedPayload } from "$lib/admin/stores/translationsStore";
   import type { AdminUser } from "$lib/admin/stores/usersStore";
   import type { UsersFilter, UsersRouteFilters } from "$lib/admin/usersRouteFilters";
+  import { lockPageScroll } from "$lib/webapp/scrollLock.js";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
   type SettingsPath = string[];
@@ -251,6 +252,13 @@
     if (adminLanguageClickGuardArmed) setAdminLanguageMenuOpen(false);
   }
 
+  // The drawer is an overlay like any dialog, so the content behind it stops
+  // scrolling while it is open instead of tracking the finger under the scrim.
+  $effect(() => {
+    if (!sidebarOpen) return;
+    return lockPageScroll();
+  });
+
   onDestroy(() => {
     clearAdminLanguageClickGuard();
   });
@@ -428,7 +436,9 @@
       />
     </header>
 
-    <main class="admin-main">
+    <!-- The panel scrolls here, not on the document, so overlays freeze it by
+         this marker (see lib/webapp/scrollLock.ts). -->
+    <main class="admin-main" data-scroll-container>
       <ConfigAlertsBanner {at} section={active} onNavigate={onSetActive} />
       {#key active}
         <div

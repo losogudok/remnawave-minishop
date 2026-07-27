@@ -33,18 +33,37 @@ afterEach(() => {
 });
 
 describe("createUiChrome", () => {
-  it("locks and unlocks body scrolling when a modal is active", () => {
-    const body = { style: { overflow: "" } };
+  it("locks and unlocks background scrolling when a modal is active", () => {
+    const body = { dataset: {} as Record<string, string> };
     vi.stubGlobal("document", { body });
     const { actions } = makeChrome();
 
     actions.syncBodyScrollLock(true);
 
-    expect(body.style.overflow).toBe("hidden");
+    expect(body.dataset.scrollLocked).toBe("");
+    expect(body.dataset.scrollLockCount).toBe("1");
 
     actions.syncBodyScrollLock(false);
 
-    expect(body.style.overflow).toBe("");
+    expect(body.dataset.scrollLocked).toBeUndefined();
+    expect(body.dataset.scrollLockCount).toBeUndefined();
+  });
+
+  it("leaves the lock in place while another overlay still holds it", () => {
+    const body = { dataset: {} as Record<string, string> };
+    vi.stubGlobal("document", { body });
+    const first = makeChrome().actions;
+    const second = makeChrome().actions;
+
+    first.syncBodyScrollLock(true);
+    second.syncBodyScrollLock(true);
+    first.syncBodyScrollLock(false);
+
+    expect(body.dataset.scrollLocked).toBe("");
+
+    second.syncBodyScrollLock(false);
+
+    expect(body.dataset.scrollLocked).toBeUndefined();
   });
 
   it("arms and clears the language click guard around menu transitions", () => {
