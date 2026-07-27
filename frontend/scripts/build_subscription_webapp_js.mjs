@@ -167,7 +167,50 @@ async function buildCssAsset({ sourcePath, outputPrefix }) {
   );
 }
 
+// A chunk keeps the name the bundler gave it — that name is already
+// content-hashed and every import inside the bundle points at it, so the
+// minified body has to replace the file in place rather than get a name of its
+// own. The middle segment is matched loosely because a chunk inherits the dots
+// of its entry module (`*.svelte.ts`).
+const CHUNK_NAME_RE =
+  /^subscription_webapp(?:_admin|_docs_demo)?\.[A-Za-z0-9_.-]+\.[A-Za-z0-9_-]+\.js$/;
+
+function isChunkAssetName(name) {
+  return CHUNK_NAME_RE.test(name) && !/\.min\.[0-9a-f]{8}\.js$/.test(name);
+}
+
+async function minifyChunkAssets() {
+  const entries = await readdir(templatesDir, { withFileTypes: true });
+  const chunkNames = entries
+    .filter((entry) => entry.isFile() && isChunkAssetName(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+
+  let minified = 0;
+  for (const name of chunkNames) {
+    const chunkPath = path.join(templatesDir, name);
+    const source = normalizeLineEndings(await readFile(chunkPath, "utf8"));
+    const result = await transform(source, {
+      charset: "utf8",
+      legalComments: "none",
+      loader: "js",
+      minify: true,
+      target: ADMIN_JS_MINIFY_TARGET,
+    });
+    const code = `${result.code.replace(/[ \t]+$/gm, "").trimEnd()}\n`;
+    if (code === source) continue;
+    await writeFile(chunkPath, code, "utf8");
+    await writePrecompressedAssets(chunkPath, code);
+    minified += 1;
+  }
+  console.log(`Minified ${minified} of ${chunkNames.length} bundle chunks`);
+}
+
 async function main() {
+  // Chunks first: the entry is hashed from its own minified body, and it must
+  // still import chunk file names that exist afterwards. Minifying in place
+  // leaves those names untouched, so the order only matters for the log.
+  await minifyChunkAssets();
   for (const build of JS_BUILDS) {
     await buildJsAsset(build);
   }

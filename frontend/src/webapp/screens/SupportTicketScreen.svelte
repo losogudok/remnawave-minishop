@@ -4,11 +4,8 @@
   import { Badge, Button, ScrollArea, Skeleton } from "$components/ui/index.js";
   import Card from "$components/ui/card.svelte";
   import { ArrowLeft } from "$components/ui/icons.js";
-  import {
-    TicketComposer,
-    TicketMessageBubble,
-    TypingIndicator,
-  } from "$components/patterns/webapp/index.js";
+  import TicketComposer from "$components/patterns/webapp/TicketComposer.svelte";
+  import { TicketMessageBubble, TypingIndicator } from "$components/patterns/webapp/index.js";
   import type { TicketMessageButtonLike } from "$components/patterns/webapp/types";
   import { webappRichTextLabels } from "$lib/webapp/richTextLabels.js";
   import { wireTextLength } from "$lib/richtext/telegramHtml";

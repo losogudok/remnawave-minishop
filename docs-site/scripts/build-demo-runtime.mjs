@@ -119,30 +119,38 @@ async function copyRuntimeAsset(name) {
   await copyFile(path.join(templatesDir, name), path.join(runtimeDir, name));
 }
 
-// `<name>` is whatever Rolldown derived from the entry module, so it keeps every
-// dot the source file had: `broadcastStore.svelte.ts` becomes the chunk
+// `<name>` is whatever Rolldown derived from the entry module, so it can keep a
+// dot the source file had: `broadcastStore.svelte.ts` once produced the chunk
 // `subscription_webapp_admin.broadcastStore.svelte.<hash>.js`. Matching a fixed
 // two segments silently left those chunks behind, the demo answered the import
 // with its SPA fallback HTML, and the whole admin bundle failed to load.
-function isAdminChunkName(name) {
-  return (
-    /^subscription_webapp_admin\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+\.js$/.test(
-      name,
-    ) && !name.startsWith("subscription_webapp_admin.min.")
+function chunkNameMatcher(baseName) {
+  const pattern = new RegExp(
+    String.raw`^${baseName}\.[A-Za-z0-9_.-]+\.[A-Za-z0-9_-]+\.js$`,
   );
+  return (name) =>
+    pattern.test(name) &&
+    name !== `${baseName}.js` &&
+    !name.startsWith(`${baseName}.min.`);
 }
 
-async function copyAdminChunks() {
+const isAdminChunkName = chunkNameMatcher("subscription_webapp_admin");
+const isDemoChunkName = chunkNameMatcher("subscription_webapp_docs_demo");
+
+async function copyBundleChunks() {
   const entries = await readdir(templatesDir);
-  const chunkNames = entries.filter(isAdminChunkName).sort();
+  const chunkNames = entries
+    .filter((name) => isAdminChunkName(name) || isDemoChunkName(name))
+    .sort();
   await Promise.all(chunkNames.map((name) => copyRuntimeAsset(name)));
   return chunkNames;
 }
 
-// Only sibling admin chunks are checked. A bundled dependency can carry a
+// Only sibling bundle chunks are checked. A bundled dependency can carry a
 // string like `import("./types.js")` in code that never runs, and treating that
 // as a real edge would fail the build on files that were never meant to exist.
-const ADMIN_CHUNK_REFERENCE_RE = /["'](\.\/subscription_webapp_admin\.[^"']+\.js)["']/g;
+const CHUNK_REFERENCE_RE =
+  /["'](\.\/subscription_webapp(?:_admin|_docs_demo)?\.[^"']+\.js)["']/g;
 
 /**
  * Fail the build when a copied module references a chunk that was not copied.
@@ -152,14 +160,14 @@ const ADMIN_CHUNK_REFERENCE_RE = /["'](\.\/subscription_webapp_admin\.[^"']+\.js
  * as a module, and the admin panel just quietly refuses to open. Checking the
  * module graph turns that into a build error instead.
  */
-async function assertAdminModuleGraphIsComplete(entryNames) {
+async function assertModuleGraphIsComplete(entryNames) {
   const present = new Set(await readdir(runtimeDir));
   const missing = new Map();
   for (const name of entryNames) {
     const source = await readFile(path.join(runtimeDir, name), "utf8");
-    ADMIN_CHUNK_REFERENCE_RE.lastIndex = 0;
+    CHUNK_REFERENCE_RE.lastIndex = 0;
     let match;
-    while ((match = ADMIN_CHUNK_REFERENCE_RE.exec(source)) !== null) {
+    while ((match = CHUNK_REFERENCE_RE.exec(source)) !== null) {
       const target = match[1].slice(2);
       if (present.has(target)) continue;
       const importers = missing.get(target) || [];
@@ -172,7 +180,7 @@ async function assertAdminModuleGraphIsComplete(entryNames) {
     .map(([target, importers]) => `  ${target} (imported by ${importers.join(", ")})`)
     .join("\n");
   throw new Error(
-    `Demo runtime is missing admin chunks the bundle imports:\n${details}`,
+    `Demo runtime is missing chunks the bundles import:\n${details}`,
   );
 }
 
@@ -243,7 +251,7 @@ async function appHtml() {
       <div class="app-boot-fallback" role="status" aria-label="Loading demo"></div>
     </main>
     <script id="i18n" type="application/json">${i18n}</script>
-    <script src="${runtimeBase}/subscription_webapp_docs_demo.js" defer></script>
+    <script type="module" src="${runtimeBase}/subscription_webapp_docs_demo.js"></script>
   </body>
 </html>
 `;
@@ -259,12 +267,12 @@ await mkdir(path.join(runtimeDir, "app"), { recursive: true });
 
 const html = await appHtml();
 
-const [, , , , adminChunkNames] = await Promise.all([
+const [, , , , bundleChunkNames] = await Promise.all([
   copyRuntimeAsset("subscription_webapp_docs_demo.js"),
   copyRuntimeAsset("subscription_webapp_docs_demo.css"),
   copyRuntimeAsset("subscription_webapp_admin.js"),
   copyRuntimeAsset("subscription_webapp_admin.css"),
-  copyAdminChunks(),
+  copyBundleChunks(),
   copyDirectory(
     path.join(templatesDir, "default-brand"),
     path.join(runtimeDir, "default-brand"),
@@ -281,9 +289,10 @@ const [, , , , adminChunkNames] = await Promise.all([
   ),
 ]);
 
-await assertAdminModuleGraphIsComplete([
+await assertModuleGraphIsComplete([
   "subscription_webapp_admin.js",
-  ...adminChunkNames,
+  "subscription_webapp_docs_demo.js",
+  ...bundleChunkNames,
 ]);
 
 console.log(

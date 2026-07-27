@@ -10,9 +10,11 @@
   import type { SupportStore } from "../lib/webapp/stores/supportStore.js";
   import AppLaunchScreen from "./screens/AppLaunchScreen.svelte";
   import AuthenticatedDialogs from "./AuthenticatedDialogs.svelte";
+  import { lazyScreen } from "$lib/webapp/lazyScreen.svelte.js";
+
   import AuthenticatedScreens from "./AuthenticatedScreens.svelte";
+  import ScreenLoading from "./screens/ScreenLoading.svelte";
   import AuthScreen from "./auth/AuthScreen.svelte";
-  import InstallGuideScreen from "./screens/InstallGuideScreen.svelte";
   import {
     type BooleanAction,
     type StringAction,
@@ -250,6 +252,13 @@
   );
   const loadDevices = $derived(appActions.loadDevices);
   const openAdminPanel = $derived(appActions.openAdminPanel);
+  // Same chunk the authenticated install tab loads, so a customer who has
+  // already opened one path gets the other for free.
+  const installGuideScreen = lazyScreen(() => import("./screens/InstallGuideScreen.svelte"));
+
+  $effect(() => {
+    if (mode === "publicInstall") installGuideScreen.load();
+  });
   const openAppLaunchTarget = $derived(appActions.openAppLaunchTarget);
   const openAppLink = $derived(appActions.openAppLink);
   const openConnectLink = $derived(appActions.openConnectLink);
@@ -287,21 +296,26 @@
         <BrandMark {brand} />
         <strong>{brandTitle}</strong>
       </a>
-      <InstallGuideScreen
-        {currentLang}
-        {telegramPlatform}
-        user={{}}
-        subscription={publicInstallSubscription || {
-          install_share_token: publicInstallToken,
-        }}
-        {goHome}
-        openConnectLink={openPublicConnectLink}
-        {openExternalLink}
-        {openAppLink}
-        {copyText}
-        {t}
-        publicMode
-      />
+      {#if installGuideScreen.component}
+        {@const Screen = installGuideScreen.component}
+        <Screen
+          {currentLang}
+          {telegramPlatform}
+          user={{}}
+          subscription={publicInstallSubscription || {
+            install_share_token: publicInstallToken,
+          }}
+          {goHome}
+          openConnectLink={openPublicConnectLink}
+          {openExternalLink}
+          {openAppLink}
+          {copyText}
+          {t}
+          publicMode
+        />
+      {:else}
+        <ScreenLoading label={t("wa_loading")} />
+      {/if}
     </div>
   {:else if mode === "login"}
     <AuthScreen

@@ -110,10 +110,25 @@ async def admin_js_asset_route(request: web.Request) -> web.Response:
     return await _js_asset_route(request, base_name="subscription_webapp_admin")
 
 
+async def js_chunk_asset_route(request: web.Request) -> web.Response:
+    return await _js_chunk_asset_route(request, base_name="subscription_webapp")
+
+
 async def admin_js_chunk_asset_route(request: web.Request) -> web.Response:
+    return await _js_chunk_asset_route(request, base_name="subscription_webapp_admin")
+
+
+async def _js_chunk_asset_route(request: web.Request, *, base_name: str) -> web.Response:
+    """Serve one code-split chunk of a bundle.
+
+    The name is rebuilt from the matched parts rather than taken whole, so a
+    request can only ever address a file inside the templates directory that
+    the bundler itself produced.
+    """
+
     chunk_name = request.match_info.get("chunk_name", "")
     asset_hash = request.match_info.get("asset_hash", "")
-    filename = f"subscription_webapp_admin.{chunk_name}.{asset_hash}.js"
+    filename = f"{base_name}.{chunk_name}.{asset_hash}.js"
     response = await _serve_template_asset(
         request,
         filename,
