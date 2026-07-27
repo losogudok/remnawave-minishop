@@ -25,6 +25,12 @@ const templatesDir = path.join(
 );
 const themesDir = path.join(repoRoot, "backend", "bot", "app", "web", "themes");
 const localesDir = path.join(repoRoot, "locales");
+// Payment provider logos are addressed as `/provider-logos/<file>.png` by the
+// settings manifest, which is a site-root path in production. The demo has to
+// answer the same path, so they land at the site root rather than under the
+// runtime base.
+const providerLogosSourceDir = path.join(frontendRoot, "public", "provider-logos");
+const providerLogosTargetDir = path.join(siteRoot, "public", "provider-logos");
 const runtimeBase = "/demo/runtime";
 const installGuidesConfigUrl =
   "https://raw.githubusercontent.com/legiz-ru/my-remnawave/main/sub-page/subpage-config/multiapp.json";
@@ -113,9 +119,14 @@ async function copyRuntimeAsset(name) {
   await copyFile(path.join(templatesDir, name), path.join(runtimeDir, name));
 }
 
+// `<name>` is whatever Rolldown derived from the entry module, so it keeps every
+// dot the source file had: `broadcastStore.svelte.ts` becomes the chunk
+// `subscription_webapp_admin.broadcastStore.svelte.<hash>.js`. Matching a fixed
+// two segments silently left those chunks behind, the demo answered the import
+// with its SPA fallback HTML, and the whole admin bundle failed to load.
 function isAdminChunkName(name) {
   return (
-    /^subscription_webapp_admin\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.js$/.test(
+    /^subscription_webapp_admin\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+\.js$/.test(
       name,
     ) && !name.startsWith("subscription_webapp_admin.min.")
   );
@@ -126,6 +137,43 @@ async function copyAdminChunks() {
   const chunkNames = entries.filter(isAdminChunkName).sort();
   await Promise.all(chunkNames.map((name) => copyRuntimeAsset(name)));
   return chunkNames;
+}
+
+// Only sibling admin chunks are checked. A bundled dependency can carry a
+// string like `import("./types.js")` in code that never runs, and treating that
+// as a real edge would fail the build on files that were never meant to exist.
+const ADMIN_CHUNK_REFERENCE_RE = /["'](\.\/subscription_webapp_admin\.[^"']+\.js)["']/g;
+
+/**
+ * Fail the build when a copied module references a chunk that was not copied.
+ *
+ * A missing chunk is invisible at build time and nearly invisible at runtime:
+ * the demo server answers with its SPA fallback, the browser rejects the HTML
+ * as a module, and the admin panel just quietly refuses to open. Checking the
+ * module graph turns that into a build error instead.
+ */
+async function assertAdminModuleGraphIsComplete(entryNames) {
+  const present = new Set(await readdir(runtimeDir));
+  const missing = new Map();
+  for (const name of entryNames) {
+    const source = await readFile(path.join(runtimeDir, name), "utf8");
+    ADMIN_CHUNK_REFERENCE_RE.lastIndex = 0;
+    let match;
+    while ((match = ADMIN_CHUNK_REFERENCE_RE.exec(source)) !== null) {
+      const target = match[1].slice(2);
+      if (present.has(target)) continue;
+      const importers = missing.get(target) || [];
+      importers.push(name);
+      missing.set(target, importers);
+    }
+  }
+  if (!missing.size) return;
+  const details = [...missing]
+    .map(([target, importers]) => `  ${target} (imported by ${importers.join(", ")})`)
+    .join("\n");
+  throw new Error(
+    `Demo runtime is missing admin chunks the bundle imports:\n${details}`,
+  );
 }
 
 function wait(ms) {
@@ -205,12 +253,13 @@ await ensureFrontendDependencies();
 await runNpm(["--prefix", frontendRoot, "run", "build:docs-demo"]);
 
 await rm(runtimeDir, { recursive: true, force: true });
+await rm(providerLogosTargetDir, { recursive: true, force: true });
 await mkdir(runtimeDir, { recursive: true });
 await mkdir(path.join(runtimeDir, "app"), { recursive: true });
 
 const html = await appHtml();
 
-await Promise.all([
+const [, , , , adminChunkNames] = await Promise.all([
   copyRuntimeAsset("subscription_webapp_docs_demo.js"),
   copyRuntimeAsset("subscription_webapp_docs_demo.css"),
   copyRuntimeAsset("subscription_webapp_admin.js"),
@@ -221,6 +270,7 @@ await Promise.all([
     path.join(runtimeDir, "default-brand"),
   ),
   copyDirectory(themesDir, path.join(runtimeDir, "themes"), copyThemeFile),
+  copyDirectory(providerLogosSourceDir, providerLogosTargetDir),
   writeFile(path.join(runtimeDir, "app", "index.html"), html, "utf8"),
   installGuidesConfigPayload().then((payload) =>
     writeFile(
@@ -229,6 +279,11 @@ await Promise.all([
       "utf8",
     ),
   ),
+]);
+
+await assertAdminModuleGraphIsComplete([
+  "subscription_webapp_admin.js",
+  ...adminChunkNames,
 ]);
 
 console.log(

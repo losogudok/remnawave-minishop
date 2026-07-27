@@ -150,10 +150,15 @@
     current.commands.setContent(telegramHtmlToDoc(value), { emitUpdate: false });
   });
 
+  // Tiptap emits an `update` from `setEditable` unless told not to, and that
+  // update reports the untouched document as freshly edited — which writes the
+  // value back to the host, re-enters this flush, and loops.
   $effect(() => {
     const current = editor;
     if (!current || current.isDestroyed) return;
-    current.setEditable(!disabled);
+    const editable = !disabled;
+    if (current.isEditable === editable) return;
+    current.setEditable(editable, false);
   });
 
   $effect(() => {

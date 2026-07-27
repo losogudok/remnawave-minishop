@@ -570,7 +570,8 @@ async function openUserDetailFromCurrentSection(
   setPhase(`${phasePrefix}:user-card`);
   await expect(userDialog).toBeVisible();
   await assertFormFieldsNamed(page, `${phasePrefix}:user-card`);
-  await exerciseDialogTabs(userDialog, 4, setPhase, `${phasePrefix}:user-tabs`);
+  // Subscription, Activity, Logs, Actions, Message.
+  await exerciseDialogTabs(userDialog, 5, setPhase, `${phasePrefix}:user-tabs`);
 
   setPhase(`${phasePrefix}:user-avatar`);
   if (
@@ -612,16 +613,15 @@ async function openUserDetailFromCurrentSection(
   setPhase(`${phasePrefix}:message-composer`);
   // Messaging one customer moved out of the actions sheet into its own tab,
   // where the shared composer carries channels and buttons.
-  await userDialog
-    .locator('.admin-tabs-trigger:has-text("message"), [value="message"]')
-    .first()
-    .click();
+  // bits-ui renders the trigger's value as `data-value`, and the demo runs in
+  // Russian, so neither the label text nor a `value` attribute identifies it.
+  await userDialog.locator('.admin-tabs-trigger[data-value="message"]').first().click();
   const composerCard = userDialog.locator(".admin-user-action-sheet--message");
   await expect(composerCard).toBeVisible();
   await expect(composerCard.locator(".ProseMirror")).toBeVisible();
   await expect(composerCard.locator('[data-admin-action="send-user-message"]')).toBeDisabled();
   await assertFormFieldsNamed(page, `${phasePrefix}:message-composer`);
-  await userDialog.locator('[value="actions"]').first().click();
+  await userDialog.locator('.admin-tabs-trigger[data-value="actions"]').first().click();
   await expect(actionsPanel).toBeVisible();
 
   setPhase(`${phasePrefix}:ban-confirm`);

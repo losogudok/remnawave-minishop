@@ -133,11 +133,22 @@
 
     <div class="admin-user-message-channels">
       <label class="admin-check">
-        <input type="checkbox" bind:checked={telegramEnabled} />
+        <input
+          type="checkbox"
+          id="user-message-channel-telegram"
+          name="user-message-channel-telegram"
+          bind:checked={telegramEnabled}
+        />
         {at("broadcast_channel_telegram", {}, "Telegram")}
       </label>
       <label class="admin-check" class:is-disabled={!hasEmail}>
-        <input type="checkbox" bind:checked={emailEnabled} disabled={!hasEmail} />
+        <input
+          type="checkbox"
+          id="user-message-channel-email"
+          name="user-message-channel-email"
+          bind:checked={emailEnabled}
+          disabled={!hasEmail}
+        />
         {at("broadcast_channel_email", {}, "Email")}
         {#if !hasEmail}
           <small class="admin-muted">{at("user_message_no_email", {}, "no linked address")}</small>
