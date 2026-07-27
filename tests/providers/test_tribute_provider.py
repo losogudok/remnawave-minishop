@@ -35,6 +35,7 @@ from bot.payment_providers.tribute.shop import (
 from bot.services.subscription_service_impl.tariff_change_quote import (
     build_tariff_change_quote_snapshot,
 )
+from config.tariffs_config import TributeProductConfig, TributeTariffConfig
 
 API_KEY = "tribute-api-key"
 SHOP_ID = 731
@@ -139,20 +140,37 @@ def _tariff(
     *,
     key: str = "pro",
     billing_model: str = "period",
-    subscription_id: int = 101,
+    subscription_id: int | None = 101,
+    link: str | None = "https://t.me/tribute/app?startapp=subscription",
     period_ids: dict[str, int] | None = None,
+    period_links: dict[str, str] | None = None,
+    period_subscription_ids: dict[str, int] | None = None,
     traffic_products: dict[str, SimpleNamespace] | None = None,
     premium_traffic_products: dict[str, SimpleNamespace] | None = None,
 ) -> SimpleNamespace:
+    """A tariff whose ``tribute`` block is the real model, not a stand-in.
+
+    Period-to-subscription resolution lives in TributeTariffConfig, so the
+    checkout and webhook bindings must be exercised against it.
+    """
+
     return SimpleNamespace(
         key=key,
         billing_model=billing_model,
-        tribute=SimpleNamespace(
-            link="https://t.me/tribute/app?startapp=subscription",
+        tribute=TributeTariffConfig(
+            link=link,
             subscription_id=subscription_id,
             period_ids=period_ids or {"1": 201, "3": 203},
-            traffic_products=traffic_products or {},
-            premium_traffic_products=premium_traffic_products or {},
+            period_links=period_links or {},
+            period_subscription_ids=period_subscription_ids or {},
+            traffic_products={
+                units: TributeProductConfig(product_id=item.product_id, link=item.link)
+                for units, item in (traffic_products or {}).items()
+            },
+            premium_traffic_products={
+                units: TributeProductConfig(product_id=item.product_id, link=item.link)
+                for units, item in (premium_traffic_products or {}).items()
+            },
         ),
     )
 
@@ -206,6 +224,7 @@ def _service(
 
 def _payload(
     *,
+    subscription_id: int = 101,
     period_id: int = 201,
     price: int = 1234,
     amount: int = 987,
@@ -216,7 +235,7 @@ def _payload(
     return TributeSubscriptionPayload.model_validate(
         {
             "subscription_name": "Pro access",
-            "subscription_id": 101,
+            "subscription_id": subscription_id,
             "period_id": period_id,
             "period": "monthly",
             "price": price,
@@ -3734,6 +3753,7 @@ def test_shop_order_response_accepts_missing_optional_webapp_payment_url() -> No
 def test_shop_checkout_resolver_uses_creator_fallback_for_unsupported_period() -> None:
     settings = _settings(_tariff(period_ids={"2": 202}))
     settings.TRIBUTE_SHOP_ENABLED = True
+    settings.TRIBUTE_SHOP_ID = SHOP_ID
 
     assert tribute_service.tribute_supports_checkout(
         settings,
@@ -3778,7 +3798,7 @@ def test_shop_limit_metadata_is_exposed_only_when_dynamic_shop_is_enabled() -> N
 
 
 def test_tribute_checkout_promo_policy_matches_shop_capabilities() -> None:
-    settings = SimpleNamespace(TRIBUTE_SHOP_ENABLED=True)
+    settings = SimpleNamespace(TRIBUTE_SHOP_ENABLED=True, TRIBUTE_SHOP_ID=SHOP_ID)
     discount = SimpleNamespace(
         discount_amount=20.0,
         effects=SimpleNamespace(
@@ -3839,7 +3859,7 @@ def test_billing_quote_rejects_unsupported_tribute_promo_before_checkout() -> No
     )
 
     error = billing_payments._payment_promo_error(
-        settings=SimpleNamespace(TRIBUTE_SHOP_ENABLED=True),
+        settings=SimpleNamespace(TRIBUTE_SHOP_ENABLED=True, TRIBUTE_SHOP_ID=SHOP_ID),
         method="tribute",
         months=1,
         sale_mode="subscription@pro",
@@ -3850,9 +3870,82 @@ def test_billing_quote_rejects_unsupported_tribute_promo_before_checkout() -> No
     assert error.code == "promo_not_supported_by_payment_method"
 
 
+def test_shop_without_a_shop_id_falls_back_to_creator_subscriptions() -> None:
+    """A flag with no shop behind it must not advertise Shop-only checkouts.
+
+    The panel writes provider overrides with a plain assignment, which does not
+    re-run the validator pairing the flag with the ID, so this state is
+    reachable from the admin UI.
+    """
+
+    settings = _settings(_tariff(period_ids={"1": 201}))
+    settings.TRIBUTE_SHOP_ENABLED = True
+    settings.TRIBUTE_SHOP_ID = None
+
+    # Periods that a Creator subscription covers stay purchasable...
+    assert tribute_service.tribute_supports_checkout(settings, 1, "subscription@pro")
+    assert tribute_service.tribute_price_managed_externally(settings, 1, "subscription@pro")
+    # ...and everything only Shop Orders can price does not.
+    for sale_mode in ("hwid_devices@pro", "tariff_upgrade@pro"):
+        assert not tribute_service.tribute_supports_checkout(settings, 1, sale_mode)
+    assert tribute_service.tribute_shop_amount_metadata(settings, "RUB") is None
+
+    settings.TRIBUTE_SHOP_ID = SHOP_ID
+    assert tribute_service.tribute_supports_checkout(settings, 1, "hwid_devices@pro")
+
+
+def test_service_shop_mode_requires_a_configured_shop_id() -> None:
+    configured = _service(
+        config=TributeConfig(ENABLED=True, API_KEY=API_KEY, SHOP_ENABLED=True, SHOP_ID=SHOP_ID)
+    )
+    assert configured.shop_enabled is True
+
+    service = _service(config=TributeConfig(ENABLED=True, API_KEY=API_KEY))
+    service.config.SHOP_ENABLED = True
+    service.config.SHOP_ID = None
+
+    assert service.shop_enabled is False
+
+
+def test_each_period_can_be_sold_by_its_own_tribute_subscription() -> None:
+    tariff = _tariff(
+        link=None,
+        subscription_id=None,
+        period_ids={"1": 201, "12": 4001},
+        period_links={
+            "1": "https://t.me/tribute/app?startapp=ep_monthly",
+            "12": "https://t.me/tribute/app?startapp=ep_yearly",
+        },
+        period_subscription_ids={"1": 101, "12": 909},
+    )
+    settings = _settings(tariff)
+
+    monthly = tribute_service._binding_for_checkout(
+        settings, sale_mode="subscription@pro", months=1
+    )
+    yearly = tribute_service._binding_for_checkout(
+        settings, sale_mode="subscription@pro", months=12
+    )
+
+    assert monthly is not None and yearly is not None
+    assert monthly.link.endswith("ep_monthly")
+    assert monthly.subscription_id == 101
+    assert yearly.link.endswith("ep_yearly")
+    assert yearly.subscription_id == 909
+    # A webhook is attributed by the subscription that actually sold it.
+    binding = tribute_service._binding_for_event(
+        settings,
+        _payload(subscription_id=909, period_id=4001),
+    )
+    assert binding is not None
+    assert binding.months == 12
+    assert binding.tariff_key == "pro"
+
+
 def test_tribute_price_authority_switches_between_shop_and_static_fallback() -> None:
     settings = _settings(_tariff(period_ids={"2": 202}))
     settings.TRIBUTE_SHOP_ENABLED = True
+    settings.TRIBUTE_SHOP_ID = SHOP_ID
 
     assert not tribute_service.tribute_price_managed_externally(
         settings,

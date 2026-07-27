@@ -4143,8 +4143,24 @@
    reordered. The 24px column lines up with the handle the Sortable renders. */
 .admin-row-editor-line.admin-row-editor-period {
   grid-template-columns:
-    24px minmax(72px, 0.8fr) minmax(100px, 0.9fr) minmax(90px, 1fr) minmax(90px, 1fr)
+    24px minmax(72px, 0.8fr) minmax(90px, 1fr) minmax(90px, 1fr)
     minmax(120px, 1fr) minmax(120px, 1fr) var(--admin-row-editor-action-size);
+}
+
+/* A package row without the Tribute mapping columns, used while the provider
+   is switched off. */
+.admin-row-editor-line.admin-row-editor-package {
+  grid-template-columns:
+    24px minmax(80px, 0.7fr) minmax(100px, 1fr) minmax(100px, 1fr)
+    var(--admin-row-editor-action-size);
+}
+
+/* One local period mapped to the Tribute subscription that sells it. */
+.admin-row-editor-line.admin-row-editor-tribute-period {
+  grid-template-columns: minmax(72px, 0.6fr) minmax(180px, 1.6fr) minmax(110px, 0.9fr) minmax(
+      100px,
+      0.8fr
+    );
 }
 
 .admin-row-editor-line.admin-row-editor-drag {
@@ -4454,6 +4470,8 @@
   .admin-row-editor-line.admin-row-editor-period,
   .admin-row-editor-line.admin-row-editor-drag,
   .admin-row-editor-line.admin-row-editor-tribute-product,
+  .admin-row-editor-line.admin-row-editor-tribute-period,
+  .admin-row-editor-line.admin-row-editor-package,
   .admin-row-editor-line.admin-row-editor-hwid,
   .admin-row-editor-line.admin-row-editor-broadcast {
     grid-template-columns: 1fr;

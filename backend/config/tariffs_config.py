@@ -3,7 +3,7 @@ import logging
 import math
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, NamedTuple
 from urllib.parse import urlsplit
 
 from pydantic import (
@@ -292,10 +292,31 @@ class TributeProductConfig(BaseModel):
         return validate_tribute_link(value)
 
 
+class TributePeriodSubscription(NamedTuple):
+    """One local period resolved to the Tribute subscription that sells it."""
+
+    months: int
+    link: str
+    subscription_id: int
+    period_id: int
+
+
 class TributeTariffConfig(BaseModel):
+    """Creator-side mapping for one tariff.
+
+    A period may be sold by its own Tribute subscription, with its own share
+    link and subscription id, because Tribute publishes one subscription per
+    offer rather than one per tariff. ``period_links`` and
+    ``period_subscription_ids`` carry those overrides; the tariff-level
+    ``link``/``subscription_id`` pair stays as the default for periods that do
+    not declare their own, which is what a single-subscription tariff uses.
+    """
+
     link: str | None = None
     subscription_id: PositiveStrictInt | None = None
     period_ids: dict[str, PositiveStrictInt] = Field(default_factory=dict)
+    period_links: dict[str, str] = Field(default_factory=dict)
+    period_subscription_ids: dict[str, PositiveStrictInt] = Field(default_factory=dict)
     traffic_products: dict[str, TributeProductConfig] = Field(default_factory=dict)
     premium_traffic_products: dict[str, TributeProductConfig] = Field(default_factory=dict)
 
@@ -304,7 +325,17 @@ class TributeTariffConfig(BaseModel):
     def validate_link(cls, value: str | None) -> str | None:
         return validate_tribute_link(value) if value is not None else None
 
-    @field_validator("period_ids", mode="before")
+    @field_validator("period_links")
+    @classmethod
+    def validate_period_links(cls, value: dict[str, str]) -> dict[str, str]:
+        return {months: validate_tribute_link(link) for months, link in value.items()}
+
+    @field_validator(
+        "period_ids",
+        "period_links",
+        "period_subscription_ids",
+        mode="before",
+    )
     @classmethod
     def normalize_period_ids(cls, value: Any) -> Any:
         return _normalize_tribute_map_keys(
@@ -326,11 +357,29 @@ class TributeTariffConfig(BaseModel):
     def validate_config(self) -> "TributeTariffConfig":
         if (self.link is None) != (self.subscription_id is None):
             raise ValueError("Tribute subscription link and subscription_id must be set together")
-        if self.period_ids and not self.has_subscription:
-            raise ValueError("Tribute period IDs require subscription link and subscription_id")
+        for months in (*self.period_links, *self.period_subscription_ids):
+            if months not in self.period_ids:
+                raise ValueError(
+                    f"Tribute period {months} needs a period_id to override its subscription"
+                )
+        unresolved = sorted(
+            int(months)
+            for months in self.period_ids
+            if self._resolved_link(months) is None or self._resolved_subscription_id(months) is None
+        )
+        if unresolved:
+            raise ValueError(
+                "Tribute periods need a subscription link and subscription_id, either "
+                f"their own or the tariff default: {unresolved}"
+            )
         period_ids = list(self.period_ids.values())
         if len(period_ids) != len(set(period_ids)):
             raise ValueError("Tribute period IDs must be unique within a tariff")
+        provider_periods = [
+            (item.subscription_id, item.period_id) for item in self.iter_period_subscriptions()
+        ]
+        if len(provider_periods) != len(set(provider_periods)):
+            raise ValueError("Tribute subscription periods must be unique within a tariff")
         if (
             not self.has_subscription
             and not self.traffic_products
@@ -339,12 +388,48 @@ class TributeTariffConfig(BaseModel):
             raise ValueError("Tribute tariff config must define a subscription or digital product")
         return self
 
+    def _resolved_link(self, months: str) -> str | None:
+        return self.period_links.get(months) or self.link
+
+    def _resolved_subscription_id(self, months: str) -> int | None:
+        return self.period_subscription_ids.get(months) or self.subscription_id
+
     @property
     def has_subscription(self) -> bool:
-        return self.subscription_id is not None
+        return self.subscription_id is not None or bool(self.period_ids)
 
     def period_id_for_months(self, months: int) -> int | None:
         return self.period_ids.get(str(int(months)))
+
+    def subscription_for_months(self, months: int) -> TributePeriodSubscription | None:
+        """The Tribute subscription that sells one local period, if mapped."""
+
+        key = str(int(months))
+        period_id = self.period_ids.get(key)
+        link = self._resolved_link(key)
+        subscription_id = self._resolved_subscription_id(key)
+        if period_id is None or link is None or subscription_id is None:
+            return None
+        return TributePeriodSubscription(
+            months=int(months),
+            link=link,
+            subscription_id=int(subscription_id),
+            period_id=int(period_id),
+        )
+
+    def iter_period_subscriptions(self) -> list[TributePeriodSubscription]:
+        resolved = (self.subscription_for_months(int(months)) for months in self.period_ids)
+        return [item for item in resolved if item is not None]
+
+    def months_for_provider_period(self, subscription_id: int, period_id: int) -> int | None:
+        return next(
+            (
+                item.months
+                for item in self.iter_period_subscriptions()
+                if item.subscription_id == subscription_id and item.period_id == period_id
+            ),
+            None,
+        )
 
     def months_for_period_id(self, period_id: int) -> int | None:
         return next(
@@ -722,30 +807,31 @@ class TariffsConfig(BaseModel):
             tribute = tariff.tribute
             if tribute is None:
                 continue
-            subscription_id = tribute.subscription_id
-            if subscription_id is not None:
-                for months, period_id in tribute.period_ids.items():
-                    target = (tariff.key, int(months))
-                    provider_period = (subscription_id, period_id)
-                    previous_target = tribute_period_owners.get(provider_period)
-                    if previous_target is not None and previous_target != target:
-                        raise ValueError(
-                            "Tribute subscription period "
-                            f"{subscription_id}/{period_id} cannot map to both "
-                            f"{previous_target[0]}/{previous_target[1]} and "
-                            f"{target[0]}/{target[1]}"
-                        )
-                    tribute_period_owners[provider_period] = target
-                previous_subscription_owner = tribute_subscription_owners.get(subscription_id)
+            # A period may carry its own subscription, so ownership is checked
+            # per resolved (subscription, period) pair rather than once per
+            # tariff.
+            for item in tribute.iter_period_subscriptions():
+                target = (tariff.key, item.months)
+                provider_period = (item.subscription_id, item.period_id)
+                previous_target = tribute_period_owners.get(provider_period)
+                if previous_target is not None and previous_target != target:
+                    raise ValueError(
+                        "Tribute subscription period "
+                        f"{item.subscription_id}/{item.period_id} cannot map to both "
+                        f"{previous_target[0]}/{previous_target[1]} and "
+                        f"{target[0]}/{target[1]}"
+                    )
+                tribute_period_owners[provider_period] = target
+                previous_subscription_owner = tribute_subscription_owners.get(item.subscription_id)
                 if (
                     previous_subscription_owner is not None
                     and previous_subscription_owner != tariff.key
                 ):
                     raise ValueError(
-                        f"Tribute subscription {subscription_id} cannot belong to "
+                        f"Tribute subscription {item.subscription_id} cannot belong to "
                         f"both tariffs {previous_subscription_owner} and {tariff.key}"
                     )
-                tribute_subscription_owners[subscription_id] = tariff.key
+                tribute_subscription_owners[item.subscription_id] = tariff.key
             for kind, units, product in tribute.iter_products():
                 product_target_owner = (tariff.key, kind, units)
                 previous_product_target = tribute_product_owners.get(product.product_id)
@@ -784,9 +870,9 @@ class TariffsConfig(BaseModel):
     def tribute_target(self, subscription_id: int, period_id: int) -> tuple[Tariff, int] | None:
         for tariff in self.tariffs:
             tribute = tariff.tribute
-            if tribute is None or tribute.subscription_id != subscription_id:
+            if tribute is None:
                 continue
-            months = tribute.months_for_period_id(period_id)
+            months = tribute.months_for_provider_period(subscription_id, period_id)
             if months is not None:
                 return tariff, months
         return None

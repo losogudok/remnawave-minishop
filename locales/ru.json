@@ -2663,8 +2663,8 @@
   "admin_tariff_label_tribute_product_id": "ID товара Tribute",
   "admin_tariff_label_tribute_product_link": "Ссылка на товар Tribute",
   "admin_tariff_label_tribute_subscription_id": "ID подписки Tribute",
-  "admin_tariff_hint_tribute_link": "Только Creator fallback: используйте HTTPS-ссылку, опубликованную в Tribute. Shop API не требует ссылку тарифа; чтобы отключить fallback, оставьте все поля Tribute пустыми",
-  "admin_tariff_hint_tribute_subscription_id": "Fallback подписки Creator: укажите числовой subscription_id и соответствующий period_id для каждого локального срока выше",
+  "admin_tariff_hint_tribute_link": "Ссылка HTTPS, опубликованная в Tribute для этой подписки. Оставьте поля периода пустыми, чтобы не продавать его через Tribute",
+  "admin_tariff_hint_tribute_subscription_id": "Числовой subscription_id из Tribute для этого периода вместе с его period_id",
   "admin_tariff_traffic_strategy_inherit": "Использовать глобальную USER_TRAFFIC_STRATEGY",
   "admin_tariff_model_period_desc": "пользователь покупает фиксированный срок (1/3/12 мес. и т.д.)",
   "admin_tariff_model_period_label": "Период",
@@ -2707,7 +2707,7 @@
   "admin_tariff_topup_title": "Докупка трафика поверх месячного лимита",
   "admin_tariff_topup_traffic_hint": "Для трафиковой модели отдельные «докупки» не нужны — пакеты, которые вы настроили на вкладке «Цены», и являются докупками: пользователь покупает их повторно по мере исчерпания.",
   "admin_tariff_tribute_products_hint": "Только Creator fallback. Свяжите каждый фиксированный пакет трафика с Digital Product и задайте в Tribute ту же цену: Shop Orders используют локальную цену, а Creator-ссылки её не передают",
-  "admin_tariff_tribute_subtitle": "Только Creator fallback. Укажите ссылку и ID заранее созданной подписки, а также ID её периодов. Shop API не требует эти поля и использует локальные цены; Creator-ссылка использует цену и цикл списаний из Tribute",
+  "admin_tariff_tribute_subtitle": "Только Creator fallback. Tribute публикует отдельную подписку под каждое предложение, поэтому у каждого периода ниже своя ссылка и свои ID той подписки, которая его продаёт. Цену и цикл списаний задаёт Tribute; локальные цены выше ему не передаются",
   "admin_tariff_tribute_title": "Подписка Tribute",
   "admin_tariff_visible": "Тариф виден на витрине",
   "admin_tariffs_catalog_subtitle": "Периоды, цены, трафик и доступы пользователей.",
@@ -3104,5 +3104,9 @@
   "wa_format_pre": "Блок кода",
   "wa_format_quote": "Цитата",
   "wa_format_link": "Ссылка",
-  "wa_format_link_apply": "ОК"
+  "wa_format_link_apply": "ОК",
+  "admin_tariff_col_tribute_link": "Ссылка на подписку Tribute",
+  "admin_tariff_col_tribute_subscription_id": "ID подписки Tribute",
+  "admin_tariff_tribute_period_months": "{months} мес.",
+  "admin_tariff_tribute_period_hint": "Оставьте период пустым, чтобы не продавать его через Tribute. Для каждого продаваемого периода заполните ссылку и оба ID"
 }

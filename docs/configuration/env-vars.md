@@ -485,7 +485,7 @@ PAYMENT_TRIBUTE_TELEGRAM_EMOJI
 | --- | --- |
 | `TRIBUTE_ENABLED` | Включить провайдера Tribute и обработку его webhook. |
 | `TRIBUTE_API_KEY` | API key Tribute для Shop/Creator API; тем же секретом проверяется HMAC-SHA256 в `trbt-signature`. |
-| `TRIBUTE_SHOP_ENABLED` | Использовать Shop API как основной режим: создавать динамические заказы на точную локальную сумму. Требует настроенного Tribute Shop для этого API key. |
+| `TRIBUTE_SHOP_ENABLED` | Использовать Shop API как основной режим: создавать динамические заказы на точную локальную сумму. Работает только вместе с `TRIBUTE_SHOP_ID`: без него флаг игнорируется и остаются только Creator-подписки. |
 | `TRIBUTE_SHOP_ID` | Положительный числовой ID конкретного Shop. Обязателен при `TRIBUTE_SHOP_ENABLED=true`; передаётся при создании заказа и проверяется в каждом Shop webhook. |
 
 При `TRIBUTE_SHOP_ENABLED=true` рекуррентные Shop Orders доступны только для локальных

@@ -66,6 +66,20 @@ export function moveDraftRowHandler(
   return (from, to) => tariffsStore.moveDraftRow(field, from, to);
 }
 
+/**
+ * Whether the Tribute provider is switched on for this deployment.
+ *
+ * The Tribute mapping is a provider integration, not a property of the tariff,
+ * so its fields only make sense — and are only ever read — while the provider
+ * is enabled. The tariffs endpoint already reports every provider's state, so
+ * no extra request is needed.
+ */
+export function tributeEnabled(tariffsStore: TariffsStore): boolean {
+  return (tariffsStore.providerCurrencySupport || []).some(
+    (provider) => provider.id === "tribute" && provider.enabled
+  );
+}
+
 export function defaultCurrencyCode(tariffsCatalog: TariffsCatalog): string {
   return (normalizeCurrencyKey(tariffsCatalog?.default_currency || "rub") as string).toUpperCase();
 }

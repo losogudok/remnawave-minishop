@@ -2663,8 +2663,8 @@
   "admin_tariff_label_tribute_product_id": "Tribute product ID",
   "admin_tariff_label_tribute_product_link": "Tribute product link",
   "admin_tariff_label_tribute_subscription_id": "Tribute subscription ID",
-  "admin_tariff_hint_tribute_link": "Creator fallback only: use the HTTPS link published by Tribute. Shop API needs no tariff link; leave all Tribute fields empty to disable fallback for this tariff",
-  "admin_tariff_hint_tribute_subscription_id": "Creator subscription fallback: enter the numeric subscription_id and the matching period_id for each local period above",
+  "admin_tariff_hint_tribute_link": "The HTTPS link Tribute published for that subscription. Leave a period's fields empty to keep it off Tribute",
+  "admin_tariff_hint_tribute_subscription_id": "Numeric subscription_id from Tribute for this period, together with its period_id",
   "admin_tariff_traffic_strategy_inherit": "Use global USER_TRAFFIC_STRATEGY",
   "admin_tariff_model_period_desc": "the user buys a fixed period (1/3/12 months, etc.)",
   "admin_tariff_model_period_label": "Period",
@@ -2707,7 +2707,7 @@
   "admin_tariff_topup_title": "Traffic top-up over the monthly limit",
   "admin_tariff_topup_traffic_hint": "For the traffic model, separate top-ups are not needed: packages configured on the Prices tab are the top-ups users can buy again as they run out.",
   "admin_tariff_tribute_products_hint": "Creator fallback only. Map each fixed traffic package to a Tribute Digital Product and configure the same price in Tribute; Shop Orders use the local price, but Creator links do not send it",
-  "admin_tariff_tribute_subtitle": "Creator fallback only. Enter the pre-created subscription link and ID plus matching period IDs. Shop API needs none of these fields and uses local prices; Creator links use the price and billing cycle configured in Tribute",
+  "admin_tariff_tribute_subtitle": "Optional Creator fallback. Tribute publishes one subscription per offer, so each period below carries the link and IDs of the subscription that sells it. Tribute owns the price and the billing cycle; the local prices above are not sent to it",
   "admin_tariff_tribute_title": "Tribute subscription",
   "admin_tariff_visible": "Tariff is visible in the storefront",
   "admin_tariffs_catalog_subtitle": "Periods, prices, traffic, and user access.",
@@ -3104,5 +3104,9 @@
   "wa_format_pre": "Code block",
   "wa_format_quote": "Quote",
   "wa_format_link": "Link",
-  "wa_format_link_apply": "OK"
+  "wa_format_link_apply": "OK",
+  "admin_tariff_col_tribute_link": "Tribute subscription link",
+  "admin_tariff_col_tribute_subscription_id": "Tribute subscription ID",
+  "admin_tariff_tribute_period_months": "{months} mo.",
+  "admin_tariff_tribute_period_hint": "Leave a period empty to keep it off Tribute. Fill the link and both IDs for every period you sell through it"
 }

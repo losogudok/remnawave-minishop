@@ -6759,6 +6759,7 @@
         "type": "object"
       },
       "TributeTariffConfig": {
+        "description": "Creator-side mapping for one tariff.\n\nA period may be sold by its own Tribute subscription, with its own share\nlink and subscription id, because Tribute publishes one subscription per\noffer rather than one per tariff. ``period_links`` and\n``period_subscription_ids`` carry those overrides; the tariff-level\n``link``/``subscription_id`` pair stays as the default for periods that do\nnot declare their own, which is what a single-subscription tariff uses.",
         "properties": {
           "link": {
             "anyOf": [
@@ -6778,6 +6779,21 @@
               "type": "integer"
             },
             "title": "Period Ids",
+            "type": "object"
+          },
+          "period_links": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Period Links",
+            "type": "object"
+          },
+          "period_subscription_ids": {
+            "additionalProperties": {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            "title": "Period Subscription Ids",
             "type": "object"
           },
           "premium_traffic_products": {

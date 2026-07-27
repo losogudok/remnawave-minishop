@@ -73,6 +73,48 @@ describe("tariffDraft", () => {
     });
   });
 
+  it("keeps each period on the Tribute subscription that sells it", () => {
+    // Tribute publishes one subscription per offer, so a tariff can map a
+    // different subscription for every period it sells.
+    const tariff = {
+      key: "pro",
+      enabled_periods: [1, 12],
+      prices_rub: { 1: 200, 12: 2000 },
+      tribute: {
+        period_ids: { 1: 1001, 12: 4001 },
+        period_links: {
+          1: "https://t.me/tribute/app?startapp=ep_monthly",
+          12: "https://t.me/tribute/app?startapp=ep_yearly",
+        },
+        period_subscription_ids: { 1: 101, 12: 909 },
+      },
+    };
+
+    const draft = draftFromTariff(tariff, "rub");
+
+    expect(draft.periodRows[0]).toMatchObject({
+      months: 1,
+      tribute_period_id: 1001,
+      tribute_link: "https://t.me/tribute/app?startapp=ep_monthly",
+      tribute_subscription_id: 101,
+    });
+    expect(draft.periodRows[1]).toMatchObject({
+      months: 12,
+      tribute_subscription_id: 909,
+    });
+
+    expect(tariffFromDraft(draft)).toMatchObject({
+      tribute: {
+        period_ids: { 1: 1001, 12: 4001 },
+        period_links: {
+          1: "https://t.me/tribute/app?startapp=ep_monthly",
+          12: "https://t.me/tribute/app?startapp=ep_yearly",
+        },
+        period_subscription_ids: { 1: 101, 12: 909 },
+      },
+    });
+  });
+
   it("round-trips period tariffs through draft form", () => {
     const tariff = {
       key: "pro",
@@ -127,6 +169,8 @@ describe("tariffDraft", () => {
         referral_inviter: 3,
         referral_referee: 1,
         tribute_period_id: 1001,
+        tribute_link: "",
+        tribute_subscription_id: "",
       },
       {
         months: 3,
@@ -135,6 +179,8 @@ describe("tariffDraft", () => {
         referral_inviter: "",
         referral_referee: "",
         tribute_period_id: 1003,
+        tribute_link: "",
+        tribute_subscription_id: "",
       },
     ]);
 

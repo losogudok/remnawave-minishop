@@ -243,7 +243,9 @@ class TributeService(
 
     @property
     def shop_enabled(self) -> bool:
-        return bool(self.configured and self.config.SHOP_ENABLED)
+        # The Shop ID is part of "configured": every order and every webhook is
+        # validated against it, so a missing one means Creator links only.
+        return bool(self.configured and self.config.SHOP_ENABLED and (self.config.SHOP_ID or 0) > 0)
 
     async def create_shop_order(
         self,

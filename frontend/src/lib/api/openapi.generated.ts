@@ -4675,7 +4675,17 @@ export interface components {
       /** Product Id */
       product_id: number;
     };
-    /** TributeTariffConfig */
+    /**
+     * TributeTariffConfig
+     * @description Creator-side mapping for one tariff.
+     *
+     *     A period may be sold by its own Tribute subscription, with its own share
+     *     link and subscription id, because Tribute publishes one subscription per
+     *     offer rather than one per tariff. ``period_links`` and
+     *     ``period_subscription_ids`` carry those overrides; the tariff-level
+     *     ``link``/``subscription_id`` pair stays as the default for periods that do
+     *     not declare their own, which is what a single-subscription tariff uses.
+     */
     TributeTariffConfig: {
       /**
        * Link
@@ -4684,6 +4694,14 @@ export interface components {
       link: string | null;
       /** Period Ids */
       period_ids?: {
+        [key: string]: number;
+      };
+      /** Period Links */
+      period_links?: {
+        [key: string]: string;
+      };
+      /** Period Subscription Ids */
+      period_subscription_ids?: {
         [key: string]: number;
       };
       /** Premium Traffic Products */

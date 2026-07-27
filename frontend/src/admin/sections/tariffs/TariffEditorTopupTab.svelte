@@ -12,6 +12,7 @@
     draftRowInputHandler,
     draftRowKey,
     moveDraftRowHandler,
+    tributeEnabled as isTributeEnabled,
     type DraftRow,
     type ReorderHandler,
     type TranslateFn,
@@ -28,6 +29,9 @@
     formatCurrencyPriceColumnLabel(at, defaultCurrencyCode)
   );
   const currencyPriceAriaLabel = $derived(formatCurrencyPriceAriaLabel(at, defaultCurrencyCode));
+  // Tribute mapping is provider configuration, so it stays out of the
+  // editor until the provider itself is switched on.
+  const tributeEnabled = $derived(isTributeEnabled(tariffsState));
   const moveTopupRow: ReorderHandler = moveDraftRowHandler(tariffsStore, "topupRows");
 
   function addTopupRow(): void {
@@ -82,29 +86,35 @@
           >
         </Label.Root>
       </div>
-      <p class="admin-muted">
-        {at(
-          "tariff_tribute_products_hint",
-          {},
-          "Optional. Map each fixed traffic package to a Tribute Digital Product. Configure its price in Tribute to match this package; the local price is not sent to Tribute"
-        )}
-      </p>
+      {#if tributeEnabled}
+        <p class="admin-muted">
+          {at(
+            "tariff_tribute_products_hint",
+            {},
+            "Optional. Map each fixed traffic package to a Tribute Digital Product. Configure its price in Tribute to match this package; the local price is not sent to Tribute"
+          )}
+        </p>
+      {/if}
       {#if tariffDraft.topupRows.length}
         <div class="admin-row-editor">
           <div
-            class="admin-row-editor-line admin-row-editor-tribute-product admin-row-editor-header"
+            class="admin-row-editor-line {tributeEnabled
+              ? 'admin-row-editor-tribute-product'
+              : 'admin-row-editor-package'} admin-row-editor-header"
           >
             <span></span>
             <span>{at("tariff_col_volume_gb", {}, "Volume, GB")}</span>
             <span>{currencyPriceColumnLabel}</span>
             <span>{at("tariff_col_price_stars_full", {}, "Price, ⭐ Stars")}</span>
-            <span>{at("tariff_col_tribute_product_id", {}, "Tribute product ID")}</span>
-            <span>{at("tariff_col_tribute_product_link", {}, "Tribute product link")}</span>
+            {#if tributeEnabled}
+              <span>{at("tariff_col_tribute_product_id", {}, "Tribute product ID")}</span>
+              <span>{at("tariff_col_tribute_product_link", {}, "Tribute product link")}</span>
+            {/if}
             <span></span>
           </div>
           <Sortable
             items={tariffDraft.topupRows}
-            class="admin-row-editor-line admin-row-editor-tribute-product"
+            class={`admin-row-editor-line ${tributeEnabled ? "admin-row-editor-tribute-product" : "admin-row-editor-package"}`}
             getKey={draftRowKey}
             handleLabel={at("tariff_package_reorder", {}, "Drag to reorder")}
             onReorder={moveTopupRow}
@@ -149,44 +159,46 @@
                 oninput={draftRowInputHandler(tariffsStore, "topupRows", index, "stars")}
                 aria-label={at("tariff_label_price_stars", {}, "Price in Telegram Stars")}
               />
-              <span class="admin-row-editor-mobile-label" aria-hidden="true"
-                >{at("tariff_col_tribute_product_id", {}, "Tribute product ID")}</span
-              >
-              <Input
-                class="input"
-                type="number"
-                min="1"
-                step="1"
-                placeholder={at("tariff_placeholder_tribute_product_id", {}, "e.g. 501")}
-                value={row.tribute_product_id}
-                oninput={draftRowInputHandler(
-                  tariffsStore,
-                  "topupRows",
-                  index,
-                  "tribute_product_id"
-                )}
-                aria-label={at("tariff_label_tribute_product_id", {}, "Tribute product ID")}
-              />
-              <span class="admin-row-editor-mobile-label" aria-hidden="true"
-                >{at("tariff_col_tribute_product_link", {}, "Tribute product link")}</span
-              >
-              <Input
-                class="input"
-                type="url"
-                placeholder={at(
-                  "tariff_placeholder_tribute_product_link",
-                  {},
-                  "https://t.me/tribute/app?startapp=..."
-                )}
-                value={row.tribute_product_link}
-                oninput={draftRowInputHandler(
-                  tariffsStore,
-                  "topupRows",
-                  index,
-                  "tribute_product_link"
-                )}
-                aria-label={at("tariff_label_tribute_product_link", {}, "Tribute product link")}
-              />
+              {#if tributeEnabled}
+                <span class="admin-row-editor-mobile-label" aria-hidden="true"
+                  >{at("tariff_col_tribute_product_id", {}, "Tribute product ID")}</span
+                >
+                <Input
+                  class="input"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder={at("tariff_placeholder_tribute_product_id", {}, "e.g. 501")}
+                  value={row.tribute_product_id}
+                  oninput={draftRowInputHandler(
+                    tariffsStore,
+                    "topupRows",
+                    index,
+                    "tribute_product_id"
+                  )}
+                  aria-label={at("tariff_label_tribute_product_id", {}, "Tribute product ID")}
+                />
+                <span class="admin-row-editor-mobile-label" aria-hidden="true"
+                  >{at("tariff_col_tribute_product_link", {}, "Tribute product link")}</span
+                >
+                <Input
+                  class="input"
+                  type="url"
+                  placeholder={at(
+                    "tariff_placeholder_tribute_product_link",
+                    {},
+                    "https://t.me/tribute/app?startapp=..."
+                  )}
+                  value={row.tribute_product_link}
+                  oninput={draftRowInputHandler(
+                    tariffsStore,
+                    "topupRows",
+                    index,
+                    "tribute_product_link"
+                  )}
+                  aria-label={at("tariff_label_tribute_product_link", {}, "Tribute product link")}
+                />
+              {/if}
               <AdminButton
                 size="sm"
                 variant="danger"

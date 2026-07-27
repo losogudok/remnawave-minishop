@@ -48,6 +48,8 @@ type ParsedPeriodRow = {
   referral_inviter: number | null;
   referral_referee: number | null;
   tribute_period_id: number | null;
+  tribute_link: string;
+  tribute_subscription_id: number | null;
 };
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -107,6 +109,8 @@ export function emptyTariffDraft(): TariffDraft {
         referral_inviter: 3,
         referral_referee: 1,
         tribute_period_id: "",
+        tribute_link: "",
+        tribute_subscription_id: "",
       },
       {
         months: 3,
@@ -115,6 +119,8 @@ export function emptyTariffDraft(): TariffDraft {
         referral_inviter: 7,
         referral_referee: 3,
         tribute_period_id: "",
+        tribute_link: "",
+        tribute_subscription_id: "",
       },
       {
         months: 6,
@@ -123,6 +129,8 @@ export function emptyTariffDraft(): TariffDraft {
         referral_inviter: 15,
         referral_referee: 7,
         tribute_period_id: "",
+        tribute_link: "",
+        tribute_subscription_id: "",
       },
       {
         months: 12,
@@ -131,6 +139,8 @@ export function emptyTariffDraft(): TariffDraft {
         referral_inviter: 30,
         referral_referee: 15,
         tribute_period_id: "",
+        tribute_link: "",
+        tribute_subscription_id: "",
       },
     ],
     topupRows: [],
@@ -276,6 +286,8 @@ export function draftFromTariff(tariff: UnknownRecord, defaultCurrency = "rub"):
   const rubPrices = asRecord(tariff.prices_rub);
   const tribute = asRecord(tariff.tribute);
   const tributePeriodIds = asRecord(tribute.period_ids);
+  const tributePeriodLinks = asRecord(tribute.period_links);
+  const tributePeriodSubscriptionIds = asRecord(tribute.period_subscription_ids);
   // enabled_periods comes first so its order (the configured purchase order)
   // is preserved; any extra price-only months are appended afterwards.
   const months = new Set([
@@ -297,6 +309,8 @@ export function draftFromTariff(tariff: UnknownRecord, defaultCurrency = "rub"):
       referral_inviter: asRecord(tariff.referral_bonus_days_inviter)[String(month)] ?? "",
       referral_referee: asRecord(tariff.referral_bonus_days_referee)[String(month)] ?? "",
       tribute_period_id: tributePeriodIds[String(month)] ?? "",
+      tribute_link: String(tributePeriodLinks[String(month)] ?? ""),
+      tribute_subscription_id: scalarDraftValue(tributePeriodSubscriptionIds[String(month)]),
     }));
   const names = asStringRecord(tariff.names);
   const descriptions = asStringRecord(tariff.descriptions);
@@ -518,6 +532,8 @@ export function tariffFromDraft(draft: TariffDraft, fallbackCurrency = "rub"): U
         referral_inviter: parseIntNumber(row.referral_inviter),
         referral_referee: parseIntNumber(row.referral_referee),
         tribute_period_id: parseNumber(row.tribute_period_id),
+        tribute_link: String(row.tribute_link || "").trim(),
+        tribute_subscription_id: parseNumber(row.tribute_subscription_id),
       }))
       .filter(hasPositiveMonths)
       .filter((row) => {
@@ -553,10 +569,32 @@ export function tariffFromDraft(draft: TariffDraft, fallbackCurrency = "rub"): U
         .filter((row) => row.tribute_period_id !== null)
         .map((row) => [String(row.months), row.tribute_period_id])
     );
-    if (tributeLink || tributeSubscriptionId !== null || Object.keys(tributePeriodIds).length > 0) {
-      tribute.link = tributeLink;
-      tribute.subscription_id = tributeSubscriptionId;
+    // A period may be sold by its own Tribute subscription; the tariff-level
+    // pair stays as the default for the periods that do not name one.
+    const tributePeriodLinks = Object.fromEntries(
+      rows.filter((row) => row.tribute_link).map((row) => [String(row.months), row.tribute_link])
+    );
+    const tributePeriodSubscriptionIds = Object.fromEntries(
+      rows
+        .filter((row) => row.tribute_subscription_id !== null)
+        .map((row) => [String(row.months), row.tribute_subscription_id])
+    );
+    if (
+      tributeLink ||
+      tributeSubscriptionId !== null ||
+      Object.keys(tributePeriodIds).length > 0 ||
+      Object.keys(tributePeriodLinks).length > 0 ||
+      Object.keys(tributePeriodSubscriptionIds).length > 0
+    ) {
+      if (tributeLink) tribute.link = tributeLink;
+      if (tributeSubscriptionId !== null) tribute.subscription_id = tributeSubscriptionId;
       tribute.period_ids = tributePeriodIds;
+      if (Object.keys(tributePeriodLinks).length) {
+        tribute.period_links = tributePeriodLinks;
+      }
+      if (Object.keys(tributePeriodSubscriptionIds).length) {
+        tribute.period_subscription_ids = tributePeriodSubscriptionIds;
+      }
     }
     const topupPackages = packageSetFromRows(draft.topupRows, "gb", defaultCurrency);
     if (topupPackages) tariff.topup_packages = topupPackages;

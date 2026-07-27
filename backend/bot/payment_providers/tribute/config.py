@@ -182,12 +182,15 @@ def _shop_event_fingerprint(
 
 
 def _tariff_tribute_config(tariff: Any) -> Any | None:
+    """The tariff's Creator mapping, if it declares one.
+
+    Whether a subscription is actually sellable is decided per period by
+    ``subscription_for_months``: a tariff may map only some of its periods, and
+    each of those may point at its own Tribute subscription.
+    """
+
     tribute = getattr(tariff, "tribute", None)
-    if not tribute:
-        return None
-    if not getattr(tribute, "link", None) or not getattr(tribute, "subscription_id", None):
-        return None
-    return tribute
+    return tribute or None
 
 
 def _product_for_units(tribute: Any, kind: str, units: float) -> Any | None:
@@ -282,15 +285,17 @@ def _binding_for_checkout(
     tribute = _tariff_tribute_config(tariff)
     if tribute is None:
         return None
-    period_id = getattr(tribute, "period_ids", {}).get(str(normalized_months))
-    if not period_id:
+    # Each period can be sold by its own Tribute subscription, so the link and
+    # the subscription id come from the period rather than from the tariff.
+    subscription = tribute.subscription_for_months(normalized_months)
+    if subscription is None:
         return None
     return TributePlanBinding(
         tariff_key=str(tariff.key),
-        months=normalized_months,
-        link=str(tribute.link),
-        subscription_id=int(tribute.subscription_id),
-        period_id=int(period_id),
+        months=subscription.months,
+        link=subscription.link,
+        subscription_id=subscription.subscription_id,
+        period_id=subscription.period_id,
     )
 
 
@@ -304,32 +309,33 @@ def _binding_for_event(
     matches: list[TributePlanBinding] = []
     for tariff in getattr(tariffs_config, "tariffs", ()) or ():
         tribute = _tariff_tribute_config(tariff)
-        if tribute is None or int(tribute.subscription_id) != payload.subscription_id:
+        if tribute is None:
             continue
-        period_ids = {
-            str(months): int(period_id)
-            for months, period_id in (getattr(tribute, "period_ids", {}) or {}).items()
-        }
-        matching_months = [
-            int(months)
-            for months, period_id in period_ids.items()
-            if int(period_id) == payload.period_id
+        # Only the periods sold by the subscription this event is about; a
+        # tariff can map several subscriptions, one per period.
+        owned = [
+            item
+            for item in tribute.iter_period_subscriptions()
+            if item.subscription_id == payload.subscription_id
         ]
-        if not matching_months and payload.type == "trial" and period_ids:
+        if not owned:
+            continue
+        matching = [item for item in owned if item.period_id == payload.period_id]
+        if not matching and payload.type == "trial":
             # Tribute trials have their own short provider period. The exact
             # grant still comes from expires_at; the smallest paid period is
             # only the local tariff attribution for the later conversion.
-            matching_months = [min(int(months) for months in period_ids)]
+            matching = [min(owned, key=lambda item: item.months)]
         matches.extend(
             [
                 TributePlanBinding(
                     tariff_key=str(tariff.key),
-                    months=months,
-                    link=str(tribute.link),
-                    subscription_id=int(tribute.subscription_id),
+                    months=item.months,
+                    link=item.link,
+                    subscription_id=item.subscription_id,
                     period_id=payload.period_id,
                 )
-                for months in matching_months
+                for item in matching
             ]
         )
     return matches[0] if len(matches) == 1 else None
@@ -356,21 +362,48 @@ def _shop_context_supported(months: Any, sale_mode: str) -> bool:
     }
 
 
-def _shop_enabled_for_source(source: Any) -> bool:
+def _positive_shop_id(value: Any) -> int | None:
+    try:
+        shop_id = int(value)
+    except (TypeError, ValueError):
+        return None
+    return shop_id if shop_id > 0 else None
+
+
+def _shop_flag_and_id(source: Any) -> tuple[bool | None, Any]:
     explicit = getattr(source, "TRIBUTE_SHOP_ENABLED", None)
     if explicit is not None:
-        return bool(explicit)
+        return bool(explicit), getattr(source, "TRIBUTE_SHOP_ID", None)
     provider_config_value = getattr(source, "SHOP_ENABLED", None)
     if provider_config_value is not None:
-        return bool(provider_config_value)
+        return bool(provider_config_value), getattr(source, "SHOP_ID", None)
     try:
         from ..registry import get_provider_bundle
 
         bundle = get_provider_bundle(TRIBUTE_SERVICE_KEY)
         config = bundle.config if bundle else None
-        return bool(config and getattr(config, "SHOP_ENABLED", False))
     except Exception:
+        return None, None
+    if config is None:
+        return None, None
+    return bool(getattr(config, "SHOP_ENABLED", False)), getattr(config, "SHOP_ID", None)
+
+
+def _shop_enabled_for_source(source: Any) -> bool:
+    """Shop Orders count as available only once a Shop ID is actually set.
+
+    The panel writes overrides straight onto the provider config, which does
+    not re-run the model validator that pairs the two fields, so the flag can
+    be on with no shop configured. Treating that as "enabled" offered device
+    and tariff-change checkouts that only Shop Orders can serve, and every one
+    of them failed at order creation. Without a Shop ID the provider sells the
+    configured Creator subscriptions and nothing else.
+    """
+
+    enabled, shop_id = _shop_flag_and_id(source)
+    if not enabled:
         return False
+    return _positive_shop_id(shop_id) is not None
 
 
 def tribute_shop_amount_supported(
