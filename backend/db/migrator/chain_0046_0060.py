@@ -290,6 +290,69 @@ def _migration_0052_add_entitlement_context_snapshots(connection: Connection) ->
         )
 
 
+def _migration_0053_restore_active_subscription_start_dates(connection: Connection) -> None:
+    """Restore immutable starts that legacy renewal writes moved forward."""
+
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+    if not {"payments", "subscriptions"}.issubset(table_names):
+        return
+
+    payment_columns = {column["name"] for column in inspector.get_columns("payments")}
+    subscription_columns = {column["name"] for column in inspector.get_columns("subscriptions")}
+    required_payment_columns = {
+        "created_at",
+        "sale_mode",
+        "status",
+        "subscription_duration_months",
+        "user_id",
+    }
+    required_subscription_columns = {
+        "end_date",
+        "is_active",
+        "start_date",
+        "user_id",
+    }
+    if not required_payment_columns.issubset(payment_columns) or not (
+        required_subscription_columns.issubset(subscription_columns)
+    ):
+        return
+
+    connection.execute(
+        text(
+            """
+            WITH first_subscription_payment AS (
+                SELECT
+                    user_id,
+                    MIN(created_at) AS first_paid_at
+                FROM payments
+                WHERE status = 'succeeded'
+                  AND created_at IS NOT NULL
+                  AND created_at <= NOW()
+                  AND COALESCE(subscription_duration_months, 0) > 0
+                  AND (
+                      sale_mode IS NULL
+                      OR LOWER(
+                          SPLIT_PART(SPLIT_PART(TRIM(sale_mode), '@', 1), '|', 1)
+                      ) = 'subscription'
+                  )
+                GROUP BY user_id
+            )
+            UPDATE subscriptions AS subscription
+            SET start_date = evidence.first_paid_at
+            FROM first_subscription_payment AS evidence
+            WHERE subscription.user_id = evidence.user_id
+              AND subscription.is_active IS TRUE
+              AND subscription.end_date > NOW()
+              AND (
+                  subscription.start_date IS NULL
+                  OR subscription.start_date > evidence.first_paid_at + INTERVAL '1 day'
+              )
+            """
+        )
+    )
+
+
 CHAIN_0046_0060: list[Migration] = [
     Migration(
         id="0046_add_recurring_payment_attribution",
@@ -325,5 +388,10 @@ CHAIN_0046_0060: list[Migration] = [
         id="0052_add_entitlement_context_snapshots",
         description="Bind one-time entitlement orders to their quoted subscription",
         upgrade=_migration_0052_add_entitlement_context_snapshots,
+    ),
+    Migration(
+        id="0053_restore_active_subscription_start_dates",
+        description="Restore immutable active subscription starts after legacy renewals",
+        upgrade=_migration_0053_restore_active_subscription_start_dates,
     ),
 ]

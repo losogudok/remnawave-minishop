@@ -73,6 +73,7 @@ EXPECTED_CORE_MIGRATION_IDS = [
     "0050_add_tribute_webhook_state",
     "0051_add_tariff_change_quote_snapshots",
     "0052_add_entitlement_context_snapshots",
+    "0053_restore_active_subscription_start_dates",
 ]
 
 

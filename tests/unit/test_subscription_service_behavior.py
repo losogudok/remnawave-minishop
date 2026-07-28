@@ -1119,13 +1119,14 @@ class SubscriptionServiceActivationDispatchTests(unittest.IsolatedAsyncioTestCas
                 last_name="User",
                 language_code="en",
             )
+            original_start = datetime.now(UTC) - timedelta(days=90)
             active_traffic = SimpleNamespace(
                 subscription_id=9,
                 user_id=42,
                 panel_user_uuid="panel-user",
                 panel_subscription_uuid="panel-sub",
                 tariff_key="traffic",
-                start_date=datetime.now(UTC),
+                start_date=original_start,
                 end_date=datetime(2099, 1, 1, tzinfo=UTC),
                 traffic_limit_bytes=50 * GIB,
                 traffic_used_bytes=15 * GIB,
@@ -1183,6 +1184,7 @@ class SubscriptionServiceActivationDispatchTests(unittest.IsolatedAsyncioTestCas
                 )
 
             payload = upsert.await_args.args[1]
+            self.assertEqual(payload["start_date"], original_start)
             self.assertEqual(payload["topup_balance_bytes"], 85 * GIB)
             self.assertEqual(payload["traffic_limit_bytes"], 100 * GIB)
 
@@ -1522,9 +1524,12 @@ class SubscriptionServiceActivationDispatchTests(unittest.IsolatedAsyncioTestCas
             _configure_persisted_panel_echo(service)
             service._send_payment_success_email = AsyncMock()
             now = datetime.now(UTC)
+            original_start = now - timedelta(days=120)
             current_end = now + timedelta(days=20)
+            provider_end = current_end + timedelta(days=31)
             current_sub = SimpleNamespace(
                 subscription_id=10,
+                start_date=original_start,
                 end_date=current_end,
                 tariff_key="standard",
                 topup_balance_bytes=0,
@@ -1596,10 +1601,13 @@ class SubscriptionServiceActivationDispatchTests(unittest.IsolatedAsyncioTestCas
                     payment_amount=150,
                     payment_db_id=99,
                     sale_mode="subscription@standard",
+                    authoritative_end_at=provider_end,
                 )
 
         self.assertEqual(result["hwid_devices_renewed_count"], 1)
         sub_payload = upsert_subscription.await_args.args[1]
+        self.assertEqual(sub_payload["start_date"], original_start)
+        self.assertEqual(sub_payload["end_date"], provider_end)
         self.assertEqual(sub_payload["effective_monthly_price_rub"], 100)
         create_options = service._get_or_create_panel_user_link_details.await_args.kwargs[
             "create_options"

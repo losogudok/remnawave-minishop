@@ -12,7 +12,7 @@ from db.dal import payment_dal, subscription_dal, tariff_dal, user_dal
 from db.models import Subscription
 
 from ._typing import SubscriptionServiceMixinContract
-from .entitlement_helpers import panel_user_create_options
+from .entitlement_helpers import immutable_subscription_start, panel_user_create_options
 from .hwid_limits import HwidDeviceLimits
 
 logger = logging.getLogger(__name__)
@@ -138,7 +138,11 @@ class TrafficMixin(SubscriptionServiceMixinContract):
             unlimited_override=regular_unlimited_override,
         )
 
-        start_date = datetime.now(UTC)
+        activation_at = datetime.now(UTC)
+        start_date = immutable_subscription_start(
+            active_sub if current_billing_model == "traffic" else None,
+            now=activation_at,
+        )
         # Set a far-future expiry to satisfy panel requirements; keep the latest known expiry if it's further.  # noqa: E501
         far_future = self._far_future()
         final_end_date = far_future

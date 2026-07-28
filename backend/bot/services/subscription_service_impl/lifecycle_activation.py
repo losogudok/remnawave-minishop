@@ -239,17 +239,25 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                 current_panel_used = getattr(current_active_sub, "traffic_used_bytes", None)
             if current_panel_limit is None:
                 current_panel_limit = getattr(current_active_sub, "traffic_limit_bytes", None)
-        start_date = datetime.now(UTC)
+        activation_at = datetime.now(UTC)
+        # Billing providers, promo grants, and HWID renewals use the next paid
+        # period boundary. Keep it separate from the immutable entitlement
+        # history persisted as ``subscription.start_date``.
+        period_start_date = activation_at
         if (
             current_active_sub
             and current_billing_model != "traffic"
             and current_active_sub.end_date
-            and current_active_sub.end_date > start_date
+            and current_active_sub.end_date > period_start_date
         ):
-            start_date = current_active_sub.end_date
+            period_start_date = current_active_sub.end_date
+        subscription_start_date = entitlement_helpers.immutable_subscription_start(
+            current_active_sub if current_billing_model != "traffic" else None,
+            now=activation_at,
+        )
 
-        end_after_months = add_months(start_date, months_int)
-        base_period_days = (end_after_months - start_date).days
+        end_after_months = add_months(period_start_date, months_int)
+        base_period_days = (end_after_months - period_start_date).days
         duration_days_total = base_period_days
         applied_promo_bonus_days = 0
 
@@ -268,7 +276,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                         charged_gb=None,
                         scope="regular",
                         promo=promo_effects,
-                        period_start=start_date,
+                        period_start=period_start_date,
                         base_period_end=end_after_months,
                     )
                 )
@@ -305,11 +313,11 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             # Webhook-driven subscription providers already calculated the
             # paid entitlement boundary. Never derive a second calendar period
             # locally or shrink access that another purchase has extended.
-            final_end_date = max(start_date, provider_end_at) + timedelta(
+            final_end_date = max(period_start_date, provider_end_at) + timedelta(
                 days=applied_promo_bonus_days
             )
         else:
-            final_end_date = start_date + timedelta(days=duration_days_total)
+            final_end_date = period_start_date + timedelta(days=duration_days_total)
         if hwid_renewal_devices > 0 and hwid_renewal_valid_until and applied_promo_bonus_days:
             hwid_renewal_valid_until = hwid_renewal_valid_until + timedelta(
                 days=applied_promo_bonus_days
@@ -322,7 +330,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                     session,
                     subscription_id=current_active_sub.subscription_id,
                     at=datetime.now(UTC),
-                    subscription_end_before=start_date,
+                    subscription_end_before=period_start_date,
                     delta=timedelta(days=applied_promo_bonus_days),
                 )
             except Exception:
@@ -443,7 +451,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             "user_id": user_id,
             "panel_user_uuid": panel_user_uuid,
             "panel_subscription_uuid": panel_sub_link_id,
-            "start_date": start_date,
+            "start_date": subscription_start_date,
             "end_date": final_end_date,
             "duration_months": months_int,
             "is_active": True,
