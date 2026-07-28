@@ -71,8 +71,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# A 502 from an Ubuntu mirror fails the image build outright, so index refreshes
+# retry instead of taking the release down with them.
 RUN set -eux; \
-    apt-get update; \
+    printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+      > /etc/apt/apt.conf.d/99-minishop-retries; \
+    apt_update_with_retries() { \
+      for attempt in 1 2 3 4 5; do \
+        if apt-get update; then return 0; fi; \
+        echo "apt-get update failed (attempt ${attempt}/5), retrying" >&2; \
+        sleep "$((attempt * 10))"; \
+      done; \
+      return 1; \
+    }; \
+    apt_update_with_retries; \
     DEBIAN_FRONTEND=noninteractive apt-get upgrade -y; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       ca-certificates \
@@ -86,7 +98,7 @@ RUN set -eux; \
       | gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg; \
     echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
       > /etc/apt/sources.list.d/pgdg.list; \
-    apt-get update; \
+    apt_update_with_retries; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends postgresql-client-17; \
     python3.12 -m venv "$VIRTUAL_ENV"; \
     # Keep curl in the runtime image: it backs the container healthcheck. A

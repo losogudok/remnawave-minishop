@@ -12,6 +12,7 @@ from aiohttp.web_log import AccessLogger, KeyMethod
 from sqlalchemy.orm import sessionmaker
 
 from bot.app.controllers.dispatcher_context import iter_dispatcher_services
+from bot.app.web.cache_headers import api_no_store_middleware
 from bot.app.web.context import (
     get_app_settings,
     set_core_context,
@@ -120,7 +121,7 @@ async def build_and_start_web_app(
     after_webhooks_started: Callable[[], Awaitable[None]] | None = None,
     plugin_context: PluginContext | None = None,
 ) -> None:
-    app = web.Application(middlewares=[observability_error_middleware])
+    app = web.Application(middlewares=[observability_error_middleware, api_no_store_middleware])
     _inject_shared_instances(app, dp, bot, settings, async_session_factory)
     if plugin_context is not None:
         _inject_observability_instances(app, plugin_context)

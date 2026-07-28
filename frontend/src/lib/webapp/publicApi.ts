@@ -753,6 +753,11 @@ export function createApiClient({
     const { signal, cleanup } = requestSignal(options.signal, requestTimeoutMs);
     try {
       const response = await fetch(buildApiUrl(path), {
+        // The Telegram Mini App WebView keeps its HTTP cache across openings,
+        // so a GET answered from it can show settings the server no longer
+        // serves. The server says no-store too; this covers the leg where a
+        // proxy drops the header.
+        cache: "no-store",
         ...options,
         headers,
         credentials: "same-origin",

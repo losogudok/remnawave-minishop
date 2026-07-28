@@ -401,6 +401,9 @@ export function createAppFactories({
     clearLoginTooltip: () => {
       authStore.update((state) => ({ ...state, loginEmailTooltipOpen: false }));
     },
+    refreshAccountDataOnResume: () => {
+      void loadData({ fresh: true, preserveView: true });
+    },
     refreshPendingActivationOnResume: () => {
       void activation.refreshPendingActivationOnResume();
     },
