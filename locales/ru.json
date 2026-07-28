@@ -2612,6 +2612,7 @@
   "admin_select": "Выбрать",
   "admin_send": "Отправить",
   "admin_settings_saved": "Настройки сохранены",
+  "admin_settings_saved_not_applied": "Сохранено, но эти настройки применятся только после перезапуска: {keys}",
   "admin_status_banned": "Бан",
   "admin_status_subscription": "Подписка",
   "admin_support_send_failed": "Ошибка отправки",

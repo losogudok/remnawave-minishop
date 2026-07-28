@@ -6257,6 +6257,7 @@ export interface operations {
         content: {
           "application/json": {
             applied: number;
+            not_applied: string[];
             /** @constant */
             ok: true;
             reverted: number;

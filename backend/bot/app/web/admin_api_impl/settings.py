@@ -11,6 +11,7 @@ from bot.app.web.context import (
 from bot.app.web.request_parsing import parse_body_or_400
 from bot.app.web.route_contracts import (
     INTEGER_SCHEMA,
+    STRING_SCHEMA,
     RouteContract,
     ok_envelope_for,
     ok_envelope_with,
@@ -51,7 +52,13 @@ register_contract(
     "admin_settings_patch_route",
     RouteContract(
         request_model=AdminSettingsPatchBody,
-        response_schema=ok_envelope_with({"applied": INTEGER_SCHEMA, "reverted": INTEGER_SCHEMA}),
+        response_schema=ok_envelope_with(
+            {
+                "applied": INTEGER_SCHEMA,
+                "reverted": INTEGER_SCHEMA,
+                "not_applied": {"type": "array", "items": STRING_SCHEMA},
+            }
+        ),
     ),
 )
 
@@ -157,4 +164,12 @@ async def admin_settings_patch_route(request: web.Request) -> web.Response:
 
     await refresh_webapp_runtime_after_settings_change(request, updates=updates, deletes=deletes)
 
-    return _ok({"applied": result.get("applied", 0), "reverted": result.get("reverted", 0)})
+    # ``not_applied`` keys were persisted but could not reach the running
+    # process, so the panel must not report them as taking effect.
+    return _ok(
+        {
+            "applied": result.get("applied", 0),
+            "reverted": result.get("reverted", 0),
+            "not_applied": result.get("not_applied", []),
+        }
+    )

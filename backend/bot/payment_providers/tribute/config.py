@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -23,6 +24,8 @@ from .shop import (
     normalize_shop_currency,
     tribute_shop_period_for_months,
 )
+
+logger = logging.getLogger(__name__)
 
 TRIBUTE_PROVIDER = "tribute"
 TRIBUTE_SERVICE_KEY = "tribute_service"
@@ -102,9 +105,17 @@ class TributeConfig(ProviderEnvConfig):
         raise ValueError("TRIBUTE_SHOP_ID must be a positive integer")
 
     @model_validator(mode="after")
-    def _validate_shop_config(self) -> Self:
+    def _warn_about_incomplete_shop_config(self) -> Self:
+        # The flag without a Shop ID is a supported state, not a fatal one:
+        # ``_shop_enabled_for_source`` sells Creator subscriptions until the ID
+        # arrives. Refusing to construct made the same combination brick the
+        # next boot — and the admin panel can produce it, because overrides are
+        # written straight onto this model without re-running the validator.
         if self.SHOP_ENABLED and self.SHOP_ID is None:
-            raise ValueError("TRIBUTE_SHOP_ID is required when TRIBUTE_SHOP_ENABLED is true")
+            logger.warning(
+                "TRIBUTE_SHOP_ENABLED is on without TRIBUTE_SHOP_ID: "
+                "Shop Orders stay off and Tribute sells configured Creator links only."
+            )
         return self
 
 

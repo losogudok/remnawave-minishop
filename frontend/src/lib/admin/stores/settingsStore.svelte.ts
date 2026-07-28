@@ -120,6 +120,12 @@ function normalizeSections(sections: unknown): SettingsSection[] {
   return Array.isArray(sections) ? (sections as SettingsSection[]) : [];
 }
 
+/** Keys the backend stored but could not apply to the running process. */
+function notAppliedKeys(response: unknown): string[] {
+  const value = (response as { not_applied?: unknown } | null)?.not_applied;
+  return Array.isArray(value) ? value.map((key) => String(key)) : [];
+}
+
 export function createSettingsStore({ api, onToast, at }: SettingsStoreOptions): SettingsStore {
   const state = $state<SettingsStore>({
     settingsSections: [],
@@ -212,7 +218,18 @@ export function createSettingsStore({ api, onToast, at }: SettingsStoreOptions):
         body: JSON.stringify(payload),
       });
       if (isOkResponse(res)) {
-        onToast(at("settings_saved", {}, "Settings saved"));
+        // A key the running process could not apply is stored but inert until
+        // a restart — saying "saved" would hide exactly that.
+        const notApplied = notAppliedKeys(res);
+        onToast(
+          notApplied.length
+            ? at(
+                "settings_saved_not_applied",
+                { keys: notApplied.join(", ") },
+                `Saved, but these settings need a restart to take effect: ${notApplied.join(", ")}`
+              )
+            : at("settings_saved", {}, "Settings saved")
+        );
         updateState((s) => ({ ...s, settingsDirty: {} }));
         if (onSettingsSaved) await onSettingsSaved({ updates, deletes });
         await loadSettings();

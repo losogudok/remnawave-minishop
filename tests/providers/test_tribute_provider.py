@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -1087,16 +1088,17 @@ def test_config_fails_closed_without_both_enablement_and_api_key() -> None:
     ).configured
 
 
-def test_shop_config_requires_shop_id_when_enabled() -> None:
-    with pytest.raises(
-        ValueError,
-        match="TRIBUTE_SHOP_ID is required when TRIBUTE_SHOP_ENABLED is true",
-    ):
-        TributeConfig(
-            ENABLED=True,
-            API_KEY=API_KEY,
-            SHOP_ENABLED=True,
-        )
+def test_shop_flag_without_shop_id_warns_and_keeps_shop_orders_off(caplog) -> None:
+    # Refusing to construct turned an incomplete-but-legal env into a boot
+    # failure of the whole app, while the runtime already downgrades it to
+    # Creator-only selling.
+    with caplog.at_level(logging.WARNING, logger="bot.payment_providers.tribute.config"):
+        config = TributeConfig(ENABLED=True, API_KEY=API_KEY, SHOP_ENABLED=True)
+
+    assert config.SHOP_ENABLED is True
+    assert config.SHOP_ID is None
+    assert not _service(config=config).shop_enabled
+    assert "TRIBUTE_SHOP_ENABLED is on without TRIBUTE_SHOP_ID" in caplog.text
 
 
 @pytest.mark.parametrize(

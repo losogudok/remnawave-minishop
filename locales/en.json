@@ -2612,6 +2612,7 @@
   "admin_select": "Select",
   "admin_send": "Send",
   "admin_settings_saved": "Settings saved",
+  "admin_settings_saved_not_applied": "Saved, but these settings take effect only after a restart: {keys}",
   "admin_status_banned": "Banned",
   "admin_status_subscription": "Subscription",
   "admin_support_send_failed": "Send failed",

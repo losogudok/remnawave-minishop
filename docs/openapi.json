@@ -10013,6 +10013,12 @@
                     "applied": {
                       "type": "integer"
                     },
+                    "not_applied": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
                     "ok": {
                       "const": true,
                       "type": "boolean"
@@ -10024,7 +10030,8 @@
                   "required": [
                     "ok",
                     "applied",
-                    "reverted"
+                    "reverted",
+                    "not_applied"
                   ],
                   "type": "object"
                 }
