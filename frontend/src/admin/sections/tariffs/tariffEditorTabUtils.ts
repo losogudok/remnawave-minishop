@@ -80,6 +80,37 @@ export function tributeEnabled(tariffsStore: TariffsStore): boolean {
   );
 }
 
+function hasTributeBinding(rows: unknown, keys: readonly string[]): boolean {
+  if (!Array.isArray(rows)) return false;
+  return rows.some((row) => {
+    const record = (row || {}) as Record<string, unknown>;
+    return keys.some((key) => String(record[key] ?? "").trim() !== "");
+  });
+}
+
+/**
+ * Whether the Tribute block belongs on screen for this tariff.
+ *
+ * Hiding it the moment the provider is switched off left whatever the tariff
+ * already carried invisible — and the editor still submits it, so a leftover
+ * binding could make the catalog unsavable with no field to clear.
+ */
+export function tributeSectionVisible(tariffsStore: TariffsStore, tariffDraft: unknown): boolean {
+  if (tributeEnabled(tariffsStore)) return true;
+  const draft = (tariffDraft || {}) as Record<string, unknown>;
+  if (String(draft.tributeLink ?? "").trim() || String(draft.tributeSubscriptionId ?? "").trim()) {
+    return true;
+  }
+  const periodKeys = ["tribute_link", "tribute_subscription_id", "tribute_period_id"] as const;
+  const productKeys = ["tribute_product_id", "tribute_product_link"] as const;
+  return (
+    hasTributeBinding(draft.periodRows, periodKeys) ||
+    hasTributeBinding(draft.topupRows, productKeys) ||
+    hasTributeBinding(draft.premiumTopupRows, productKeys) ||
+    hasTributeBinding(draft.trafficRows, productKeys)
+  );
+}
+
 export function defaultCurrencyCode(tariffsCatalog: TariffsCatalog): string {
   return (normalizeCurrencyKey(tariffsCatalog?.default_currency || "rub") as string).toUpperCase();
 }

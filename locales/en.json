@@ -2730,6 +2730,7 @@
   "admin_tariff_tribute_pick_subscription": "Subscription in Tribute",
   "admin_tariff_tribute_pick_subscription_hint": "Picking one fills the subscription and period IDs of every period below. The API does not publish the share link, so paste it yourself",
   "admin_tariff_tribute_product_unknown": "#{id} (not in Tribute)",
+  "admin_tariff_tribute_provider_off": "The Tribute provider is off. These fields are shown because the tariff still carries a mapping: clear them to drop it, or the saved catalog keeps referring to Tribute.",
   "admin_tariff_tribute_products_hint": "Creator fallback only. Map each fixed traffic package to a Tribute Digital Product and configure the same price in Tribute; Shop Orders use the local price, but Creator links do not send it",
   "admin_tariff_tribute_subtitle": "Optional Creator fallback. Tribute publishes one subscription per offer, so each period below carries the link and IDs of the subscription that sells it. Tribute owns the price and the billing cycle; the local prices above are not sent to it",
   "admin_tariff_tribute_title": "Tribute subscription",

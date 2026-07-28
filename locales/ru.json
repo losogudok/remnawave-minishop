@@ -2730,6 +2730,7 @@
   "admin_tariff_tribute_pick_subscription": "Подписка в Tribute",
   "admin_tariff_tribute_pick_subscription_hint": "Выбор подставит ID подписки и ID периода во все строки ниже. Ссылку API не отдаёт — вставьте её вручную",
   "admin_tariff_tribute_product_unknown": "#{id} (нет в Tribute)",
+  "admin_tariff_tribute_provider_off": "Провайдер Tribute выключен. Поля показаны потому, что в тарифе осталась привязка: очистите их, чтобы её убрать, иначе сохранённый каталог продолжит ссылаться на Tribute.",
   "admin_tariff_tribute_products_hint": "Только Creator fallback. Свяжите каждый фиксированный пакет трафика с Digital Product и задайте в Tribute ту же цену: Shop Orders используют локальную цену, а Creator-ссылки её не передают",
   "admin_tariff_tribute_subtitle": "Только Creator fallback. Tribute публикует отдельную подписку под каждое предложение, поэтому у каждого периода ниже своя ссылка и свои ID той подписки, которая его продаёт. Цену и цикл списаний задаёт Tribute; локальные цены выше ему не передаются",
   "admin_tariff_tribute_title": "Подписка Tribute",

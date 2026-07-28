@@ -15,7 +15,7 @@
     draftRowInputHandler,
     draftRowKey,
     moveDraftRowHandler,
-    tributeEnabled as isTributeEnabled,
+    tributeSectionVisible as isTributeSectionVisible,
     panelSquadOptions as toPanelSquadOptions,
     type DraftRow,
     type ReorderHandler,
@@ -40,9 +40,10 @@
     formatCurrencyPriceColumnLabel(at, defaultCurrencyCode)
   );
   const currencyPriceAriaLabel = $derived(formatCurrencyPriceAriaLabel(at, defaultCurrencyCode));
-  // Tribute mapping is provider configuration, so it stays out of the
-  // editor until the provider itself is switched on.
-  const tributeEnabled = $derived(isTributeEnabled(tariffsState));
+  // Tribute mapping is provider configuration, so it stays out of the editor
+  // until the provider is switched on — unless this tariff still carries a
+  // mapping, which has to stay reachable to be cleared.
+  const showTribute = $derived(isTributeSectionVisible(tariffsState, tariffDraft));
   const movePremiumTopupRow: ReorderHandler = moveDraftRowHandler(tariffsStore, "premiumTopupRows");
 
   function addPremiumSquad(value: string): void {
@@ -176,7 +177,7 @@
         >
       </div>
       <div class="admin-editor-section-actions">
-        {#if tributeEnabled}
+        {#if showTribute}
           <TributeCatalogButton {at} />
         {/if}
         <AdminButton size="sm" onclick={addPremiumTopupRow}
@@ -205,7 +206,7 @@
         >
       </Label.Root>
     </div>
-    {#if tributeEnabled}
+    {#if showTribute}
       <p class="admin-muted">
         {at(
           "tariff_tribute_products_hint",
@@ -218,7 +219,7 @@
     {#if tariffDraft.premiumTopupRows.length}
       <div class="admin-row-editor">
         <div
-          class="admin-row-editor-line {tributeEnabled
+          class="admin-row-editor-line {showTribute
             ? 'admin-row-editor-tribute-product'
             : 'admin-row-editor-package'} admin-row-editor-header"
         >
@@ -226,7 +227,7 @@
           <span>{at("tariff_col_volume_gb", {}, "Volume, GB")}</span>
           <span>{currencyPriceColumnLabel}</span>
           <span>{at("tariff_col_price_stars_full", {}, "Price, ⭐ Stars")}</span>
-          {#if tributeEnabled}
+          {#if showTribute}
             <span>{at("tariff_col_tribute_product_id", {}, "Tribute product ID")}</span>
             <span>{at("tariff_col_tribute_product_link", {}, "Tribute product link")}</span>
           {/if}
@@ -234,7 +235,7 @@
         </div>
         <Sortable
           items={tariffDraft.premiumTopupRows}
-          class={`admin-row-editor-line ${tributeEnabled ? "admin-row-editor-tribute-product" : "admin-row-editor-package"}`}
+          class={`admin-row-editor-line ${showTribute ? "admin-row-editor-tribute-product" : "admin-row-editor-package"}`}
           getKey={draftRowKey}
           handleLabel={at("tariff_package_reorder", {}, "Drag to reorder")}
           onReorder={movePremiumTopupRow}
@@ -279,7 +280,7 @@
               oninput={draftRowInputHandler(tariffsStore, "premiumTopupRows", index, "stars")}
               aria-label={at("tariff_label_price_stars", {}, "Price in Telegram Stars")}
             />
-            {#if tributeEnabled}
+            {#if showTribute}
               <span class="admin-row-editor-mobile-label" aria-hidden="true"
                 >{at("tariff_col_tribute_product_id", {}, "Tribute product ID")}</span
               >
