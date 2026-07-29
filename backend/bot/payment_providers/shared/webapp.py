@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from aiohttp import web
@@ -29,6 +30,7 @@ async def finalize_webapp_link_payment(
     payment_url: str | None,
     provider_payment_id: str | None = None,
     provider_response: Any | None = None,
+    checkout_expires_at: datetime | None = None,
     new_status: str | None = None,
     log_prefix: str,
 ) -> web.Response:
@@ -60,6 +62,7 @@ async def finalize_webapp_link_payment(
                 str(provider_payment_id),
                 new_status or payment.status,
                 provider_payment_url=payment_url,
+                checkout_expires_at=checkout_expires_at,
             )
             if updated is None:
                 raise LookupError(

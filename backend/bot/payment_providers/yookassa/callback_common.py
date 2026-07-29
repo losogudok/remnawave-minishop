@@ -212,6 +212,7 @@ async def _initiate_yk_payment(
                 payment_db_id=db_payment_record.payment_id,
                 new_status="pending_yookassa",
                 yk_payment_id=payment_response_yk.get("id"),
+                provider_payment_url=str(payment_response_yk["confirmation_url"]),
             )
             if selected_method_internal_id is not None:
                 try:

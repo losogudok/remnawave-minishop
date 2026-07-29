@@ -4,6 +4,7 @@ import contextlib
 import logging
 import math
 from dataclasses import dataclass, replace
+from datetime import datetime
 from typing import Any
 
 from aiogram import types
@@ -547,6 +548,7 @@ async def safe_store_provider_payment_id(
     *,
     provider_payment_id: str,
     provider_payment_url: str | None = None,
+    checkout_expires_at: datetime | None = None,
     new_status: str | None = None,
     log_prefix: str,
 ) -> bool:
@@ -563,6 +565,7 @@ async def safe_store_provider_payment_id(
             str(provider_payment_id),
             new_status or payment.status,
             provider_payment_url=provider_payment_url,
+            checkout_expires_at=checkout_expires_at,
         )
         if updated is None:
             raise LookupError(f"payment {payment.payment_id} disappeared before provider update")
@@ -609,6 +612,7 @@ async def render_link_or_fail(
     payment_url: str | None,
     provider_payment_id: str | None = None,
     provider_response: Any | None = None,
+    checkout_expires_at: datetime | None = None,
     new_status: str | None = None,
     lead_text: str | None = None,
     log_prefix: str,
@@ -627,6 +631,7 @@ async def render_link_or_fail(
             payment,
             provider_payment_id=provider_payment_id,
             provider_payment_url=payment_url,
+            checkout_expires_at=checkout_expires_at,
             new_status=new_status,
             log_prefix=log_prefix,
         )

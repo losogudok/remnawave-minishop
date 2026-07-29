@@ -666,8 +666,12 @@ async def get_latest_resumable_promo_payment(
                 normalized_status.in_(
                     (
                         "created",
+                        "active",
+                        "new",
+                        "open",
                         "process",
                         "processing",
+                        "underpaid",
                         "waiting_for_capture",
                     )
                 ),
@@ -682,7 +686,12 @@ async def get_latest_resumable_promo_payment(
 
 
 async def update_payment_status_by_db_id(
-    session: AsyncSession, payment_db_id: int, new_status: str, yk_payment_id: str | None = None
+    session: AsyncSession,
+    payment_db_id: int,
+    new_status: str,
+    yk_payment_id: str | None = None,
+    provider_payment_url: str | None = None,
+    checkout_expires_at: datetime | None = None,
 ) -> Payment | None:
     payment = await get_payment_by_db_id_for_update(session, payment_db_id)
     if payment:
@@ -698,6 +707,10 @@ async def update_payment_status_by_db_id(
             payment.updated_at = func.now()
         if yk_payment_id and payment.yookassa_payment_id is None:
             payment.yookassa_payment_id = yk_payment_id
+        if provider_payment_url:
+            payment.provider_payment_url = provider_payment_url
+        if checkout_expires_at is not None:
+            payment.checkout_expires_at = checkout_expires_at
         await session.flush()
         await session.refresh(payment)
         if not preserve_succeeded:
@@ -791,6 +804,7 @@ async def update_provider_payment_and_status(
     provider_payment_id: str,
     new_status: str,
     provider_payment_url: str | None = None,
+    checkout_expires_at: datetime | None = None,
 ) -> Payment | None:
     payment = await get_payment_by_db_id_for_update(session, payment_db_id)
     if payment:
@@ -807,6 +821,8 @@ async def update_provider_payment_and_status(
         payment.provider_payment_id = provider_payment_id
         if provider_payment_url:
             payment.provider_payment_url = provider_payment_url
+        if checkout_expires_at is not None:
+            payment.checkout_expires_at = checkout_expires_at
         await session.flush()
         await session.refresh(payment)
         if not preserve_succeeded:

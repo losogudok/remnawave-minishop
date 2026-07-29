@@ -18,7 +18,7 @@ from bot.plugins import PluginContext
 from bot.services.email_templates import render_account_merged
 from bot.services.notification_service import NotificationService
 from bot.services.user_email_notifications import send_user_notification_email
-from db.dal import payment_dal, subscription_dal, user_dal
+from db.dal import payment_dal, payment_reconciliation_dal, subscription_dal, user_dal
 from db.models import Payment, Subscription, User
 
 logger = logging.getLogger(__name__)
@@ -120,6 +120,53 @@ async def _claim_payment_failure_notification(ctx: PluginContext, payment_db_id:
         notification_kind="payment-failure-notification",
         notification_label="failed payment",
     )
+
+
+async def _release_payment_failure_notification(
+    ctx: PluginContext,
+    payment_db_id: Any,
+) -> None:
+    """Release a failed Telegram delivery so a webhook/worker retry can resend it."""
+
+    normalized_payment_id = _int_or_none(payment_db_id)
+    if normalized_payment_id is None:
+        return
+    cache_key = _payment_notification_key(
+        ctx.settings,
+        "payment-failure-notification",
+        normalized_payment_id,
+    )
+    redis = await get_redis(ctx.settings)
+    if redis is not None:
+        try:
+            await redis.delete(cache_key)
+        except Exception:
+            logger.exception(
+                "Failed to release failed-payment notification claim for payment %s.",
+                normalized_payment_id,
+            )
+    _payment_notification_cache.pop(cache_key, None)
+
+
+async def _mark_payment_failure_notification_sent(
+    ctx: PluginContext,
+    payment_db_id: Any,
+) -> None:
+    normalized_payment_id = _int_or_none(payment_db_id)
+    if normalized_payment_id is None or ctx.session_factory is None:
+        return
+    try:
+        async with ctx.session_factory() as session:
+            await payment_reconciliation_dal.mark_failure_notification_sent(
+                session,
+                normalized_payment_id,
+            )
+            await session.commit()
+    except Exception:
+        logger.exception(
+            "Failed to persist payment-failure notification delivery for payment %s.",
+            normalized_payment_id,
+        )
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -649,10 +696,16 @@ class CoreEventReactions:
                     "Failed to format canceled payment details for payment %s.",
                     getattr(payment, "payment_id", None),
                 )
+        telegram_error: Exception | None = None
         try:
             await self.ctx.bot.send_message(int(user_id), message_text)
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed to notify user %s about canceled payment.", user_id)
+            await _release_payment_failure_notification(
+                self.ctx,
+                payload.get("payment_db_id"),
+            )
+            telegram_error = exc
         if user is not None:
             await send_user_notification_email(
                 settings=self.ctx.settings,
@@ -661,6 +714,11 @@ class CoreEventReactions:
                 subject_key="email_payment_failed_subject",
                 message_text=message_text,
                 dashboard_url=(getattr(self.ctx.settings, "SUBSCRIPTION_MINI_APP_URL", "") or None),
+            )
+        if telegram_error is None:
+            await _mark_payment_failure_notification_sent(
+                self.ctx,
+                payload.get("payment_db_id"),
             )
 
     async def on_referral_bonus_granted(self, event_name: str, payload: dict[str, Any]) -> None:

@@ -59,7 +59,8 @@ from ..shared import (
     sale_mode_tariff_key,
 )
 from ..shared.app_context import app_required
-from .client import CryptoPayApiClient, CryptoPayUpdate
+from ..shared.checkout_expiration import resolve_checkout_expiration
+from .client import CryptoPayApiClient, CryptoPayInvoice, CryptoPayUpdate
 
 logger = logging.getLogger(__name__)
 _LOG = "cryptopay"
@@ -300,12 +301,25 @@ class CryptoPayService(BaseProviderService):
                 description=description,
                 payload=payload,
             )
+            invoice_url = (
+                (
+                    getattr(invoice, "web_app_invoice_url", None)
+                    or getattr(invoice, "mini_app_invoice_url", None)
+                    or invoice.bot_invoice_url
+                )
+                if url_kind == "web"
+                else invoice.bot_invoice_url
+            )
             try:
                 await payment_dal.update_provider_payment_and_status(
                     session,
                     payment_record.payment_id,
                     str(invoice.invoice_id),
                     str(invoice.status),
+                    provider_payment_url=str(invoice_url),
+                    checkout_expires_at=resolve_checkout_expiration(
+                        {"expiration_date": getattr(invoice, "expiration_date", None)}
+                    ),
                 )
                 await session.commit()
             except Exception:
@@ -315,17 +329,25 @@ class CryptoPayService(BaseProviderService):
                     payment_record.payment_id,
                 )
                 return None
-            if url_kind == "web":
-                invoice_url = (
-                    getattr(invoice, "web_app_invoice_url", None)
-                    or getattr(invoice, "mini_app_invoice_url", None)
-                    or invoice.bot_invoice_url
-                )
-                return str(invoice_url)
-            return str(invoice.bot_invoice_url)
+            return str(invoice_url)
         except Exception:
             logger.exception("CryptoPay invoice creation failed.")
             return None
+
+    async def get_invoice(self, invoice_id: str) -> CryptoPayInvoice | None:
+        client = self.client
+        if not self.configured or client is None:
+            return None
+        try:
+            invoices = await client.get_invoices(invoice_ids=str(invoice_id))
+        except Exception:
+            logger.exception("CryptoPay invoice lookup failed: invoice_id=%s", invoice_id)
+            return None
+        expected = str(invoice_id)
+        return next(
+            (invoice for invoice in invoices if str(invoice.invoice_id) == expected),
+            None,
+        )
 
     async def _invoice_paid_handler(self, update: CryptoPayUpdate, app: web.Application) -> None:
         from bot.app.web.context import (

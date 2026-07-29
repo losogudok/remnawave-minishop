@@ -45,6 +45,7 @@ from .callbacks import (
     render_payment_link,
     safe_callback_answer,
 )
+from .checkout_expiration import resolve_checkout_expiration
 from .common import (
     build_payment_record_payload,
     create_webapp_payment_record,
@@ -142,6 +143,7 @@ class LinkPaymentDescriptor[ServiceT: LinkFlowService]:
     # uses ``ctx.currency or settings.DEFAULT_CURRENCY_SYMBOL or "RUB"`` (the
     # common case). Providers whose webapp resolution differs supply their own.
     webapp_currency: Callable[[WebAppPaymentContext, Settings, ServiceT], str] | None = None
+    checkout_ttl_seconds: Callable[[ServiceT, CreatePaymentRequest], int | None] | None = None
 
 
 def _resolve_callback_currency[ServiceT: LinkFlowService](
@@ -347,6 +349,14 @@ async def run_callback_payment[ServiceT: LinkFlowService](
         provider_context=provider_context,
     )
     success, response_data = await descriptor.create(service, create_request)
+    checkout_expires_at = resolve_checkout_expiration(
+        response_data,
+        fallback_ttl_seconds=(
+            descriptor.checkout_ttl_seconds(service, create_request)
+            if success and descriptor.checkout_ttl_seconds is not None
+            else None
+        ),
+    )
     lead_text = (
         descriptor.callback_lead_text(create_request, response_data, translator)
         if success and descriptor.callback_lead_text is not None
@@ -364,6 +374,7 @@ async def run_callback_payment[ServiceT: LinkFlowService](
         payment_url=descriptor.extract_url(response_data),
         provider_payment_id=descriptor.extract_provider_id(response_data),
         provider_response=response_data,
+        checkout_expires_at=checkout_expires_at,
         lead_text=lead_text,
         log_prefix=descriptor.log_prefix,
     )
@@ -391,17 +402,26 @@ async def run_webapp_payment[ServiceT: LinkFlowService](
             status=descriptor.pending_status,
             provider=descriptor.provider_key,
         )
+        create_request = CreatePaymentRequest(
+            payment=payment,
+            user_id=ctx.user_id,
+            amount=ctx.price,
+            currency=currency,
+            description=ctx.description,
+            months=float(getattr(ctx, "months", 0) or 0),
+            sale_mode=str(getattr(ctx, "sale_mode", "") or ""),
+            provider_context=provider_context,
+        )
         success, response_data = await descriptor.create(
             service,
-            CreatePaymentRequest(
-                payment=payment,
-                user_id=ctx.user_id,
-                amount=ctx.price,
-                currency=currency,
-                description=ctx.description,
-                months=float(getattr(ctx, "months", 0) or 0),
-                sale_mode=str(getattr(ctx, "sale_mode", "") or ""),
-                provider_context=provider_context,
+            create_request,
+        )
+        checkout_expires_at = resolve_checkout_expiration(
+            response_data,
+            fallback_ttl_seconds=(
+                descriptor.checkout_ttl_seconds(service, create_request)
+                if success and descriptor.checkout_ttl_seconds is not None
+                else None
             ),
         )
     except Exception:
@@ -416,6 +436,7 @@ async def run_webapp_payment[ServiceT: LinkFlowService](
         payment_url=(descriptor.extract_url(response_data) if success else None),
         provider_payment_id=descriptor.extract_provider_id(response_data),
         provider_response=response_data,
+        checkout_expires_at=checkout_expires_at,
         log_prefix=descriptor.display_name,
     )
 

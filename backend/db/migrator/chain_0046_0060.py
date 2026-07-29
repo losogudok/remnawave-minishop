@@ -353,6 +353,50 @@ def _migration_0053_restore_active_subscription_start_dates(connection: Connecti
     )
 
 
+def _migration_0054_add_payment_checkout_lifecycle(connection: Connection) -> None:
+    """Persist authoritative hosted-checkout expiry and reconciliation cadence."""
+
+    inspector = inspect(connection)
+    if "payments" not in set(inspector.get_table_names()):
+        return
+    columns = {column["name"] for column in inspector.get_columns("payments")}
+    additions = {
+        "checkout_expires_at": "TIMESTAMPTZ",
+        "failure_notified_at": "TIMESTAMPTZ",
+        "provider_checked_at": "TIMESTAMPTZ",
+    }
+    for column, definition in additions.items():
+        if column not in columns:
+            connection.execute(text(f"ALTER TABLE payments ADD COLUMN {column} {definition}"))
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_payments_checkout_expires_at "
+            "ON payments (checkout_expires_at)"
+        )
+    )
+    connection.execute(
+        text(
+            "UPDATE payments "
+            "SET failure_notified_at = COALESCE(updated_at, created_at, NOW()) "
+            "WHERE failure_notified_at IS NULL "
+            "AND LOWER(TRIM(status)) IN "
+            "('failed', 'canceled', 'cancelled', 'failed_creation')"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_payments_failure_notified_at "
+            "ON payments (failure_notified_at)"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_payments_provider_checked_at "
+            "ON payments (provider_checked_at)"
+        )
+    )
+
+
 CHAIN_0046_0060: list[Migration] = [
     Migration(
         id="0046_add_recurring_payment_attribution",
@@ -393,5 +437,10 @@ CHAIN_0046_0060: list[Migration] = [
         id="0053_restore_active_subscription_start_dates",
         description="Restore immutable active subscription starts after legacy renewals",
         upgrade=_migration_0053_restore_active_subscription_start_dates,
+    ),
+    Migration(
+        id="0054_add_payment_checkout_lifecycle",
+        description="Persist hosted-checkout expiry and provider reconciliation cadence",
+        upgrade=_migration_0054_add_payment_checkout_lifecycle,
     ),
 ]

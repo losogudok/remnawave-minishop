@@ -29,6 +29,7 @@ from ..shared import (
     render_payment_link,
     safe_callback_answer,
 )
+from ..shared.checkout_expiration import resolve_checkout_expiration
 from .router import router
 from .service import StripeService
 
@@ -167,6 +168,7 @@ async def pay_stripe_callback_handler(
         api_success=success,
         payment_url=first_value(response_data, "url") if success else None,
         provider_payment_id=first_value(response_data, "id"),
+        checkout_expires_at=resolve_checkout_expiration(response_data),
         provider_response=response_data,
         log_prefix=_LOG,
     )

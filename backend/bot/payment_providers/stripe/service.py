@@ -242,6 +242,20 @@ class StripeService(HttpClientMixin):
             log_prefix="Stripe create_checkout_session",
         )
 
+    async def retrieve_checkout_session(
+        self,
+        checkout_session_id: str,
+    ) -> tuple[bool, dict[str, Any]]:
+        checkout_session_id = str(checkout_session_id or "").strip()
+        if not self.configured:
+            return False, {"message": "service_not_configured"}
+        if not checkout_session_id:
+            return False, {"message": "missing_checkout_session_id"}
+        return await self._get_json(
+            f"/v1/checkout/sessions/{checkout_session_id}",
+            log_prefix="Stripe retrieve_checkout_session",
+        )
+
     async def create_off_session_payment_intent(
         self,
         *,

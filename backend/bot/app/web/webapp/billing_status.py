@@ -23,7 +23,12 @@ from bot.app.web.webapp.common import (
 )
 from bot.infra import events
 from bot.infra.event_payloads import PaymentCanceledPayload
+from bot.payment_providers.registry import get_provider_spec
 from bot.payment_providers.shared.common import detached_payment_snapshot
+from bot.payment_providers.shared.reconciliation import (
+    RECONCILABLE_PROVIDER_KEYS,
+    refresh_hosted_payment_status,
+)
 from bot.payment_providers.yookassa.reconciliation import (
     normalize_yookassa_payment_payload as _yookassa_payment_payload_for_processing,
 )
@@ -52,7 +57,16 @@ def _payment_status_can_be_refreshed(payment: Any) -> bool:
         return False
     if normalized in {"failed", "canceled", "cancelled", "failed_creation"}:
         return False
-    return normalized.startswith("pending") or normalized in {"waiting_for_capture", "created"}
+    return normalized.startswith("pending") or normalized in {
+        "active",
+        "created",
+        "new",
+        "open",
+        "process",
+        "processing",
+        "underpaid",
+        "waiting_for_capture",
+    }
 
 
 async def _refresh_yookassa_payment_status(
@@ -199,6 +213,40 @@ async def _refresh_wata_payment_status(
         return payment_snapshot
 
 
+async def _refresh_hosted_payment_status(
+    request: web.Request,
+    session: AsyncSession,
+    payment: Payment,
+) -> Any:
+    provider = str(getattr(payment, "provider", "") or "").strip().lower()
+    if provider not in RECONCILABLE_PROVIDER_KEYS:
+        return payment
+    if not _payment_status_can_be_refreshed(payment):
+        return payment
+
+    spec = get_provider_spec(provider)
+    service = (
+        get_payment_service(request, spec.service_key)
+        if spec is not None and spec.service_key
+        else None
+    )
+    if not service or not getattr(service, "configured", False):
+        return payment
+
+    payment_snapshot = detached_payment_snapshot(payment)
+    payment_id = int(payment_snapshot.payment_id)
+    await session.rollback()
+    try:
+        return await refresh_hosted_payment_status(session, payment_snapshot, service)
+    except Exception:
+        logger.exception(
+            "Failed to refresh %s payment %s status",
+            provider,
+            payment_id,
+        )
+        return payment_snapshot
+
+
 async def refresh_payment_status_for_request(
     request: web.Request,
     session: AsyncSession,
@@ -207,7 +255,8 @@ async def refresh_payment_status_for_request(
     """Refresh providers that can reconcile a pending Web App checkout."""
 
     refreshed = await _refresh_yookassa_payment_status(request, session, payment)
-    return await _refresh_wata_payment_status(request, session, refreshed)
+    refreshed = await _refresh_wata_payment_status(request, session, refreshed)
+    return await _refresh_hosted_payment_status(request, session, refreshed)
 
 
 async def payment_status_route(request: web.Request) -> web.Response:

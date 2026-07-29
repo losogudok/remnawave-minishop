@@ -101,6 +101,7 @@ async def create_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
             payment.payment_id,
             "pending_yookassa",
             yk_payment_id=provider_payment_id or None,
+            provider_payment_url=str(payment_url),
         )
         await ctx.session.commit()
         return payment_link_response(payment_url=payment_url, payment_id=payment.payment_id)
