@@ -92,7 +92,7 @@ describe("billingStore", () => {
   });
 
   it("applies checkout code quote and includes it in payment creation", async () => {
-    const { store, billing } = makeBillingStore({
+    const { store, deps, billing } = makeBillingStore({
       billing: {
         postPayment: vi.fn().mockResolvedValue({
           ok: true,
@@ -149,6 +149,7 @@ describe("billingStore", () => {
         renewHwidDevices: false,
       }
     );
+    expect(deps.loadData).toHaveBeenCalledWith({ fresh: true, preserveView: true });
 
     store.clearCheckoutPromo();
     expect(store.checkoutPromoAppliedCode).toBe("");

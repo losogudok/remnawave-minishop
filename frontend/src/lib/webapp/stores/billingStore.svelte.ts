@@ -158,6 +158,7 @@ export function createBillingStore({
   }
 
   const handlePaymentResponse = createPaymentResponseHandler({
+    afterOpened: () => loadData({ fresh: true, preserveView: true }),
     notifyOpened: (resumed) =>
       showToast(t(resumed ? "wa_pending_payment_opened" : "wa_payment_created")),
     openExternalLink,

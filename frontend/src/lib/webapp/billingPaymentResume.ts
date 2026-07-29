@@ -14,11 +14,13 @@ type PaymentSuccessContext = WebappRecord & {
 };
 
 export function createPaymentResponseHandler({
+  afterOpened,
   notifyOpened,
   openExternalLink,
   openTelegramInvoice,
   startPaymentStatusPolling,
 }: {
+  afterOpened?: () => Promise<unknown> | unknown;
   notifyOpened: (resumed: boolean) => void;
   openExternalLink: (url: string) => void;
   openTelegramInvoice: (url: string, context: PaymentSuccessContext) => Promise<boolean>;
@@ -27,6 +29,13 @@ export function createPaymentResponseHandler({
     context: PaymentSuccessContext
   ) => void;
 }) {
+  function refreshSnapshot(): void {
+    if (!afterOpened) return;
+    void Promise.resolve(afterOpened()).catch((_error) => {
+      void _error;
+    });
+  }
+
   return async function handlePaymentResponse(
     response: BillingPaymentResponse,
     successContext: PaymentSuccessContext = {},
@@ -42,6 +51,7 @@ export function createPaymentResponseHandler({
     } else if (response.action === "invoice_sent") {
       startPaymentStatusPolling(response.payment_id, successContext);
       closeModal();
+      refreshSnapshot();
       return true;
     } else {
       if (!response.payment_url) throw response;
@@ -49,6 +59,7 @@ export function createPaymentResponseHandler({
     }
     startPaymentStatusPolling(response.payment_id, successContext);
     closeModal();
+    refreshSnapshot();
     return true;
   };
 }
