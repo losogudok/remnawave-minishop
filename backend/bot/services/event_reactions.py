@@ -597,6 +597,14 @@ class CoreEventReactions:
         user_id = payload.get("user_id")
         if user_id is None:
             return
+        try:
+            await invalidate_webapp_user_caches(
+                self.ctx.settings,
+                int(user_id),
+                include_devices=False,
+            )
+        except Exception:
+            logger.exception("Failed to invalidate canceled payment caches for user %s.", user_id)
         payment = await self._load_payment(payload.get("payment_db_id"))
         # Payment-linked codes are consumed in the successful fulfillment
         # transaction. A later cancellation event does not revoke the granted

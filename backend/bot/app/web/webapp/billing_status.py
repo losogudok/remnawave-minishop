@@ -199,6 +199,17 @@ async def _refresh_wata_payment_status(
         return payment_snapshot
 
 
+async def refresh_payment_status_for_request(
+    request: web.Request,
+    session: AsyncSession,
+    payment: Payment,
+) -> Any:
+    """Refresh providers that can reconcile a pending Web App checkout."""
+
+    refreshed = await _refresh_yookassa_payment_status(request, session, payment)
+    return await _refresh_wata_payment_status(request, session, refreshed)
+
+
 async def payment_status_route(request: web.Request) -> web.Response:
     user_id = _require_user_id(request)
     try:
@@ -211,8 +222,7 @@ async def payment_status_route(request: web.Request) -> web.Response:
         payment = await payment_dal.get_payment_by_db_id(session, payment_id)
         if not payment or payment.user_id != user_id:
             return _json_error(404, "not_found", "Payment not found")
-        payment = await _refresh_yookassa_payment_status(request, session, payment)
-        payment = await _refresh_wata_payment_status(request, session, payment)
+        payment = await refresh_payment_status_for_request(request, session, payment)
         return json_response(
             {
                 "ok": True,

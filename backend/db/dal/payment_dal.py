@@ -16,6 +16,16 @@ logger = logging.getLogger(__name__)
 
 _PAYMENT_STATUS_SUCCEEDED = "succeeded"
 _PAYMENT_STATUS_PENDING_FINALIZATION = "succeeded_pending_finalization"
+_PAYMENT_TERMINAL_STATUSES = frozenset(
+    {
+        _PAYMENT_STATUS_SUCCEEDED,
+        "failed",
+        "canceled",
+        "cancelled",
+        "failed_creation",
+        "refunded",
+    }
+)
 _YOOKASSA_RECONCILABLE_STATUSES = (
     "pending_yookassa",
     "pending",
@@ -809,6 +819,44 @@ async def update_provider_payment_and_status(
     else:
         logger.warning("Payment record with DB ID %s not found for provider update.", payment_db_id)
     return payment
+
+
+async def transition_provider_payment_to_terminal(
+    session: AsyncSession,
+    payment_db_id: int,
+    provider_payment_id: str,
+    new_status: str,
+) -> tuple[Payment | None, bool]:
+    """Lock and finalize a payment once, returning whether this call changed it."""
+
+    normalized_new_status = _normalize_payment_status(new_status)
+    if normalized_new_status not in _PAYMENT_TERMINAL_STATUSES:
+        raise ValueError(f"Payment status is not terminal: {new_status}")
+
+    payment = await get_payment_by_db_id_for_update(session, payment_db_id)
+    if payment is None:
+        logger.warning("Payment record with DB ID %s not found for terminal update.", payment_db_id)
+        return None, False
+
+    if _normalize_payment_status(payment.status) in _PAYMENT_TERMINAL_STATUSES:
+        logger.info(
+            "Payment record %s is already terminal with status %s; skipping duplicate update.",
+            payment.payment_id,
+            payment.status,
+        )
+        return payment, False
+
+    payment.status = normalized_new_status
+    payment.updated_at = func.now()
+    payment.provider_payment_id = provider_payment_id
+    await session.flush()
+    await session.refresh(payment)
+    logger.info(
+        "Payment record %s transitioned to terminal status %s.",
+        payment.payment_id,
+        normalized_new_status,
+    )
+    return payment, True
 
 
 async def _daily_revenue_series_utc(session: AsyncSession, days: int = 14) -> list[dict[str, Any]]:

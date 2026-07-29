@@ -44,6 +44,7 @@ from db.dal import payment_dal, subscription_dal, support_dal, user_dal
 from .assets import (
     _get_cached_webapp_settings,
 )
+from .billing_status import refresh_payment_status_for_request
 from .common import (
     _coerce_int_or_none,
     _ensure_cached_telegram_avatar,
@@ -65,6 +66,7 @@ from .serializers_billing_options import (
 )
 
 logger = logging.getLogger(__name__)
+_MAX_PENDING_PROMO_REFRESHES = 10
 
 __all__ = [
     "_build_user_payload",
@@ -129,6 +131,49 @@ async def _suggested_checkout_promo(
     )
 
 
+async def _refresh_pending_promo_payment(
+    request: web.Request,
+    session: AsyncSession,
+    *,
+    user_id: int,
+) -> dict[str, Any] | None:
+    """Reconcile stale resumable checkouts before exposing one to the user."""
+
+    seen_payment_ids: set[int] = set()
+    for _ in range(_MAX_PENDING_PROMO_REFRESHES):
+        payment = await payment_dal.get_latest_resumable_promo_payment(
+            session,
+            user_id=user_id,
+        )
+        if payment is None:
+            return None
+
+        payment_id = int(payment.payment_id)
+        if payment_id in seen_payment_ids:
+            return _serialize_pending_promo_payment(payment)
+        seen_payment_ids.add(payment_id)
+
+        await refresh_payment_status_for_request(request, session, payment)
+        current = await payment_dal.get_latest_resumable_promo_payment(
+            session,
+            user_id=user_id,
+        )
+        if current is None:
+            return None
+        if int(current.payment_id) == payment_id:
+            return _serialize_pending_promo_payment(current)
+
+    logger.warning(
+        "Pending promo reconciliation reached the per-request limit for user %s",
+        user_id,
+    )
+    payment = await payment_dal.get_latest_resumable_promo_payment(
+        session,
+        user_id=user_id,
+    )
+    return _serialize_pending_promo_payment(payment)
+
+
 async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, Any]:
     settings: Settings = get_settings(request)
     async_session_factory: sessionmaker = get_session_factory(request)
@@ -138,6 +183,21 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
     support_settings = settings.support_settings
 
     async with async_session_factory() as session:
+        db_user = await user_dal.get_user_by_id(session, user_id)
+        if not db_user or db_user.is_banned:
+            raise web.HTTPForbidden(
+                text=json.dumps({"ok": False, "error": "access_denied"}),
+                content_type="application/json",
+            )
+
+        pending_promo_payment = await _refresh_pending_promo_payment(
+            request,
+            session,
+            user_id=user_id,
+        )
+        # Provider reconciliation may roll back or commit this session while
+        # making an external request. Reload the authenticated user before
+        # continuing with referral or subscription writes.
         db_user = await user_dal.get_user_by_id(session, user_id)
         if not db_user or db_user.is_banned:
             raise web.HTTPForbidden(
@@ -178,12 +238,6 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             )
             if db_user.panel_user_uuid
             else None
-        )
-        pending_promo_payment = _serialize_pending_promo_payment(
-            await payment_dal.get_latest_resumable_promo_payment(
-                session,
-                user_id=user_id,
-            )
         )
         suggested_promo_code = await _suggested_checkout_promo(
             session,

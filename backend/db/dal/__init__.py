@@ -13,6 +13,7 @@ from . import (
     user_billing_dal,
     user_dal,
     user_panel_squad_override_dal,
+    wata_reconciliation_dal,
 )
 
 __all__ = (
@@ -30,4 +31,5 @@ __all__ = (
     "user_billing_dal",
     "user_dal",
     "user_panel_squad_override_dal",
+    "wata_reconciliation_dal",
 )

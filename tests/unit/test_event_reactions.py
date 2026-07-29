@@ -549,12 +549,14 @@ class CoreEventReactionsTests(IsolatedAsyncioTestCase):
     async def test_payment_canceled_event_notifies_user_and_email(self):
         bot = SimpleNamespace(send_message=AsyncMock())
         email = AsyncMock()
+        invalidate = AsyncMock()
         ctx = _context(bot=bot)
         user = SimpleNamespace(language_code="ru", email="alice@example.test")
 
         with (
             patch.object(event_reactions.user_dal, "get_user_by_id", AsyncMock(return_value=user)),
             patch.object(event_reactions, "send_user_notification_email", email),
+            patch.object(event_reactions, "invalidate_webapp_user_caches", invalidate),
         ):
             register_core_reactions(ctx)
             await events.emit(
@@ -563,6 +565,7 @@ class CoreEventReactionsTests(IsolatedAsyncioTestCase):
             )
 
         bot.send_message.assert_awaited_once_with(42, "payment_failed")
+        invalidate.assert_awaited_once_with(ctx.settings, 42, include_devices=False)
         email.assert_awaited_once_with(
             settings=ctx.settings,
             i18n=ctx.i18n,

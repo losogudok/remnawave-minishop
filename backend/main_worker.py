@@ -26,6 +26,7 @@ from bot.infra.webhook_queue import (
     webhook_queue_depth,
 )
 from bot.middlewares.i18n import JsonI18n
+from bot.payment_providers.wata.service import WataService
 from bot.payment_providers.yookassa import (
     YOOKASSA_EVENT_PAYMENT_CANCELED,
     YOOKASSA_EVENT_PAYMENT_SUCCEEDED,
@@ -50,6 +51,7 @@ from bot.services.settings_override_service import refresh_overrides_from_db
 from bot.services.subscription_notification_worker import SubscriptionNotificationWorker
 from bot.services.tariff_worker import TariffTrafficWorker
 from bot.services.torrent_blocker_webhook import TORRENT_BLOCKER_EVENT
+from bot.services.wata_reconciliation_worker import WataReconciliationWorker
 from bot.services.yookassa_reconciliation_worker import YooKassaReconciliationWorker
 from bot.utils.message_queue import init_queue_manager
 from config.settings import Settings, get_settings
@@ -379,6 +381,18 @@ async def _yookassa_reconciliation_task(ctx: PluginContext) -> None:
     ).run()
 
 
+async def _wata_reconciliation_task(ctx: PluginContext) -> None:
+    wata_service = ctx.get_service("wata_service", WataService)
+    if wata_service is None:
+        logger.info("Wata reconciliation worker disabled: service is unavailable")
+        return
+    await WataReconciliationWorker(
+        ctx.settings,
+        ctx.require_session_factory(),
+        wata_service,
+    ).run()
+
+
 def _backup_worker_task(ctx: PluginContext) -> Coroutine[Any, Any, None]:
     return BackupWorker(
         ctx.settings,
@@ -401,6 +415,10 @@ def _core_worker_tasks() -> list[WorkerTaskSpec]:
         WorkerTaskSpec(
             name="YooKassaReconciliationWorker",
             factory=_yookassa_reconciliation_task,
+        ),
+        WorkerTaskSpec(
+            name="WataReconciliationWorker",
+            factory=_wata_reconciliation_task,
         ),
         WorkerTaskSpec(name="BackupWorker", factory=_backup_worker_task),
         WorkerTaskSpec(name="PanelSyncLoop", factory=_panel_sync_loop),
