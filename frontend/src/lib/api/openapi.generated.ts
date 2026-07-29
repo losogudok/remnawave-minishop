@@ -7978,6 +7978,7 @@ export interface operations {
               traffic_used?: string;
               traffic_used_bytes?: number | null;
             };
+            suggested_promo_code: string | null;
             support_unread_count: number;
             themes_catalog: {
               default_theme?: string;

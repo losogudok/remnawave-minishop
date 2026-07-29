@@ -554,6 +554,7 @@ export function createShellAppActions({
     getMethods: () => getShellView().appDataView.methods,
     getOrigin: () => (typeof window !== "undefined" ? window.location.origin : ""),
     getPlans: () => getShellView().appDataView.plans,
+    getSuggestedPromoCode: () => getShellView().appDataView.suggestedPromoCode,
     getPreloadHost: () => (typeof window !== "undefined" ? asWebappRecord(window) : null),
     getRoutePathname,
     getSelectedPlan,

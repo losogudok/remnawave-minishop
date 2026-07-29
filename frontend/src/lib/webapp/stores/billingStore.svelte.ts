@@ -4,6 +4,7 @@ import {
   createPaymentResponseHandler,
   createPendingPaymentResume,
 } from "../billingPaymentResume.js";
+import { emptyCheckoutPromoQuote, suggestedCheckoutPromoPatch } from "../billingPromoSuggestion.js";
 import { unwrap } from "../publicApi";
 import { priceLabel } from "../tariffs";
 import {
@@ -64,6 +65,7 @@ export type BillingState = {
   tariffActionBusy: boolean;
   payBusy: boolean;
   checkoutPromoInput: string;
+  checkoutPromoAutoApply: boolean;
   checkoutPromoAppliedCode: string;
   checkoutPromoStatus: string;
   checkoutPromoIsError: boolean;
@@ -196,6 +198,7 @@ export function createBillingStore({
     tariffActionBusy: false,
     payBusy: false,
     checkoutPromoInput: "",
+    checkoutPromoAutoApply: false,
     checkoutPromoAppliedCode: "",
     checkoutPromoStatus: "",
     checkoutPromoIsError: false,
@@ -240,17 +243,20 @@ export function createBillingStore({
 
   let topupOptionsRequestId = 0;
   let paymentPollToken = 0;
+  let checkoutPromoRequestId = 0;
   let lastCheckoutQuoteKey = "";
   const successfulPaymentIds = new Set<string>();
 
   function setCheckoutPromoInput(value: string): void {
+    checkoutPromoRequestId += 1;
     state.checkoutPromoInput = value;
+    state.checkoutPromoAutoApply = false;
     state.checkoutPromoStatus = "";
     state.checkoutPromoIsError = false;
     if (String(value || "").trim() !== String(state.checkoutPromoAppliedCode || "").trim()) {
       state.checkoutPromoAppliedCode = "";
       state.checkoutPromoPriceText = "";
-      Object.assign(state, resetCheckoutPromoQuote());
+      Object.assign(state, emptyCheckoutPromoQuote());
     }
   }
 
@@ -258,21 +264,6 @@ export function createBillingStore({
     if (value == null || value === "") return null;
     const number = Number(value);
     return Number.isFinite(number) ? number : null;
-  }
-
-  function resetCheckoutPromoQuote(): Pick<
-    BillingState,
-    | "checkoutPromoDiscountPercent"
-    | "checkoutPromoAppliesTo"
-    | "checkoutPromoMinSubscriptionMonths"
-    | "checkoutPromoMinTrafficGb"
-  > {
-    return {
-      checkoutPromoDiscountPercent: 0,
-      checkoutPromoAppliesTo: "all",
-      checkoutPromoMinSubscriptionMonths: null,
-      checkoutPromoMinTrafficGb: null,
-    };
   }
 
   function checkoutPromoCode(): string | null {
@@ -325,7 +316,8 @@ export function createBillingStore({
 
   function checkoutQuoteKey(): string {
     const code = String(
-      state.checkoutPromoAppliedCode || (state.checkoutPromoIsError ? state.checkoutPromoInput : "")
+      state.checkoutPromoAppliedCode ||
+        (state.checkoutPromoAutoApply || state.checkoutPromoIsError ? state.checkoutPromoInput : "")
     ).trim();
     if (!code || !state.selectedMethod) return "";
     if (state.paymentModalOpen && state.selectedPlan) {
@@ -364,7 +356,7 @@ export function createBillingStore({
       return;
     }
     if (key === lastCheckoutQuoteKey) return;
-    const shouldRefresh = lastCheckoutQuoteKey !== "";
+    const shouldRefresh = state.checkoutPromoAutoApply || lastCheckoutQuoteKey !== "";
     lastCheckoutQuoteKey = key;
     if (shouldRefresh) void applyCheckoutPromo();
   });
@@ -392,25 +384,28 @@ export function createBillingStore({
         checkoutPromoIsError: true,
         checkoutPromoStatus: t("wa_promo_select_plan_first", {}, "Choose a plan first"),
         checkoutPromoPriceText: "",
-        ...resetCheckoutPromoQuote(),
+        ...emptyCheckoutPromoQuote(),
       }));
       return;
     }
     const attemptedCode = stringField(body.promo_code);
+    const requestId = ++checkoutPromoRequestId;
     try {
       const response = await billing.quotePromo(body);
+      if (requestId !== checkoutPromoRequestId) return;
       const payload = unwrapBilling(response);
       if (!payload.valid) {
         updateState((s) => ({
           ...s,
           checkoutPromoInput: attemptedCode,
+          checkoutPromoAutoApply: false,
           checkoutPromoAppliedCode: "",
           checkoutPromoIsError: true,
           checkoutPromoStatus:
             stringField(payload.reason) ||
             t("wa_promo_activation_failed", {}, "Code does not apply here"),
           checkoutPromoPriceText: "",
-          ...resetCheckoutPromoQuote(),
+          ...emptyCheckoutPromoQuote(),
         }));
         return;
       }
@@ -418,6 +413,7 @@ export function createBillingStore({
       updateState((s) => ({
         ...s,
         checkoutPromoInput: appliedCode,
+        checkoutPromoAutoApply: false,
         checkoutPromoAppliedCode: appliedCode,
         checkoutPromoIsError: false,
         checkoutPromoStatus: stringField(payload.effect_summary),
@@ -428,28 +424,32 @@ export function createBillingStore({
         checkoutPromoMinTrafficGb: optionalNumber(payload.min_traffic_gb),
       }));
     } catch (error: unknown) {
+      if (requestId !== checkoutPromoRequestId) return;
       updateState((s) => ({
         ...s,
         checkoutPromoInput: attemptedCode,
+        checkoutPromoAutoApply: false,
         checkoutPromoAppliedCode: "",
         checkoutPromoIsError: true,
         checkoutPromoStatus:
           stringField(asRecord(error).message) || t("wa_promo_activation_failed"),
         checkoutPromoPriceText: "",
-        ...resetCheckoutPromoQuote(),
+        ...emptyCheckoutPromoQuote(),
       }));
     }
   }
 
   function clearCheckoutPromo(): void {
+    checkoutPromoRequestId += 1;
     updateState((s) => ({
       ...s,
       checkoutPromoInput: "",
+      checkoutPromoAutoApply: false,
       checkoutPromoAppliedCode: "",
       checkoutPromoStatus: "",
       checkoutPromoIsError: false,
       checkoutPromoPriceText: "",
-      ...resetCheckoutPromoQuote(),
+      ...emptyCheckoutPromoQuote(),
     }));
   }
 
@@ -632,8 +632,13 @@ export function createBillingStore({
         selectedMethod: s.selectedMethod || defaultMethod,
         renewHwidDevices: true,
         paymentStartedWithActiveSubscription: Boolean(subscription?.active),
+        ...suggestedCheckoutPromoPatch(s, options),
       };
     });
+    if (state.checkoutPromoAutoApply && checkoutQuoteBody()) {
+      lastCheckoutQuoteKey = checkoutQuoteKey();
+      void applyCheckoutPromo();
+    }
   }
 
   function closePaymentModal() {

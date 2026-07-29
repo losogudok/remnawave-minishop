@@ -48,6 +48,7 @@ describe("computeAppDataView", () => {
           payment_url: "https://pay.example/17",
           promo_code: "SAVE20",
         },
+        suggested_promo_code: " PERSONAL15 ",
         plans: [{ id: "live-plan" }],
         settings: {
           my_devices_enabled: false,
@@ -67,6 +68,7 @@ describe("computeAppDataView", () => {
       payment_url: "https://pay.example/17",
       promo_code: "SAVE20",
     });
+    expect(view.suggestedPromoCode).toBe("PERSONAL15");
     expect(view.devicesEnabled).toBe(false);
     expect(view.installGuidesEnabled).toBe(false);
     expect(view.supportEnabled).toBe(false);
@@ -82,6 +84,7 @@ describe("computeAppDataView", () => {
     });
 
     expect(view.pendingPayment).toBeNull();
+    expect(view.suggestedPromoCode).toBe("");
   });
 
   it("keeps Stars available only inside a Telegram Mini App", () => {

@@ -154,6 +154,48 @@ describe("billingStore", () => {
     expect(store.checkoutPromoAppliedCode).toBe("");
   });
 
+  it("automatically applies a suggested personal code and lets the user remove it", async () => {
+    const { store, billing } = makeBillingStore({
+      billing: {
+        quotePromo: vi.fn().mockResolvedValue({
+          ok: true,
+          valid: true,
+          code: "PERSONAL20",
+          effect_summary: "-20%",
+          discount_percent: 20,
+          applies_to: "subscription",
+          effective_amount: 80,
+        }),
+      },
+    });
+
+    store.openPaymentModal(
+      true,
+      false,
+      [{ key: "pro", is_default: true }] as unknown as Parameters<typeof store.openPaymentModal>[2],
+      { active: false },
+      [{ id: "plan-1", tariff_key: "pro" }],
+      "card",
+      {
+        selectDefaultTariff: true,
+        preferCheckout: true,
+        suggestedPromoCode: "PERSONAL20",
+      }
+    );
+
+    await vi.waitFor(() => expect(store.checkoutPromoAppliedCode).toBe("PERSONAL20"));
+    expect(billing.quotePromo).toHaveBeenCalledOnce();
+    expect(store.checkoutPromoStatus).toBe("-20%");
+
+    store.clearCheckoutPromo();
+    expect(store).toMatchObject({
+      checkoutPromoInput: "",
+      checkoutPromoAppliedCode: "",
+      checkoutPromoAutoApply: false,
+    });
+    expect(billing.quotePromo).toHaveBeenCalledOnce();
+  });
+
   it("keeps fiat pricing for bonus-day promos when Stars are also configured", async () => {
     const { store } = makeBillingStore({
       billing: {

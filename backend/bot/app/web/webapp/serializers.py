@@ -21,6 +21,10 @@ from bot.app.web.webapp.auth import (
     _trial_telegram_required_reason,
     _user_has_linked_telegram,
 )
+from bot.infra.promo_policies import (
+    PromoCheckoutSuggestionContext,
+    resolve_promo_checkout_suggestion,
+)
 from bot.services.referral_service import ReferralService
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.services.telegram_notifications import (
@@ -168,6 +172,9 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
                 user_id=user_id,
             )
         )
+        suggested_promo_code = await resolve_promo_checkout_suggestion(
+            PromoCheckoutSuggestionContext(session=session, user_id=user_id)
+        )
         install_share_token = (
             await subscription_dal.ensure_install_share_token(session, local_sub)
             if active and local_sub
@@ -268,6 +275,7 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
         },
         "plans": plans_payload,
         "pending_payment": pending_promo_payment,
+        "suggested_promo_code": suggested_promo_code,
         "payment_methods": _serialize_payment_methods(
             settings,
             request.app,

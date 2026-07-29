@@ -68,6 +68,7 @@ export type AppActionRuntimeDeps = {
   getMethods: BillingModalDeps["methods"];
   getOrigin: InstallRuntimeDeps["getOrigin"];
   getPlans: BillingModalDeps["plans"] & TariffActionDeps["getPlans"];
+  getSuggestedPromoCode: BillingModalDeps["suggestedPromoCode"];
   getPreloadHost: InstallRuntimeDeps["getPreloadHost"];
   getRoutePathname: AdminPanelDeps["getRoutePathname"];
   getSelectedPlan: PrimaryPayLabelDeps["getSelectedPlan"];
@@ -117,6 +118,7 @@ export function createAppActionRuntime({
   getMethods,
   getOrigin,
   getPlans,
+  getSuggestedPromoCode,
   getPreloadHost,
   getRoutePathname,
   getSelectedPlan,
@@ -228,6 +230,7 @@ export function createAppActionRuntime({
     devicesStore,
     methods: getMethods,
     plans: getPlans,
+    suggestedPromoCode: getSuggestedPromoCode,
     singleTariffMode: getSingleTariffMode,
     subscription: getSubscription,
     tariffCatalog: getTariffCatalog,

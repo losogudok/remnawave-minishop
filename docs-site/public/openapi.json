@@ -14297,6 +14297,12 @@
                       },
                       "type": "object"
                     },
+                    "suggested_promo_code": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "support_unread_count": {
                       "type": "integer"
                     },
@@ -14404,6 +14410,7 @@
                     "referral",
                     "plans",
                     "pending_payment",
+                    "suggested_promo_code",
                     "payment_methods",
                     "themes_catalog",
                     "support_unread_count",

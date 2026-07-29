@@ -567,6 +567,7 @@ ME_RESPONSE_SCHEMA: dict[str, Any] = ok_envelope_with(
                 {"type": "null"},
             ]
         },
+        "suggested_promo_code": NULLABLE_STRING_SCHEMA,
         "payment_methods": {"type": "array", "items": PAYMENT_METHOD_SCHEMA},
         "themes_catalog": THEMES_CATALOG_SCHEMA,
         "support_unread_count": INTEGER_SCHEMA,

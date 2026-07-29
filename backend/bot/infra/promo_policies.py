@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect as inspect_module
+import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -8,6 +9,8 @@ from typing import Any
 
 from bot.services.promo_effects import PromoEffects
 from db.dal import promo_code_dal
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -46,7 +49,22 @@ PromoRedemptionPolicy = Callable[
     PromoRedemptionDecision | Awaitable[PromoRedemptionDecision],
 ]
 
+
+@dataclass(frozen=True)
+class PromoCheckoutSuggestionContext:
+    """Read-only context for plugins that can suggest a checkout promo code."""
+
+    session: Any
+    user_id: int
+
+
+PromoCheckoutSuggestionProvider = Callable[
+    [PromoCheckoutSuggestionContext],
+    str | None | Awaitable[str | None],
+]
+
 _extra_promo_redemption_policies: list[PromoRedemptionPolicy] = []
+_promo_checkout_suggestion_providers: list[PromoCheckoutSuggestionProvider] = []
 
 
 async def _core_state_policy(ctx: PromoRedemptionContext) -> PromoRedemptionDecision:
@@ -125,8 +143,20 @@ def register_promo_redemption_policy(policy: PromoRedemptionPolicy) -> None:
         _extra_promo_redemption_policies.append(policy)
 
 
+def register_promo_checkout_suggestion_provider(
+    provider: PromoCheckoutSuggestionProvider,
+) -> None:
+    """Register a non-authoritative source of personal checkout promo codes."""
+
+    if not callable(provider):
+        raise TypeError("provider must be callable")
+    if provider not in _promo_checkout_suggestion_providers:
+        _promo_checkout_suggestion_providers.append(provider)
+
+
 def reset_promo_redemption_policies() -> None:
     _extra_promo_redemption_policies.clear()
+    _promo_checkout_suggestion_providers.clear()
 
 
 def iter_promo_redemption_policies() -> tuple[PromoRedemptionPolicy, ...]:
@@ -143,3 +173,27 @@ async def evaluate_promo_redemption(
         if not result.allowed:
             return result
     return PromoRedemptionDecision.allow()
+
+
+async def resolve_promo_checkout_suggestion(
+    ctx: PromoCheckoutSuggestionContext,
+) -> str | None:
+    """Return the first usable-looking code contributed by a plugin.
+
+    Checkout still validates the code against the selected plan and payment
+    method. Suggestions are optional presentation hints, so a broken provider
+    is logged and skipped instead of making the core account payload fail.
+    """
+
+    for provider in tuple(_promo_checkout_suggestion_providers):
+        try:
+            result = provider(ctx)
+            if inspect_module.isawaitable(result):
+                result = await result
+        except Exception:
+            logger.exception("Promo checkout suggestion provider failed")
+            continue
+        code = str(result or "").strip()
+        if code:
+            return code
+    return None

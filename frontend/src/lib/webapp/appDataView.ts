@@ -35,6 +35,7 @@ export type AppDataView = {
   referralWelcomeBonusDays: number;
   subscription: WebappRecord;
   subscriptionPurchaseDescription: string;
+  suggestedPromoCode: string;
   supportEnabled: boolean;
 };
 
@@ -95,6 +96,7 @@ export function computeAppDataView({
     subscriptionPurchaseDescription: String(
       appSettings.subscription_purchase_description || ""
     ).trim(),
+    suggestedPromoCode: String(dataRecord.suggested_promo_code || "").trim(),
     supportEnabled: Boolean(appSettings.support_tickets_enabled ?? true),
   };
 }
