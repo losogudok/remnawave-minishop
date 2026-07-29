@@ -208,6 +208,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
         current_active_sub = await subscription_dal.get_active_subscription_by_user_id(
             session, user_id
         )
+        previous_squad_subscription = current_active_sub
         current_billing_model = self._subscription_billing_model(current_active_sub)
         current_panel_used = getattr(current_active_sub, "traffic_used_bytes", None)
         current_panel_limit = getattr(current_active_sub, "traffic_limit_bytes", None)
@@ -444,6 +445,22 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             logger.error("Failed to ensure panel user for TG %s during paid subscription.", user_id)
             return None
 
+        if previous_squad_subscription is None and not panel_user_created_now:
+            previous_squad_subscription = (
+                await subscription_dal.get_subscription_by_panel_subscription_uuid(
+                    session,
+                    panel_sub_link_id,
+                )
+            )
+        previous_managed_squads: list[str] = []
+        if previous_squad_subscription is not None:
+            previous_managed_squads, _ = self._managed_panel_squad_uuids_for_subscription(
+                previous_squad_subscription
+            )
+        override_detection_managed_squads = list(
+            dict.fromkeys([*previous_managed_squads, *(managed_squads or [])])
+        )
+
         await subscription_dal.deactivate_other_active_subscriptions(
             session, panel_user_uuid, panel_sub_link_id
         )
@@ -538,6 +555,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                 user_id=user_id,
                 panel_user_uuid=panel_user_uuid,
                 managed_internal_squads=managed_squads,
+                override_detection_managed_internal_squads=(override_detection_managed_squads),
                 include_internal_squads=bool(tariff or managed_squads),
                 source="paid_activation",
             )
