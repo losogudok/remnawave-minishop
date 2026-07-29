@@ -75,6 +75,7 @@ EXPECTED_CORE_MIGRATION_IDS = [
     "0052_add_entitlement_context_snapshots",
     "0053_restore_active_subscription_start_dates",
     "0054_add_payment_checkout_lifecycle",
+    "0055_add_auto_renew_retry_state",
 ]
 
 

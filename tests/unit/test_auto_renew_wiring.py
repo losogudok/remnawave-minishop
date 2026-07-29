@@ -217,7 +217,7 @@ class ChargeRenewalFailureTests(unittest.IsolatedAsyncioTestCase):
             provider="yookassa",
             reason_code="provider_rejected",
             renewal_cycle_end=None,
-            retryable=True,
+            retryable=False,
             payment_db_id=None,
             provider_payment_id=None,
         )

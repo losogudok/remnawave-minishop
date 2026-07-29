@@ -44,6 +44,7 @@ from bot.plugins import (
     collect_worker_tasks,
     run_setup,
 )
+from bot.services.auto_renew_retry_worker import AutoRenewRetryWorker
 from bot.services.backup_worker import BackupWorker
 from bot.services.event_reactions import register_core_reactions
 from bot.services.message_log_notifier import configure_message_log_notifier
@@ -382,6 +383,19 @@ async def _yookassa_reconciliation_task(ctx: PluginContext) -> None:
     ).run()
 
 
+async def _auto_renew_retry_task(ctx: PluginContext) -> None:
+    yookassa_service = ctx.get_service("yookassa_service", YooKassaService)
+    if yookassa_service is None:
+        logger.info("Auto-renew retry worker disabled: service is unavailable")
+        return
+    await AutoRenewRetryWorker(
+        ctx.settings,
+        ctx.require_session_factory(),
+        yookassa_service,
+        ctx.require_subscription_service(),
+    ).run()
+
+
 async def _wata_reconciliation_task(ctx: PluginContext) -> None:
     wata_service = ctx.get_service("wata_service", WataService)
     if wata_service is None:
@@ -426,6 +440,13 @@ def _core_worker_tasks() -> list[WorkerTaskSpec]:
         WorkerTaskSpec(
             name="YooKassaReconciliationWorker",
             factory=_yookassa_reconciliation_task,
+        ),
+        WorkerTaskSpec(
+            name="AutoRenewRetryWorker",
+            factory=_auto_renew_retry_task,
+            enabled=lambda settings: bool(
+                settings.AUTO_RENEW_RETRY_ENABLED or settings.AUTO_RENEW_SCHEDULER_ENABLED
+            ),
         ),
         WorkerTaskSpec(
             name="WataReconciliationWorker",

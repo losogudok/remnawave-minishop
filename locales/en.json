@@ -75,6 +75,7 @@
   "payment_successful_hwid_devices_full": "✅ Payment successful!\nExtra HWID devices added: +{count}.",
   "payment_successful_with_referral_bonus_full": "✅ Payment successful!\nYour {months}-month subscription (base end date: {base_end_date}) has been extended by {bonus_days} bonus days for referral from {inviter_name} and is now active until {final_end_date}.",
   "payment_failed": "❌ Payment failed or was cancelled. Please try again or contact support.",
+  "autorenew_retry_scheduled": "⚠️ The automatic renewal payment was declined. One safe retry is scheduled for {retry_at}. You can disable auto-renew before then; no further retries will be made after that attempt.",
   "payment_failed_with_details": "{message}\n\nPayment attempt details:\n{details}",
   "payment_failed_detail_item": "• {item}",
   "payment_failed_detail_subscription": "subscription for {months} mo.",

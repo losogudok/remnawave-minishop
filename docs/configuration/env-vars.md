@@ -422,6 +422,15 @@ PAYMENT_TRIBUTE_TELEGRAM_EMOJI
 | `YOOKASSA_VAT_CODE` | Код НДС. |
 | `YOOKASSA_AUTOPAYMENTS_ENABLED` | Автопродление через сохраненные способы оплаты. |
 | `YOOKASSA_AUTOPAYMENTS_REQUIRE_CARD_BINDING` | Требовать привязку карты. |
+| `AUTO_RENEW_RETRY_ENABLED` | Включить устойчивую очередь безопасных повторов YooKassa. По умолчанию выключена. |
+| `AUTO_RENEW_RETRY_DRY_RUN` | Не выполнять списание, а только проверять и логировать готовые повторы. По умолчанию включен. |
+| `AUTO_RENEW_MAX_FINANCIAL_ATTEMPTS` | Максимум финансовых попыток на цикл с учетом первой; верхняя граница — `2`. |
+| `AUTO_RENEW_MAX_TRANSPORT_REPLAYS` | Максимум технических повторов того же запроса и `Idempotence-Key`. |
+| `AUTO_RENEW_WORKER_TICK_SECONDS` | Период опроса очереди повторов. |
+| `AUTO_RENEW_WORKER_BATCH_SIZE` | Максимальное число циклов за один проход воркера. |
+| `AUTO_RENEW_RETRY_GRACE_HOURS` | Дополнительное окно после окончания подписки, в котором разрешен финансовый повтор. |
+| `AUTO_RENEW_SCHEDULER_ENABLED` | Включить резервный поиск подписок к продлению без panel webhook. По умолчанию выключен. |
+| `AUTO_RENEW_SCHEDULER_LEAD_HOURS` | За сколько часов резервный планировщик начинает рассматривать подписку. |
 
 ### FreeKassa
 

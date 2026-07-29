@@ -21,7 +21,7 @@ from bot.services.panel_api_service import PanelApiService
 from bot.utils.config_link import prepare_config_links
 from bot.utils.install_links import ensure_user_install_guide_links
 from config.settings import Settings
-from db.dal import payment_dal, subscription_dal, user_billing_dal, user_dal
+from db.dal import auto_renew_dal, payment_dal, subscription_dal, user_billing_dal, user_dal
 
 from ..base import normalize_payment_currency_code
 from ..shared import (
@@ -42,6 +42,7 @@ from ..shared import (
 from ..shared import (
     sale_mode_tariff_key as _sale_mode_tariff_key,
 )
+from .cancellation import cancellation_can_finalize, handle_auto_renew_cancellation
 from .legacy_auto_renew import ensure_legacy_auto_renew_payment
 
 if TYPE_CHECKING:
@@ -592,7 +593,6 @@ async def process_successful_payment(
             and payment_before_update
             and payment_before_update.status != "succeeded"
         )
-        # Try to capture and save payment method for future charges if available
         try:
             payment_method = payment_info_from_webhook.get("payment_method")
             if (
@@ -682,6 +682,7 @@ async def process_successful_payment(
                 yk_payment_id_from_hook,
             )
             raise Exception(f"DB Error: Could not update payment record {payment_db_id}")
+        await auto_renew_dal.mark_cycle_succeeded_for_record(session, updated_payment_record)
 
         tariff_key_for_event = (
             str(getattr(updated_payment_record, "tariff_key", "") or "").strip()
@@ -914,7 +915,6 @@ async def process_cancelled_payment(
     i18n: JsonI18n,
     settings: Settings,
 ) -> dict[str, Any] | None:
-
     metadata_raw = payment_info_from_webhook.get("metadata")
     metadata = metadata_raw if isinstance(metadata_raw, dict) else {}
     user_id_str = metadata.get("user_id")
@@ -933,6 +933,10 @@ async def process_cancelled_payment(
         return None
 
     try:
+        cancellation_raw = payment_info_from_webhook.get("cancellation_details")
+        cancellation = cancellation_raw if isinstance(cancellation_raw, dict) else {}
+        cancellation_party = str(cancellation.get("party") or "").strip().lower() or None
+        cancellation_reason = str(cancellation.get("reason") or "").strip().lower() or None
         updated_payment = await payment_dal.update_payment_status_by_db_id(
             session,
             payment_db_id=payment_db_id,
@@ -941,6 +945,24 @@ async def process_cancelled_payment(
         )
 
         if updated_payment:
+            if not cancellation_can_finalize(updated_payment, payment_db_id, logger):
+                return None
+            await auto_renew_dal.record_provider_cancellation(
+                session,
+                payment_id=payment_db_id,
+                party=cancellation_party,
+                reason=cancellation_reason,
+            )
+            decision = await handle_auto_renew_cancellation(
+                session,
+                payment=updated_payment,
+                user_id=user_id,
+                cancellation_party=cancellation_party,
+                cancellation_reason=cancellation_reason,
+                settings=settings,
+            )
+            cycle_id = decision.cycle_id
+            retry_at = decision.retry_at
             logger.info(
                 "Payment %s (YK: %s) status updated to cancelled for user %s.",
                 payment_db_id,
@@ -953,14 +975,19 @@ async def process_cancelled_payment(
                 provider="yookassa",
                 provider_payment_id=payment_info_from_webhook.get("id"),
                 status=payment_info_from_webhook.get("status", "canceled"),
+                cancellation_party=cancellation_party,
+                cancellation_reason=cancellation_reason,
+                auto_renew_cycle_id=cycle_id,
+                auto_renew_retry_scheduled=retry_at is not None,
+                retry_at=retry_at,
+                message_key=("autorenew_retry_scheduled" if retry_at is not None else None),
             ).to_payload(exclude_unset=True)
             return payload
-        else:
-            logger.warning(
-                "Could not find payment record %s to update status to cancelled for user %s.",
-                payment_db_id,
-                user_id,
-            )
+        logger.warning(
+            "Could not find payment record %s to update status to cancelled for user %s.",
+            payment_db_id,
+            user_id,
+        )
 
     except Exception as e_process_cancel:
         logger.exception(

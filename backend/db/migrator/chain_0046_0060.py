@@ -397,6 +397,121 @@ def _migration_0054_add_payment_checkout_lifecycle(connection: Connection) -> No
     )
 
 
+def _migration_0055_add_auto_renew_retry_state(connection: Connection) -> None:
+    """Persist bounded retry orchestration and customer-consent revisions."""
+
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+    if "subscriptions" in table_names:
+        subscription_columns = {column["name"] for column in inspector.get_columns("subscriptions")}
+        if "auto_renew_consent_version" not in subscription_columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE subscriptions "
+                    "ADD COLUMN auto_renew_consent_version INTEGER NOT NULL DEFAULT 0"
+                )
+            )
+
+    connection.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS auto_renew_cycles (
+                cycle_id SERIAL PRIMARY KEY,
+                subscription_id INTEGER NOT NULL REFERENCES subscriptions(subscription_id),
+                user_id BIGINT NOT NULL REFERENCES users(user_id),
+                provider VARCHAR(32) NOT NULL,
+                cycle_anchor DATE NOT NULL,
+                renewal_cycle_end TIMESTAMPTZ NOT NULL,
+                state VARCHAR(32) NOT NULL DEFAULT 'scheduled',
+                base_idempotence_key VARCHAR(64) NOT NULL UNIQUE,
+                consent_version INTEGER NOT NULL DEFAULT 0,
+                payment_method_id INTEGER
+                    REFERENCES user_payment_methods(method_id) ON DELETE SET NULL,
+                payment_method_provider_id VARCHAR NOT NULL,
+                financial_attempts INTEGER NOT NULL DEFAULT 0,
+                transport_replays INTEGER NOT NULL DEFAULT 0,
+                next_attempt_at TIMESTAMPTZ,
+                lease_expires_at TIMESTAMPTZ,
+                current_payment_id INTEGER,
+                request_snapshot TEXT NOT NULL,
+                last_failure_kind VARCHAR(64),
+                last_http_status INTEGER,
+                last_provider_code VARCHAR(128),
+                cancellation_party VARCHAR(64),
+                cancellation_reason VARCHAR(128),
+                stopped_reason VARCHAR(128),
+                retry_notified_at TIMESTAMPTZ,
+                completed_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                CONSTRAINT uq_auto_renew_cycles_subscription_anchor
+                    UNIQUE (subscription_id, cycle_anchor)
+            )
+            """
+        )
+    )
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS ix_auto_renew_cycles_subscription_id "
+        "ON auto_renew_cycles (subscription_id)",
+        "CREATE INDEX IF NOT EXISTS ix_auto_renew_cycles_user_id ON auto_renew_cycles (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_auto_renew_cycles_provider ON auto_renew_cycles (provider)",
+        "CREATE INDEX IF NOT EXISTS ix_auto_renew_cycles_renewal_cycle_end "
+        "ON auto_renew_cycles (renewal_cycle_end)",
+        "CREATE INDEX IF NOT EXISTS ix_auto_renew_cycles_state ON auto_renew_cycles (state)",
+        "CREATE INDEX IF NOT EXISTS ix_auto_renew_cycles_next_attempt_at "
+        "ON auto_renew_cycles (next_attempt_at)",
+        "CREATE INDEX IF NOT EXISTS ix_auto_renew_cycles_lease_expires_at "
+        "ON auto_renew_cycles (lease_expires_at)",
+        "CREATE INDEX IF NOT EXISTS ix_auto_renew_cycles_current_payment_id "
+        "ON auto_renew_cycles (current_payment_id)",
+        "CREATE INDEX IF NOT EXISTS ix_auto_renew_cycles_payment_method_id "
+        "ON auto_renew_cycles (payment_method_id)",
+        "CREATE INDEX IF NOT EXISTS ix_auto_renew_cycles_cancellation_reason "
+        "ON auto_renew_cycles (cancellation_reason)",
+        "CREATE INDEX IF NOT EXISTS ix_auto_renew_cycles_stopped_reason "
+        "ON auto_renew_cycles (stopped_reason)",
+        "CREATE INDEX IF NOT EXISTS ix_auto_renew_cycles_state_next_attempt "
+        "ON auto_renew_cycles (state, next_attempt_at)",
+        "CREATE INDEX IF NOT EXISTS ix_auto_renew_cycles_user_state "
+        "ON auto_renew_cycles (user_id, state)",
+    ):
+        connection.execute(text(statement))
+
+    if "payments" not in table_names:
+        return
+    payment_columns = {column["name"] for column in inspector.get_columns("payments")}
+    additions = {
+        "auto_renew_cycle_id": (
+            "INTEGER REFERENCES auto_renew_cycles(cycle_id) ON DELETE SET NULL"
+        ),
+        "renewal_attempt_number": "INTEGER",
+        "renewal_consent_version": "INTEGER",
+        "renewal_payment_method_id": "INTEGER",
+        "provider_request_snapshot": "TEXT",
+        "failure_kind": "VARCHAR(64)",
+        "failure_http_status": "INTEGER",
+        "failure_provider_code": "VARCHAR(128)",
+        "provider_cancellation_party": "VARCHAR(64)",
+        "provider_cancellation_reason": "VARCHAR(128)",
+    }
+    for column, definition in additions.items():
+        if column not in payment_columns:
+            connection.execute(text(f"ALTER TABLE payments ADD COLUMN {column} {definition}"))
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS ix_payments_auto_renew_cycle_id "
+        "ON payments (auto_renew_cycle_id)",
+        "CREATE INDEX IF NOT EXISTS ix_payments_renewal_payment_method_id "
+        "ON payments (renewal_payment_method_id)",
+        "CREATE INDEX IF NOT EXISTS ix_payments_failure_kind ON payments (failure_kind)",
+        "CREATE INDEX IF NOT EXISTS ix_payments_provider_cancellation_reason "
+        "ON payments (provider_cancellation_reason)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_auto_renew_cycle_attempt "
+        "ON payments (auto_renew_cycle_id, renewal_attempt_number) "
+        "WHERE auto_renew_cycle_id IS NOT NULL AND renewal_attempt_number IS NOT NULL",
+    ):
+        connection.execute(text(statement))
+
+
 CHAIN_0046_0060: list[Migration] = [
     Migration(
         id="0046_add_recurring_payment_attribution",
@@ -442,5 +557,10 @@ CHAIN_0046_0060: list[Migration] = [
         id="0054_add_payment_checkout_lifecycle",
         description="Persist hosted-checkout expiry and provider reconciliation cadence",
         upgrade=_migration_0054_add_payment_checkout_lifecycle,
+    ),
+    Migration(
+        id="0055_add_auto_renew_retry_state",
+        description="Persist bounded auto-renew retry orchestration and consent revisions",
+        upgrade=_migration_0055_add_auto_renew_retry_state,
     ),
 ]

@@ -363,6 +363,12 @@ class RenewalMixin(SubscriptionServiceMixinContract):
                         renewal_cycle_end=renewal_cycle_end,
                     ),
                     renewal_cycle_end=renewal_cycle_end or getattr(sub, "end_date", None),
+                    consent_version=int(getattr(sub, "auto_renew_consent_version", 0) or 0),
+                    payment_method_db_id=(
+                        int(default_pm.method_id)
+                        if getattr(default_pm, "method_id", None) is not None
+                        else None
+                    ),
                 )
             )
         except Exception:
@@ -386,7 +392,7 @@ class RenewalMixin(SubscriptionServiceMixinContract):
                 provider=provider,
                 reason_code="provider_rejected",
                 renewal_cycle_end=renewal_cycle_end,
-                retryable=True,
+                retryable=result.retryable,
                 payment_db_id=result.payment_db_id,
                 provider_payment_id=result.provider_payment_id,
             )

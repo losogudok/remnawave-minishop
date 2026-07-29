@@ -125,6 +125,11 @@ class PaymentCanceledPayload(EventPayload):
     provider_payment_id: str | None = None
     status: str | None = None
     message_key: str | None = None
+    cancellation_party: str | None = None
+    cancellation_reason: str | None = None
+    auto_renew_cycle_id: int | None = None
+    auto_renew_retry_scheduled: bool = False
+    retry_at: datetime | None = None
 
 
 class SubscriptionCreatedPayload(EventPayload):

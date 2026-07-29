@@ -83,7 +83,8 @@ async def notify_user_payment_failed(
             or getattr(payment, "yookassa_payment_id", None),
             status=getattr(payment, "status", None),
             message_key=message_key,
-        )
+        ),
+        exclude_unset=True,
     )
     subscription_id = getattr(payment, "renewal_subscription_id", None)
     if bool(getattr(payment, "is_auto_renew", False)) and subscription_id is not None:

@@ -2,6 +2,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -174,6 +175,7 @@ class Subscription(Base):
     # the local fallback reminder spectrum.
     suppress_early_expiry_notifications = Column(Boolean, nullable=False, default=False)
     auto_renew_enabled = Column(Boolean, default=True, index=True)
+    auto_renew_consent_version = Column(Integer, nullable=False, default=0)
     tariff_key = Column(String, nullable=True, index=True)
     tier_baseline_bytes = Column(BigInteger, nullable=True)
     topup_balance_bytes = Column(BigInteger, nullable=False, default=0)
@@ -197,6 +199,68 @@ class Subscription(Base):
 
     def __repr__(self) -> str:
         return f"<Subscription(id={self.subscription_id}, user_id={self.user_id}, panel_uuid='{self.panel_user_uuid}', ends='{self.end_date}')>"  # noqa: E501
+
+
+class AutoRenewCycle(Base):
+    """Durable coordinator for one subscription renewal billing cycle."""
+
+    __tablename__ = "auto_renew_cycles"
+    __table_args__ = (
+        UniqueConstraint(
+            "subscription_id",
+            "cycle_anchor",
+            name="uq_auto_renew_cycles_subscription_anchor",
+        ),
+        Index("ix_auto_renew_cycles_state_next_attempt", "state", "next_attempt_at"),
+        Index("ix_auto_renew_cycles_user_state", "user_id", "state"),
+    )
+
+    cycle_id = Column(Integer, primary_key=True, autoincrement=True)
+    subscription_id = Column(
+        Integer,
+        ForeignKey("subscriptions.subscription_id"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False, index=True)
+    provider = Column(String(32), nullable=False, index=True)
+    cycle_anchor = Column(Date, nullable=False)
+    renewal_cycle_end = Column(DateTime(timezone=True), nullable=False, index=True)
+    state = Column(String(32), nullable=False, default="scheduled", index=True)
+    base_idempotence_key = Column(String(64), nullable=False, unique=True)
+    consent_version = Column(Integer, nullable=False, default=0)
+    payment_method_id = Column(
+        Integer,
+        ForeignKey("user_payment_methods.method_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    payment_method_provider_id = Column(String, nullable=False)
+    financial_attempts = Column(Integer, nullable=False, default=0)
+    transport_replays = Column(Integer, nullable=False, default=0)
+    next_attempt_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    lease_expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    current_payment_id = Column(Integer, nullable=True, index=True)
+    request_snapshot = Column(Text, nullable=False)
+    last_failure_kind = Column(String(64), nullable=True, index=True)
+    last_http_status = Column(Integer, nullable=True)
+    last_provider_code = Column(String(128), nullable=True)
+    cancellation_party = Column(String(64), nullable=True)
+    cancellation_reason = Column(String(128), nullable=True, index=True)
+    stopped_reason = Column(String(128), nullable=True, index=True)
+    retry_notified_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    subscription = relationship("Subscription")
+    user = relationship("User")
+    payment_method = relationship("UserPaymentMethod")
 
 
 class EmailVerificationCode(Base):
@@ -249,6 +313,11 @@ class Payment(Base):
             "provider_payment_id",
             name="uq_payments_provider_payment_id",
         ),
+        UniqueConstraint(
+            "auto_renew_cycle_id",
+            "renewal_attempt_number",
+            name="uq_payments_auto_renew_cycle_attempt",
+        ),
     )
 
     payment_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -271,6 +340,21 @@ class Payment(Base):
     is_auto_renew = Column(Boolean, nullable=False, default=False, index=True)
     renewal_subscription_id = Column(Integer, nullable=True, index=True)
     renewal_cycle_end = Column(DateTime(timezone=True), nullable=True)
+    auto_renew_cycle_id = Column(
+        Integer,
+        ForeignKey("auto_renew_cycles.cycle_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    renewal_attempt_number = Column(Integer, nullable=True)
+    renewal_consent_version = Column(Integer, nullable=True)
+    renewal_payment_method_id = Column(Integer, nullable=True, index=True)
+    provider_request_snapshot = Column(Text, nullable=True)
+    failure_kind = Column(String(64), nullable=True, index=True)
+    failure_http_status = Column(Integer, nullable=True)
+    failure_provider_code = Column(String(128), nullable=True)
+    provider_cancellation_party = Column(String(64), nullable=True)
+    provider_cancellation_reason = Column(String(128), nullable=True, index=True)
     sale_mode = Column(String, nullable=True, index=True)
     tariff_key = Column(String, nullable=True, index=True)
     purchased_gb = Column(Float, nullable=True)
@@ -302,6 +386,7 @@ class Payment(Base):
 
     user = relationship("User", back_populates="payments")
     promo_code_used = relationship("PromoCode", back_populates="payments_where_used")
+    auto_renew_cycle = relationship("AutoRenewCycle")
 
 
 class TributeEntitlement(Base):

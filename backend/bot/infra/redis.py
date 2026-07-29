@@ -27,14 +27,15 @@ def redis_key(settings: Settings, *parts: object) -> str:
 
 async def get_redis(settings: Settings) -> Any | None:
     global _redis
-    if not settings.REDIS_URL:
+    redis_url = settings.REDIS_URL
+    if not redis_url:
         return None
     if redis_asyncio is None:
         logger.warning("REDIS_URL is set but redis package is not installed")
         return None
     if _redis is None:
         _redis = redis_asyncio.Redis.from_url(
-            settings.REDIS_URL,
+            redis_url,
             encoding="utf-8",
             decode_responses=True,
             health_check_interval=30,

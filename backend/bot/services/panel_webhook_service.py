@@ -15,7 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, sessionmaker
 
 from bot.infra import events
+from bot.infra.auto_renew import auto_renew_user_lock_name
 from bot.infra.event_payloads import PanelWebhookReceivedPayload
+from bot.infra.redis import redis_lock
 from bot.infra.webhook_queue import enqueue_webhook_event
 from bot.keyboards.inline.user_keyboards import (
     get_autorenew_cancel_keyboard,
@@ -497,47 +499,59 @@ class PanelWebhookService:
                     internal_user_id,
                 )
                 return False
-            async with self.async_session_factory() as renewal_session:
-                active_sub = await subscription_dal.get_active_subscription_by_user_id(
-                    renewal_session,
-                    internal_user_id,
-                )
-                if not (
-                    active_sub
-                    and active_sub.auto_renew_enabled
-                    and active_sub.provider == "yookassa"
-                ):
-                    return False
-                if self._is_stale_autorenew_cycle(
-                    active_sub,
-                    renewal_cycle_end,
-                    renewal_cycle_end_is_date_only=renewal_cycle_end_is_date_only,
-                ):
+            async with redis_lock(
+                self.settings,
+                auto_renew_user_lock_name(internal_user_id),
+                ttl_seconds=60,
+            ) as acquired:
+                if not acquired:
                     logger.info(
-                        "Auto-renew trigger (%s) skipped for stale cycle user=%s "
-                        "subscription=%s expected_end=%s current_end=%s",
+                        "Auto-renew trigger (%s) deferred: user lock is held for %s",
                         stage_key,
                         internal_user_id,
-                        getattr(active_sub, "subscription_id", None),
-                        renewal_cycle_end,
-                        getattr(active_sub, "end_date", None),
                     )
-                    # The subscription has already moved to another cycle;
-                    # suppress the stale event and do not send its reminder.
-                    return True
-                try:
-                    ok = await subscription_service.charge_subscription_renewal(
+                    return False
+                async with self.async_session_factory() as renewal_session:
+                    active_sub = await subscription_dal.get_active_subscription_by_user_id(
                         renewal_session,
-                        active_sub,
-                        renewal_cycle_end=renewal_cycle_end,
+                        internal_user_id,
                     )
-                    if ok:
-                        await renewal_session.commit()
+                    if not (
+                        active_sub
+                        and active_sub.auto_renew_enabled
+                        and active_sub.provider == "yookassa"
+                    ):
+                        return False
+                    if self._is_stale_autorenew_cycle(
+                        active_sub,
+                        renewal_cycle_end,
+                        renewal_cycle_end_is_date_only=renewal_cycle_end_is_date_only,
+                    ):
+                        logger.info(
+                            "Auto-renew trigger (%s) skipped for stale cycle user=%s "
+                            "subscription=%s expected_end=%s current_end=%s",
+                            stage_key,
+                            internal_user_id,
+                            getattr(active_sub, "subscription_id", None),
+                            renewal_cycle_end,
+                            getattr(active_sub, "end_date", None),
+                        )
+                        # The subscription has already moved to another cycle;
+                        # suppress the stale event and do not send its reminder.
                         return True
-                    await renewal_session.rollback()
-                except Exception:
-                    await renewal_session.rollback()
-                    logger.exception("Auto-renew attempt (%s) failed", stage_key)
+                    try:
+                        ok = await subscription_service.charge_subscription_renewal(
+                            renewal_session,
+                            active_sub,
+                            renewal_cycle_end=renewal_cycle_end,
+                        )
+                        if ok:
+                            await renewal_session.commit()
+                            return True
+                        await renewal_session.rollback()
+                    except Exception:
+                        await renewal_session.rollback()
+                        logger.exception("Auto-renew attempt (%s) failed", stage_key)
         except Exception:
             logger.exception("Auto-renew trigger (%s) failed pre-check", stage_key)
         return False

@@ -11,6 +11,7 @@ from bot.app.web.webapp.cache_helpers import invalidate_webapp_user_caches
 from bot.infra import events
 from bot.infra.payment_events import PaymentPurchase, resolve_payment_success_snapshot
 from bot.infra.redis import get_redis, redis_key
+from bot.keyboards.inline.user_keyboards_payments import get_autorenew_cancel_keyboard
 from bot.payment_providers.shared.common import (
     make_translator,
 )
@@ -675,7 +676,14 @@ class CoreEventReactions:
             or "ru"
         )
         translator = make_translator(self.ctx.i18n, language)
-        message_text = translator(payload.get("message_key") or "payment_failed")
+        retry_at = payload.get("retry_at")
+        retry_at_text = (
+            events.iso(retry_at) if isinstance(retry_at, datetime) else str(retry_at or "")
+        )
+        message_text = translator(
+            payload.get("message_key") or "payment_failed",
+            retry_at=retry_at_text or "",
+        )
         if payment is not None:
             try:
                 payment_details = _format_failed_payment_details(
@@ -698,7 +706,22 @@ class CoreEventReactions:
                 )
         telegram_error: Exception | None = None
         try:
-            await self.ctx.bot.send_message(int(user_id), message_text)
+            reply_markup = (
+                get_autorenew_cancel_keyboard(
+                    language,
+                    self.ctx.i18n,
+                )
+                if _truthy(payload.get("auto_renew_retry_scheduled"))
+                else None
+            )
+            if reply_markup is not None:
+                await self.ctx.bot.send_message(
+                    int(user_id),
+                    message_text,
+                    reply_markup=reply_markup,
+                )
+            else:
+                await self.ctx.bot.send_message(int(user_id), message_text)
         except Exception as exc:
             logger.exception("Failed to notify user %s about canceled payment.", user_id)
             await _release_payment_failure_notification(
