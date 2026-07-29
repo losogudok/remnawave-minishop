@@ -19,6 +19,7 @@ from bot.services.backup_archive import (
     BACKUP_APP_ID,
     BACKUP_FILENAME_PREFIX,
     BACKUP_FORMAT_VERSION,
+    BACKUP_TARIFFS_CONFIG_MEMBER,
     attach_archive_integrity,
     backup_filename_timestamp,
     build_file_records,
@@ -165,6 +166,7 @@ class BackupWorker:
             staging_dir = Path(tmp)
             warnings: list[str] = []
             db_dump_included = False
+            tariffs_config_included = False
             compose_files_count = 0
 
             if self.settings.BACKUP_POSTGRES_DUMP_ENABLED:
@@ -173,6 +175,7 @@ class BackupWorker:
                 dump_path = dump_dir / f"{self.settings.POSTGRES_DB}.dump"
                 await self._dump_database(dump_path)
                 db_dump_included = True
+                tariffs_config_included = self._stage_tariffs_config(staging_dir, warnings)
 
             if self.settings.BACKUP_COMPOSE_ENABLED:
                 compose_files_count = self._stage_compose_source(staging_dir / "compose", warnings)
@@ -196,6 +199,11 @@ class BackupWorker:
                     "source_dir": self.settings.BACKUP_COMPOSE_SOURCE_DIR,
                     "included": compose_files_count > 0,
                     "files_count": compose_files_count,
+                },
+                "tariffs_config": {
+                    "source_path": self.settings.TARIFFS_CONFIG_PATH,
+                    "archive_path": BACKUP_TARIFFS_CONFIG_MEMBER,
+                    "included": tariffs_config_included,
                 },
                 "warnings": warnings,
             }
@@ -321,6 +329,24 @@ class BackupWorker:
                 warnings.append(f"Skipped compose file {relative.as_posix()}: {exc}")
 
         return files_count
+
+    def _stage_tariffs_config(self, staging_dir: Path, warnings: list[str]) -> bool:
+        source_raw = str(self.settings.TARIFFS_CONFIG_PATH or "").strip()
+        if not source_raw:
+            return False
+
+        source_path = Path(source_raw).expanduser()
+        if not source_path.is_file():
+            return False
+
+        destination = staging_dir.joinpath(*BACKUP_TARIFFS_CONFIG_MEMBER.split("/"))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.copy2(source_path, destination)
+        except OSError as exc:
+            warnings.append(f"Skipped tariffs config {source_path}: {exc}")
+            return False
+        return True
 
     def _compose_excluded_dirs(self) -> set[str]:
         configured = self._split_csv(self.settings.BACKUP_COMPOSE_EXCLUDE_DIRS)
