@@ -12,6 +12,7 @@
   import TariffDialogs from "./TariffDialogs.svelte";
   import type {
     PaymentMethod,
+    PendingPaymentView,
     PlanView,
     SubscriptionView,
     TariffView,
@@ -41,6 +42,7 @@
     openLinkEmailDialog?: VoidAction;
     hasMultipleTariffs?: boolean;
     methods?: PaymentMethod[];
+    pendingPayment?: PendingPaymentView | null;
     plans?: PlanView[];
     selectTariff: (tariff: TariffView) => void;
     selectedTariff?: TariffView | null;
@@ -76,6 +78,7 @@
     openLinkEmailDialog = () => {},
     hasMultipleTariffs = false,
     methods = [],
+    pendingPayment = null,
     plans = [],
     selectTariff,
     selectedTariff = null,
@@ -125,6 +128,7 @@
   bind:setPasswordValue={accountStore.setPasswordValue}
   setPasswordEmail={user?.email || ""}
   createPayment={billingStore.createPayment}
+  resumePendingPayment={billingStore.resumePendingPayment}
   deviceConfirmOpen={devicesStore.deviceConfirmOpen}
   deviceDisconnectBusy={devicesStore.deviceDisconnectBusy}
   deviceToDisconnect={devicesStore.deviceToDisconnect}
@@ -154,6 +158,7 @@
   clearCheckoutPromo={billingStore.clearCheckoutPromo}
   {hasMultipleTariffs}
   {methods}
+  {pendingPayment}
   payBusy={billingStore.payBusy}
   {plans}
   {selectedTariff}

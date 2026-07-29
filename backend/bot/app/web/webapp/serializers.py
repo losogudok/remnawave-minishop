@@ -35,7 +35,7 @@ from config.settings import Settings
 from config.subscription_guides_config import subscription_guides_available
 from config.tariffs_config import default_currency_key_for_settings, payment_currency_code
 from config.webapp_themes_config import public_themes_catalog_payload
-from db.dal import subscription_dal, support_dal, user_dal
+from db.dal import payment_dal, subscription_dal, support_dal, user_dal
 
 from .assets import (
     _get_cached_webapp_settings,
@@ -66,10 +66,50 @@ __all__ = [
     "_build_user_payload",
     "_serialize_hwid_device_packages",
     "_serialize_payment_methods",
+    "_serialize_pending_promo_payment",
     "_serialize_tariff_change_target",
     "_serialize_topup_packages",
     "_traffic_percent",
 ]
+
+
+def _serialize_pending_promo_payment(payment: Any | None) -> dict[str, Any] | None:
+    if payment is None:
+        return None
+
+    promo = getattr(payment, "promo_code_used", None)
+    promo_code = str(
+        getattr(promo, "archived_code", None) or getattr(promo, "code", None) or ""
+    ).strip()
+    amount = float(getattr(payment, "amount", 0) or 0)
+    discount_amount = max(
+        0.0,
+        float(getattr(payment, "checkout_discount_amount", 0) or 0),
+    )
+    base_amount_raw = getattr(payment, "checkout_base_amount", None)
+    base_amount = (
+        float(base_amount_raw) if base_amount_raw is not None else amount + discount_amount
+    )
+    created_at = getattr(payment, "created_at", None)
+    return {
+        "payment_id": int(payment.payment_id),
+        "payment_url": str(payment.provider_payment_url),
+        "provider": str(payment.provider or ""),
+        "status": str(payment.status or ""),
+        "amount": amount,
+        "base_amount": max(amount, base_amount),
+        "currency": str(payment.currency or ""),
+        "discount_amount": discount_amount,
+        "discount_percent": float(getattr(payment, "promo_discount_percent", 0) or 0),
+        "months": getattr(payment, "subscription_duration_months", None),
+        "purchased_gb": getattr(payment, "purchased_gb", None),
+        "purchased_hwid_devices": getattr(payment, "purchased_hwid_devices", None),
+        "sale_mode": str(getattr(payment, "sale_mode", None) or ""),
+        "tariff_key": getattr(payment, "tariff_key", None),
+        "promo_code": promo_code,
+        "promo_effect_summary": str(getattr(payment, "promo_effect_summary", None) or ""),
+        "created_at": created_at.isoformat() if created_at is not None else "",
+    }
 
 
 async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, Any]:
@@ -121,6 +161,12 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             )
             if db_user.panel_user_uuid
             else None
+        )
+        pending_promo_payment = _serialize_pending_promo_payment(
+            await payment_dal.get_latest_resumable_promo_payment(
+                session,
+                user_id=user_id,
+            )
         )
         install_share_token = (
             await subscription_dal.ensure_install_share_token(session, local_sub)
@@ -221,6 +267,7 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             "bonus_details": _serialize_referral_bonus_details(settings, lang),
         },
         "plans": plans_payload,
+        "pending_payment": pending_promo_payment,
         "payment_methods": _serialize_payment_methods(
             settings,
             request.app,

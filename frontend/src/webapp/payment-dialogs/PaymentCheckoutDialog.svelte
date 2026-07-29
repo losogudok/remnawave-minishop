@@ -1,5 +1,13 @@
 <script lang="ts">
-  import { ArrowLeft, ArrowRight, CheckCircle2, LockKeyhole } from "$components/ui/icons.js";
+  import {
+    ArrowLeft,
+    ArrowRight,
+    CheckCircle2,
+    ExternalLink,
+    History,
+    LockKeyhole,
+    Tag,
+  } from "$components/ui/icons.js";
 
   import Button from "$components/ui/button.svelte";
   import Checkbox from "$components/ui/checkbox.svelte";
@@ -25,6 +33,7 @@
   } from "$lib/webapp/tariffs.js";
   import type {
     PaymentMethodView,
+    PendingPaymentView,
     PlanView,
     SubscriptionView,
     TariffView,
@@ -37,6 +46,7 @@
     createPayment = () => {},
     hasMultipleTariffs = false,
     methods = [],
+    pendingPayment = null,
     payBusy = false,
     paymentModalOpen = $bindable(false),
     paymentStep = $bindable("tariff"),
@@ -67,6 +77,7 @@
     backToTariffList = () => {},
     clearCheckoutPromo = () => {},
     continueWithSelectedTariff = () => {},
+    resumePendingPayment = () => {},
     selectTariff = () => {},
     t = (key) => key,
     termUnitLabel = () => "",
@@ -74,6 +85,7 @@
     createPayment?: VoidAction;
     hasMultipleTariffs?: boolean;
     methods?: PaymentMethodView[];
+    pendingPayment?: PendingPaymentView | null;
     payBusy?: boolean;
     paymentModalOpen?: boolean;
     paymentStep?: string;
@@ -104,6 +116,7 @@
     backToTariffList?: VoidAction;
     clearCheckoutPromo?: VoidAction;
     continueWithSelectedTariff?: VoidAction;
+    resumePendingPayment?: (payment: PendingPaymentView) => void;
     selectTariff?: (tariff: TariffView) => void;
     t?: Translate;
     termUnitLabel?: TermUnitLabel;
@@ -111,6 +124,40 @@
 
   function priceLabel(plan: PlanView | null) {
     return priceLabelFn(plan, selectedMethod);
+  }
+  function pendingPaymentPrice(value: unknown) {
+    const amount = Number(value || 0);
+    const provider = String(pendingPayment?.provider || "");
+    return priceLabelFn(
+      {
+        price: amount,
+        stars_price: provider.toLowerCase().includes("stars") ? amount : undefined,
+        currency: String(pendingPayment?.currency || ""),
+      },
+      provider
+    );
+  }
+  function pendingPaymentTerm() {
+    const months = Number(pendingPayment?.months || 0);
+    if (months > 0) return termUnitLabel(months, "month");
+    const trafficGb = Number(pendingPayment?.purchased_gb || 0);
+    if (trafficGb > 0) {
+      return t("wa_pending_payment_traffic", { gb: formatCompactNumber(trafficGb) });
+    }
+    const devices = Number(pendingPayment?.purchased_hwid_devices || 0);
+    if (devices > 0) return t("wa_pending_payment_devices", { count: devices });
+    return t("wa_pending_payment_purchase");
+  }
+  function pendingPaymentDiscount() {
+    const summary = String(pendingPayment?.promo_effect_summary || "").trim();
+    if (summary) return summary;
+    const percent = Number(pendingPayment?.discount_percent || 0);
+    if (percent > 0) {
+      return t("wa_pending_payment_discount_percent", {
+        percent: formatCompactNumber(percent),
+      });
+    }
+    return t("wa_pending_payment_discount_applied");
   }
   function methodUsesStars() {
     return String(selectedMethod || "")
@@ -375,6 +422,48 @@
   class="payment-dialog-card webapp-payment-dialog"
 >
   <div class="payment-dialog-body">
+    {#if pendingPayment}
+      <section class="pending-payment-card">
+        <div class="pending-payment-heading">
+          <span class="pending-payment-icon"><History size={18} /></span>
+          <span>
+            <strong>{t("wa_pending_payment_title")}</strong>
+            <small>
+              {t("wa_pending_payment_description", {
+                promo: pendingPayment.promo_code || "",
+              })}
+            </small>
+          </span>
+        </div>
+        <div class="pending-payment-facts">
+          <span>
+            <small>{t("wa_pending_payment_term")}</small>
+            <strong>{pendingPaymentTerm()}</strong>
+          </span>
+          <span>
+            <small>{t("wa_pending_payment_amount")}</small>
+            <strong class="pending-payment-price">
+              {#if Number(pendingPayment.base_amount || 0) > Number(pendingPayment.amount || 0)}
+                <s>{pendingPaymentPrice(pendingPayment.base_amount)}</s>
+              {/if}
+              {pendingPaymentPrice(pendingPayment.amount)}
+            </strong>
+          </span>
+          <span>
+            <small><Tag size={12} /> {t("wa_pending_payment_discount")}</small>
+            <strong>{pendingPaymentDiscount()}</strong>
+          </span>
+        </div>
+        <Button
+          class="wide pending-payment-action"
+          onclick={() => resumePendingPayment(pendingPayment)}
+          disabled={payBusy}
+        >
+          {t("wa_pending_payment_continue")}
+          <ExternalLink size={16} />
+        </Button>
+      </section>
+    {/if}
     {#if tariffMode && !singleTariffMode && paymentStep === "tariff"}
       {#if tariffCatalog.length}
         <div class="option-list tariff-list">

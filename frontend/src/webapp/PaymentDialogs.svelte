@@ -6,6 +6,7 @@
   import type {
     DeviceView,
     PaymentMethodView,
+    PendingPaymentView,
     PlanView,
     SubscriptionView,
     TariffView,
@@ -36,6 +37,7 @@
     linkEmailValue = $bindable(""),
     hasMultipleTariffs = false,
     methods = [],
+    pendingPayment = null,
     payBusy = false,
     paymentModalOpen = $bindable(false),
     paymentStep = $bindable("tariff"),
@@ -79,6 +81,7 @@
     backToTariffList = () => {},
     clearCheckoutPromo = () => {},
     continueWithSelectedTariff = () => {},
+    resumePendingPayment = () => {},
     requestLinkEmailCode = () => {},
     requestSetPasswordCode = () => {},
     selectTariff = () => {},
@@ -103,6 +106,7 @@
     linkEmailValue?: string;
     hasMultipleTariffs?: boolean;
     methods?: PaymentMethodView[];
+    pendingPayment?: PendingPaymentView | null;
     payBusy?: boolean;
     paymentModalOpen?: boolean;
     paymentStep?: string;
@@ -146,6 +150,7 @@
     backToTariffList?: VoidAction;
     clearCheckoutPromo?: VoidAction;
     continueWithSelectedTariff?: VoidAction;
+    resumePendingPayment?: (payment: PendingPaymentView) => void;
     requestLinkEmailCode?: VoidAction;
     requestSetPasswordCode?: VoidAction;
     selectTariff?: (tariff: TariffView) => void;
@@ -160,6 +165,7 @@
   {createPayment}
   {hasMultipleTariffs}
   {methods}
+  {pendingPayment}
   {payBusy}
   bind:paymentModalOpen
   bind:paymentStep
@@ -190,6 +196,7 @@
   {backToTariffList}
   {clearCheckoutPromo}
   {continueWithSelectedTariff}
+  {resumePendingPayment}
   {selectTariff}
   {t}
   {termUnitLabel}

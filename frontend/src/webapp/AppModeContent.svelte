@@ -17,6 +17,7 @@
   import AuthScreen from "./auth/AuthScreen.svelte";
   import {
     type BooleanAction,
+    type PendingPaymentView,
     type StringAction,
     type SubscriptionView,
     type TermUnitLabel,
@@ -189,6 +190,7 @@
   const subscriptionReissueEnabled = $derived(appDataView.subscriptionReissueEnabled);
   const emailAuthEnabled = $derived(appDataView.emailAuthEnabled);
   const methods = $derived(appDataView.methods);
+  const pendingPayment = $derived(appDataView.pendingPayment as PendingPaymentView | null);
   const plans = $derived(appDataView.plans);
   const referral = $derived(appDataView.referral);
   const referralBonusDetails = $derived(appDataView.referralBonusDetails);
@@ -506,6 +508,7 @@
       openLinkEmailDialog={openSettingsLinkEmailDialog}
       {hasMultipleTariffs}
       {methods}
+      {pendingPayment}
       {plans}
       {selectTariff}
       {selectedTariff}

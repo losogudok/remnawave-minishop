@@ -43,6 +43,11 @@ describe("computeAppDataView", () => {
       cfg: {},
       data: {
         payment_methods: [{ id: "card" }],
+        pending_payment: {
+          payment_id: 17,
+          payment_url: "https://pay.example/17",
+          promo_code: "SAVE20",
+        },
         plans: [{ id: "live-plan" }],
         settings: {
           my_devices_enabled: false,
@@ -57,10 +62,26 @@ describe("computeAppDataView", () => {
 
     expect(view.plans).toEqual([{ id: "live-plan" }]);
     expect(view.methods).toEqual([{ id: "card" }]);
+    expect(view.pendingPayment).toEqual({
+      payment_id: 17,
+      payment_url: "https://pay.example/17",
+      promo_code: "SAVE20",
+    });
     expect(view.devicesEnabled).toBe(false);
     expect(view.installGuidesEnabled).toBe(false);
     expect(view.supportEnabled).toBe(false);
     expect(view.subscription).toEqual({ active: false });
+  });
+
+  it("normalizes a missing pending payment to null", () => {
+    const view = computeAppDataView({
+      cfg: {},
+      data: {},
+      fallbackBrandTitle: "Subscription",
+      mockData: MOCK_DATA,
+    });
+
+    expect(view.pendingPayment).toBeNull();
   });
 
   it("keeps Stars available only inside a Telegram Mini App", () => {

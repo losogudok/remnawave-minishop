@@ -7786,6 +7786,25 @@ export interface operations {
               shop_max_amount?: number;
               shop_min_amount?: number;
             }[];
+            pending_payment: {
+              amount: number;
+              base_amount: number;
+              created_at: string;
+              currency: string;
+              discount_amount: number;
+              discount_percent: number;
+              months: number | null;
+              payment_id: number;
+              payment_url: string;
+              promo_code: string;
+              promo_effect_summary: string;
+              provider: string;
+              purchased_gb: number | null;
+              purchased_hwid_devices: number | null;
+              sale_mode: string;
+              status: string;
+              tariff_key: string | null;
+            } | null;
             plans: {
               available_payment_method_ids?: string[];
               billing_model?: string;

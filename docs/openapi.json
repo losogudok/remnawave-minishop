@@ -13496,6 +13496,101 @@
                       },
                       "type": "array"
                     },
+                    "pending_payment": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "amount": {
+                              "type": "number"
+                            },
+                            "base_amount": {
+                              "type": "number"
+                            },
+                            "created_at": {
+                              "type": "string"
+                            },
+                            "currency": {
+                              "type": "string"
+                            },
+                            "discount_amount": {
+                              "type": "number"
+                            },
+                            "discount_percent": {
+                              "type": "number"
+                            },
+                            "months": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "payment_id": {
+                              "type": "integer"
+                            },
+                            "payment_url": {
+                              "type": "string"
+                            },
+                            "promo_code": {
+                              "type": "string"
+                            },
+                            "promo_effect_summary": {
+                              "type": "string"
+                            },
+                            "provider": {
+                              "type": "string"
+                            },
+                            "purchased_gb": {
+                              "type": [
+                                "number",
+                                "null"
+                              ]
+                            },
+                            "purchased_hwid_devices": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "sale_mode": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "tariff_key": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "payment_id",
+                            "payment_url",
+                            "provider",
+                            "status",
+                            "amount",
+                            "base_amount",
+                            "currency",
+                            "discount_amount",
+                            "discount_percent",
+                            "months",
+                            "purchased_gb",
+                            "purchased_hwid_devices",
+                            "sale_mode",
+                            "tariff_key",
+                            "promo_code",
+                            "promo_effect_summary",
+                            "created_at"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "plans": {
                       "items": {
                         "additionalProperties": false,
@@ -14308,6 +14403,7 @@
                     "subscription",
                     "referral",
                     "plans",
+                    "pending_payment",
                     "payment_methods",
                     "themes_catalog",
                     "support_unread_count",

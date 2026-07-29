@@ -225,6 +225,42 @@ describe("billingStore", () => {
     expect(deps.showToast).toHaveBeenCalledWith("wa_payment_stars_telegram_required");
   });
 
+  it("resumes the stored discounted payment link and starts status polling", async () => {
+    vi.useFakeTimers();
+    const { store, deps, billing } = makeBillingStore({
+      billing: {
+        fetchPaymentStatus: vi.fn().mockResolvedValue({
+          ok: true,
+          paid: true,
+          status: "succeeded",
+        }),
+      },
+    });
+    store.openPaymentModal(
+      false,
+      false,
+      [],
+      { active: false },
+      [{ id: "plan-1", price: 900, currency: "RUB" }],
+      "yookassa"
+    );
+
+    await store.resumePendingPayment({
+      payment_id: 17,
+      payment_url: "https://pay.example/17",
+      provider: "yookassa",
+      sale_mode: "subscription@pro",
+    } as Parameters<typeof store.resumePendingPayment>[0]);
+
+    expect(deps.openExternalLink).toHaveBeenCalledWith("https://pay.example/17");
+    expect(deps.showToast).toHaveBeenCalledWith("wa_pending_payment_opened");
+    expect(store.paymentModalOpen).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(billing.fetchPaymentStatus).toHaveBeenCalledWith(17);
+    vi.useRealTimers();
+  });
+
   it("applies no-payment tariff changes and refreshes data", async () => {
     const { store, deps, billing } = makeBillingStore({
       billing: {

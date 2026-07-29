@@ -1,5 +1,11 @@
 import { normalizeBrand } from "./browser.js";
-import { arrayField, recordArrayField, recordField, type WebappRecord } from "./domainTypes.js";
+import {
+  arrayField,
+  recordArrayField,
+  recordField,
+  recordOrNull,
+  type WebappRecord,
+} from "./domainTypes.js";
 import { paymentMethodsForContext, type PaymentMethod } from "./tariffs.js";
 
 export type AppDataViewInput = {
@@ -20,6 +26,7 @@ export type AppDataView = {
   faviconBrand: WebappRecord;
   installGuidesEnabled: boolean;
   methods: PaymentMethod[];
+  pendingPayment: WebappRecord | null;
   plans: WebappRecord[];
   rawEmailAuthEnabled: unknown;
   referral: WebappRecord;
@@ -77,6 +84,7 @@ export function computeAppDataView({
     faviconBrand,
     installGuidesEnabled: Boolean(appSettings.subscription_guides_enabled),
     methods,
+    pendingPayment: recordOrNull(dataRecord.pending_payment),
     plans,
     rawEmailAuthEnabled,
     referral,

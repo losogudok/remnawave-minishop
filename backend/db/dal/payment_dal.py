@@ -635,6 +635,42 @@ async def find_recent_pending_provider_payment(
     return result.scalar_one_or_none()
 
 
+async def get_latest_resumable_promo_payment(
+    session: AsyncSession,
+    *,
+    user_id: int,
+) -> Payment | None:
+    """Return the newest discounted checkout that still has a reusable link."""
+
+    normalized_status = func.lower(func.trim(Payment.status))
+    stmt = (
+        select(Payment)
+        .where(
+            Payment.user_id == user_id,
+            Payment.promo_code_id.isnot(None),
+            Payment.provider_payment_url.isnot(None),
+            func.length(func.trim(Payment.provider_payment_url)) > 0,
+            or_(
+                normalized_status == "pending",
+                normalized_status.like("pending_%"),
+                normalized_status.in_(
+                    (
+                        "created",
+                        "process",
+                        "processing",
+                        "waiting_for_capture",
+                    )
+                ),
+            ),
+        )
+        .options(joinedload(Payment.promo_code_used))
+        .order_by(Payment.created_at.desc(), Payment.payment_id.desc())
+        .limit(1)
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
 async def update_payment_status_by_db_id(
     session: AsyncSession, payment_db_id: int, new_status: str, yk_payment_id: str | None = None
 ) -> Payment | None:

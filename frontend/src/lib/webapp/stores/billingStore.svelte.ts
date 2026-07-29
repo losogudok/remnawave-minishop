@@ -1,5 +1,9 @@
 import type { LoadDataOptions } from "../dataClient";
 import type { BillingActions } from "../billingActions";
+import {
+  createPaymentResponseHandler,
+  createPendingPaymentResume,
+} from "../billingPaymentResume.js";
 import { unwrap } from "../publicApi";
 import { priceLabel } from "../tariffs";
 import {
@@ -9,6 +13,7 @@ import {
 import type {
   BillingOptionsResponse,
   DeviceTopupOptions,
+  PendingPaymentView,
   PlanView,
   SubscriptionView,
   TariffChangeAction,
@@ -36,7 +41,6 @@ type BillingRecord = WebappRecord & {
   targets?: BillingRecord[];
   topup_kind?: string;
 };
-type BillingOkRecord = BillingRecord & { ok: boolean };
 export type BillingState = {
   paymentModalOpen: boolean;
   paymentStep: string;
@@ -85,6 +89,7 @@ export type BillingStore = BillingState & {
   continueWithSelectedTariff(selectedTariffPlans?: PlanView[]): void;
   backToTariffList(subscription: SubscriptionView, tariffCatalog?: TariffView[]): void;
   createPayment(): Promise<void>;
+  resumePendingPayment(payment: PendingPaymentView): Promise<void>;
   setCheckoutPromoInput(value: string): void;
   applyCheckoutPromo(): Promise<void>;
   clearCheckoutPromo(): void;
@@ -150,6 +155,24 @@ export function createBillingStore({
     return unwrap(response) as T & BillingRecord;
   }
 
+  const handlePaymentResponse = createPaymentResponseHandler({
+    notifyOpened: (resumed) =>
+      showToast(t(resumed ? "wa_pending_payment_opened" : "wa_payment_created")),
+    openExternalLink,
+    openTelegramInvoice,
+    startPaymentStatusPolling,
+  });
+  const resumePendingPayment = createPendingPaymentResume({
+    closeModal: () => updateState((s) => ({ ...s, paymentModalOpen: false })),
+    getPaymentStartedWithActiveSubscription: () => state.paymentStartedWithActiveSubscription,
+    handlePaymentResponse,
+    isBusy: () => state.payBusy,
+    onError: (error) =>
+      showToast(stringField(asRecord(error).message) || t("wa_payment_create_failed")),
+    rememberPending: rememberSubscriptionActivationPending,
+    setBusy: (payBusy) => updateState((s) => ({ ...s, payBusy })),
+  });
+
   const state = $state<BillingStore>({
     paymentModalOpen: false,
     paymentStep: "tariff",
@@ -188,6 +211,7 @@ export function createBillingStore({
     continueWithSelectedTariff,
     backToTariffList,
     createPayment,
+    resumePendingPayment,
     setCheckoutPromoInput,
     applyCheckoutPromo,
     clearCheckoutPromo,
@@ -722,31 +746,6 @@ export function createBillingStore({
       tg,
       url,
     });
-  }
-
-  async function handlePaymentResponse(
-    response: BillingOkRecord,
-    successContext: BillingRecord = {},
-    closeModal: () => void = () => {}
-  ) {
-    if (!response.ok) throw response;
-    const payload = unwrapBilling(response);
-    showToast(t("wa_payment_created"));
-    if (payload.action === "open_invoice") {
-      if (!payload.payment_url) throw response;
-      const opened = await openTelegramInvoice(payload.payment_url, successContext);
-      if (!opened) return false;
-    } else if (payload.action === "invoice_sent") {
-      startPaymentStatusPolling(payload.payment_id, successContext);
-      closeModal();
-      return true;
-    } else {
-      if (!payload.payment_url) throw response;
-      openExternalLink(payload.payment_url);
-    }
-    startPaymentStatusPolling(payload.payment_id, successContext);
-    closeModal();
-    return true;
   }
 
   function startPaymentStatusPolling(
