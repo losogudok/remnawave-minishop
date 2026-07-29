@@ -116,6 +116,19 @@ def _serialize_pending_promo_payment(payment: Any | None) -> dict[str, Any] | No
     }
 
 
+async def _suggested_checkout_promo(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    pending_payment: dict[str, Any] | None,
+) -> str | None:
+    if pending_payment is not None:
+        return None
+    return await resolve_promo_checkout_suggestion(
+        PromoCheckoutSuggestionContext(session=session, user_id=user_id)
+    )
+
+
 async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, Any]:
     settings: Settings = get_settings(request)
     async_session_factory: sessionmaker = get_session_factory(request)
@@ -172,8 +185,10 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
                 user_id=user_id,
             )
         )
-        suggested_promo_code = await resolve_promo_checkout_suggestion(
-            PromoCheckoutSuggestionContext(session=session, user_id=user_id)
+        suggested_promo_code = await _suggested_checkout_promo(
+            session,
+            user_id=user_id,
+            pending_payment=pending_promo_payment,
         )
         install_share_token = (
             await subscription_dal.ensure_install_share_token(session, local_sub)

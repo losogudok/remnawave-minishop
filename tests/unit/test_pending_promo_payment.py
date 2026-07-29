@@ -1,15 +1,58 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import cast
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.app.web.webapp.serializers import _serialize_pending_promo_payment
+from bot.app.web.webapp.serializers import (
+    _serialize_pending_promo_payment,
+    _suggested_checkout_promo,
+)
 from db.dal import payment_dal
 
 
 class PendingPromoPaymentTests(IsolatedAsyncioTestCase):
+    @patch(
+        "bot.app.web.webapp.serializers.resolve_promo_checkout_suggestion",
+        new_callable=AsyncMock,
+    )
+    async def test_pending_payment_takes_priority_over_new_suggestion(
+        self,
+        resolve_suggestion: AsyncMock,
+    ) -> None:
+        result = await _suggested_checkout_promo(
+            cast(AsyncSession, object()),
+            user_id=42,
+            pending_payment={"payment_id": 17},
+        )
+
+        self.assertIsNone(result)
+        resolve_suggestion.assert_not_awaited()
+
+    @patch(
+        "bot.app.web.webapp.serializers.resolve_promo_checkout_suggestion",
+        new_callable=AsyncMock,
+    )
+    async def test_suggestion_is_resolved_without_pending_payment(
+        self,
+        resolve_suggestion: AsyncMock,
+    ) -> None:
+        resolve_suggestion.return_value = "PERSONAL20"
+
+        result = await _suggested_checkout_promo(
+            cast(AsyncSession, object()),
+            user_id=42,
+            pending_payment=None,
+        )
+
+        self.assertEqual(result, "PERSONAL20")
+        await_args = resolve_suggestion.await_args
+        assert await_args is not None
+        self.assertEqual(await_args.args[0].user_id, 42)
+
     async def test_lookup_requires_owned_promo_and_reusable_pending_url(self) -> None:
         payment = SimpleNamespace(payment_id=17)
         session = SimpleNamespace(
