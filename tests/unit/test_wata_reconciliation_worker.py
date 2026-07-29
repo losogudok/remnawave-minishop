@@ -108,7 +108,7 @@ class WataReconciliationWorkerTests(IsolatedAsyncioTestCase):
 
 
 class WataReconciliationDalTests(IsolatedAsyncioTestCase):
-    async def test_candidate_query_is_bounded_and_requires_a_saved_link(self) -> None:
+    async def test_candidate_query_is_bounded_and_requires_a_provider_id(self) -> None:
         payment = _payment()
         result = SimpleNamespace(
             scalars=lambda: SimpleNamespace(all=lambda: [payment]),
@@ -133,7 +133,7 @@ class WataReconciliationDalTests(IsolatedAsyncioTestCase):
         self.assertIn("wata_crypto", sql)
         self.assertIn("pending_wata", sql)
         self.assertIn("payments.provider_payment_id is not null", sql)
-        self.assertIn("payments.provider_payment_url is not null", sql)
+        self.assertNotIn("payments.provider_payment_url is not null", sql)
         self.assertIn("order by payments.created_at asc, payments.payment_id asc", sql)
         self.assertIn("limit 25", sql)
 

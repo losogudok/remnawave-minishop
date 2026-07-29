@@ -72,6 +72,9 @@ async def expired_link_payload_for_payment(
     if not provider_payment_id:
         return None
 
+    if service.payment_link_expired_locally(payment):
+        return {"id": provider_payment_id}
+
     success, data = await service.get_payment_link(provider_payment_id, profile=profile)
     if not success or not isinstance(data, dict):
         return (

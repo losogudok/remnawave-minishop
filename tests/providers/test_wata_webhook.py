@@ -874,7 +874,7 @@ def test_refresh_marks_expired_wata_link_as_canceled(monkeypatch):
     payment = _payment(
         provider="wata",
         provider_payment_id="link-id",
-        created_at=datetime.now(UTC) - timedelta(minutes=16),
+        created_at=datetime.now(UTC) - timedelta(minutes=5),
     )
     updates = []
 
@@ -972,7 +972,7 @@ def test_refresh_marks_declined_wata_transaction_and_notifies(monkeypatch):
     assert notify_failed.await_args.kwargs["payment"] is payment
 
 
-def test_refresh_uses_local_wata_ttl_when_link_lookup_fails(monkeypatch):
+def test_refresh_uses_local_wata_ttl_without_link_lookup(monkeypatch):
     session = _FakeSession()
     service = _service(session)
     payment = _payment(
@@ -982,13 +982,14 @@ def test_refresh_uses_local_wata_ttl_when_link_lookup_fails(monkeypatch):
     )
 
     service._find_final_transaction_for_payment = AsyncMock(return_value=None)
-    service.get_payment_link = AsyncMock(return_value=(False, {"status": 503}))
+    service.get_payment_link = AsyncMock()
     mark_expired = AsyncMock(return_value=payment)
     monkeypatch.setattr(service, "_mark_expired_link", mark_expired)
 
     result = asyncio.run(service.refresh_payment_status(session, payment))
 
     assert result is payment
+    service.get_payment_link.assert_not_awaited()
     mark_expired.assert_awaited_once()
     assert mark_expired.await_args.kwargs["notify_user"] is True
 

@@ -33,8 +33,7 @@ async def list_candidates(
             normalized_provider.in_(("wata", "wata_crypto")),
             normalized_status.in_(_WATA_RECONCILABLE_STATUSES),
             Payment.provider_payment_id.isnot(None),
-            Payment.provider_payment_url.isnot(None),
-            func.length(func.trim(Payment.provider_payment_url)) > 0,
+            func.length(func.trim(Payment.provider_payment_id)) > 0,
             Payment.created_at <= cutoff,
         )
         .order_by(Payment.created_at.asc(), Payment.payment_id.asc())
