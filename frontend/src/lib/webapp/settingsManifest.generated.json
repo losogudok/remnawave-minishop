@@ -10149,6 +10149,26 @@
         "updated_at": null
       },
       {
+        "key": "TRIAL_HWID_DEVICE_LIMIT",
+        "type": "int",
+        "section": "pricing",
+        "section_order": 11,
+        "subsection": "trial",
+        "label": "Trial HWID device limit",
+        "description": "Hardware device limit for trial subscriptions. Empty keeps the panel/default limit; 0 means unlimited.",
+        "i18n_label_key": "admin_settings_field_trial_hwid_device_limit_label",
+        "i18n_description_key": "admin_settings_field_trial_hwid_device_limit_description",
+        "i18n_subsection_key": "admin_settings_subsection_trial",
+        "i18n_placeholder_key": null,
+        "placeholder": "",
+        "optional": true,
+        "secret": false,
+        "min": 0,
+        "value": "",
+        "overridden": false,
+        "updated_at": null
+      },
+      {
         "key": "TRIAL_TRAFFIC_STRATEGY",
         "type": "string",
         "section": "pricing",

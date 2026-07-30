@@ -542,6 +542,14 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
             "0 disables premium traffic enforcement for trials."
         ),
     )
+    TRIAL_HWID_DEVICE_LIMIT: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Hardware device limit for trial subscriptions. "
+            "Empty keeps the panel/default limit; 0 means unlimited."
+        ),
+    )
     TRIAL_TRAFFIC_STRATEGY: str = Field(default="NO_RESET")
     TRIAL_WITHOUT_TELEGRAM_ENABLED: bool = Field(
         default=True,

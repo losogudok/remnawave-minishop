@@ -56,6 +56,7 @@ class TrialSubscriptionMixin(SubscriptionServiceMixinContract):
                 default_expire_days=self.settings.TRIAL_DURATION_DAYS,
                 default_traffic_limit_bytes=self.settings.trial_traffic_limit_bytes,
                 default_traffic_limit_strategy=self.settings.TRIAL_TRAFFIC_STRATEGY,
+                hwid_device_limit=self.settings.TRIAL_HWID_DEVICE_LIMIT,
                 specific_squad_uuids=tuple(trial_squads),
                 external_squad_uuid=self.settings.parsed_user_external_squad_uuid,
             ),
@@ -87,6 +88,7 @@ class TrialSubscriptionMixin(SubscriptionServiceMixinContract):
             "is_active": True,
             "status_from_panel": "TRIAL",
             "traffic_limit_bytes": self.settings.trial_traffic_limit_bytes,
+            "hwid_device_limit": self.settings.TRIAL_HWID_DEVICE_LIMIT,
             "premium_baseline_bytes": trial_premium_baseline_bytes,
             "premium_topup_balance_bytes": 0,
             "premium_topup_used_bytes": 0,
@@ -124,6 +126,7 @@ class TrialSubscriptionMixin(SubscriptionServiceMixinContract):
                 status="ACTIVE",
                 traffic_limit_bytes=self.settings.trial_traffic_limit_bytes,
                 traffic_limit_strategy=self.settings.TRIAL_TRAFFIC_STRATEGY,
+                hwid_device_limit=self.settings.TRIAL_HWID_DEVICE_LIMIT,
                 include_default_squads=False,
             )
             panel_update_payload.update(

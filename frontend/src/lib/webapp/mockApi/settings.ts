@@ -90,6 +90,9 @@ function applyDemoSettingToMock(key: string, value: unknown): void {
   if (key === "TRIAL_PREMIUM_TRAFFIC_LIMIT_GB") {
     DEV_MOCK.config.trialPremiumTrafficLimitGb = value;
   }
+  if (key === "TRIAL_HWID_DEVICE_LIMIT") {
+    DEV_MOCK.config.trialHwidDeviceLimit = value;
+  }
   if (key === "TRIAL_TRAFFIC_STRATEGY") {
     DEV_MOCK.config.trialTrafficStrategy = value || "NO_RESET";
     DEV_MOCK.data.settings.trial_traffic_strategy = value || "NO_RESET";

@@ -445,6 +445,18 @@ SETTINGS_MANIFEST: list[SettingField] = [
         subsection="trial",
     ),
     SettingField(
+        "TRIAL_HWID_DEVICE_LIMIT",
+        "int",
+        "pricing",
+        "Trial HWID device limit",
+        (
+            "Hardware device limit for trial subscriptions. "
+            "Empty keeps the panel/default limit; 0 means unlimited."
+        ),
+        min=0,
+        subsection="trial",
+    ),
+    SettingField(
         "TRIAL_TRAFFIC_STRATEGY",
         "string",
         "pricing",

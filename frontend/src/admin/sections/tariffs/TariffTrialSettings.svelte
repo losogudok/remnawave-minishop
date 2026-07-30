@@ -190,7 +190,7 @@
           {at(
             "tariffs_trial_subtitle",
             {},
-            "Configure trial duration, traffic limit, and Remnawave squads from the tariff page."
+            "Configure trial duration, traffic and device limits, and Remnawave squads from the tariff page."
           )}
           · {boolValue("TRIAL_ENABLED", settingsDirty, settingsFieldMap)
             ? at("enabled", {}, "Enabled")
@@ -359,7 +359,7 @@
                     {at(
                       "tariffs_trial_group_general_hint",
                       {},
-                      "Trial duration and traffic volume granted to the user."
+                      "Trial duration, traffic volume, and device limit granted to the user."
                     )}
                   </small>
                 </div>
@@ -475,6 +475,42 @@
                         size="sm"
                         variant="ghost"
                         onclick={() => resetSetting("TRIAL_PREMIUM_TRAFFIC_LIMIT_GB")}
+                      >
+                        <X size={12} />
+                        {at("reset", {}, "Reset")}
+                      </AdminButton>
+                    {/if}
+                  </div>
+                </div>
+                <div
+                  class="admin-setting admin-trial-setting-row"
+                  class:is-dirty={isSettingDirty("TRIAL_HWID_DEVICE_LIMIT", settingsDirty)}
+                >
+                  <div class="admin-setting-meta">
+                    <strong>
+                      {at("tariffs_trial_devices", {}, "Device limit")}
+                      {#if isSettingDirty("TRIAL_HWID_DEVICE_LIMIT", settingsDirty)}
+                        <AdminBadge variant="warning"
+                          >{at("settings_badge_dirty", {}, "Changed")}</AdminBadge
+                        >
+                      {/if}
+                    </strong>
+                    <code>TRIAL_HWID_DEVICE_LIMIT</code>
+                  </div>
+                  <div class="admin-setting-control">
+                    <Input
+                      class="input"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={inputValueForKey("TRIAL_HWID_DEVICE_LIMIT")}
+                      oninput={settingInputHandler("TRIAL_HWID_DEVICE_LIMIT")}
+                    />
+                    {#if isSettingDirty("TRIAL_HWID_DEVICE_LIMIT", settingsDirty)}
+                      <AdminButton
+                        size="sm"
+                        variant="ghost"
+                        onclick={() => resetSetting("TRIAL_HWID_DEVICE_LIMIT")}
                       >
                         <X size={12} />
                         {at("reset", {}, "Reset")}

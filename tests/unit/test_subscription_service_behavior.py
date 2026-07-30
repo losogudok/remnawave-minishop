@@ -492,6 +492,7 @@ class SubscriptionServiceActivationDispatchTests(unittest.IsolatedAsyncioTestCas
                 TRIAL_ENABLED=True,
                 TRIAL_DURATION_DAYS=3,
                 TRIAL_TRAFFIC_LIMIT_GB=5,
+                TRIAL_HWID_DEVICE_LIMIT=2,
                 TRIAL_TRAFFIC_STRATEGY="MONTHLY",
                 USER_SQUAD_UUIDS="fallback-squad",
                 TRIAL_SQUAD_UUIDS="trial-squad",
@@ -535,9 +536,11 @@ class SubscriptionServiceActivationDispatchTests(unittest.IsolatedAsyncioTestCas
             sub_payload = upsert_subscription.await_args.args[1]
             self.assertNotIn("traffic_limit_strategy", sub_payload)
             self.assertEqual(sub_payload["traffic_limit_bytes"], 5 * GIB)
+            self.assertEqual(sub_payload["hwid_device_limit"], 2)
 
             panel_payload = service.panel_service.update_user_details_on_panel.await_args.args[1]
             self.assertEqual(panel_payload["trafficLimitStrategy"], "MONTH")
+            self.assertEqual(panel_payload["hwidDeviceLimit"], 2)
             self.assertEqual(panel_payload["activeInternalSquads"], ["trial-squad"])
 
     async def test_activate_trial_provisions_new_panel_user_with_trial_access_once(self):
@@ -548,6 +551,7 @@ class SubscriptionServiceActivationDispatchTests(unittest.IsolatedAsyncioTestCas
                 TRIAL_ENABLED=True,
                 TRIAL_DURATION_DAYS=3,
                 TRIAL_TRAFFIC_LIMIT_GB=10,
+                TRIAL_HWID_DEVICE_LIMIT=1,
                 TRIAL_TRAFFIC_STRATEGY="NO_RESET",
                 USER_TRAFFIC_LIMIT_GB=500,
                 USER_SQUAD_UUIDS="default-squad",
@@ -610,10 +614,12 @@ class SubscriptionServiceActivationDispatchTests(unittest.IsolatedAsyncioTestCas
             self.assertEqual(create_options.default_expire_days, 3)
             self.assertEqual(create_options.default_traffic_limit_bytes, 10 * GIB)
             self.assertEqual(create_options.default_traffic_limit_strategy, "NO_RESET")
+            self.assertEqual(create_options.hwid_device_limit, 1)
             self.assertEqual(create_options.specific_squad_uuids, ("trial-squad",))
             sub_payload = upsert_subscription.await_args.args[1]
             self.assertEqual(sub_payload["provider"], "trial")
             self.assertEqual(sub_payload["traffic_limit_bytes"], 10 * GIB)
+            self.assertEqual(sub_payload["hwid_device_limit"], 1)
             service.panel_service.update_user_details_on_panel.assert_not_awaited()
             session.commit.assert_awaited_once()
             session.rollback.assert_not_awaited()
