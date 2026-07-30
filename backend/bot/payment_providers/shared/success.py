@@ -444,9 +444,18 @@ async def finalize_successful_payment(
         )
         if not activation or (is_subscription and not activation.get("end_date")):
             logger.error(
-                "%s: activation returned no usable subscription state for payment %s.",
+                "%s: activation returned no usable subscription state for payment %s"
+                " (sale_mode=%r base=%r months=%r activation_months=%r traffic_gb=%r"
+                " tariff_key=%r activation=%r).",
                 req.log_prefix,
                 payment_id,
+                req.sale_mode,
+                base,
+                req.months,
+                activation_months,
+                traffic_gb_for_activation,
+                effective_tariff_key,
+                activation,
             )
             await _mark_activation_failed(req, payment_id)
             return None
