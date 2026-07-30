@@ -240,7 +240,6 @@ jobs:
       contents: read
       packages: read
       attestations: read
-      security-events: write
     strategy:
       fail-fast: false
       matrix:
@@ -316,19 +315,10 @@ jobs:
           scan-type: image
           image-ref: ${{ steps.candidate.outputs.image }}@${{ steps.candidate.outputs.digest }}
           scanners: vuln
-          format: sarif
-          output: trivy-release-${{ matrix.target }}.sarif
+          format: table
           severity: CRITICAL,HIGH
-          limit-severities-for-sarif: true
           exit-code: "1"
           ignore-unfixed: false
-
-      - name: Upload release scan results
-        uses: github/codeql-action/upload-sarif@v4
-        if: always()
-        with:
-          sarif_file: trivy-release-${{ matrix.target }}.sarif
-          category: trivy-release-${{ matrix.target }}
 
   promote:
     name: Promote verified release
