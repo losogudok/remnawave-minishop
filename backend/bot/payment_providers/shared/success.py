@@ -443,10 +443,24 @@ async def finalize_successful_payment(
             **activation_extra_kwargs,
         )
         if not activation or (is_subscription and not activation.get("end_date")):
+            activation_keys = (
+                tuple(sorted(str(key) for key in activation))
+                if isinstance(activation, dict)
+                else None
+            )
             logger.error(
-                "%s: activation returned no usable subscription state for payment %s.",
+                "%s: activation returned no usable subscription state for payment %s"
+                " (sale_mode=%r base=%r months=%r activation_months=%r traffic_gb=%r"
+                " tariff_key=%r activation_keys=%r).",
                 req.log_prefix,
                 payment_id,
+                req.sale_mode,
+                base,
+                req.months,
+                activation_months,
+                traffic_gb_for_activation,
+                effective_tariff_key,
+                activation_keys,
             )
             await _mark_activation_failed(req, payment_id)
             return None
