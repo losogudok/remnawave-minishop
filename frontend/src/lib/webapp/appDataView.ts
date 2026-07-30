@@ -1,12 +1,19 @@
 import { normalizeBrand } from "./browser.js";
-import { arrayField, recordArrayField, recordField, type WebappRecord } from "./domainTypes.js";
-import type { PaymentMethod } from "./tariffs.js";
+import {
+  arrayField,
+  recordArrayField,
+  recordField,
+  recordOrNull,
+  type WebappRecord,
+} from "./domainTypes.js";
+import { paymentMethodsForContext, type PaymentMethod } from "./tariffs.js";
 
 export type AppDataViewInput = {
   cfg: WebappRecord;
   data: WebappRecord | null;
   fallbackBrandTitle: string;
   mockData: WebappRecord;
+  telegramMiniAppContext?: boolean;
 };
 
 export type AppDataView = {
@@ -14,10 +21,12 @@ export type AppDataView = {
   brand: WebappRecord;
   brandTitle: string;
   devicesEnabled: boolean;
+  subscriptionReissueEnabled: boolean;
   emailAuthEnabled: boolean;
   faviconBrand: WebappRecord;
   installGuidesEnabled: boolean;
   methods: PaymentMethod[];
+  pendingPayment: WebappRecord | null;
   plans: WebappRecord[];
   rawEmailAuthEnabled: unknown;
   referral: WebappRecord;
@@ -26,6 +35,7 @@ export type AppDataView = {
   referralWelcomeBonusDays: number;
   subscription: WebappRecord;
   subscriptionPurchaseDescription: string;
+  suggestedPromoCode: string;
   supportEnabled: boolean;
 };
 
@@ -34,6 +44,7 @@ export function computeAppDataView({
   data,
   fallbackBrandTitle,
   mockData,
+  telegramMiniAppContext = false,
 }: AppDataViewInput): AppDataView {
   const mock = recordField(mockData);
   const dataRecord = recordField(data);
@@ -49,9 +60,12 @@ export function computeAppDataView({
   const plans = recordArrayField(
     arrayField(dataRecord.plans).length ? dataRecord.plans : mock.plans
   );
-  const methods = (
-    arrayField(dataRecord.payment_methods).length ? dataRecord.payment_methods : []
-  ) as PaymentMethod[];
+  const methods = paymentMethodsForContext(
+    (arrayField(dataRecord.payment_methods).length
+      ? dataRecord.payment_methods
+      : []) as PaymentMethod[],
+    telegramMiniAppContext
+  );
   const appSettings = recordField(dataRecord.settings || mock.settings);
   const rawEmailAuthEnabled =
     recordField(dataRecord.settings).email_auth_enabled ??
@@ -66,10 +80,12 @@ export function computeAppDataView({
     brand,
     brandTitle,
     devicesEnabled: Boolean(appSettings.my_devices_enabled),
+    subscriptionReissueEnabled: Boolean(appSettings.subscription_reissue_enabled),
     emailAuthEnabled,
     faviconBrand,
     installGuidesEnabled: Boolean(appSettings.subscription_guides_enabled),
     methods,
+    pendingPayment: recordOrNull(dataRecord.pending_payment),
     plans,
     rawEmailAuthEnabled,
     referral,
@@ -80,6 +96,7 @@ export function computeAppDataView({
     subscriptionPurchaseDescription: String(
       appSettings.subscription_purchase_description || ""
     ).trim(),
+    suggestedPromoCode: String(dataRecord.suggested_promo_code || "").trim(),
     supportEnabled: Boolean(appSettings.support_tickets_enabled ?? true),
   };
 }

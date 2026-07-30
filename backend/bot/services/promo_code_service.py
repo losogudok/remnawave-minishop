@@ -93,6 +93,7 @@ class PromoCodeService:
         valid_until: datetime | None,
         origin: str,
         created_by_admin_id: int | None,
+        user_id: int | None = None,
         max_duration_multiplier: float = 12.0,
         max_traffic_multiplier: float = 12.0,
     ) -> PromoCode:
@@ -145,6 +146,8 @@ class PromoCodeService:
                 "max_activations": int(max_activations),
                 "valid_until": valid_until,
                 "created_by_admin_id": created_by_admin_id,
+                # Naming a customer is what makes the code personal.
+                "user_id": int(user_id) if user_id else None,
                 "is_active": True,
             },
         )

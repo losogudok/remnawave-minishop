@@ -134,6 +134,11 @@ Trust-all вариант записывается как
 | `TARIFF_WORKER_LOCK_TTL_SECONDS` | TTL Redis lock для tariff worker. |
 | `TARIFF_WORKER_TICK_SECONDS` | Интервал tariff worker. |
 | `TARIFF_WORKER_BULK_PANEL_FETCH_THRESHOLD` | Порог активных подписок для bulk fetch пользователей панели. |
+| `TARIFF_PREMIUM_FAST_TICK_SECONDS` | Интервал быстрой проверки premium-лимита между полными тиками tariff worker. По умолчанию `60`; `0` или значение не меньше `TARIFF_WORKER_TICK_SECONDS` отключает быструю проверку. |
+| `TARIFF_PREMIUM_FAST_WATCH_PERCENT` | Процент израсходованного premium-трафика, с которого подписка попадает в быструю проверку. По умолчанию `80`. |
+| `TARIFF_PREMIUM_FAST_BATCH_LIMIT` | Максимум подписок в одном быстром тике. По умолчанию `200`, `0` снимает ограничение. |
+| `TARIFF_PREMIUM_DROP_CONNECTIONS` | Разрывать живые сессии на premium-нодах после исчерпания premium-лимита через `POST /api/ip-control/drop-connections`. По умолчанию `True`. Требует `CAP_NET_ADMIN` у нод Remnawave. |
+| `TARIFF_PREMIUM_DROP_CONNECTIONS_COOLDOWN_SECONDS` | Минимальный интервал между разрывами сессий одной подписки. По умолчанию `300`. |
 | `BACKUP_ENABLED` | Включает периодические бэкапы в worker-контейнере. По умолчанию `False`. |
 | `BACKUP_INTERVAL_SECONDS` | Интервал между бэкапами. По умолчанию `3600`; запуск выравнивается на границу часа: 12:00, 13:00 и т.д. |
 | `BACKUP_CHAT_ID` | Telegram chat ID для архивов. Если пусто, используется `LOG_CHAT_ID`. |
@@ -189,6 +194,7 @@ Trust-all вариант записывается как
 | `USER_TRAFFIC_LIMIT_GB` | Legacy-лимит трафика пользователя. |
 | `USER_TRAFFIC_STRATEGY` | Legacy-стратегия лимита трафика. |
 | `USER_HWID_DEVICE_LIMIT` | Legacy-лимит HWID-устройств по умолчанию. |
+| `HWID_DEVICE_TRAFFIC_BONUS_GB` | Устаревший fallback для активных HWID-докупок, созданных до появления снимка бонуса пакета. Новые бонусы настраиваются полем `traffic_bonus_gb` в `tariffs[].hwid_device_packages`; в админке глобальное поле скрыто. |
 
 В Remnawave Panel поле `WEBHOOK_URL` должно указывать на публичный Minishop webhook: `WEBHOOK_BASE_URL` + `/webhook/panel`. Если публичный домен приложения `https://app.example.com`, итоговый адрес будет `https://app.example.com/webhook/panel`.
 
@@ -280,7 +286,7 @@ Xray-Core 26.3.27+, `NET_ADMIN`, nftables, корректный sniffing и вк
 
 | Переменная | Назначение |
 | --- | --- |
-| `PAYMENT_METHODS_ORDER` | Порядок кнопок оплаты: `severpay,wata,freekassa,platega,yookassa,stars,cryptopay,heleket,paykilla,lava,pally,cloudpayments,stripe`. |
+| `PAYMENT_METHODS_ORDER` | Порядок кнопок оплаты: `severpay,wata,freekassa,platega,yookassa,stars,cryptopay,heleket,paykilla,lava,pally,cloudpayments,stripe,tribute`. |
 | `SUBSCRIPTION_PURCHASE_DESCRIPTION_ENABLED` | Показывать описание подписки перед выбором срока. |
 | `SUBSCRIPTION_PURCHASE_DESCRIPTION_RU` / `SUBSCRIPTION_PURCHASE_DESCRIPTION_EN` | Локализованное описание подписки. |
 | `PAYMENT_REQUEST_TIMEOUT_SECONDS` | Общий таймаут одного API-запроса к платёжному провайдеру, в секундах. По умолчанию `20`. |
@@ -302,6 +308,7 @@ Xray-Core 26.3.27+, `NET_ADMIN`, nftables, корректный sniffing и вк
 | `PALLY_ENABLED` | Включает Pally / PayPalych. |
 | `CLOUDPAYMENTS_ENABLED` | Включает CloudPayments. |
 | `OVERPAY_ENABLED` | Включает Overpay. |
+| `TRIBUTE_ENABLED` | Включает платежи Tribute через Shop API и/или Creator fallback. |
 
 Конкретные ключи отображения:
 
@@ -396,6 +403,12 @@ PAYMENT_STRIPE_WEBAPP_ICON
 PAYMENT_STRIPE_TELEGRAM_LABEL_RU
 PAYMENT_STRIPE_TELEGRAM_LABEL_EN
 PAYMENT_STRIPE_TELEGRAM_EMOJI
+PAYMENT_TRIBUTE_WEBAPP_LABEL_RU
+PAYMENT_TRIBUTE_WEBAPP_LABEL_EN
+PAYMENT_TRIBUTE_WEBAPP_ICON
+PAYMENT_TRIBUTE_TELEGRAM_LABEL_RU
+PAYMENT_TRIBUTE_TELEGRAM_LABEL_EN
+PAYMENT_TRIBUTE_TELEGRAM_EMOJI
 ```
 
 ### YooKassa
@@ -409,6 +422,15 @@ PAYMENT_STRIPE_TELEGRAM_EMOJI
 | `YOOKASSA_VAT_CODE` | Код НДС. |
 | `YOOKASSA_AUTOPAYMENTS_ENABLED` | Автопродление через сохраненные способы оплаты. |
 | `YOOKASSA_AUTOPAYMENTS_REQUIRE_CARD_BINDING` | Требовать привязку карты. |
+| `AUTO_RENEW_RETRY_ENABLED` | Включить устойчивую очередь безопасных повторов YooKassa. По умолчанию выключена. |
+| `AUTO_RENEW_RETRY_DRY_RUN` | Не выполнять списание, а только проверять и логировать готовые повторы. По умолчанию включен. |
+| `AUTO_RENEW_MAX_FINANCIAL_ATTEMPTS` | Максимум финансовых попыток на цикл с учетом первой; верхняя граница — `2`. |
+| `AUTO_RENEW_MAX_TRANSPORT_REPLAYS` | Максимум технических повторов того же запроса и `Idempotence-Key`. |
+| `AUTO_RENEW_WORKER_TICK_SECONDS` | Период опроса очереди повторов. |
+| `AUTO_RENEW_WORKER_BATCH_SIZE` | Максимальное число циклов за один проход воркера. |
+| `AUTO_RENEW_RETRY_GRACE_HOURS` | Дополнительное окно после окончания подписки, в котором разрешен финансовый повтор. |
+| `AUTO_RENEW_SCHEDULER_ENABLED` | Включить резервный поиск подписок к продлению без panel webhook. По умолчанию выключен. |
+| `AUTO_RENEW_SCHEDULER_LEAD_HOURS` | За сколько часов резервный планировщик начинает рассматривать подписку. |
 
 ### FreeKassa
 
@@ -465,6 +487,31 @@ PAYMENT_STRIPE_TELEGRAM_EMOJI
 | `CRYPTOPAY_NETWORK` | `mainnet` или `testnet`. |
 | `CRYPTOPAY_CURRENCY_TYPE` | `fiat` или `crypto`. |
 | `CRYPTOPAY_ASSET` | Актив, например `RUB`, `USDT`, `BTC`. |
+
+### Tribute
+
+| Переменная | Назначение |
+| --- | --- |
+| `TRIBUTE_ENABLED` | Включить провайдера Tribute и обработку его webhook. |
+| `TRIBUTE_API_KEY` | API key Tribute для Shop/Creator API; тем же секретом проверяется HMAC-SHA256 в `trbt-signature`. |
+| `TRIBUTE_SHOP_ENABLED` | Использовать Shop API как основной режим: создавать динамические заказы на точную локальную сумму. Работает только вместе с `TRIBUTE_SHOP_ID`: без него флаг игнорируется и остаются только Creator-подписки. |
+| `TRIBUTE_SHOP_ID` | Положительный числовой ID конкретного Shop. Нужен, чтобы Shop-режим действительно заработал; передаётся при создании заказа и проверяется в каждом Shop webhook. Пока ID не задан, включённый `TRIBUTE_SHOP_ENABLED` только пишет предупреждение в лог — запуск не ломается, продаются настроенные Creator-подписки. |
+
+При `TRIBUTE_SHOP_ENABLED=true` рекуррентные Shop Orders доступны только для локальных
+сроков 1/3/6/12 месяцев; одноразовые заказы используются для трафика, premium-трафика,
+отдельных HWID-устройств и доплаты за смену тарифа. Сумма берётся из локального расчёта
+Minishop. Shop API принимает от `100` до `300000` минимальных денежных единиц
+(копеек/центов); Minishop отклоняет заказ вне этого диапазона до сетевого запроса.
+
+Ссылки и ID не являются глобальными env-настройками. Они задают фиксированный Creator
+fallback в редакторе тарифа: `tribute.link`, `tribute.subscription_id` и `period_ids`
+для подписок, а также `traffic_products`/`premium_traffic_products` с `product_id` и
+ссылкой для Digital Products. Цены fallback настраиваются в Tribute и локально в API
+Tribute не отправляются.
+
+Shop-заказы в Stars, Token Charging/`paymentToken`, предоплаченный баланс и Creator
+donations интеграцией Minishop не поддерживаются. Подробнее о сценариях и lifecycle —
+в [настройке Tribute](../features/payments.md#tribute).
 
 ### Heleket
 

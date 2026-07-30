@@ -164,6 +164,23 @@ export function adminFallbackResponse(
       },
     };
   }
+  if (path === "/admin/tariffs/tribute/catalog") {
+    return {
+      ok: true,
+      subscriptions: [
+        {
+          subscription_id: 101,
+          name: "Minishop Standard",
+          currency: "rub",
+          periods: [
+            { period_id: 1001, period: "monthly", price: 299, months: 1 },
+            { period_id: 1003, period: "quarterly", price: 799, months: 3 },
+          ],
+        },
+      ],
+      products: [],
+    };
+  }
   if (path === "/admin/panel/internal-squads") {
     return {
       ok: true,

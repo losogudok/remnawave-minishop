@@ -45,6 +45,7 @@ def _settings(tmp_path: Path, compose_dir: Path, **overrides) -> Settings:
         "POSTGRES_DB": "shop",
         "BACKUP_DIR": str(tmp_path / "backups"),
         "BACKUP_COMPOSE_SOURCE_DIR": str(compose_dir),
+        "TARIFFS_CONFIG_PATH": str(tmp_path / "tariffs.json"),
         "BACKUP_CHAT_ID": 123,
         "BACKUP_LOCAL_RETENTION": 1,
         "_env_file": None,
@@ -61,6 +62,8 @@ def test_backup_worker_creates_archive_with_db_dump_and_compose_snapshot(tmp_pat
     (compose_dir / "Caddyfile").write_text("example.com\n", encoding="utf-8")
     (compose_dir / "node_modules").mkdir()
     (compose_dir / "node_modules" / "ignored.txt").write_text("ignored", encoding="utf-8")
+    tariffs_path = tmp_path / "tariffs.json"
+    tariffs_path.write_text('{"default_tariff":"standard","tariffs":[]}\n', encoding="utf-8")
 
     settings = _settings(tmp_path, compose_dir)
     backup_dir = Path(settings.BACKUP_DIR)
@@ -88,13 +91,20 @@ def test_backup_worker_creates_archive_with_db_dump_and_compose_snapshot(tmp_pat
     with zipfile.ZipFile(result.archive_path) as archive:
         names = set(archive.namelist())
         manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+        archived_tariffs = archive.read("database/tariffs.json")
 
     assert "database/shop.dump" in names
+    assert archived_tariffs == tariffs_path.read_bytes()
     assert "compose/docker-compose.yml" in names
     assert "compose/.env" in names
     assert "compose/Caddyfile" in names
     assert all("node_modules" not in name for name in names)
     assert manifest["postgres"]["database"] == "shop"
+    assert manifest["tariffs_config"] == {
+        "source_path": str(tariffs_path),
+        "archive_path": "database/tariffs.json",
+        "included": True,
+    }
     assert manifest["compose"]["files_count"] == 3
 
 

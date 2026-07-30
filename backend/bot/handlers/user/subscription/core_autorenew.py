@@ -5,6 +5,8 @@ from aiogram import Bot, F, types
 from aiogram.filters import Command
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bot.infra.auto_renew import auto_renew_user_lock_name
+from bot.infra.redis import redis_lock
 from bot.keyboards.inline.user_keyboards import (
     get_autorenew_confirm_keyboard,
 )
@@ -211,10 +213,20 @@ async def confirm_autorenew_handler(
                 )
             return
 
-    await subscription_dal.update_subscription(
-        session, sub.subscription_id, {"auto_renew_enabled": enable}
-    )
-    await session.commit()
+    async with redis_lock(
+        settings,
+        auto_renew_user_lock_name(callback.from_user.id),
+        ttl_seconds=60,
+    ) as acquired:
+        if not acquired:
+            await callback.answer(get_text("error_try_again"), show_alert=True)
+            return
+        await subscription_dal.set_auto_renew(
+            session,
+            sub.subscription_id,
+            enable,
+        )
+        await session.commit()
     with contextlib.suppress(Exception):
         await callback.answer(get_text("subscription_autorenew_updated"))
     await my_subscription_command_handler(
@@ -248,10 +260,21 @@ async def autorenew_cancel_from_webhook_button(
         with contextlib.suppress(Exception):
             await callback.answer(get_text("error_try_again"), show_alert=True)
         return
-    await subscription_dal.update_subscription(
-        session, sub.subscription_id, {"auto_renew_enabled": False}
-    )
-    await session.commit()
+    async with redis_lock(
+        settings,
+        auto_renew_user_lock_name(callback.from_user.id),
+        ttl_seconds=60,
+    ) as acquired:
+        if not acquired:
+            await callback.answer(get_text("error_try_again"), show_alert=True)
+            return
+        await subscription_dal.set_auto_renew(
+            session,
+            sub.subscription_id,
+            False,
+            stop_reason="customer_disabled",
+        )
+        await session.commit()
     with contextlib.suppress(Exception):
         await callback.answer(get_text("subscription_autorenew_updated"))
     await my_subscription_command_handler(

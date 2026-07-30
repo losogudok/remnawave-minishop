@@ -15,7 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, sessionmaker
 
 from bot.infra import events
+from bot.infra.auto_renew import auto_renew_user_lock_name
 from bot.infra.event_payloads import PanelWebhookReceivedPayload
+from bot.infra.redis import redis_lock
 from bot.infra.webhook_queue import enqueue_webhook_event
 from bot.keyboards.inline.user_keyboards import (
     get_autorenew_cancel_keyboard,
@@ -186,7 +188,9 @@ class PanelWebhookService:
             return
 
         if event_name not in ACTIONABLE_EVENTS:
-            logger.info(
+            # Routine: the panel emits these on every write (user.modified fires for
+            # each PATCH), and we only forward them to plugins. Debug, not INFO.
+            logger.debug(
                 "Panel webhook event %s ignored: event is not used for subscription "
                 "notifications; %s",
                 event_name,
@@ -495,47 +499,59 @@ class PanelWebhookService:
                     internal_user_id,
                 )
                 return False
-            async with self.async_session_factory() as renewal_session:
-                active_sub = await subscription_dal.get_active_subscription_by_user_id(
-                    renewal_session,
-                    internal_user_id,
-                )
-                if not (
-                    active_sub
-                    and active_sub.auto_renew_enabled
-                    and active_sub.provider == "yookassa"
-                ):
-                    return False
-                if self._is_stale_autorenew_cycle(
-                    active_sub,
-                    renewal_cycle_end,
-                    renewal_cycle_end_is_date_only=renewal_cycle_end_is_date_only,
-                ):
+            async with redis_lock(
+                self.settings,
+                auto_renew_user_lock_name(internal_user_id),
+                ttl_seconds=60,
+            ) as acquired:
+                if not acquired:
                     logger.info(
-                        "Auto-renew trigger (%s) skipped for stale cycle user=%s "
-                        "subscription=%s expected_end=%s current_end=%s",
+                        "Auto-renew trigger (%s) deferred: user lock is held for %s",
                         stage_key,
                         internal_user_id,
-                        getattr(active_sub, "subscription_id", None),
-                        renewal_cycle_end,
-                        getattr(active_sub, "end_date", None),
                     )
-                    # The subscription has already moved to another cycle;
-                    # suppress the stale event and do not send its reminder.
-                    return True
-                try:
-                    ok = await subscription_service.charge_subscription_renewal(
+                    return False
+                async with self.async_session_factory() as renewal_session:
+                    active_sub = await subscription_dal.get_active_subscription_by_user_id(
                         renewal_session,
-                        active_sub,
-                        renewal_cycle_end=renewal_cycle_end,
+                        internal_user_id,
                     )
-                    if ok:
-                        await renewal_session.commit()
+                    if not (
+                        active_sub
+                        and active_sub.auto_renew_enabled
+                        and active_sub.provider == "yookassa"
+                    ):
+                        return False
+                    if self._is_stale_autorenew_cycle(
+                        active_sub,
+                        renewal_cycle_end,
+                        renewal_cycle_end_is_date_only=renewal_cycle_end_is_date_only,
+                    ):
+                        logger.info(
+                            "Auto-renew trigger (%s) skipped for stale cycle user=%s "
+                            "subscription=%s expected_end=%s current_end=%s",
+                            stage_key,
+                            internal_user_id,
+                            getattr(active_sub, "subscription_id", None),
+                            renewal_cycle_end,
+                            getattr(active_sub, "end_date", None),
+                        )
+                        # The subscription has already moved to another cycle;
+                        # suppress the stale event and do not send its reminder.
                         return True
-                    await renewal_session.rollback()
-                except Exception:
-                    await renewal_session.rollback()
-                    logger.exception("Auto-renew attempt (%s) failed", stage_key)
+                    try:
+                        ok = await subscription_service.charge_subscription_renewal(
+                            renewal_session,
+                            active_sub,
+                            renewal_cycle_end=renewal_cycle_end,
+                        )
+                        if ok:
+                            await renewal_session.commit()
+                            return True
+                        await renewal_session.rollback()
+                    except Exception:
+                        await renewal_session.rollback()
+                        logger.exception("Auto-renew attempt (%s) failed", stage_key)
         except Exception:
             logger.exception("Auto-renew trigger (%s) failed pre-check", stage_key)
         return False
@@ -734,6 +750,28 @@ class PanelWebhookService:
         )
 
     @staticmethod
+    def _payload_state_snapshot(user_payload: dict[str, Any]) -> str:
+        """Mutable panel fields only: enough to diff two events, no personal data."""
+        squads = user_payload.get("activeInternalSquads")
+        squad_uuids = ",".join(
+            sorted(
+                str(squad.get("uuid") if isinstance(squad, dict) else squad)
+                for squad in (squads if isinstance(squads, list) else [])
+            )
+        )
+        fields = {
+            "panel_uuid": PanelWebhookService._payload_panel_uuid(user_payload) or "N/A",
+            "status": user_payload.get("status"),
+            "expireAt": user_payload.get("expireAt"),
+            "trafficLimitBytes": user_payload.get("trafficLimitBytes"),
+            "trafficLimitStrategy": user_payload.get("trafficLimitStrategy"),
+            "hwidDeviceLimit": user_payload.get("hwidDeviceLimit"),
+            "activeInternalSquads": squad_uuids or "none",
+            "updatedAt": user_payload.get("updatedAt"),
+        }
+        return " ".join(f"{key}={value}" for key, value in fields.items())
+
+    @staticmethod
     def _mask_email(email: str) -> str:
         if not email:
             return ""
@@ -816,6 +854,14 @@ class PanelWebhookService:
             event_name,
             telegram_id if telegram_id is not None else "N/A",
         )
+        if logger.isEnabledFor(logging.DEBUG) and isinstance(user_data, dict):
+            # user.modified only fires on a panel write, so comparing two of these
+            # snapshots shows which field a foreign writer keeps changing.
+            logger.debug(
+                "Panel webhook payload snapshot: %s %s",
+                event_name,
+                self._payload_state_snapshot(user_data),
+            )
 
         queued_payload: dict[str, object] = {"event": event_name, "user": user_data}
         if meta:
@@ -890,7 +936,31 @@ class PanelWebhookService:
                 secret=fingerprint_secret or "",
             )
             event_id = f"{event_id}:{fingerprint}"
+        elif event_name not in ACTIONABLE_EVENTS:
+            # Events we only forward to plugins repeat for the same user as often
+            # as the panel is written to (every PATCH emits ``user.modified``), so
+            # ``event:user`` would collapse a whole dedupe window into one event.
+            # Dedupe on content instead: a redelivery of the same payload is a
+            # duplicate, a new modification is not.
+            event_id = f"{event_id}:{cls._payload_fingerprint(user_payload, meta)}"
         return event_id
+
+    @staticmethod
+    def _payload_fingerprint(
+        user_payload: dict[str, Any],
+        meta: dict[str, Any] | None,
+    ) -> str:
+        try:
+            normalized = json.dumps(
+                {"user": user_payload, "meta": meta or {}},
+                ensure_ascii=True,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            )
+        except (TypeError, ValueError):
+            normalized = repr(sorted(user_payload.items()))
+        return hashlib.sha256(normalized.encode()).hexdigest()[:24]
 
     async def _run_event_in_background(
         self,

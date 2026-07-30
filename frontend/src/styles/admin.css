@@ -2617,6 +2617,11 @@
   overflow-wrap: anywhere;
 }
 
+.admin-setting-meta .admin-setting-source {
+  color: var(--admin-dim);
+  font-size: 11px;
+}
+
 .admin-setting-control {
   display: flex;
   align-items: center;
@@ -4100,6 +4105,13 @@
   white-space: nowrap;
 }
 
+/* Per-field captions inside row-editor rows: hidden on wide screens where the
+   shared header row labels the columns, shown on narrow screens where rows
+   stack vertically and the header row is hidden. */
+.admin-row-editor-mobile-label {
+  display: none;
+}
+
 .admin-row-editor {
   display: grid;
   gap: 8px;
@@ -4131,13 +4143,41 @@
    reordered. The 24px column lines up with the handle the Sortable renders. */
 .admin-row-editor-line.admin-row-editor-period {
   grid-template-columns:
-    24px minmax(72px, 0.8fr) minmax(90px, 1fr) minmax(90px, 1fr) minmax(120px, 1fr)
-    minmax(120px, 1fr) var(--admin-row-editor-action-size);
+    24px minmax(72px, 0.8fr) minmax(90px, 1fr) minmax(90px, 1fr)
+    minmax(120px, 1fr) minmax(120px, 1fr) var(--admin-row-editor-action-size);
+}
+
+/* A package row without the Tribute mapping columns, used while the provider
+   is switched off. */
+.admin-row-editor-line.admin-row-editor-package {
+  grid-template-columns:
+    24px minmax(80px, 0.7fr) minmax(100px, 1fr) minmax(100px, 1fr)
+    var(--admin-row-editor-action-size);
+}
+
+/* One local period mapped to the Tribute subscription that sells it. */
+.admin-row-editor-line.admin-row-editor-tribute-period {
+  grid-template-columns: minmax(72px, 0.6fr) minmax(180px, 1.6fr) minmax(110px, 0.9fr) minmax(
+      100px,
+      0.8fr
+    );
 }
 
 .admin-row-editor-line.admin-row-editor-drag {
   grid-template-columns:
     24px minmax(90px, 1fr) minmax(110px, 1fr) minmax(110px, 1fr)
+    var(--admin-row-editor-action-size);
+}
+
+.admin-row-editor-line.admin-row-editor-tribute-product {
+  grid-template-columns:
+    24px minmax(80px, 0.7fr) minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(105px, 0.9fr)
+    minmax(180px, 1.5fr) var(--admin-row-editor-action-size);
+}
+
+.admin-row-editor-line.admin-row-editor-hwid {
+  grid-template-columns:
+    24px minmax(80px, 0.75fr) minmax(130px, 1fr) minmax(110px, 1fr) minmax(110px, 1fr)
     var(--admin-row-editor-action-size);
 }
 
@@ -4390,7 +4430,13 @@
 
   .admin-tariff-dialog .admin-editor-section-head {
     align-items: stretch;
+    flex-direction: column;
+    justify-content: flex-start;
     gap: 10px;
+  }
+
+  .admin-tariff-dialog .admin-editor-section-head > .admin-editor-section-title {
+    flex: 0 1 auto;
   }
 
   .admin-tariff-dialog .admin-editor-section-head > .admin-editor-section-actions,
@@ -4407,12 +4453,26 @@
     display: none;
   }
 
+  .admin-row-editor-line .admin-row-editor-mobile-label {
+    display: block;
+    margin-bottom: -3px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--admin-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
   .admin-form-row.admin-form-row-3,
   .admin-row-editor-line,
   .admin-row-editor-line.admin-row-editor-4,
   .admin-row-editor-line.admin-row-editor-6,
   .admin-row-editor-line.admin-row-editor-period,
   .admin-row-editor-line.admin-row-editor-drag,
+  .admin-row-editor-line.admin-row-editor-tribute-product,
+  .admin-row-editor-line.admin-row-editor-tribute-period,
+  .admin-row-editor-line.admin-row-editor-package,
+  .admin-row-editor-line.admin-row-editor-hwid,
   .admin-row-editor-line.admin-row-editor-broadcast {
     grid-template-columns: 1fr;
     align-items: stretch;
@@ -4453,35 +4513,85 @@
     display: none;
   }
 
-  .admin-table tbody td {
+  /* Mobile: each row becomes a self-contained card with an aligned
+     label/value grid, so dense listings stay readable and structured on
+     narrow screens. Skeleton and virtual-spacer rows keep their plain shape. */
+  .admin-table:not(.admin-table-skeleton),
+  .admin-table:not(.admin-table-skeleton) tbody {
     display: block;
-    padding: 6px 16px;
-    border: 0;
+    width: 100%;
+    min-width: 0;
   }
 
-  .admin-table tbody tr {
+  .admin-table:not(.admin-table-skeleton) tbody tr:not(.admin-virtual-spacer) {
     display: block;
-    padding: 10px 0;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    border: 1px solid var(--admin-border);
+    border-radius: 12px;
+    background: var(--admin-surface-2);
+  }
+
+  .admin-table:not(.admin-table-skeleton) tbody tr:not(.admin-virtual-spacer):last-child {
+    margin-bottom: 0;
+  }
+
+  .admin-table:not(.admin-table-skeleton) tbody td {
+    display: grid;
+    grid-template-columns: minmax(84px, 38%) minmax(0, 1fr);
+    align-items: baseline;
+    gap: 2px 12px;
+    padding: 5px 0;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .admin-table:not(.admin-table-skeleton) tbody td::before {
+    content: attr(data-label);
+    color: var(--admin-muted);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* Cells without a label span the full card width instead of leaving an
+     empty label column. */
+  .admin-table:not(.admin-table-skeleton) tbody td:not([data-label]),
+  .admin-table:not(.admin-table-skeleton) tbody td[data-label=""] {
+    display: block;
+  }
+
+  .admin-table:not(.admin-table-skeleton) tbody td:not([data-label])::before,
+  .admin-table:not(.admin-table-skeleton) tbody td[data-label=""]::before {
+    display: none;
+  }
+
+  /* The primary entity cell (user/order/etc.) leads the card at full width
+     without a label prefix, separated from the detail rows below it. */
+  .admin-table:not(.admin-table-skeleton) tbody td.admin-cell-primary {
+    display: block;
+    margin-bottom: 6px;
+    padding: 0 0 10px;
     border-bottom: 1px solid var(--admin-border);
   }
 
-  .admin-table tbody tr:last-child {
-    border-bottom: 0;
+  .admin-table:not(.admin-table-skeleton) tbody td.admin-cell-primary::before {
+    display: none;
   }
 
-  .admin-table tbody td::before {
-    content: attr(data-label);
-    display: inline-block;
-    min-width: 110px;
-    color: var(--admin-muted);
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-right: 8px;
-  }
-
-  .admin-table td.admin-cell-actions {
+  /* Row actions sit as a full-width control strip at the foot of the card. */
+  .admin-table:not(.admin-table-skeleton) tbody td.admin-cell-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    padding-top: 8px;
     text-align: left;
+  }
+
+  .admin-table:not(.admin-table-skeleton) tbody td.admin-cell-actions::before {
+    display: none;
   }
 }
 
@@ -7011,6 +7121,36 @@
 
 .admin-promos-table-wrap .admin-promos-table {
   min-width: 900px;
+}
+
+.admin-promo-kind-tabs {
+  margin-bottom: 12px;
+}
+
+.admin-promo-owner {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--admin-muted);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.admin-promo-owner:hover {
+  color: var(--admin-accent);
+  text-decoration: underline;
+}
+
+.admin-promo-type {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .admin-promo-actions {

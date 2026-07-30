@@ -753,4 +753,7 @@ _DESCRIPTOR: LinkPaymentDescriptor[LavaService] = LinkPaymentDescriptor(
     reuse=_reuse_payment,
     extract_url=lambda r: first_value(r, "url", "payment_url", "paymentUrl"),
     extract_provider_id=lambda r: first_value(r, "id", "invoice_id"),
+    checkout_ttl_seconds=lambda service, _request: (
+        int(service.lifetime_minutes) * 60 if service.lifetime_minutes else None
+    ),
 )

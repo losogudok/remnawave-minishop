@@ -13,7 +13,7 @@ from bot.app.web.request_parsing import parse_body_or_400
 from bot.app.web.route_contracts import RouteContract, ok_envelope_for, register_contract
 from bot.services.promo_code_service import PromoCodeService
 from bot.services.promo_effects import PromoEffects, validate_effects
-from db.dal import promo_code_dal
+from db.dal import promo_code_dal, user_reads_dal
 
 from .auth import (
     _require_admin_user_id,
@@ -37,6 +37,7 @@ register_contract(
                 "page": {"type": "integer", "minimum": 0},
                 "page_size": {"type": "integer", "minimum": 1, "maximum": 100},
                 "total": {"type": "integer", "minimum": 0},
+                "owned_total": {"type": "integer", "minimum": 0},
             },
         ),
         models=(PromoOut,),
@@ -80,9 +81,14 @@ register_contract(
 )
 
 
-def _serialize_promo_for_request(request: web.Request, promo: Any) -> dict[str, Any]:
+def _serialize_promo_for_request(
+    request: web.Request,
+    promo: Any,
+    owners: dict[int, tuple[str | None, str | None]] | None = None,
+) -> dict[str, Any]:
     settings = get_settings(request)
     code = str(getattr(promo, "code", "") or "")
+    owner_id = getattr(promo, "user_id", None)
     return PromoOut.from_orm_promo(
         promo,
         bot_link=_build_admin_promo_bot_link(get_bot_username(request), code),
@@ -90,7 +96,28 @@ def _serialize_promo_for_request(request: web.Request, promo: Any) -> dict[str, 
             settings.SUBSCRIPTION_MINI_APP_URL,
             code,
         ),
+        owner=(owners or {}).get(int(owner_id)) if owner_id else None,
     ).model_dump(mode="json")
+
+
+async def _owner_labels_for(session: Any, promo: Any) -> dict[int, tuple[str | None, str | None]]:
+    """Owner label for one promo, so a single-promo response reads like a row."""
+
+    owner_id = getattr(promo, "user_id", None)
+    if not owner_id:
+        return {}
+    return await user_reads_dal.get_user_labels(session, [int(owner_id)])
+
+
+def _requested_owner_filter(request: web.Request) -> bool | None:
+    """Read the personal/shared tab selection; anything else lists everything."""
+
+    kind = str(request.query.get("kind", "") or "").strip().lower()
+    if kind == "personal":
+        return True
+    if kind == "shared":
+        return False
+    return None
 
 
 async def admin_promos_list_route(request: web.Request) -> web.Response:
@@ -98,17 +125,25 @@ async def admin_promos_list_route(request: web.Request) -> web.Response:
     async_session_factory: sessionmaker = get_session_factory(request)
     page = max(0, int(request.query.get("page", 0) or 0))
     page_size = min(100, max(1, int(request.query.get("page_size", 25) or 25)))
+    personal = _requested_owner_filter(request)
     async with async_session_factory() as session:
         promos = await promo_code_dal.get_all_promo_codes_with_details(
-            session, limit=page_size, offset=page * page_size
+            session, limit=page_size, offset=page * page_size, personal=personal
         )
-        total = await promo_code_dal.get_promo_codes_count(session)
+        total = await promo_code_dal.get_promo_codes_count(session, personal=personal)
+        # An install where nothing issues codes for a named customer reports
+        # zero here, so the UI can leave the whole distinction out of sight.
+        owned_total = await promo_code_dal.get_promo_codes_count(session, personal=True)
+        owners = await user_reads_dal.get_user_labels(
+            session, [int(p.user_id) for p in promos if getattr(p, "user_id", None)]
+        )
     return _ok(
         {
-            "promos": [_serialize_promo_for_request(request, p) for p in promos],
+            "promos": [_serialize_promo_for_request(request, p, owners) for p in promos],
             "page": page,
             "page_size": page_size,
             "total": int(total or 0),
+            "owned_total": int(owned_total or 0),
         }
     )
 
@@ -145,7 +180,8 @@ async def admin_promo_create_route(request: web.Request) -> web.Response:
                 return _error(409, "duplicate_code")
             return _error(400, str(exc) or "invalid_effects")
         await session.commit()
-    return _ok({"promo": _serialize_promo_for_request(request, promo)})
+        owners = await _owner_labels_for(session, promo)
+    return _ok({"promo": _serialize_promo_for_request(request, promo, owners)})
 
 
 async def admin_promo_update_route(request: web.Request) -> web.Response:
@@ -227,7 +263,8 @@ async def admin_promo_update_route(request: web.Request) -> web.Response:
         promo = await promo_code_dal.update_promo_code(session, promo_id, update_data)
         await session.commit()
         await session.refresh(promo)
-    return _ok({"promo": _serialize_promo_for_request(request, promo)})
+        owners = await _owner_labels_for(session, promo)
+    return _ok({"promo": _serialize_promo_for_request(request, promo, owners)})
 
 
 async def admin_promo_activations_route(request: web.Request) -> web.Response:

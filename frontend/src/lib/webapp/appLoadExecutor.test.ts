@@ -161,6 +161,33 @@ describe("createAppLoadExecutor", () => {
     });
   });
 
+  it("keeps a section selected while the initial data request is in flight", async () => {
+    let resolvePayload!: (payload: ReturnType<typeof createPayload>) => void;
+    const pendingPayload = new Promise<ReturnType<typeof createPayload>>((resolve) => {
+      resolvePayload = resolve;
+    });
+    const { deps, executor, state } = createDeps({
+      deps: {
+        dataClientLoadData: vi.fn(() => pendingPayload),
+      },
+    });
+
+    const loading = executor.loadData();
+    expect(deps.dataClientLoadData).toHaveBeenCalledOnce();
+
+    state.pathname = "/settings";
+    shellState.activeTab = "settings";
+    shellState.screen = "settings";
+    resolvePayload(createPayload());
+
+    await loading;
+
+    expect(shellState).toMatchObject({ activeTab: "settings", mode: "app", screen: "settings" });
+    expect(deps.syncLoadedRoute).toHaveBeenCalledWith(
+      expect.objectContaining({ section: "settings" })
+    );
+  });
+
   it("loads the admin bundle for admin routes", async () => {
     const payload = createPayload({ user: { is_admin: true } });
     const { adminRuntime, deps, executor } = createDeps({

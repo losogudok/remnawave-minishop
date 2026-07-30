@@ -29,6 +29,7 @@ def _settings(tmp_path: Path, compose_dir: Path, **overrides) -> Settings:
         "POSTGRES_DB": "shop",
         "BACKUP_DIR": str(tmp_path / "backups"),
         "BACKUP_COMPOSE_SOURCE_DIR": str(compose_dir),
+        "TARIFFS_CONFIG_PATH": str(tmp_path / "tariffs.json"),
         "_env_file": None,
     }
     values.update(overrides)
@@ -40,6 +41,7 @@ def _write_backup_archive(
     *,
     include_db=True,
     include_compose=True,
+    tariffs_config: str | None = None,
     unsafe=False,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -49,6 +51,10 @@ def _write_backup_archive(
             dump_dir = staging_dir / "database"
             dump_dir.mkdir(parents=True)
             (dump_dir / "shop.dump").write_bytes(b"fake dump")
+        if tariffs_config is not None:
+            tariffs_path = staging_dir / "database" / "tariffs.json"
+            tariffs_path.parent.mkdir(parents=True, exist_ok=True)
+            tariffs_path.write_text(tariffs_config, encoding="utf-8")
         if include_compose:
             compose_dir = staging_dir / "compose"
             compose_dir.mkdir(parents=True)
@@ -61,6 +67,10 @@ def _write_backup_archive(
             "created_at": "2026-05-27T09:00:00+00:00",
             "postgres": {"database": "shop", "included": include_db},
             "compose": {"included": include_compose, "files_count": 2 if include_compose else 0},
+            "tariffs_config": {
+                "archive_path": "database/tariffs.json",
+                "included": tariffs_config is not None,
+            },
             "warnings": [],
         }
         attach_archive_integrity(
@@ -181,6 +191,51 @@ def test_backup_restore_service_runs_pg_restore_for_dump(tmp_path):
     assert result.database_restored is True
     assert restored_payloads == [b"fake dump"]
     assert result.database_migrations_applied == []
+
+
+def test_backup_restore_service_restores_tariffs_before_migrations(tmp_path):
+    compose_dir = tmp_path / "compose"
+    compose_dir.mkdir()
+    target_tariffs = tmp_path / "restored" / "tariffs.json"
+    target_tariffs.parent.mkdir()
+    target_tariffs.write_text('{"default_tariff":"old","tariffs":[]}', encoding="utf-8")
+    restored_tariffs = '{"default_tariff":"standard","tariffs":[]}\n'
+    settings = _settings(
+        tmp_path,
+        compose_dir,
+        TARIFFS_CONFIG_PATH=str(target_tariffs),
+    )
+    archive_path = Path(settings.BACKUP_DIR) / f"{BACKUP_FILENAME_PREFIX}20260527-12-00.zip"
+    _write_backup_archive(
+        archive_path,
+        include_compose=False,
+        tariffs_config=restored_tariffs,
+    )
+    service = BackupRestoreService(settings)
+    calls = []
+
+    def fake_pg_restore(dump_path: Path) -> None:
+        calls.append(("restore", dump_path.read_bytes()))
+
+    def fake_migrations() -> list[str]:
+        calls.append(("migrate", target_tariffs.read_text(encoding="utf-8")))
+        return []
+
+    service._run_pg_restore = fake_pg_restore
+    service._run_post_restore_migrations = fake_migrations
+
+    result = service.restore_archive_sync(
+        archive_path.name,
+        restore_database=True,
+        restore_compose=False,
+    )
+
+    assert calls == [
+        ("restore", b"fake dump"),
+        ("migrate", restored_tariffs),
+    ]
+    assert result.database_restored is True
+    assert target_tariffs.read_text(encoding="utf-8") == restored_tariffs
 
 
 def test_backup_restore_service_runs_migrations_after_database_restore(tmp_path):

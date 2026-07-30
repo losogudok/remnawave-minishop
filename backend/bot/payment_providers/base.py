@@ -123,6 +123,7 @@ class WebAppPaymentContext:
     hwid_pricing_period_months: int | None = None
     hwid_proration_ratio: float | None = None
     hwid_full_price: float | None = None
+    hwid_traffic_bonus_bytes: int | None = None
     promo_code_id: int | None = None
     promo_effect_summary: str | None = None
     promo_bonus_days: int | None = None
@@ -137,6 +138,8 @@ class WebAppPaymentContext:
     checkout_charged_months: int | None = None
     checkout_charged_gb: float | None = None
     checkout_quoted_at: Any | None = None
+    tariff_change_quote_snapshot: str | None = None
+    entitlement_context_snapshot: str | None = None
 
 
 @dataclass(frozen=True)
@@ -192,6 +195,8 @@ ReusableWebAppPaymentResolver = Callable[[WebAppPaymentContext, Any], Awaitable[
 CurrencySupportResolver = Callable[[Any], Sequence[str] | None]
 PaymentAmountResolver = Callable[[Any, Any, Any], bool]
 PaymentMinimumResolver = Callable[[Any, Any], Mapping[str, Any] | None]
+PaymentContextSupportResolver = Callable[[Any, Any, str], bool]
+CheckoutPromoSupportResolver = Callable[[Any, Any, str, Any], bool]
 
 
 def normalize_payment_currency_code(value: Any, default: str = "RUB") -> str:
@@ -241,6 +246,7 @@ class PaymentProviderSpec:
     create_webapp_payment: WebAppPaymentFactory | None = None
     reuse_webapp_payment: ReusableWebAppPaymentResolver | None = None
     requires_configured_service: bool = True
+    price_managed_externally: bool = False
     price_source: str = "rub"
     emoji: str = "💳"
     webapp_icon: str | None = None
@@ -257,6 +263,9 @@ class PaymentProviderSpec:
     supported_currencies_resolver: CurrencySupportResolver | None = None
     payment_amount_resolver: PaymentAmountResolver | None = None
     payment_minimum_resolver: PaymentMinimumResolver | None = None
+    payment_context_resolver: PaymentContextSupportResolver | None = None
+    external_price_context_resolver: PaymentContextSupportResolver | None = None
+    checkout_promo_resolver: CheckoutPromoSupportResolver | None = None
     info_url: str | None = None
     logo_url: str | None = None
     currency_support_note: str = ""
@@ -396,6 +405,46 @@ class PaymentProviderSpec:
             source,
             currency,
         ) and self.is_usable_for_payment_amount(source, currency, amount)
+
+    def is_usable_for_payment_context(
+        self,
+        source: Any,
+        months: Any,
+        sale_mode: str,
+    ) -> bool:
+        if self.payment_context_resolver is None:
+            return True
+        try:
+            return bool(self.payment_context_resolver(source, months, sale_mode))
+        except Exception:
+            return False
+
+    def is_price_managed_externally(
+        self,
+        source: Any,
+        months: Any,
+        sale_mode: str,
+    ) -> bool:
+        if self.external_price_context_resolver is None:
+            return self.price_managed_externally
+        try:
+            return bool(self.external_price_context_resolver(source, months, sale_mode))
+        except Exception:
+            return self.price_managed_externally
+
+    def is_checkout_promo_supported(
+        self,
+        source: Any,
+        months: Any,
+        sale_mode: str,
+        promo: Any,
+    ) -> bool:
+        if promo is None or self.checkout_promo_resolver is None:
+            return True
+        try:
+            return bool(self.checkout_promo_resolver(source, months, sale_mode, promo))
+        except Exception:
+            return False
 
     def is_visible(self, source: Any, app: Any) -> bool:
         return self.is_enabled(source) and self.is_service_configured(app)

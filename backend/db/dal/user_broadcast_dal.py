@@ -2,7 +2,7 @@
 # to mypy; this DAL intentionally reads loaded ORM instances.
 # mypy: disable-error-code="assignment,arg-type,operator"
 
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import and_, case, desc, func
@@ -447,3 +447,53 @@ async def get_top_users_by_referral_revenue(
 
     result = await session.execute(stmt)
     return [dict(row._mapping) for row in result]
+
+
+async def get_user_ids_with_active_subscription_on_tariff(
+    session: AsyncSession, tariff_key: str
+) -> list[int]:
+    """Return non-banned user IDs holding an active subscription on one tariff."""
+    now = datetime.now(UTC)
+
+    stmt = (
+        select(func.distinct(Subscription.user_id))
+        .join(User, Subscription.user_id == User.user_id)
+        .where(
+            and_(
+                User.is_banned == False,
+                Subscription.is_active == True,
+                Subscription.end_date > now,
+                Subscription.tariff_key == tariff_key,
+            )
+        )
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def count_active_subscriptions_per_tariff(session: AsyncSession) -> dict[str, int]:
+    """Count broadcast-eligible users per tariff in one pass.
+
+    One grouped query keeps the audience list cheap no matter how many tariffs
+    are configured.
+    """
+    now = datetime.now(UTC)
+
+    stmt = (
+        select(
+            Subscription.tariff_key,
+            func.count(func.distinct(Subscription.user_id)),
+        )
+        .join(User, Subscription.user_id == User.user_id)
+        .where(
+            and_(
+                User.is_banned == False,
+                Subscription.is_active == True,
+                Subscription.end_date > now,
+                Subscription.tariff_key.is_not(None),
+            )
+        )
+        .group_by(Subscription.tariff_key)
+    )
+    result = await session.execute(stmt)
+    return {str(key): int(total) for key, total in result.all() if key}

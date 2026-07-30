@@ -242,6 +242,20 @@ class StripeService(HttpClientMixin):
             log_prefix="Stripe create_checkout_session",
         )
 
+    async def retrieve_checkout_session(
+        self,
+        checkout_session_id: str,
+    ) -> tuple[bool, dict[str, Any]]:
+        checkout_session_id = str(checkout_session_id or "").strip()
+        if not self.configured:
+            return False, {"message": "service_not_configured"}
+        if not checkout_session_id:
+            return False, {"message": "missing_checkout_session_id"}
+        return await self._get_json(
+            f"/v1/checkout/sessions/{checkout_session_id}",
+            log_prefix="Stripe retrieve_checkout_session",
+        )
+
     async def create_off_session_payment_intent(
         self,
         *,
@@ -327,6 +341,10 @@ class StripeService(HttpClientMixin):
             provider="stripe",
             sale_mode=context.sale_mode,
             hwid_quote=dict(context.hwid_quote or {}) or None,
+            is_auto_renew=True,
+            renewal_subscription_id=context.subscription_id,
+            renewal_cycle_end=context.renewal_cycle_end,
+            entitlement_context_snapshot=context.entitlement_context_snapshot,
         )
         try:
             payment = await payment_dal.create_payment_record(context.session, payment_payload)
@@ -376,12 +394,24 @@ class StripeService(HttpClientMixin):
                     "Stripe auto-renew failed to mark payment %s as failed_creation",
                     payment.payment_id,
                 )
-            return RecurringChargeResult.failed(str(response_data.get("message") or response_data))
+            return RecurringChargeResult.failed(
+                str(response_data.get("message") or response_data),
+                provider_payment_id=str(provider_payment_id) if provider_payment_id else None,
+                payment_db_id=payment.payment_id,
+            )
 
         if status and status not in _SUCCESS_PAYMENT_INTENT_STATUSES:
-            return RecurringChargeResult.failed(f"unexpected_status:{status}")
+            return RecurringChargeResult.failed(
+                f"unexpected_status:{status}",
+                provider_payment_id=str(provider_payment_id) if provider_payment_id else None,
+                payment_db_id=payment.payment_id,
+            )
 
-        return RecurringChargeResult.ok(provider_payment_id=provider_payment_id, status=status)
+        return RecurringChargeResult.ok(
+            provider_payment_id=provider_payment_id,
+            payment_db_id=payment.payment_id,
+            status=status,
+        )
 
     async def try_reuse_pending_payment(self, payment: Any) -> str | None:
         return str(getattr(payment, "provider_payment_url", None) or "").strip() or None

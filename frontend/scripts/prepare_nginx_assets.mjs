@@ -94,7 +94,10 @@ async function copyRuntimeAsset({ hashedName, stableName }) {
 }
 
 function prepareIndexHtml(rawHtml, { cssName, jsName }) {
-  const jsPreload = `    <link rel="preload" href="/${jsName}" as="script">`;
+  // `modulepreload` rather than `preload as=script`: the bundle is an ES
+  // module, and the browser has to fetch it with the module credentials mode
+  // for the preload to be reused instead of duplicated.
+  const jsPreload = `    <link rel="modulepreload" href="/${jsName}">`;
   const html = rawHtml
     .replace(/\r\n/g, "\n")
     .replace('href="/subscription_webapp.css"', `href="/${cssName}"`)
@@ -102,7 +105,9 @@ function prepareIndexHtml(rawHtml, { cssName, jsName }) {
   const lines = html.split("\n");
   const output = lines
     .map((line) =>
-      line.includes("WEBAPP_JS_SCRIPT") ? `    <script src="/${jsName}" defer></script>` : line
+      line.includes("WEBAPP_JS_SCRIPT")
+        ? `    <script type="module" src="/${jsName}"></script>`
+        : line
     )
     .filter(
       (line) =>
@@ -110,22 +115,39 @@ function prepareIndexHtml(rawHtml, { cssName, jsName }) {
         !line.includes("WEBAPP_CONFIG_SCRIPT") &&
         !line.includes("WEBAPP_DEV_MOCK_START") &&
         !line.includes("WEBAPP_DEV_MOCK_END") &&
-        !line.includes('subscription_webapp.js" defer')
+        !line.includes('src="/subscription_webapp.js"')
     )
     .join("\n");
   return output.endsWith("\n") ? output : `${output}\n`;
 }
 
+// The middle segment is matched loosely because a chunk name inherits every
+// dot its entry module had (a `*.svelte.ts` store, for one). Missing a chunk
+// here means the deployed app cannot load the screen that needs it.
+const ADMIN_CHUNK_RE = /^subscription_webapp_admin\.[A-Za-z0-9_.-]+\.[A-Za-z0-9_-]+\.js$/;
+const WEBAPP_CHUNK_RE = /^subscription_webapp\.[A-Za-z0-9_.-]+\.[A-Za-z0-9_-]+\.js$/;
+
 function isAdminChunkName(name) {
   return (
-    /^subscription_webapp_admin\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.js$/.test(name) &&
+    ADMIN_CHUNK_RE.test(name) &&
     name !== "subscription_webapp_admin.js" &&
     !name.startsWith("subscription_webapp_admin.min.")
   );
 }
 
-async function copyAdminChunkAssets(entries) {
-  const chunkNames = entries.filter(isAdminChunkName).sort();
+function isWebappChunkName(name) {
+  return (
+    WEBAPP_CHUNK_RE.test(name) &&
+    !isAdminChunkName(name) &&
+    !name.startsWith("subscription_webapp_admin.") &&
+    !name.startsWith("subscription_webapp_docs_demo.") &&
+    name !== "subscription_webapp.js" &&
+    !name.startsWith("subscription_webapp.min.")
+  );
+}
+
+async function copyChunkAssets(entries, matches) {
+  const chunkNames = entries.filter(matches).sort();
   await Promise.all(
     chunkNames.map((chunkName) =>
       copyRuntimeAsset({ hashedName: chunkName, stableName: chunkName })
@@ -166,7 +188,8 @@ async function main() {
     copyRuntimeAsset({ hashedName: adminJsName, stableName: "subscription_webapp_admin.js" }),
     copyRuntimeAsset({ hashedName: adminCssName, stableName: "subscription_webapp_admin.css" }),
   ]);
-  const adminChunkNames = await copyAdminChunkAssets(entries);
+  const adminChunkNames = await copyChunkAssets(entries, isAdminChunkName);
+  const webappChunkNames = await copyChunkAssets(entries, isWebappChunkName);
   const providerLogoAssetsCopied = await copyDirectoryIfExists("provider-logos");
 
   const indexTemplate = await readFile(path.join(templatesDir, "subscription_webapp.html"), "utf8");
@@ -177,7 +200,7 @@ async function main() {
   );
 
   console.log(
-    `Prepared nginx assets in ${path.relative(repoRoot, outDir)}: ${mainJsName}, ${mainCssName}, ${adminJsName}, ${adminCssName}, ${adminChunkNames.length} admin chunks, ${providerLogoAssetsCopied ? "provider logos" : "no provider logos"}`
+    `Prepared nginx assets in ${path.relative(repoRoot, outDir)}: ${mainJsName}, ${mainCssName}, ${adminJsName}, ${adminCssName}, ${webappChunkNames.length} app chunks, ${adminChunkNames.length} admin chunks, ${providerLogoAssetsCopied ? "provider logos" : "no provider logos"}`
   );
 }
 

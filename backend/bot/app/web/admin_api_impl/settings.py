@@ -11,6 +11,7 @@ from bot.app.web.context import (
 from bot.app.web.request_parsing import parse_body_or_400
 from bot.app.web.route_contracts import (
     INTEGER_SCHEMA,
+    STRING_SCHEMA,
     RouteContract,
     ok_envelope_for,
     ok_envelope_with,
@@ -37,6 +38,9 @@ from .common import (
 from .response_schemas import AdminSettingsOut
 from .schemas import AdminSettingsPatchBody
 
+VALUE_SOURCE_DATABASE_OVERRIDE = "database_override"
+VALUE_SOURCE_ENVIRONMENT = "environment"
+
 register_contract(
     "admin_settings_get_route",
     RouteContract(
@@ -48,7 +52,13 @@ register_contract(
     "admin_settings_patch_route",
     RouteContract(
         request_model=AdminSettingsPatchBody,
-        response_schema=ok_envelope_with({"applied": INTEGER_SCHEMA, "reverted": INTEGER_SCHEMA}),
+        response_schema=ok_envelope_with(
+            {
+                "applied": INTEGER_SCHEMA,
+                "reverted": INTEGER_SCHEMA,
+                "not_applied": {"type": "array", "items": STRING_SCHEMA},
+            }
+        ),
     ),
 )
 
@@ -78,7 +88,8 @@ async def admin_settings_get_route(request: web.Request) -> web.Response:
         override = overrides_by_key.get(key)
         value = current_value(settings, key)
         is_secret = bool(field.get("secret"))
-        overridden = bool(override)
+        stored_override = bool(override)
+        overridden = stored_override
         source = None
         read_error = None
         if key == "SUBSCRIPTION_PAGE_CONFIG_JSON":
@@ -87,10 +98,14 @@ async def admin_settings_get_route(request: web.Request) -> web.Response:
                 overridden = source == "admin_json"
             except SubscriptionGuidesConfigError as exc:
                 read_error = str(exc)
+        value_source = (
+            VALUE_SOURCE_DATABASE_OVERRIDE if stored_override else VALUE_SOURCE_ENVIRONMENT
+        )
         response_field = {
             **field,
             "value": "" if is_secret else value,
             "overridden": overridden,
+            "value_source": value_source,
             "updated_at": override.get("updated_at") if override else None,
         }
         if source:
@@ -149,4 +164,12 @@ async def admin_settings_patch_route(request: web.Request) -> web.Response:
 
     await refresh_webapp_runtime_after_settings_change(request, updates=updates, deletes=deletes)
 
-    return _ok({"applied": result.get("applied", 0), "reverted": result.get("reverted", 0)})
+    # ``not_applied`` keys were persisted but could not reach the running
+    # process, so the panel must not report them as taking effect.
+    return _ok(
+        {
+            "applied": result.get("applied", 0),
+            "reverted": result.get("reverted", 0),
+            "not_applied": result.get("not_applied", []),
+        }
+    )

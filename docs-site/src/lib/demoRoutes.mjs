@@ -1,5 +1,8 @@
 export const demoUserRoutes = [
   "home",
+  // Checkout renders home with plan selection open; it still needs a page so
+  // the static demo serves the route.
+  "plans",
   "install",
   "trial",
   "invite",

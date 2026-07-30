@@ -1,6 +1,7 @@
 <script lang="ts">
   import { X } from "$components/ui/icons.js";
   import { cn } from "$lib/utils.js";
+  import { lockPageScroll } from "$lib/webapp/scrollLock.js";
   import type { Snippet } from "svelte";
   import { cubicOut } from "svelte/easing";
   import { prefersReducedMotion } from "svelte/motion";
@@ -49,54 +50,39 @@
       : { duration: 200, y: 10, easing: cubicOut };
   }
 
+  let overlay = $state<HTMLDivElement | null>(null);
+
   function stopScrollPropagation(event: WheelEvent | TouchEvent) {
     event.stopPropagation();
     if (event.target instanceof Element && event.target.closest(".dialog-body-scroll")) return;
     event.preventDefault();
   }
 
-  function readScrollLockCount(body: HTMLElement): number {
-    const count = Number(body.dataset.dialogScrollLockCount || "0");
-    return Number.isFinite(count) ? count : 0;
-  }
-
-  function lockBodyScroll(): () => void {
-    if (typeof document === "undefined") return () => {};
-    const { body } = document;
-    const count = readScrollLockCount(body);
-    if (count === 0) {
-      body.dataset.dialogPreviousOverflow = body.style.overflow;
-      body.style.overflow = "hidden";
-    }
-    body.dataset.dialogScrollLockCount = String(count + 1);
-
-    return () => {
-      const nextCount = Math.max(0, readScrollLockCount(body) - 1);
-      if (nextCount > 0) {
-        body.dataset.dialogScrollLockCount = String(nextCount);
-        return;
-      }
-      body.style.overflow = body.dataset.dialogPreviousOverflow || "";
-      delete body.dataset.dialogPreviousOverflow;
-      delete body.dataset.dialogScrollLockCount;
-    };
-  }
-
   $effect(() => {
     if (!open) return;
-    return lockBodyScroll();
+    return lockPageScroll();
+  });
+
+  // Svelte attaches `touchmove` passively, where `preventDefault()` is ignored,
+  // so the guard that keeps a drag on the backdrop from scrolling the page is
+  // registered by hand. Wheel stays on the markup: it is cancelable there.
+  $effect(() => {
+    const element = overlay;
+    if (!open || !element) return;
+    element.addEventListener("touchmove", stopScrollPropagation, { passive: false });
+    return () => element.removeEventListener("touchmove", stopScrollPropagation);
   });
 </script>
 
 {#if open}
   <div
+    bind:this={overlay}
     class="dialog"
     role="dialog"
     aria-modal="true"
     aria-label={title}
     tabindex="-1"
     onwheel={stopScrollPropagation}
-    ontouchmove={stopScrollPropagation}
   >
     <button
       class="dialog-backdrop"

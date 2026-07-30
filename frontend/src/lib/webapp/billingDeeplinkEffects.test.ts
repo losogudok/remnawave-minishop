@@ -12,6 +12,7 @@ function makeEffects(overrides: TestOverrides = {}) {
       setCheckoutPromoInput: vi.fn(),
     },
     readCheckoutPromoDeeplink: vi.fn(() => ""),
+    readPlansDeeplink: vi.fn(() => false),
     readRenewalDeeplink: vi.fn(() => null),
     setHomeRoute: vi.fn(),
     stripCheckoutPromoQueryFromUrl: vi.fn(),
@@ -106,6 +107,49 @@ describe("createBillingDeeplinkEffects", () => {
     expect(deps.billingStore.openPaymentModal).toHaveBeenCalledOnce();
     expect(deps.setHomeRoute).toHaveBeenCalledOnce();
     expect(deps.stripRenewalLoginQueryFromUrl).toHaveBeenCalledOnce();
+  });
+
+  it("opens plan selection on the checkout route", () => {
+    const { deps, effects } = makeEffects({ readPlansDeeplink: vi.fn(() => true) });
+
+    effects.applyPostLoadBillingDeeplinks({
+      defaultMethod: "card",
+      plans: tariffPlans,
+      search: "",
+      subscription: { active: false },
+    });
+
+    // The route has no screen of its own, so it lands on home with plan and
+    // period selection already open.
+    expect(deps.setHomeRoute).toHaveBeenCalledOnce();
+    expect(deps.billingStore.openPaymentModal).toHaveBeenCalledOnce();
+    const call = deps.billingStore.openPaymentModal.mock.calls[0];
+    expect(call[0]).toBe(true);
+    expect(call[6]).toEqual({
+      preferCheckout: true,
+      preferredTariffKey: "",
+      selectDefaultTariff: true,
+    });
+  });
+
+  it("lets a more specific billing deeplink win over the checkout route", () => {
+    const { deps, effects } = makeEffects({
+      readPlansDeeplink: vi.fn(() => true),
+      readRenewalDeeplink: vi.fn(() => ({ tariffKey: "pro" })),
+    });
+
+    effects.applyPostLoadBillingDeeplinks({
+      defaultMethod: "card",
+      plans: tariffPlans,
+      search: "?topup=regular",
+      subscription: activeRegularSubscription,
+    });
+
+    // Topup and renewal both name what to buy; the plain checkout route does
+    // not, so it must never replace one of them.
+    expect(deps.billingStore.openTopupModal).toHaveBeenCalledOnce();
+    expect(deps.billingStore.openPaymentModal).toHaveBeenCalledOnce();
+    expect(deps.billingStore.openPaymentModal.mock.calls[0][6].preferredTariffKey).toBe("pro");
   });
 
   it("delegates a code deeplink to the status-aware handler when provided", () => {

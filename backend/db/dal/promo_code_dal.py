@@ -100,13 +100,26 @@ async def get_all_active_promo_codes(
     return list(result.scalars().all())
 
 
+def _promo_owner_filter(personal: bool | None) -> list[Any]:
+    """Narrow a promo query to personal or shared codes.
+
+    ``user_id`` is the only ownership signal: a code minted for one customer
+    carries it, an ordinary code does not. The number of allowed activations
+    says nothing about ownership and is deliberately not consulted.
+    """
+
+    if personal is None:
+        return []
+    return [PromoCode.user_id != None] if personal else [PromoCode.user_id == None]
+
+
 async def get_all_promo_codes_with_details(
-    session: AsyncSession, limit: int = 50, offset: int = 0
+    session: AsyncSession, limit: int = 50, offset: int = 0, *, personal: bool | None = None
 ) -> list[PromoCode]:
     """Get all promo codes (active and inactive) with pagination for management"""
     stmt = (
         select(PromoCode)
-        .where(PromoCode.archived_at == None)
+        .where(PromoCode.archived_at == None, *_promo_owner_filter(personal))
         .order_by(PromoCode.created_at.desc())
         .limit(limit)
         .offset(offset)
@@ -115,11 +128,13 @@ async def get_all_promo_codes_with_details(
     return list(result.scalars().all())
 
 
-async def get_promo_codes_count(session: AsyncSession) -> int:
+async def get_promo_codes_count(session: AsyncSession, *, personal: bool | None = None) -> int:
     """Get total count of all promo codes"""
     from sqlalchemy import func
 
-    stmt = select(func.count(PromoCode.promo_code_id)).where(PromoCode.archived_at == None)
+    stmt = select(func.count(PromoCode.promo_code_id)).where(
+        PromoCode.archived_at == None, *_promo_owner_filter(personal)
+    )
     result = await session.execute(stmt)
     return result.scalar_one()
 

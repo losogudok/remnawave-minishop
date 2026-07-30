@@ -3,7 +3,8 @@ from __future__ import annotations
 import contextlib
 import logging
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime
 from typing import Any
 
 from aiogram import types
@@ -30,6 +31,12 @@ from .common import (
     sale_mode_is_hwid_devices,
     sale_mode_tariff_key,
 )
+from .entitlement_context import (
+    EntitlementContextError,
+    build_entitlement_context_snapshot,
+    build_entitlement_context_snapshot_from_values,
+    snapshot_current_entitlement_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +46,7 @@ class PaymentCallbackParts:
     months: float
     price: float
     sale_mode: str
+    entitlement_context_snapshot: str | None = None
 
     @property
     def human_value(self) -> str:
@@ -137,6 +145,23 @@ async def quote_hwid_callback_parts(
     currency: str = "rub",
     settings: Any | None = None,
 ) -> tuple[PaymentCallbackParts | None, dict[str, Any] | None]:
+    if sale_mode_base(parts.sale_mode) in {"subscription", "tariff_upgrade"}:
+        active_subscription = await subscription_dal.get_active_subscription_by_user_id(
+            session,
+            int(user_id),
+        )
+        if (
+            active_subscription is not None
+            and str(getattr(active_subscription, "provider", "") or "").strip().lower() == "tribute"
+            and bool(getattr(active_subscription, "auto_renew_enabled", False))
+        ):
+            logger.warning(
+                "Rejecting checkout for user %s while Tribute recurrence is active (sale_mode=%s).",
+                user_id,
+                parts.sale_mode,
+            )
+            return None, None
+
     if settings is not None:
         quoted_parts = await _quote_configured_callback_parts(
             session=session,
@@ -164,15 +189,30 @@ async def quote_hwid_callback_parts(
             currency=currency,
         )
         if not quote:
-            return parts, None
+            return await _attach_entitlement_context(
+                session=session,
+                user_id=user_id,
+                parts=parts,
+                quote=None,
+            )
         quoted_parts = PaymentCallbackParts(
             months=months,
             price=float(parts.price or 0) + float(quote.get("price") or 0),
             sale_mode=parts.sale_mode,
         )
-        return quoted_parts, quote
+        return await _attach_entitlement_context(
+            session=session,
+            user_id=user_id,
+            parts=quoted_parts,
+            quote=quote,
+        )
     if not sale_mode_is_hwid_devices(parts.sale_mode):
-        return parts, None
+        return await _attach_entitlement_context(
+            session=session,
+            user_id=user_id,
+            parts=parts,
+            quote=None,
+        )
     device_count = parse_positive_int_units(parts.months)
     if device_count is None:
         return None, None
@@ -191,7 +231,44 @@ async def quote_hwid_callback_parts(
         price=float(quote.get("price") or 0),
         sale_mode=parts.sale_mode,
     )
-    return quoted_parts, quote
+    return await _attach_entitlement_context(
+        session=session,
+        user_id=user_id,
+        parts=quoted_parts,
+        quote=quote,
+    )
+
+
+async def _attach_entitlement_context(
+    *,
+    session: AsyncSession,
+    user_id: int,
+    parts: PaymentCallbackParts,
+    quote: dict[str, Any] | None,
+) -> tuple[PaymentCallbackParts | None, dict[str, Any] | None]:
+    if parts.entitlement_context_snapshot:
+        return parts, quote
+    try:
+        if quote is not None and "subscription_id" in quote:
+            snapshot = build_entitlement_context_snapshot_from_values(
+                sale_mode=parts.sale_mode,
+                active_subscription_id=quote.get("subscription_id"),
+                active_tariff_key=quote.get("tariff_key"),
+            )
+        else:
+            snapshot = await snapshot_current_entitlement_context(
+                session,
+                user_id=int(user_id),
+                sale_mode=parts.sale_mode,
+            )
+    except EntitlementContextError:
+        logger.warning(
+            "Rejecting checkout with an invalid entitlement context (user_id=%s, sale_mode=%s).",
+            user_id,
+            parts.sale_mode,
+        )
+        return None, None
+    return replace(parts, entitlement_context_snapshot=snapshot), quote
 
 
 def _matching_package_price(packages: Any, units: float, currency: str) -> float | None:
@@ -244,6 +321,7 @@ async def _quote_configured_callback_parts(
     tariff_key = sale_mode_tariff_key(parts.sale_mode)
     tariffs_config = settings.tariffs_config
     normalized_currency = str(currency or "rub").strip().lower()
+    entitlement_context_snapshot: str | None = None
 
     if tariffs_config is None:
         if base == "subscription":
@@ -326,6 +404,13 @@ async def _quote_configured_callback_parts(
             active_sub = await subscription_dal.get_active_subscription_by_user_id(session, user_id)
             if not active_sub or active_sub.tariff_key != tariff.key:
                 return None
+            try:
+                entitlement_context_snapshot = build_entitlement_context_snapshot(
+                    sale_mode=parts.sale_mode,
+                    active_subscription=active_sub,
+                )
+            except EntitlementContextError:
+                return None
             packages = (
                 tariff.premium_topup_packages
                 if base == "premium_topup"
@@ -341,7 +426,12 @@ async def _quote_configured_callback_parts(
 
     if not math.isfinite(price) or price <= 0:
         return None
-    return PaymentCallbackParts(months=units, price=price, sale_mode=parts.sale_mode)
+    return PaymentCallbackParts(
+        months=units,
+        price=price,
+        sale_mode=parts.sale_mode,
+        entitlement_context_snapshot=entitlement_context_snapshot,
+    )
 
 
 def payment_link_message_text(
@@ -458,6 +548,7 @@ async def safe_store_provider_payment_id(
     *,
     provider_payment_id: str,
     provider_payment_url: str | None = None,
+    checkout_expires_at: datetime | None = None,
     new_status: str | None = None,
     log_prefix: str,
 ) -> bool:
@@ -468,13 +559,16 @@ async def safe_store_provider_payment_id(
     that doesn't change the pending state).
     """
     try:
-        await payment_dal.update_provider_payment_and_status(
+        updated = await payment_dal.update_provider_payment_and_status(
             session,
             payment.payment_id,
             str(provider_payment_id),
             new_status or payment.status,
             provider_payment_url=provider_payment_url,
+            checkout_expires_at=checkout_expires_at,
         )
+        if updated is None:
+            raise LookupError(f"payment {payment.payment_id} disappeared before provider update")
         await session.commit()
         return True
     except Exception:
@@ -518,6 +612,7 @@ async def render_link_or_fail(
     payment_url: str | None,
     provider_payment_id: str | None = None,
     provider_response: Any | None = None,
+    checkout_expires_at: datetime | None = None,
     new_status: str | None = None,
     lead_text: str | None = None,
     log_prefix: str,
@@ -529,17 +624,19 @@ async def render_link_or_fail(
     payment as ``failed_creation``. Every link-style provider used to inline
     this same sequence.
     """
+    provider_id_stored = True
     if api_success and provider_payment_id and payment_url:
-        await safe_store_provider_payment_id(
+        provider_id_stored = await safe_store_provider_payment_id(
             session,
             payment,
             provider_payment_id=provider_payment_id,
             provider_payment_url=payment_url,
+            checkout_expires_at=checkout_expires_at,
             new_status=new_status,
             log_prefix=log_prefix,
         )
 
-    if api_success and payment_url:
+    if api_success and payment_url and provider_payment_id and provider_id_stored:
         await render_payment_link(
             callback,
             translator=translator,

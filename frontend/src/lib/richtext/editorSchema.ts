@@ -1,8 +1,9 @@
 /**
- * Tiptap schema + toolbar command helpers for the constrained Telegram broadcast
- * editor. The schema is deliberately limited to the Telegram∩email tag set; the
- * atomic `shortcode` node renders personalization tokens as deletable chips and
- * serializes back to `{name}` via {@link ../telegramHtml}.
+ * Tiptap schema + toolbar command helpers for the constrained Telegram editor
+ * shared by broadcasts, one-off messages and support replies. The schema is
+ * deliberately limited to the Telegram∩email tag set; the atomic `shortcode`
+ * node renders personalization tokens as deletable chips and serializes back to
+ * `{name}` via {@link ./telegramHtml}.
  */
 
 import { type Editor, mergeAttributes, Node } from "@tiptap/core";
@@ -31,11 +32,7 @@ export const ShortcodeNode = Node.create({
   },
 
   renderHTML({ node, HTMLAttributes }) {
-    return [
-      "span",
-      mergeAttributes(HTMLAttributes, { class: "broadcast-chip" }),
-      `{${node.attrs.name}}`,
-    ];
+    return ["span", mergeAttributes(HTMLAttributes, { class: "rt-chip" }), `{${node.attrs.name}}`];
   },
 
   renderText({ node }) {
@@ -43,7 +40,12 @@ export const ShortcodeNode = Node.create({
   },
 });
 
-export function broadcastExtensions(placeholder: string) {
+/**
+ * `autolink` turns a URL into a link as it is typed. It is off for a broadcast,
+ * where a template is authored around shortcodes, and on in a conversation,
+ * where both sides expect to tap what the other one pasted.
+ */
+export function composerExtensions(placeholder: string, { autolink = false } = {}) {
   return [
     StarterKit.configure({
       heading: false,
@@ -55,7 +57,7 @@ export function broadcastExtensions(placeholder: string) {
       trailingNode: false,
       link: {
         openOnClick: false,
-        autolink: false,
+        autolink,
         protocols: ["http", "https"],
         HTMLAttributes: { rel: "noopener nofollow", target: "_blank" },
       },
@@ -64,6 +66,9 @@ export function broadcastExtensions(placeholder: string) {
     ShortcodeNode,
   ];
 }
+
+/** One shortcode the composer can insert, as advertised by the backend. */
+export type MessageShortcodeInfo = { name: string; cost: string; description: string };
 
 export type ToolbarMark = "bold" | "italic" | "underline" | "strike" | "code";
 
@@ -98,6 +103,24 @@ export function toggleBlockquote(editor: Editor): void {
 
 export function insertShortcode(editor: Editor, name: string): void {
   editor.chain().focus().insertContent({ type: "shortcode", attrs: { name } }).run();
+}
+
+/** Insert a ready-made link, leaving the caret outside the link mark. */
+export function insertLink(editor: Editor, href: string, text: string): void {
+  const trimmed = href.trim();
+  if (!trimmed) return;
+  editor
+    .chain()
+    .focus()
+    .insertContent([
+      { type: "text", text, marks: [{ type: "link", attrs: { href: trimmed } }] },
+      { type: "text", text: " " },
+    ])
+    .run();
+}
+
+export function insertText(editor: Editor, text: string): void {
+  editor.chain().focus().insertContent(text).run();
 }
 
 export function applyLink(editor: Editor, href: string): void {

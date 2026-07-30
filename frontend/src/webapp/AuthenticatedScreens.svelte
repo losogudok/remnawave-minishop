@@ -3,15 +3,12 @@
   import type { DevicesStore } from "../lib/webapp/stores/devicesStore.js";
   import type { SupportStore } from "../lib/webapp/stores/supportStore.js";
 
+  import { lazyScreen } from "../lib/webapp/lazyScreen.svelte.js";
+
   import WebAppShell from "./WebAppShell.svelte";
-  import DevicesScreen from "./screens/DevicesScreen.svelte";
   import HomeScreen from "./screens/HomeScreen.svelte";
-  import InstallGuideScreen from "./screens/InstallGuideScreen.svelte";
-  import InviteScreen from "./screens/InviteScreen.svelte";
+  import ScreenLoading from "./screens/ScreenLoading.svelte";
   import SettingsScreen from "./screens/SettingsScreen.svelte";
-  import SupportScreen from "./screens/SupportScreen.svelte";
-  import SupportTicketScreen from "./screens/SupportTicketScreen.svelte";
-  import TrialActivationScreen from "./screens/TrialActivationScreen.svelte";
   import type {
     AppSettings,
     BooleanAction,
@@ -56,6 +53,9 @@
     devicesLoaded?: boolean;
     devicesStatus?: string;
     devicesStore: DevicesStore;
+    subscriptionReissueEnabled?: boolean;
+    subscriptionReissueBusy?: boolean;
+    openSubscriptionReissueDialog?: VoidAction;
     emailAuthEnabled?: boolean;
     emailLinkStatus?: string;
     goDevices: VoidAction;
@@ -162,6 +162,9 @@
     devicesLoaded = false,
     devicesStatus = "",
     devicesStore,
+    subscriptionReissueEnabled = false,
+    subscriptionReissueBusy = false,
+    openSubscriptionReissueDialog = () => {},
     emailAuthEnabled = true,
     emailLinkStatus = "",
     goDevices,
@@ -244,6 +247,33 @@
     userAgreementUrl = "",
     userLanguage = "",
   }: Props = $props();
+
+  // Everything past home and settings is fetched when the customer first opens
+  // it. Support pulls in the rich text editor, which is by far the heaviest
+  // thing the app can load, and most sessions never open any of these tabs.
+  const installGuideScreen = lazyScreen(() => import("./screens/InstallGuideScreen.svelte"));
+  const trialActivationScreen = lazyScreen(() => import("./screens/TrialActivationScreen.svelte"));
+  const inviteScreen = lazyScreen(() => import("./screens/InviteScreen.svelte"));
+  const devicesScreen = lazyScreen(() => import("./screens/DevicesScreen.svelte"));
+  const supportScreen = lazyScreen(() => import("./screens/SupportScreen.svelte"));
+  const supportTicketScreen = lazyScreen(() => import("./screens/SupportTicketScreen.svelte"));
+
+  $effect(() => {
+    if (screen === "install") installGuideScreen.load();
+    else if (screen === "trial") trialActivationScreen.load();
+    else if (screen === "invite") inviteScreen.load();
+    else if (screen === "devices") devicesScreen.load();
+    else if (screen === "support") {
+      supportScreen.load();
+      if (supportStore.openedTicketId) supportTicketScreen.load();
+    }
+  });
+
+  // Without the Devices section the reissue action has no home screen, so it
+  // moves to Settings.
+  const settingsSubscriptionReissueVisible = $derived(
+    subscriptionReissueEnabled && !devicesEnabled && Boolean(subscription?.active)
+  );
 </script>
 
 <WebAppShell
@@ -303,82 +333,113 @@
       {t}
     />
   {:else if screen === "install"}
-    <InstallGuideScreen
-      {currentLang}
-      {telegramPlatform}
-      {user}
-      {subscription}
-      {goHome}
-      {openConnectLink}
-      {openExternalLink}
-      {openAppLink}
-      {copyText}
-      {t}
-    />
-  {:else if screen === "trial"}
-    <TrialActivationScreen
-      {appSettings}
-      {brand}
-      {brandTitle}
-      {subscription}
-      {trialBusy}
-      {linkTelegramBusy}
-      trialResult={trialActivationResult}
-      trialError={trialActivationError}
-      {activateTrial}
-      {linkTelegramAndActivateTrial}
-      openInstallOrConnect={openTrialInstallOrConnect}
-      {goHome}
-      {t}
-    />
-  {:else if screen === "invite"}
-    <InviteScreen
-      {referral}
-      {referralBonusDetails}
-      {referralOneBonusPerReferee}
-      {referralWelcomeBonusDays}
-      {promoCode}
-      {promoFieldError}
-      {promoBusy}
-      {promoIsError}
-      {promoStatus}
-      {applyPromo}
-      {setPromoCode}
-      {clearPromoFieldError}
-      {copyText}
-      {t}
-    />
-  {:else if screen === "devices"}
-    <DevicesScreen
-      {devicesBusy}
-      devicesData={devicesData || undefined}
-      {devicesIsError}
-      {devicesLoaded}
-      {devicesErrorCode}
-      {devicesStatus}
-      {subscription}
-      {loadDevices}
-      openDeviceDisconnectDialog={devicesStore.openDeviceDisconnectDialog}
-      {openDeviceTopupModal}
-      {t}
-    />
-  {:else if screen === "support"}
-    {#if supportStore.openedTicketId}
-      <SupportTicketScreen
-        maxBodyLength={appSettings?.support_ticket_max_body_length || 4000}
-        {brand}
+    {#if installGuideScreen.component}
+      {@const Screen = installGuideScreen.component}
+      <Screen
+        {currentLang}
+        {telegramPlatform}
         {user}
-        userAvatarUrl={profileAvatarUrl}
-        userInitials={telegramProfileName ? telegramProfileName.slice(0, 2).toUpperCase() : "U"}
+        {subscription}
+        {goHome}
+        {openConnectLink}
+        {openExternalLink}
+        {openAppLink}
+        {copyText}
         {t}
       />
     {:else}
-      <SupportScreen
+      <ScreenLoading label={t("wa_loading")} />
+    {/if}
+  {:else if screen === "trial"}
+    {#if trialActivationScreen.component}
+      {@const Screen = trialActivationScreen.component}
+      <Screen
+        {appSettings}
+        {brand}
+        {brandTitle}
+        {subscription}
+        {trialBusy}
+        {linkTelegramBusy}
+        trialResult={trialActivationResult}
+        trialError={trialActivationError}
+        {activateTrial}
+        {linkTelegramAndActivateTrial}
+        openInstallOrConnect={openTrialInstallOrConnect}
+        {goHome}
+        {t}
+      />
+    {:else}
+      <ScreenLoading label={t("wa_loading")} />
+    {/if}
+  {:else if screen === "invite"}
+    {#if inviteScreen.component}
+      {@const Screen = inviteScreen.component}
+      <Screen
+        {referral}
+        {referralBonusDetails}
+        {referralOneBonusPerReferee}
+        {referralWelcomeBonusDays}
+        {promoCode}
+        {promoFieldError}
+        {promoBusy}
+        {promoIsError}
+        {promoStatus}
+        {applyPromo}
+        {setPromoCode}
+        {clearPromoFieldError}
+        {copyText}
+        {t}
+      />
+    {:else}
+      <ScreenLoading label={t("wa_loading")} />
+    {/if}
+  {:else if screen === "devices"}
+    {#if devicesScreen.component}
+      {@const Screen = devicesScreen.component}
+      <Screen
+        {devicesBusy}
+        devicesData={devicesData || undefined}
+        {devicesIsError}
+        {devicesLoaded}
+        {devicesErrorCode}
+        {devicesStatus}
+        {subscription}
+        {loadDevices}
+        openDeviceDisconnectDialog={devicesStore.openDeviceDisconnectDialog}
+        {subscriptionReissueEnabled}
+        {subscriptionReissueBusy}
+        {openSubscriptionReissueDialog}
+        {openDeviceTopupModal}
+        {t}
+      />
+    {:else}
+      <ScreenLoading label={t("wa_loading")} />
+    {/if}
+  {:else if screen === "support"}
+    {#if supportStore.openedTicketId}
+      {#if supportTicketScreen.component}
+        {@const Screen = supportTicketScreen.component}
+        <Screen
+          maxBodyLength={appSettings?.support_ticket_max_body_length || 4000}
+          {brand}
+          {user}
+          userAvatarUrl={profileAvatarUrl}
+          userInitials={telegramProfileName ? telegramProfileName.slice(0, 2).toUpperCase() : "U"}
+          {t}
+        />
+      {:else}
+        <ScreenLoading label={t("wa_loading")} />
+      {/if}
+    {:else if supportScreen.component}
+      {@const Screen = supportScreen.component}
+      <Screen
         maxSubjectLength={appSettings?.support_ticket_max_subject_length || 160}
         maxBodyLength={appSettings?.support_ticket_max_body_length || 4000}
         {user}
         {t}
       />
+    {:else}
+      <ScreenLoading label={t("wa_loading")} />
     {/if}
   {:else if screen === "settings"}
     <SettingsScreen
@@ -399,6 +460,8 @@
       {profileEmail}
       {profileTelegramId}
       {serverStatusUrl}
+      {subscriptionReissueBusy}
+      subscriptionReissueVisible={settingsSubscriptionReissueVisible}
       {supportUrl}
       {telegramNotificationsNeedPrompt}
       {telegramNotificationsStartLink}
@@ -415,6 +478,7 @@
       {openExternalLink}
       {openLinkEmailDialog}
       {openSetPasswordDialog}
+      {openSubscriptionReissueDialog}
       {setLanguageMenuOpen}
       {t}
       updateAccountLanguage={accountStore.updateAccountLanguage}

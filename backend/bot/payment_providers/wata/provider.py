@@ -515,6 +515,15 @@ def _callback_reuse_since_minutes(
     return ttl_minutes
 
 
+def _checkout_ttl_seconds(
+    provider: str,
+) -> Callable[[WataService, CreatePaymentRequest], int]:
+    def ttl_seconds(service: WataService, request: CreatePaymentRequest) -> int:
+        return service.profile_for_method(provider).link_ttl_minutes * 60
+
+    return ttl_seconds
+
+
 def _reuse_allowed(provider: str) -> Callable[[Any, dict[str, Any] | None], bool]:
     def allowed(payment: Any, context: dict[str, Any] | None) -> bool:
         return _payment_provider(payment) == provider
@@ -548,6 +557,7 @@ _DESCRIPTOR: LinkPaymentDescriptor[WataService] = LinkPaymentDescriptor(
     callback_reuse_answer=True,
     reuse_payment_allowed=_reuse_allowed(WATA_PROVIDER),
     webapp_available=_profile_enabled(WATA_PROVIDER),
+    checkout_ttl_seconds=_checkout_ttl_seconds(WATA_PROVIDER),
 )
 
 _CRYPTO_DESCRIPTOR: LinkPaymentDescriptor[WataService] = LinkPaymentDescriptor(
@@ -568,4 +578,5 @@ _CRYPTO_DESCRIPTOR: LinkPaymentDescriptor[WataService] = LinkPaymentDescriptor(
     callback_reuse_answer=True,
     reuse_payment_allowed=_reuse_allowed(WATA_CRYPTO_PROVIDER),
     webapp_available=_profile_enabled(WATA_CRYPTO_PROVIDER),
+    checkout_ttl_seconds=_checkout_ttl_seconds(WATA_CRYPTO_PROVIDER),
 )

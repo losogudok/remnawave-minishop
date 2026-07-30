@@ -1,17 +1,29 @@
 <script lang="ts">
   import { getTariffsStore } from "$lib/admin/context";
   import { Input, Sortable } from "$components/ui/index.js";
-  import { Tabs } from "$components/ui/primitives.js";
-  import { AdminButton } from "$components/patterns/admin/index.js";
+  import { Label, Tabs } from "$components/ui/primitives.js";
+  import { AdminButton, AdminSelect } from "$components/patterns/admin/index.js";
   import { Plus, Trash2 } from "$components/ui/icons.js";
   import type { TariffDraft, TariffsCatalog } from "$lib/admin/stores/tariffsStore";
+  import {
+    applySubscriptionToPeriodRows,
+    subscriptionOptionLabel,
+    type TributeDraftRow,
+    type TributeIssue,
+  } from "$lib/admin/tributeCatalog";
+  import TributeCatalogButton from "./TributeCatalogButton.svelte";
+  import TributeCatalogIssues from "./TributeCatalogIssues.svelte";
+  import TributeProductField from "./TributeProductField.svelte";
   import {
     currencyPriceAriaLabel as formatCurrencyPriceAriaLabel,
     currencyPriceColumnLabel as formatCurrencyPriceColumnLabel,
     defaultCurrencyCode as getDefaultCurrencyCode,
+    draftInputHandler,
     draftRowInputHandler,
     draftRowKey,
     moveDraftRowHandler,
+    tributeEnabled as isTributeEnabled,
+    tributeSectionVisible as isTributeSectionVisible,
     type DraftRow,
     type ReorderHandler,
     type TranslateFn,
@@ -28,6 +40,11 @@
     formatCurrencyPriceColumnLabel(at, defaultCurrencyCode)
   );
   const currencyPriceAriaLabel = $derived(formatCurrencyPriceAriaLabel(at, defaultCurrencyCode));
+  // Tribute mapping is provider configuration, so it stays out of the editor
+  // until the provider is switched on — unless this tariff still carries a
+  // mapping, which has to stay reachable to be cleared.
+  const tributeProviderEnabled = $derived(isTributeEnabled(tariffsState));
+  const showTribute = $derived(isTributeSectionVisible(tariffsState, tariffDraft));
   const movePeriodRow: ReorderHandler = moveDraftRowHandler(tariffsStore, "periodRows");
   const moveTrafficRow: ReorderHandler = moveDraftRowHandler(tariffsStore, "trafficRows");
 
@@ -38,11 +55,53 @@
       stars: "",
       referral_inviter: "",
       referral_referee: "",
+      tribute_period_id: "",
+      tribute_link: "",
+      tribute_subscription_id: "",
     });
   }
 
   function addTrafficRow(): void {
-    tariffsStore.addDraftRow("trafficRows", { gb: 10, price: "", stars: "" });
+    tariffsStore.addDraftRow("trafficRows", {
+      gb: 10,
+      price: "",
+      stars: "",
+      tribute_product_id: "",
+      tribute_product_link: "",
+    });
+  }
+
+  // Creator bindings live in Tribute, not here: the catalog lookup fills the
+  // identifiers in and reports every divergence the admin must fix in Tribute.
+  const tributeCatalog = $derived(tariffsState.tributeCatalog);
+  const periodRows = $derived(tariffDraft.periodRows as TributeDraftRow[]);
+  const trafficRows = $derived(tariffDraft.trafficRows as TributeDraftRow[]);
+  const subscriptionOptions = $derived(
+    (tributeCatalog?.subscriptions || []).map((subscription) => ({
+      value: String(subscription.subscription_id),
+      label: subscriptionOptionLabel(subscription),
+    }))
+  );
+  // The draft itself is the selection: reopening the editor for another tariff
+  // then shows that tariff's binding instead of a stale local choice.
+  const selectedSubscriptionId = $derived(
+    String(periodRows.find((row) => row.tribute_subscription_id)?.tribute_subscription_id ?? "")
+  );
+
+  // A period left unbound looks exactly like one deliberately kept off Tribute,
+  // so only the binding pass can report that the subscription lacks it.
+  let missingPeriods = $state<TributeIssue[]>([]);
+
+  function applyTributeSubscription(value: string): void {
+    const subscription = (tributeCatalog?.subscriptions || []).find(
+      (item) => String(item.subscription_id) === value
+    );
+    if (!subscription) return;
+    const result = applySubscriptionToPeriodRows(subscription, periodRows, defaultCurrencyCode);
+    for (const update of result.updates) {
+      tariffsStore.updateDraftRow("periodRows", update.index, update.values);
+    }
+    missingPeriods = result.issues.filter((issue) => issue.kind === "missing_period");
   }
 </script>
 
@@ -93,6 +152,9 @@
             onReorder={movePeriodRow}
           >
             {#snippet children(row: DraftRow, index: number)}
+              <span class="admin-row-editor-mobile-label" aria-hidden="true"
+                >{at("tariff_col_period_months", {}, "Period, mo.")}</span
+              >
               <Input
                 class="input"
                 type="number"
@@ -102,6 +164,9 @@
                 oninput={draftRowInputHandler(tariffsStore, "periodRows", index, "months")}
                 aria-label={at("tariff_col_period_months", {}, "Period, mo.")}
               />
+              <span class="admin-row-editor-mobile-label" aria-hidden="true"
+                >{currencyPriceColumnLabel}</span
+              >
               <Input
                 class="input"
                 type="number"
@@ -112,6 +177,9 @@
                 oninput={draftRowInputHandler(tariffsStore, "periodRows", index, "rub")}
                 aria-label={currencyPriceAriaLabel}
               />
+              <span class="admin-row-editor-mobile-label" aria-hidden="true"
+                >{at("tariff_col_price_stars_full", {}, "Price, ⭐ Stars")}</span
+              >
               <Input
                 class="input"
                 type="number"
@@ -122,6 +190,9 @@
                 oninput={draftRowInputHandler(tariffsStore, "periodRows", index, "stars")}
                 aria-label={at("tariff_label_price_stars", {}, "Price in Telegram Stars")}
               />
+              <span class="admin-row-editor-mobile-label" aria-hidden="true"
+                >{at("tariff_col_ref_inviter", {}, "Inviter bonus")}</span
+              >
               <Input
                 class="input"
                 type="number"
@@ -137,6 +208,9 @@
                 )}
                 aria-label={at("tariff_label_ref_inviter", {}, "Inviter bonus, days")}
               />
+              <span class="admin-row-editor-mobile-label" aria-hidden="true"
+                >{at("tariff_col_ref_referee", {}, "Friend bonus")}</span
+              >
               <Input
                 class="input"
                 type="number"
@@ -165,6 +239,155 @@
         </div>
       {/if}
     </section>
+
+    {#if showTribute}
+      <section class="admin-editor-section">
+        <header class="admin-editor-section-head">
+          <div class="admin-editor-section-title">
+            <strong>{at("tariff_tribute_title", {}, "Tribute subscription")}</strong>
+            <small
+              >{at(
+                "tariff_tribute_subtitle",
+                {},
+                "Optional Creator fallback. Tribute publishes one subscription per offer, so each period below carries the link and IDs of the subscription that sells it. Tribute owns the price and the billing cycle; the local prices above are not sent to it"
+              )}</small
+            >
+          </div>
+          <div class="admin-editor-section-actions">
+            <TributeCatalogButton {at} />
+          </div>
+        </header>
+        {#if !tributeProviderEnabled}
+          <p class="admin-muted">
+            {at(
+              "tariff_tribute_provider_off",
+              {},
+              "The Tribute provider is off. These fields are shown because the tariff still carries a mapping: clear them to drop it, or the saved catalog keeps referring to Tribute"
+            )}
+          </p>
+        {/if}
+        {#if tributeCatalog}
+          <div class="admin-field-label">
+            <span>{at("tariff_tribute_pick_subscription", {}, "Subscription in Tribute")}</span>
+            <small
+              >{at(
+                "tariff_tribute_pick_subscription_hint",
+                {},
+                "Picking one fills the subscription and period IDs of every period below. The share link is not published by the API, so paste it yourself"
+              )}</small
+            >
+            {#if subscriptionOptions.length}
+              <AdminSelect
+                value={selectedSubscriptionId}
+                items={subscriptionOptions}
+                placeholder={at("tariff_tribute_pick_placeholder", {}, "Select a subscription")}
+                ariaLabel={at("tariff_tribute_pick_subscription", {}, "Subscription in Tribute")}
+                onValueChange={applyTributeSubscription}
+              />
+            {:else}
+              <span class="admin-muted"
+                >{at(
+                  "tariff_tribute_no_subscriptions",
+                  {},
+                  "Tribute has no published subscriptions on this API key"
+                )}</span
+              >
+            {/if}
+          </div>
+        {/if}
+        <TributeCatalogIssues {at} rows={periodRows} mode="period" extra={missingPeriods} />
+        {#if tariffDraft.periodRows.length}
+          <div class="admin-row-editor">
+            <div
+              class="admin-row-editor-line admin-row-editor-tribute-period admin-row-editor-header"
+            >
+              <span>{at("tariff_col_period_months", {}, "Period, mo.")}</span>
+              <span>{at("tariff_col_tribute_link", {}, "Tribute subscription link")}</span>
+              <span>{at("tariff_col_tribute_subscription_id", {}, "Tribute subscription ID")}</span>
+              <span>{at("tariff_col_tribute_period_id", {}, "Tribute period ID")}</span>
+            </div>
+            {#each tariffDraft.periodRows as periodRow, index (index)}
+              {@const row = periodRow as DraftRow}
+              <div class="admin-row-editor-line admin-row-editor-tribute-period">
+                <span class="admin-row-editor-static">
+                  {at("tariff_tribute_period_months", { months: row.months }, "{months} mo.")}
+                </span>
+                <span class="admin-row-editor-mobile-label" aria-hidden="true"
+                  >{at("tariff_col_tribute_link", {}, "Tribute subscription link")}</span
+                >
+                <Input
+                  class="input"
+                  type="url"
+                  placeholder={at(
+                    "tariff_placeholder_tribute_link",
+                    {},
+                    "https://t.me/tribute/app?startapp=..."
+                  )}
+                  value={row.tribute_link}
+                  oninput={draftRowInputHandler(tariffsStore, "periodRows", index, "tribute_link")}
+                  aria-label={at("tariff_label_tribute_link", {}, "Tribute subscription link")}
+                />
+                <span class="admin-row-editor-mobile-label" aria-hidden="true"
+                  >{at("tariff_col_tribute_subscription_id", {}, "Tribute subscription ID")}</span
+                >
+                <Input
+                  class="input"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder={at("tariff_placeholder_tribute_subscription_id", {}, "e.g. 101")}
+                  value={row.tribute_subscription_id}
+                  oninput={draftRowInputHandler(
+                    tariffsStore,
+                    "periodRows",
+                    index,
+                    "tribute_subscription_id"
+                  )}
+                  aria-label={at(
+                    "tariff_label_tribute_subscription_id",
+                    {},
+                    "Tribute subscription ID"
+                  )}
+                />
+                <span class="admin-row-editor-mobile-label" aria-hidden="true"
+                  >{at("tariff_col_tribute_period_id", {}, "Tribute period ID")}</span
+                >
+                <Input
+                  class="input"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder={at("tariff_placeholder_tribute_period_id", {}, "e.g. 1001")}
+                  value={row.tribute_period_id}
+                  oninput={draftRowInputHandler(
+                    tariffsStore,
+                    "periodRows",
+                    index,
+                    "tribute_period_id"
+                  )}
+                  aria-label={at("tariff_label_tribute_period_id", {}, "Tribute period ID")}
+                />
+              </div>
+            {/each}
+          </div>
+          <p class="admin-muted">
+            {at(
+              "tariff_tribute_period_hint",
+              {},
+              "Leave a period empty to keep it off Tribute. Fill the link and both IDs for every period you sell through it"
+            )}
+          </p>
+        {:else}
+          <p class="admin-muted">
+            {at(
+              "tariff_pricing_empty",
+              {},
+              "Add at least one period so the tariff appears in the storefront."
+            )}
+          </p>
+        {/if}
+      </section>
+    {/if}
   {:else}
     <section class="admin-editor-section">
       <header class="admin-editor-section-head">
@@ -179,28 +402,52 @@
           >
         </div>
         <div class="admin-editor-section-actions">
+          {#if showTribute}
+            <TributeCatalogButton {at} />
+          {/if}
           <AdminButton size="sm" onclick={addTrafficRow}
             ><Plus size={12} /> {at("tariff_btn_package", {}, "Package")}</AdminButton
           >
         </div>
       </header>
+      {#if showTribute}
+        <p class="admin-muted">
+          {at(
+            "tariff_tribute_products_hint",
+            {},
+            "Optional. Map each fixed traffic package to a Tribute Digital Product. Configure its price in Tribute to match this package; the local price is not sent to Tribute"
+          )}
+        </p>
+        <TributeCatalogIssues {at} rows={trafficRows} mode="product" />
+      {/if}
       {#if tariffDraft.trafficRows.length}
         <div class="admin-row-editor">
-          <div class="admin-row-editor-line admin-row-editor-drag admin-row-editor-header">
+          <div
+            class="admin-row-editor-line {showTribute
+              ? 'admin-row-editor-tribute-product'
+              : 'admin-row-editor-package'} admin-row-editor-header"
+          >
             <span></span>
             <span>{at("tariff_col_volume_gb", {}, "Volume, GB")}</span>
             <span>{currencyPriceColumnLabel}</span>
             <span>{at("tariff_col_price_stars_full", {}, "Price, ⭐ Stars")}</span>
+            {#if showTribute}
+              <span>{at("tariff_col_tribute_product_id", {}, "Tribute product ID")}</span>
+              <span>{at("tariff_col_tribute_product_link", {}, "Tribute product link")}</span>
+            {/if}
             <span></span>
           </div>
           <Sortable
             items={tariffDraft.trafficRows}
-            class="admin-row-editor-line admin-row-editor-drag"
+            class={`admin-row-editor-line ${showTribute ? "admin-row-editor-tribute-product" : "admin-row-editor-package"}`}
             getKey={draftRowKey}
             handleLabel={at("tariff_package_reorder", {}, "Drag to reorder")}
             onReorder={moveTrafficRow}
           >
             {#snippet children(row: DraftRow, index: number)}
+              <span class="admin-row-editor-mobile-label" aria-hidden="true"
+                >{at("tariff_col_volume_gb", {}, "Volume, GB")}</span
+              >
               <Input
                 class="input"
                 type="number"
@@ -211,6 +458,9 @@
                 oninput={draftRowInputHandler(tariffsStore, "trafficRows", index, "gb")}
                 aria-label={at("tariff_col_volume_gb", {}, "Volume, GB")}
               />
+              <span class="admin-row-editor-mobile-label" aria-hidden="true"
+                >{currencyPriceColumnLabel}</span
+              >
               <Input
                 class="input"
                 type="number"
@@ -221,6 +471,9 @@
                 oninput={draftRowInputHandler(tariffsStore, "trafficRows", index, "price")}
                 aria-label={currencyPriceAriaLabel}
               />
+              <span class="admin-row-editor-mobile-label" aria-hidden="true"
+                >{at("tariff_col_price_stars_full", {}, "Price, ⭐ Stars")}</span
+              >
               <Input
                 class="input"
                 type="number"
@@ -231,6 +484,32 @@
                 oninput={draftRowInputHandler(tariffsStore, "trafficRows", index, "stars")}
                 aria-label={at("tariff_label_price_stars", {}, "Price in Telegram Stars")}
               />
+              {#if showTribute}
+                <span class="admin-row-editor-mobile-label" aria-hidden="true"
+                  >{at("tariff_col_tribute_product_id", {}, "Tribute product ID")}</span
+                >
+                <TributeProductField {at} field="trafficRows" {index} {row} />
+                <span class="admin-row-editor-mobile-label" aria-hidden="true"
+                  >{at("tariff_col_tribute_product_link", {}, "Tribute product link")}</span
+                >
+                <Input
+                  class="input"
+                  type="url"
+                  placeholder={at(
+                    "tariff_placeholder_tribute_product_link",
+                    {},
+                    "https://t.me/tribute/app?startapp=..."
+                  )}
+                  value={row.tribute_product_link}
+                  oninput={draftRowInputHandler(
+                    tariffsStore,
+                    "trafficRows",
+                    index,
+                    "tribute_product_link"
+                  )}
+                  aria-label={at("tariff_label_tribute_product_link", {}, "Tribute product link")}
+                />
+              {/if}
               <AdminButton
                 size="sm"
                 variant="danger"

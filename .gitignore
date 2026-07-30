@@ -26,6 +26,7 @@ node_modules/
 docs-site/.astro/
 docs-site/dist/
 docs-site/public/demo/runtime/
+docs-site/public/provider-logos/
 docs-site/src/content/docs/
 /frontend-nginx-dist/
 
@@ -55,9 +56,12 @@ bot/app/web/templates/subscription_webapp_docs_demo.*.css.gz
 backend/bot/app/web/templates/subscription_webapp.css
 backend/bot/app/web/templates/subscription_webapp.js
 backend/bot/app/web/templates/subscription_webapp.min.*.js
+backend/bot/app/web/templates/subscription_webapp.*.*.js
 backend/bot/app/web/templates/subscription_webapp.*.css
 backend/bot/app/web/templates/subscription_webapp.min.*.js.br
 backend/bot/app/web/templates/subscription_webapp.min.*.js.gz
+backend/bot/app/web/templates/subscription_webapp.*.*.js.br
+backend/bot/app/web/templates/subscription_webapp.*.*.js.gz
 backend/bot/app/web/templates/subscription_webapp.*.css.br
 backend/bot/app/web/templates/subscription_webapp.*.css.gz
 backend/bot/app/web/templates/subscription_webapp_admin.css
@@ -67,10 +71,15 @@ backend/bot/app/web/templates/subscription_webapp_admin.*.*.js
 backend/bot/app/web/templates/subscription_webapp_admin.*.css
 backend/bot/app/web/templates/subscription_webapp_admin.min.*.js.br
 backend/bot/app/web/templates/subscription_webapp_admin.min.*.js.gz
+backend/bot/app/web/templates/subscription_webapp_admin.*.*.js.br
+backend/bot/app/web/templates/subscription_webapp_admin.*.*.js.gz
 backend/bot/app/web/templates/subscription_webapp_admin.*.css.br
 backend/bot/app/web/templates/subscription_webapp_admin.*.css.gz
 backend/bot/app/web/templates/subscription_webapp_docs_demo.css
 backend/bot/app/web/templates/subscription_webapp_docs_demo.js
+backend/bot/app/web/templates/subscription_webapp_docs_demo.*.*.js
+backend/bot/app/web/templates/subscription_webapp_docs_demo.*.*.js.br
+backend/bot/app/web/templates/subscription_webapp_docs_demo.*.*.js.gz
 backend/bot/app/web/templates/subscription_webapp_docs_demo.*.css
 backend/bot/app/web/templates/subscription_webapp_docs_demo.*.css.br
 backend/bot/app/web/templates/subscription_webapp_docs_demo.*.css.gz

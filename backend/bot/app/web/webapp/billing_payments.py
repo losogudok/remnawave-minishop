@@ -20,9 +20,13 @@ from bot.app.web.webapp.common import (
 )
 from bot.app.web.webapp.payloads import (
     WebAppPaymentCreatePayload,
-    WebAppPromoQuotePayload,
 )
 from bot.middlewares.i18n import JsonI18n, get_i18n_instance
+from bot.payment_providers.shared.entitlement_context import (
+    EntitlementContextError,
+    build_entitlement_context_snapshot_from_values,
+    snapshot_current_entitlement_context,
+)
 from bot.services.subscription_service_impl.core import SubscriptionService
 from config.settings import Settings
 from config.tariffs_config import (
@@ -47,9 +51,16 @@ from .billing_sale_modes import (
 from .common import (
     _resolve_numeric_option_key,
 )
-from .response_helpers import json_response
 
 logger = logging.getLogger(__name__)
+
+
+def _active_tribute_recurrence(subscription: Any | None) -> bool:
+    return bool(
+        subscription is not None
+        and str(subscription.provider or "").strip().lower() == "tribute"
+        and bool(subscription.auto_renew_enabled)
+    )
 
 
 @dataclass(frozen=True)
@@ -83,126 +94,33 @@ def _localized_payment_description(
     )
 
 
-def _payment_amount_error(
+def _payment_promo_error(
     *,
-    request: web.Request,
     settings: Settings,
     method: str,
-    currency: str,
-    amount: float,
-    is_admin: bool = False,
+    months: Any,
+    sale_mode: str,
+    promo_result: CheckoutPromoResult | None,
 ) -> CheckoutPromoError | None:
+    if promo_result is None:
+        return None
     from bot.payment_providers import get_provider_spec
 
     provider_spec = get_provider_spec(method)
     if provider_spec is None or not provider_spec.create_webapp_payment:
         return CheckoutPromoError(400, "payment_unavailable", "Payment method unavailable")
-    if not provider_spec.is_usable_for_payment_amount(settings, currency, amount):
-        return CheckoutPromoError(
-            400,
-            "payment_amount_below_minimum",
-            "Payment amount is below the provider minimum",
-        )
-    if not provider_spec.is_visible_for_user(settings, request.app, is_admin=is_admin):
-        return CheckoutPromoError(400, "payment_unavailable", "Payment method unavailable")
-    return None
-
-
-async def quote_promo_route(request: web.Request) -> web.Response:
-    user_id = _require_user_id(request)
-    payment_payload = await _parse_model_payload(request, WebAppPromoQuotePayload)
-    method = str(payment_payload.method or "").strip().lower()
-    settings: Settings = get_settings(request)
-    subscription_service: SubscriptionService = get_subscription_service(request)
-    async_session_factory: sessionmaker = get_session_factory(request)
-
-    async with async_session_factory() as session:
-        db_user = await user_dal.get_user_by_id(session, user_id)
-        if not db_user or db_user.is_banned:
-            return _json_error(403, "access_denied", "Access denied")
-        admin_ids = {int(item) for item in (settings.ADMIN_IDS or [])}
-        is_admin = bool(db_user.telegram_id and int(db_user.telegram_id) in admin_ids)
-
-        base_quote, quote_error = await _resolve_base_payment_quote(
-            request=request,
-            session=session,
-            user_id=user_id,
-            db_user=db_user,
-            payment_payload=payment_payload,
-            method=method,
-            settings=settings,
-            subscription_service=subscription_service,
-        )
-        if quote_error is not None:
-            return quote_error
-        if base_quote is None:
-            return _json_error(400, "invalid_plan", "Plan is not available")
-
-        promo_result, promo_error = await _resolve_checkout_promo(
-            session=session,
-            settings=settings,
-            user_id=user_id,
-            code_input=payment_payload.promo_code,
-            sale_mode=base_quote.sale_mode,
-            payment_units=base_quote.payment_units,
-            traffic_gb=base_quote.traffic_gb_for_payment,
-            method=method,
-            base_amount=base_quote.price,
-            base_stars=base_quote.stars_price,
-        )
-        if promo_error is not None or promo_result is None:
-            reason = promo_error.message if promo_error is not None else "Code does not apply"
-            reason_key = (
-                promo_error.code if promo_error is not None else "promo_code_not_applicable"
-            )
-            return json_response(
-                {
-                    "ok": True,
-                    "valid": False,
-                    "reason": reason,
-                    "reason_key": reason_key,
-                }
-            )
-
-        payment_error = _payment_amount_error(
-            request=request,
-            settings=settings,
-            method=method,
-            currency=base_quote.default_currency_code,
-            amount=promo_result.effective_amount,
-            is_admin=is_admin,
-        )
-        if payment_error is not None:
-            return json_response(
-                {
-                    "ok": True,
-                    "valid": False,
-                    "payable": False,
-                    "reason": payment_error.message,
-                    "reason_key": payment_error.code,
-                }
-            )
-
-        return json_response(
-            {
-                "ok": True,
-                "valid": True,
-                "payable": True,
-                "code": promo_result.code,
-                "promo_code_id": promo_result.promo_code_id,
-                "currency": base_quote.default_currency_code,
-                "discount_percent": promo_result.discount_percent,
-                "base_amount": base_quote.price,
-                "effective_amount": promo_result.effective_amount,
-                "base_stars": base_quote.stars_price,
-                "effective_stars": promo_result.effective_stars,
-                "discount_amount": promo_result.discount_amount,
-                "effect_summary": promo_result.effect_summary,
-                "applies_to": promo_result.effects.applies_to,
-                "min_subscription_months": promo_result.effects.min_subscription_months,
-                "min_traffic_gb": promo_result.effects.min_traffic_gb,
-            }
-        )
+    if provider_spec.is_checkout_promo_supported(
+        settings,
+        months,
+        sale_mode,
+        promo_result,
+    ):
+        return None
+    return CheckoutPromoError(
+        400,
+        "promo_not_supported_by_payment_method",
+        "Promo code is not supported by this payment method",
+    )
 
 
 async def _resolve_base_payment_quote(
@@ -486,6 +404,7 @@ async def create_payment_route(request: web.Request) -> web.Response:
     sale_mode = "subscription"
     traffic_gb_for_payment: float | None = None
     hwid_quote: dict[str, Any] | None = None
+    quoted_entitlement_context_snapshot: str | None = None
     requested_sale_mode = _sale_mode_base(str(payment_payload.sale_mode or ""))
     payment_units: int | float
 
@@ -692,6 +611,20 @@ async def create_payment_route(request: web.Request) -> web.Response:
             )
             if not hwid_quote:
                 return _json_error(400, "invalid_plan", "Device package is not available")
+            try:
+                quoted_entitlement_context_snapshot = (
+                    build_entitlement_context_snapshot_from_values(
+                        sale_mode=sale_mode,
+                        active_subscription_id=hwid_quote.get("subscription_id"),
+                        active_tariff_key=hwid_quote.get("tariff_key"),
+                    )
+                )
+            except EntitlementContextError:
+                return _json_error(
+                    409,
+                    "entitlement_context_changed",
+                    "The active subscription no longer matches this purchase",
+                )
             if method == "stars":
                 stars_price = int(hwid_quote["price"])
                 price = 0.0
@@ -714,6 +647,21 @@ async def create_payment_route(request: web.Request) -> web.Response:
                     currency=currency,
                 )
             if hwid_quote:
+                try:
+                    quoted_entitlement_context_snapshot = (
+                        build_entitlement_context_snapshot_from_values(
+                            sale_mode=sale_mode,
+                            active_subscription_id=hwid_quote.get("subscription_id"),
+                            active_tariff_key=hwid_quote.get("tariff_key"),
+                            bind_to_active_subscription=True,
+                        )
+                    )
+                except EntitlementContextError:
+                    return _json_error(
+                        409,
+                        "entitlement_context_changed",
+                        "The active subscription no longer matches this purchase",
+                    )
                 if method == "stars":
                     stars_price = int(stars_price or 0) + int(hwid_quote["price"])
                 else:
@@ -759,6 +707,7 @@ async def create_payment_route(request: web.Request) -> web.Response:
             hwid_quote=hwid_quote,
             promo_code_id=promo_result.promo_code_id if promo_result else None,
             promo_result=promo_result,
+            entitlement_context_snapshot=quoted_entitlement_context_snapshot,
         )
 
 
@@ -779,10 +728,43 @@ async def _create_subscription_payment(
     hwid_quote: dict[str, Any] | None = None,
     promo_code_id: int | None = None,
     promo_result: CheckoutPromoResult | None = None,
+    tariff_change_quote_snapshot: str | None = None,
+    entitlement_context_snapshot: str | None = None,
 ) -> web.Response:
     settings: Settings = get_settings(request)
     payment_currency = (currency or default_payment_currency_code_for_settings(settings)).upper()
     sale_mode = str(sale_mode or "subscription")
+    if entitlement_context_snapshot is None:
+        try:
+            entitlement_context_snapshot = await snapshot_current_entitlement_context(
+                session,
+                user_id=int(user_id),
+                sale_mode=sale_mode,
+            )
+        except EntitlementContextError as exc:
+            logger.warning(
+                "Rejecting one-time checkout for stale entitlement context: "
+                "user_id=%s sale_mode=%s reason=%s",
+                user_id,
+                sale_mode,
+                exc,
+            )
+            return _json_error(
+                409,
+                "entitlement_context_changed",
+                "The active subscription no longer matches this purchase",
+            )
+    if _sale_mode_base(sale_mode) in {"subscription", "tariff_upgrade"}:
+        active_subscription = await subscription_dal.get_active_subscription_by_user_id(
+            session,
+            int(user_id),
+        )
+        if _active_tribute_recurrence(active_subscription):
+            return _json_error(
+                409,
+                "tribute_recurring_conflict",
+                "Cancel the active Tribute subscription before changing or replacing the tariff",
+            )
     description = _localized_payment_description(
         i18n=get_i18n(request),
         lang=lang,
@@ -830,6 +812,28 @@ async def _create_subscription_payment(
                 "payment_amount_below_minimum",
                 "Payment amount is below the provider minimum",
             )
+        if not provider_spec.is_usable_for_payment_context(settings, months, sale_mode):
+            logger.warning(
+                "WebApp payment method does not support checkout context: "
+                "method=%s months=%s sale_mode=%s",
+                method,
+                months,
+                sale_mode,
+            )
+            return _json_error(
+                400,
+                "payment_unavailable",
+                "Payment method unavailable for this plan",
+            )
+        promo_support_error = _payment_promo_error(
+            settings=settings,
+            method=method,
+            months=months,
+            sale_mode=sale_mode,
+            promo_result=promo_result,
+        )
+        if promo_support_error is not None:
+            return promo_support_error.to_response()
         payment_context = WebAppPaymentContext(
             request=request,
             session=session,
@@ -850,6 +854,7 @@ async def _create_subscription_payment(
             else None,
             hwid_proration_ratio=hwid_quote.get("proration_ratio") if hwid_quote else None,
             hwid_full_price=hwid_quote.get("full_price") if hwid_quote else None,
+            hwid_traffic_bonus_bytes=hwid_quote.get("traffic_bonus_bytes") if hwid_quote else None,
             promo_code_id=promo_code_id,
             promo_effect_summary=promo_result.effect_summary if promo_result else None,
             promo_bonus_days=promo_result.effects.bonus_days if promo_result else None,
@@ -874,6 +879,8 @@ async def _create_subscription_payment(
             checkout_charged_months=promo_result.charged_months if promo_result else None,
             checkout_charged_gb=promo_result.charged_gb if promo_result else None,
             checkout_quoted_at=promo_result.quoted_at if promo_result else None,
+            tariff_change_quote_snapshot=tariff_change_quote_snapshot,
+            entitlement_context_snapshot=entitlement_context_snapshot,
         )
         if provider_spec.reuse_webapp_payment:
             from bot.payment_providers.shared import reusable_webapp_payment_response

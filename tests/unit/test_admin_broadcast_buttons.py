@@ -1,3 +1,4 @@
+import json
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -61,6 +62,12 @@ class _FakeSessionFactory:
 
 
 class _FakeAudienceService:
+    def has_target(self, target: str) -> bool:
+        return target == "all"
+
+    def is_target_available(self, target: str) -> bool:
+        return target == "all"
+
     async def resolve_user_ids(self, target: str) -> list[int]:
         return [-555]
 
@@ -254,6 +261,36 @@ class AdminsAudienceTest(unittest.IsolatedAsyncioTestCase):
 
 
 class AdminBroadcastRouteTest(unittest.IsolatedAsyncioTestCase):
+    async def test_unknown_audience_is_rejected_instead_of_broadcasting_to_all(self):
+        request = _FakeBroadcastRequest(
+            {
+                "target": "segment:missing",
+                "text": "Hello",
+                "channels": ["telegram"],
+                "buttons": [],
+            },
+            {
+                "settings": settings_stub(),
+                "async_session_factory": _FakeSessionFactory(),
+                "i18n": None,
+                "bot_username": "demo_bot",
+            },
+        )
+
+        with (
+            patch.object(broadcast_route_module, "_require_admin_user_id", return_value=999),
+            patch.object(
+                broadcast_route_module,
+                "_resolve_audience_service",
+                return_value=AudienceSegmentationService(cast(sessionmaker, None)),
+            ),
+            patch.object(broadcast_route_module, "get_queue_manager", return_value=_FakeQueue()),
+        ):
+            response = await broadcast_route_module.admin_broadcast_route(cast(Any, request))
+
+        self.assertEqual(response.status, 400)
+        self.assertEqual(json.loads(response.text)["error"], "invalid_audience")
+
     async def test_linked_email_user_uses_telegram_id_for_telegram_delivery(self):
         settings = settings_stub(email_auth_configured=True)
         request = _FakeBroadcastRequest(
@@ -376,3 +413,39 @@ class BroadcastEmailDeliveryTest(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BroadcastLocalizedContentTests(unittest.TestCase):
+    """A broadcast reaches people who chose different languages."""
+
+    def test_a_message_is_accepted_per_language(self) -> None:
+        body = AdminBroadcastBody.model_validate(
+            {"texts": {"RU": " Привет ", "en-US": "Hi", "de": "   "}}
+        )
+
+        # Codes are normalized and an unwritten language is not stored, since
+        # storing it would send an empty message to exactly those customers.
+        self.assertEqual(body.texts, {"en-us": "Hi", "ru": "Привет"})
+
+    def test_a_button_caption_is_accepted_per_language(self) -> None:
+        button = AdminBroadcastButtonBody.model_validate(
+            {"kind": "webapp_section", "section": "plans", "labels": {"DE": " Tarife ", "fr": ""}}
+        )
+
+        self.assertEqual(button.labels, {"de": "Tarife"})
+
+    def test_a_button_may_carry_no_caption_at_all(self) -> None:
+        # The prepared caption for its kind then speaks each recipient's own
+        # language, which is the point of having prepared captions.
+        button = AdminBroadcastButtonBody.model_validate(
+            {"kind": "webapp_section", "section": "plans"}
+        )
+
+        self.assertEqual(button.label, "")
+        self.assertEqual(button.labels, {})
+
+    def test_a_single_text_still_works_unchanged(self) -> None:
+        body = AdminBroadcastBody.model_validate({"text": " hi ", "target": "all"})
+
+        self.assertEqual(body.text, "hi")
+        self.assertEqual(body.texts, {})

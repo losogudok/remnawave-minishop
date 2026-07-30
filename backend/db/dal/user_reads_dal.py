@@ -24,6 +24,32 @@ async def get_user_by_id(session: AsyncSession, user_id: int) -> User | None:
     return result.scalar_one_or_none()
 
 
+async def get_user_labels(
+    session: AsyncSession, user_ids: list[int]
+) -> dict[int, tuple[str | None, str | None]]:
+    """Batch ``user_id -> (username, display name)`` for admin listings.
+
+    Returns scalars only, so a caller can serialize them after the session is
+    closed without triggering a lazy load.
+    """
+
+    unique = {int(value) for value in user_ids}
+    if not unique:
+        return {}
+    stmt = select(User.user_id, User.username, User.first_name, User.last_name).where(
+        User.user_id.in_(unique)
+    )
+    rows = await session.execute(stmt)
+    labels: dict[int, tuple[str | None, str | None]] = {}
+    for user_id, username, first_name, last_name in rows.all():
+        parts = [str(part).strip() for part in (first_name, last_name) if str(part or "").strip()]
+        labels[int(user_id)] = (
+            str(username).strip() or None if username else None,
+            " ".join(parts) or None,
+        )
+    return labels
+
+
 async def get_referrer_for_user(session: AsyncSession, user: User) -> User | None:
     referred_by_id = getattr(user, "referred_by_id", None)
     if referred_by_id is None:

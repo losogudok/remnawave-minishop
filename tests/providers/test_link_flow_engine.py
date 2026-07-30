@@ -13,7 +13,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from bot.payment_providers.shared import callbacks as shared_callbacks
 from bot.payment_providers.shared import link_flow
+from bot.payment_providers.shared import webapp as shared_webapp
 from bot.payment_providers.shared.link_flow import (
     CreatePaymentRequest,
     LinkPaymentDescriptor,
@@ -67,7 +69,12 @@ def _patch_common(monkeypatch):
             months=1, purchased_gb=None, purchased_hwid_devices=None, tariff_key=None
         ),
     )
-    parts = SimpleNamespace(price=100.0, months=1, sale_mode="subscription")
+    parts = SimpleNamespace(
+        price=100.0,
+        months=1,
+        sale_mode="subscription",
+        entitlement_context_snapshot="entitlement-snapshot",
+    )
     monkeypatch.setattr(link_flow, "parse_payment_callback", lambda data: parts)
 
     async def _quote(**kwargs):
@@ -206,7 +213,9 @@ def test_callback_reuse_lookup_uses_descriptor_ttl(monkeypatch):
         )
     )
 
-    assert fake_dal.find_recent_pending_provider_payment.await_args.kwargs["since_minutes"] == 17
+    reuse_kwargs = fake_dal.find_recent_pending_provider_payment.await_args.kwargs
+    assert reuse_kwargs["since_minutes"] == 17
+    assert reuse_kwargs["entitlement_context_snapshot"] == "entitlement-snapshot"
 
 
 def test_callback_can_disable_reuse_lookup(monkeypatch):
@@ -407,6 +416,248 @@ def test_webapp_payment_unconfigured_returns_unavailable(monkeypatch):
     desc = _descriptor()
     result = asyncio.run(run_webapp_payment(desc, _webapp_ctx(_FakeService(configured=False))))
     assert result is sentinel
+
+
+def test_webapp_link_is_not_exposed_when_provider_correlation_cannot_be_persisted(
+    monkeypatch,
+) -> None:
+    session = _session()
+    payment = SimpleNamespace(
+        payment_id=99,
+        user_id=555,
+        status="pending_fake",
+    )
+    persist = AsyncMock(side_effect=RuntimeError("database unavailable"))
+    mark_failed = AsyncMock()
+    monkeypatch.setattr(
+        shared_webapp.payment_dal,
+        "update_provider_payment_and_status",
+        persist,
+    )
+    monkeypatch.setattr(
+        shared_webapp,
+        "mark_payment_failed_creation",
+        mark_failed,
+    )
+
+    response = asyncio.run(
+        shared_webapp.finalize_webapp_link_payment(
+            session=session,
+            payment=payment,
+            api_success=True,
+            payment_url="https://pay/x",
+            provider_payment_id="shop-order-uuid",
+            provider_response={"uuid": "shop-order-uuid"},
+            log_prefix="Tribute Shop",
+        )
+    )
+
+    assert response.status == 502
+    assert response.body
+    assert b'"error": "payment_failed"' in response.body
+    persist.assert_awaited_once()
+    session.rollback.assert_awaited_once()
+    mark_failed.assert_awaited_once_with(session, payment.payment_id)
+
+
+def test_webapp_link_is_not_exposed_without_provider_correlation(
+    monkeypatch,
+) -> None:
+    session = _session()
+    payment = SimpleNamespace(
+        payment_id=100,
+        user_id=555,
+        status="pending_fake",
+    )
+    persist = AsyncMock()
+    mark_failed = AsyncMock()
+    monkeypatch.setattr(
+        shared_webapp.payment_dal,
+        "update_provider_payment_and_status",
+        persist,
+    )
+    monkeypatch.setattr(
+        shared_webapp,
+        "mark_payment_failed_creation",
+        mark_failed,
+    )
+
+    response = asyncio.run(
+        shared_webapp.finalize_webapp_link_payment(
+            session=session,
+            payment=payment,
+            api_success=True,
+            payment_url="https://pay/x",
+            provider_payment_id=None,
+            provider_response={"url": "https://pay/x"},
+            log_prefix="Fake",
+        )
+    )
+
+    assert response.status == 502
+    persist.assert_not_awaited()
+    mark_failed.assert_awaited_once_with(session, payment.payment_id)
+
+
+def test_webapp_link_is_not_exposed_after_unsuccessful_provider_response(
+    monkeypatch,
+) -> None:
+    session = _session()
+    payment = SimpleNamespace(
+        payment_id=101,
+        user_id=555,
+        status="pending_fake",
+    )
+    persist = AsyncMock()
+    mark_failed = AsyncMock()
+    monkeypatch.setattr(
+        shared_webapp.payment_dal,
+        "update_provider_payment_and_status",
+        persist,
+    )
+    monkeypatch.setattr(
+        shared_webapp,
+        "mark_payment_failed_creation",
+        mark_failed,
+    )
+
+    response = asyncio.run(
+        shared_webapp.finalize_webapp_link_payment(
+            session=session,
+            payment=payment,
+            api_success=False,
+            payment_url="https://pay/x",
+            provider_payment_id="unexpected-id",
+            provider_response={"error": "rejected", "url": "https://pay/x"},
+            log_prefix="Fake",
+        )
+    )
+
+    assert response.status == 502
+    persist.assert_not_awaited()
+    mark_failed.assert_awaited_once_with(session, payment.payment_id)
+
+
+def test_callback_link_is_not_rendered_when_provider_correlation_cannot_be_persisted(
+    monkeypatch,
+) -> None:
+    session = _session()
+    payment = SimpleNamespace(
+        payment_id=42,
+        user_id=123,
+        status="pending_fake",
+    )
+    store = AsyncMock(return_value=False)
+    render = AsyncMock()
+    mark_failed = AsyncMock()
+    notify_failed = AsyncMock()
+    monkeypatch.setattr(
+        shared_callbacks,
+        "safe_store_provider_payment_id",
+        store,
+    )
+    monkeypatch.setattr(shared_callbacks, "render_payment_link", render)
+    monkeypatch.setattr(
+        shared_callbacks,
+        "safe_mark_failed_creation",
+        mark_failed,
+    )
+    monkeypatch.setattr(
+        shared_callbacks,
+        "notify_payment_gateway_failure",
+        notify_failed,
+    )
+
+    asyncio.run(
+        shared_callbacks.render_link_or_fail(
+            _callback(),
+            translator=lambda key, **kwargs: key,
+            current_lang="en",
+            i18n=SimpleNamespace(),
+            parts=SimpleNamespace(
+                price=100.0,
+                months=1,
+                sale_mode="subscription",
+            ),
+            session=session,
+            payment=payment,
+            api_success=True,
+            payment_url="https://pay/x",
+            provider_payment_id="shop-order-uuid",
+            provider_response={"uuid": "shop-order-uuid"},
+            log_prefix="tribute",
+        )
+    )
+
+    store.assert_awaited_once()
+    render.assert_not_awaited()
+    mark_failed.assert_awaited_once_with(
+        session,
+        payment,
+        log_prefix="tribute",
+    )
+    notify_failed.assert_awaited_once()
+
+
+def test_callback_link_is_not_rendered_without_provider_correlation(
+    monkeypatch,
+) -> None:
+    session = _session()
+    payment = SimpleNamespace(
+        payment_id=43,
+        user_id=123,
+        status="pending_fake",
+    )
+    store = AsyncMock()
+    render = AsyncMock()
+    mark_failed = AsyncMock()
+    notify_failed = AsyncMock()
+    monkeypatch.setattr(
+        shared_callbacks,
+        "safe_store_provider_payment_id",
+        store,
+    )
+    monkeypatch.setattr(shared_callbacks, "render_payment_link", render)
+    monkeypatch.setattr(
+        shared_callbacks,
+        "safe_mark_failed_creation",
+        mark_failed,
+    )
+    monkeypatch.setattr(
+        shared_callbacks,
+        "notify_payment_gateway_failure",
+        notify_failed,
+    )
+
+    asyncio.run(
+        shared_callbacks.render_link_or_fail(
+            _callback(),
+            translator=lambda key, **kwargs: key,
+            current_lang="en",
+            i18n=SimpleNamespace(),
+            parts=SimpleNamespace(
+                price=100.0,
+                months=1,
+                sale_mode="subscription",
+            ),
+            session=session,
+            payment=payment,
+            api_success=True,
+            payment_url="https://pay/x",
+            provider_payment_id=None,
+            provider_response={"url": "https://pay/x"},
+            log_prefix="fake",
+        )
+    )
+
+    store.assert_not_awaited()
+    render.assert_not_awaited()
+    mark_failed.assert_awaited_once_with(
+        session,
+        payment,
+        log_prefix="fake",
+    )
+    notify_failed.assert_awaited_once()
 
 
 def test_webapp_currency_resolver_receives_service(monkeypatch):

@@ -66,6 +66,16 @@ EXPECTED_CORE_MIGRATION_IDS = [
     "0043_add_user_panel_squad_overrides",
     "0044_add_subscription_last_connected_at",
     "0045_scope_provider_payment_ids",
+    "0046_add_recurring_payment_attribution",
+    "0047_add_hwid_traffic_bonus_snapshots",
+    "0048_add_promo_code_owner",
+    "0049_add_support_message_rich_body",
+    "0050_add_tribute_webhook_state",
+    "0051_add_tariff_change_quote_snapshots",
+    "0052_add_entitlement_context_snapshots",
+    "0053_restore_active_subscription_start_dates",
+    "0054_add_payment_checkout_lifecycle",
+    "0055_add_auto_renew_retry_state",
 ]
 
 

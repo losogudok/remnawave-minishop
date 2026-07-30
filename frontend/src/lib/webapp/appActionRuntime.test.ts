@@ -20,6 +20,7 @@ function createDeps(overrides: Partial<AppActionRuntimeDeps> = {}) {
     selectedTariffPlans: [{ id: "selected" }],
     singleTariffMode: false,
     subscription: { active: true, connect_url: "https://connect.example" },
+    suggestedPromoCode: "PERSONAL20",
     supportEnabled: true,
     tariffCatalog: [{ key: "base" }],
     tariffMode: false,
@@ -112,6 +113,7 @@ function createDeps(overrides: Partial<AppActionRuntimeDeps> = {}) {
     getSelectedTariffPlans: () => state.selectedTariffPlans,
     getSingleTariffMode: () => state.singleTariffMode,
     getSubscription: () => state.subscription,
+    getSuggestedPromoCode: () => state.suggestedPromoCode,
     getSupportEnabled: () => state.supportEnabled,
     getTariffCatalog: () => state.tariffCatalog,
     getTariffMode: () => state.tariffMode,
@@ -153,7 +155,8 @@ describe("appActionRuntime", () => {
       state.tariffCatalog,
       state.subscription,
       state.plans,
-      "crypto"
+      "crypto",
+      { suggestedPromoCode: "PERSONAL20" }
     );
   });
 

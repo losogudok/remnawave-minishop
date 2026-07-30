@@ -25,6 +25,9 @@ function promo(overrides: TestOverrides = {}) {
     created_by_admin_id: null,
     bot_link: null,
     webapp_link: null,
+    user_id: null,
+    user_username: null,
+    user_name: null,
     ...overrides,
   };
 }

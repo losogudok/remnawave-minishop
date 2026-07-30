@@ -1,11 +1,15 @@
 """Shared helpers for tariff traffic workers."""
 
 import logging
-from typing import Protocol
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any, Protocol
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from config.settings import Settings
 
 PREMIUM_WARNING_LEVEL_OFFSET = 1000
 # Single warning per premium billing period when usage reached or exceeded the quota.
@@ -21,6 +25,96 @@ TARIFF_WORKER_DB_RETRY_ATTEMPTS = 3
 TARIFF_WORKER_DB_RETRY_BASE_SLEEP_SECONDS = 0.5
 POSTGRES_RETRYABLE_SQLSTATES = {"40001", "40P01"}
 POSTGRES_RETRYABLE_ERROR_NAMES = {"DeadlockDetectedError", "SerializationError"}
+
+
+PANEL_LIMIT_DRIFT_CACHE_PARTS = ("panel-limit-drift", "subscriptions")
+PANEL_LIMIT_DRIFT_CACHE_TTL_SECONDS = 24 * 60 * 60
+
+
+@dataclass
+class PanelLimitPatchState:
+    """Bookkeeping for panel limit writes that keep coming back."""
+
+    signature: str
+    attempts: int
+    blocked_until: float
+
+
+async def record_panel_limit_drift(
+    settings: Settings,
+    *,
+    panel_uuid: str,
+    subscription_id: int,
+    desired: str,
+    observed: str,
+) -> None:
+    """Remember a panel user whose limits are rewritten by somebody else.
+
+    The admin health panel reads this: without it the operator only learns about
+    a second writer from a user complaint.
+    """
+    if not settings.REDIS_URL:
+        return
+    from bot.infra.redis import cache_get_json, cache_set_json, redis_key
+
+    key = redis_key(settings, *PANEL_LIMIT_DRIFT_CACHE_PARTS)
+    stored = await cache_get_json(settings, key)
+    record: dict[str, Any] = stored if isinstance(stored, dict) else {}
+    record[panel_uuid] = {
+        "subscription_id": subscription_id,
+        "desired": desired,
+        "observed": observed,
+        "last_seen_at": datetime.now(UTC).isoformat(),
+    }
+    await cache_set_json(settings, key, record, PANEL_LIMIT_DRIFT_CACHE_TTL_SECONDS)
+
+
+def canonical_subscriptions_per_panel_user(
+    subscriptions: list[Any],
+    *,
+    logger: logging.Logger,
+) -> list[Any]:
+    """Keep one active subscription per panel user.
+
+    Activation deactivates the other active subscriptions of a panel user, so a
+    second active row is data drift. Left alone, each row pushes its own limits
+    and squads to the same panel user on every tick: the values flip back and
+    forth and Remnawave emits a ``user.modified`` webhook for each write.
+    """
+    by_panel_user: dict[str, Any] = {}
+    duplicates: dict[str, list[Any]] = {}
+    unbound: list[Any] = []
+    for sub in subscriptions:
+        panel_uuid = str(getattr(sub, "panel_user_uuid", "") or "")
+        if not panel_uuid:
+            unbound.append(sub)
+            continue
+        current = by_panel_user.get(panel_uuid)
+        if current is None:
+            by_panel_user[panel_uuid] = sub
+            continue
+        keep_new = _subscription_rank(sub) > _subscription_rank(current)
+        winner, loser = (sub, current) if keep_new else (current, sub)
+        by_panel_user[panel_uuid] = winner
+        duplicates.setdefault(panel_uuid, []).append(loser)
+
+    for panel_uuid, skipped in duplicates.items():
+        logger.warning(
+            "TariffTrafficWorker: panel user %s has %s active subscriptions; syncing only %s and "
+            "skipping %s. Deactivate the stale rows: competing rows rewrite each other on the "
+            "panel every tick.",
+            panel_uuid,
+            len(skipped) + 1,
+            getattr(by_panel_user[panel_uuid], "subscription_id", None),
+            ", ".join(str(getattr(sub, "subscription_id", None)) for sub in skipped),
+        )
+    return [*by_panel_user.values(), *unbound]
+
+
+def _subscription_rank(sub: Any) -> tuple[float, int]:
+    end_date = getattr(sub, "end_date", None)
+    timestamp = end_date.timestamp() if isinstance(end_date, datetime) else 0.0
+    return timestamp, int(getattr(sub, "subscription_id", 0) or 0)
 
 
 def fmt_bytes(value: int) -> str:

@@ -22,6 +22,8 @@ from bot.app.web.webapp.payloads import (
     WebAppAutoRenewPayload,
     WebAppPromoApplyPayload,
 )
+from bot.infra.auto_renew import auto_renew_user_lock_name
+from bot.infra.redis import redis_lock
 from bot.services.promo_code_service import PromoCheckoutRequired, PromoCodeService
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.utils.config_link import prepare_config_links
@@ -222,12 +224,25 @@ async def subscription_auto_renew_route(request: web.Request) -> web.Response:
                         "A saved payment method is required",
                     )
 
-            await subscription_dal.update_subscription(
-                session,
-                sub.subscription_id,
-                {"auto_renew_enabled": enabled},
-            )
-            await session.commit()
+            async with redis_lock(
+                settings,
+                auto_renew_user_lock_name(user_id),
+                ttl_seconds=60,
+            ) as acquired:
+                if not acquired:
+                    await session.rollback()
+                    return _json_error(
+                        409,
+                        "auto_renew_busy",
+                        "Auto-renew is being processed; please try again",
+                    )
+                await subscription_dal.set_auto_renew(
+                    session,
+                    sub.subscription_id,
+                    enabled,
+                    stop_reason=("customer_disabled" if not enabled else "consent_changed"),
+                )
+                await session.commit()
             await _invalidate_webapp_user_caches(settings, user_id)
 
             lang = _normalize_language(db_user.language_code or settings.DEFAULT_LANGUAGE)

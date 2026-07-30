@@ -24,6 +24,7 @@ from bot.services.backup_archive import (
     BACKUP_FILENAME_PREFIX,
     BACKUP_FORMAT_VERSION,
     BACKUP_MANIFEST_NAME,
+    BACKUP_TARIFFS_CONFIG_MEMBER,
     attach_archive_integrity,
     backup_filename_timestamp,
     build_file_records,
@@ -45,6 +46,7 @@ BACKUP_MAX_MEMBER_BYTES = 4 * 1024 * 1024 * 1024
 BACKUP_MAX_UNCOMPRESSED_BYTES = 16 * 1024 * 1024 * 1024
 BACKUP_MAX_COMPOSE_BYTES = 1024 * 1024 * 1024
 BACKUP_MAX_COMPOSE_MEMBER_BYTES = 256 * 1024 * 1024
+BACKUP_MAX_TARIFFS_CONFIG_BYTES = 16 * 1024 * 1024
 BACKUP_MAX_COMPRESSION_RATIO = 200
 BACKUP_ZIP_BOMB_MIN_BYTES = 100 * 1024 * 1024
 COMPOSE_PRE_RESTORE_PREFIX = "minishop-pre-restore-"
@@ -255,6 +257,9 @@ class BackupRestoreService:
             with zipfile.ZipFile(archive_path) as archive:
                 self._validate_zip_members(archive.infolist())
                 db_member = self._find_database_dump_member(archive) if restore_database else None
+                tariffs_config_member = (
+                    self._find_tariffs_config_member(archive) if restore_database else None
+                )
                 compose_members = self._compose_file_members(archive) if restore_compose else []
 
                 if restore_database and db_member is None:
@@ -269,11 +274,22 @@ class BackupRestoreService:
                     self._assert_compose_target_writable(compose_target_dir)
                     compose_pre_restore_archive = self._snapshot_current_compose(compose_target_dir)
 
+                tariffs_config_target = (
+                    self._tariffs_config_restore_target()
+                    if tariffs_config_member is not None
+                    else None
+                )
                 database_restored = False
                 database_migrations_applied: list[str] = []
                 if db_member is not None:
                     dump_path = self._extract_database_dump(archive, db_member, temp_dir)
                     self._run_pg_restore(dump_path)
+                    if tariffs_config_member is not None and tariffs_config_target is not None:
+                        self._restore_tariffs_config_member(
+                            archive,
+                            tariffs_config_member,
+                            tariffs_config_target,
+                        )
                     database_migrations_applied = self._run_post_restore_migrations()
                     database_restored = True
 
@@ -401,6 +417,35 @@ class BackupRestoreService:
             raise BackupArchiveError("Compose restore directory is not configured")
         return Path(str(target_raw)).expanduser()
 
+    def _tariffs_config_restore_target(self) -> Path:
+        target_raw = str(self.settings.TARIFFS_CONFIG_PATH or "").strip()
+        if not target_raw:
+            raise BackupArchiveError("Tariffs config restore path is not configured")
+
+        target_path = Path(target_raw).expanduser()
+        if target_path.exists() and target_path.is_dir():
+            raise BackupArchiveError(
+                f"Tariffs config restore path points to a directory: {target_path}"
+            )
+
+        parent = target_path.parent
+        try:
+            parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise BackupArchiveError(
+                f"Tariffs config restore directory is unavailable: {parent}"
+            ) from exc
+
+        probe = parent / f".{target_path.name}.restore-write-test-{os.getpid()}"
+        try:
+            probe.write_text("", encoding="utf-8")
+            probe.unlink()
+        except OSError as exc:
+            raise BackupArchiveError(
+                f"Tariffs config restore directory is not writable: {parent}"
+            ) from exc
+        return target_path
+
     def _assert_compose_target_writable(self, target_dir: Path) -> None:
         if not target_dir.exists() or not target_dir.is_dir():
             raise BackupArchiveError(
@@ -525,6 +570,27 @@ class BackupRestoreService:
             shutil.copyfileobj(source, target)
         return dump_path
 
+    def _restore_tariffs_config_member(
+        self,
+        archive: zipfile.ZipFile,
+        member: zipfile.ZipInfo,
+        target_path: Path,
+    ) -> None:
+        temp_target = target_path.with_name(f".{target_path.name}.restore-{os.getpid()}.tmp")
+        try:
+            with archive.open(member) as source, temp_target.open("wb") as target:
+                shutil.copyfileobj(source, target)
+            temp_target.replace(target_path)
+        finally:
+            if temp_target.exists():
+                try:
+                    temp_target.unlink()
+                except OSError:
+                    logger.warning(
+                        "Failed to remove temporary tariffs config %s",
+                        temp_target,
+                    )
+
     def _find_database_dump_member(self, archive: zipfile.ZipFile) -> zipfile.ZipInfo | None:
         candidates = [
             item
@@ -534,6 +600,22 @@ class BackupRestoreService:
             and PurePosixPath(item.filename).suffix.lower() in {".dump", ".backup"}
         ]
         return sorted(candidates, key=lambda item: item.filename)[0] if candidates else None
+
+    def _find_tariffs_config_member(
+        self,
+        archive: zipfile.ZipFile,
+    ) -> zipfile.ZipInfo | None:
+        member = next(
+            (
+                item
+                for item in archive.infolist()
+                if not item.is_dir() and item.filename == BACKUP_TARIFFS_CONFIG_MEMBER
+            ),
+            None,
+        )
+        if member is not None and member.file_size > BACKUP_MAX_TARIFFS_CONFIG_BYTES:
+            raise BackupArchiveError("Tariffs config archive member is too large")
+        return member
 
     def _compose_file_members(self, archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
         members = [

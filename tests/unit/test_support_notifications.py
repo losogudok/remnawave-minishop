@@ -7,7 +7,9 @@ from bot.services.email_templates import (
     render_support_new_ticket_admin,
     render_support_ticket_closed_user,
 )
+from bot.services.message_composition import MessageButton
 from bot.services.notification_service import NotificationService
+from bot.services.support_message_buttons import encode_support_buttons
 from config.settings import Settings
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -616,3 +618,37 @@ def test_account_merge_notification_goes_to_log_channel():
     assert "paid@example.com" in message
     assert thread_id is None
     assert reply_markup.inline_keyboard[0][0].url == "tg://user?id=100200300"
+
+
+def test_user_support_keyboard_puts_attached_buttons_above_the_ticket_link():
+    service = NotificationService(
+        bot=SimpleNamespace(),
+        settings=_settings(),
+        bot_username="demo_bot",
+    )
+    ticket = SimpleNamespace(ticket_id=42)
+    user = SimpleNamespace(language_code="ru")
+    message = SimpleNamespace(
+        buttons=encode_support_buttons(
+            [
+                MessageButton(
+                    label="Take the code",
+                    url="https://t.me/demo_bot?startapp=promo_SAVE",
+                    kind="promo_webapp",
+                    promo_code="SAVE",
+                )
+            ]
+        )
+    )
+
+    keyboard = service._support_user_keyboard(ticket, user, message=message)
+
+    assert [row[0].text for row in keyboard.inline_keyboard] == ["Take the code", "Open ticket"]
+
+
+def test_admin_reply_preview_keeps_markup_and_escapes_a_legacy_body():
+    service = NotificationService(bot=SimpleNamespace(), settings=_settings())
+
+    assert service._support_preview_html("<b>hi</b>", "html") == "<b>hi</b>"
+    assert service._support_preview_html("a < b", "text") == "a &lt; b"
+    assert service._support_preview("<b>hi</b> there", "html") == "hi there"

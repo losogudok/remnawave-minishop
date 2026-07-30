@@ -20,7 +20,7 @@ from bot.keyboards.inline.user_keyboards import get_connect_and_main_keyboard
 from bot.utils.config_link import prepare_config_links
 from bot.utils.install_links import ensure_user_install_guide_links
 from bot.utils.text_sanitizer import sanitize_display_name, username_for_display
-from db.dal import payment_dal, user_dal
+from db.dal import payment_dal, subscription_dal, user_dal
 from db.models import Payment, User
 
 from .common import (
@@ -30,6 +30,10 @@ from .common import (
     payment_units_for_activation,
     sale_mode_base,
     sale_mode_tariff_key,
+)
+from .entitlement_context import (
+    payment_uses_entitlement_context,
+    preflight_payment_entitlement,
 )
 
 logger = logging.getLogger(__name__)
@@ -255,6 +259,7 @@ class PaymentSuccessRequest:
     activation_extra_kwargs: dict = field(default_factory=dict)
     skip_keyboard: bool = False
     skip_user_notification: bool = False
+    skip_referral_bonus: bool = False
     text_prefix: str | None = None
 
 
@@ -269,12 +274,12 @@ class PaymentSuccessOutcome:
     language: str
 
 
-async def _mark_activation_failed(req: PaymentSuccessRequest) -> None:
+async def _mark_activation_failed(req: PaymentSuccessRequest, payment_id: int) -> None:
     await req.session.rollback()
     try:
         await payment_dal.update_payment_status_by_db_id(
             req.session,
-            req.payment.payment_id,
+            payment_id,
             "activation_failed",
         )
         await req.session.commit()
@@ -283,7 +288,7 @@ async def _mark_activation_failed(req: PaymentSuccessRequest) -> None:
         logger.exception(
             "%s: failed to mark payment %s activation_failed.",
             req.log_prefix,
-            req.payment.payment_id,
+            payment_id,
         )
 
 
@@ -297,21 +302,23 @@ async def finalize_successful_payment(
     object so callers can drive extra side-effects (e.g. yookassa LKNPD
     receipts) using the same activation result.
     """
+    requested_payment_id = int(req.payment.payment_id)
     locked_payment = await payment_dal.get_payment_by_db_id_for_update(
-        req.session, req.payment.payment_id
+        req.session, requested_payment_id
     )
     if locked_payment is None:
         logger.error(
             "%s: payment %s disappeared before finalization.",
             req.log_prefix,
-            req.payment.payment_id,
+            requested_payment_id,
         )
         return None
+    payment_id = int(locked_payment.payment_id)
     if str(locked_payment.status or "").strip().lower() == "succeeded":
         logger.info(
             "%s: skipping duplicate finalization for payment %s.",
             req.log_prefix,
-            locked_payment.payment_id,
+            payment_id,
         )
         return None
     req.payment = locked_payment
@@ -324,7 +331,7 @@ async def finalize_successful_payment(
         logger.error(
             "%s: payment %s references missing user %s.",
             req.log_prefix,
-            locked_payment.payment_id,
+            payment_id,
             locked_payment.user_id,
         )
         return None
@@ -346,8 +353,66 @@ async def finalize_successful_payment(
     req.traffic_amount = (
         float(req.months) if is_traffic_sale_base(sale_mode_base(req.sale_mode)) else None
     )
-
     base = sale_mode_base(req.sale_mode)
+
+    active_subscription = None
+    tribute_subscription_event = base == "subscription" and stored_provider.lower() == "tribute"
+    if base in {"subscription", "tariff_upgrade"} and not tribute_subscription_event:
+        active_subscription = await subscription_dal.get_active_subscription_by_user_id_for_update(
+            req.session,
+            req.user_id,
+        )
+        if (
+            active_subscription is not None
+            and str(getattr(active_subscription, "provider", "") or "").strip().lower() == "tribute"
+            and bool(getattr(active_subscription, "auto_renew_enabled", False))
+        ):
+            logger.error(
+                "%s: rejecting payment %s because Tribute recurrence became active "
+                "before entitlement mutation.",
+                req.log_prefix,
+                payment_id,
+            )
+            await _mark_activation_failed(req, payment_id)
+            return None
+
+    if payment_uses_entitlement_context(locked_payment):
+        if base not in {"subscription", "tariff_upgrade"}:
+            active_subscription = (
+                await subscription_dal.get_active_subscription_by_user_id_for_update(
+                    req.session,
+                    req.user_id,
+                )
+            )
+        if (
+            active_subscription is None
+            and bool(getattr(locked_payment, "is_auto_renew", False))
+            and getattr(locked_payment, "renewal_subscription_id", None) is not None
+        ):
+            renewal_subscription = await subscription_dal.get_subscription_by_id_for_update(
+                req.session,
+                int(locked_payment.renewal_subscription_id),
+            )
+            if (
+                renewal_subscription is not None
+                and int(getattr(renewal_subscription, "user_id", 0) or 0) == req.user_id
+            ):
+                active_subscription = renewal_subscription
+        entitlement_preflight = preflight_payment_entitlement(
+            locked_payment,
+            active_subscription,
+        )
+        if not entitlement_preflight.allowed:
+            logger.error(
+                "%s: rejecting payment %s before entitlement mutation: %s (%s).",
+                req.log_prefix,
+                payment_id,
+                entitlement_preflight.status,
+                entitlement_preflight.reason,
+            )
+            await _mark_activation_failed(req, payment_id)
+            return None
+
     is_subscription = base == "subscription"
     is_traffic = is_traffic_sale_base(base)
 
@@ -370,7 +435,7 @@ async def finalize_successful_payment(
             req.user_id,
             activation_months,
             req.amount,
-            req.payment.payment_id,
+            payment_id,
             provider=req.provider_subscription,
             sale_mode=req.sale_mode,
             traffic_gb=traffic_gb_for_activation,
@@ -381,12 +446,12 @@ async def finalize_successful_payment(
             logger.error(
                 "%s: activation returned no usable subscription state for payment %s.",
                 req.log_prefix,
-                req.payment.payment_id,
+                payment_id,
             )
-            await _mark_activation_failed(req)
+            await _mark_activation_failed(req, payment_id)
             return None
         referral_bonus = None
-        if is_subscription:
+        if is_subscription and not req.skip_referral_bonus:
             try:
                 referral_savepoint = await req.session.begin_nested()
                 try:
@@ -394,7 +459,7 @@ async def finalize_successful_payment(
                         req.session,
                         req.user_id,
                         activation_months or 1,
-                        current_payment_db_id=req.payment.payment_id,
+                        current_payment_db_id=payment_id,
                         skip_if_active_before_payment=False,
                         tariff_key=effective_tariff_key,
                     )
@@ -408,11 +473,11 @@ async def finalize_successful_payment(
                 logger.exception(
                     "%s: referral bonus failed for payment %s; keeping the paid entitlement.",
                     req.log_prefix,
-                    req.payment.payment_id,
+                    payment_id,
                 )
         await payment_dal.update_payment_status_by_db_id(
             req.session,
-            req.payment.payment_id,
+            payment_id,
             "succeeded",
         )
         await req.session.commit()
@@ -420,16 +485,16 @@ async def finalize_successful_payment(
         logger.exception(
             "%s: failed to activate subscription for payment %s.",
             req.log_prefix,
-            req.payment.payment_id,
+            payment_id,
         )
-        await _mark_activation_failed(req)
+        await _mark_activation_failed(req, payment_id)
         return None
 
     await events.emit_model(
         PaymentSucceededPayload.model_validate(
             build_payment_succeeded_payload(
                 user_id=req.user_id,
-                payment_db_id=req.payment.payment_id,
+                payment_db_id=payment_id,
                 provider=req.provider_subscription,
                 notification_provider=req.provider_notification,
                 amount=req.amount,
@@ -441,7 +506,9 @@ async def finalize_successful_payment(
                 payment=req.payment,
                 activation=activation,
                 end_date=events.iso(activation.get("end_date") if activation else None),
-                is_auto_renew=False,
+                is_auto_renew=bool(getattr(req.payment, "is_auto_renew", False)),
+                renewal_subscription_id=(activation.get("subscription_id") if activation else None)
+                or getattr(req.payment, "renewal_subscription_id", None),
             )
         )
     )
@@ -459,7 +526,7 @@ async def finalize_successful_payment(
                 end_date=activation.get("end_date"),
                 provider=req.provider_subscription,
                 months=activation_months,
-                payment_db_id=req.payment.payment_id,
+                payment_db_id=payment_id,
             )
         )
     referral_event_payload = (

@@ -5,6 +5,8 @@ type TranslateFn = (key: string, params?: Record<string, string>, fallback?: str
 type TermUnitLabel = (value: number, unit: "month") => string;
 
 export type BillingPlan = WebappRecord & {
+  available_payment_method_ids?: string[] | null;
+  externally_managed_price_method_ids?: string[] | null;
   billing_model?: string | null;
   currency?: string | null;
   description?: string | null;
@@ -15,6 +17,7 @@ export type BillingPlan = WebappRecord & {
     device_count?: number | string | null;
     price?: number | string | null;
     stars_price?: number | string | null;
+    traffic_bonus_gb?: number | string | null;
     valid_from_text?: string | null;
     valid_until_text?: string | null;
   };
@@ -28,6 +31,7 @@ export type BillingPlan = WebappRecord & {
   monthly_gb?: number | string | null;
   price?: number | string | null;
   sale_mode?: string | null;
+  traffic_bonus_gb?: number | string | null;
   stars_price?: number | string | null;
   subtitle?: string | null;
   tariff_key?: string | null;
@@ -49,10 +53,35 @@ export type TariffCatalogEntry = {
 };
 export type PaymentMethod = WebappRecord & {
   disabled?: boolean;
+  disabled_reason?: string;
   id?: string | number;
   min_amount?: number | string;
   min_currency?: string;
+  price_managed_externally?: boolean;
 };
+
+export const TELEGRAM_STARS_MINI_APP_REQUIRED = "telegram_stars_mini_app_required";
+
+export function isStarsPaymentMethod(methodId: unknown): boolean {
+  return String(methodId || "")
+    .toLowerCase()
+    .includes("stars");
+}
+
+export function paymentMethodsForContext(
+  methods: PaymentMethod[] | null | undefined,
+  telegramMiniAppContext: boolean
+): PaymentMethod[] {
+  return (methods || []).map((method) =>
+    !telegramMiniAppContext && isStarsPaymentMethod(method.id)
+      ? {
+          ...method,
+          disabled: true,
+          disabled_reason: TELEGRAM_STARS_MINI_APP_REQUIRED,
+        }
+      : method
+  );
+}
 
 export function planKey(plan: BillingPlan | null | undefined): string | number {
   return (
@@ -110,12 +139,7 @@ export function activeTariffName(
 }
 
 export function priceLabel(plan: BillingPlan | null | undefined, methodId = ""): string {
-  if (
-    String(methodId || "")
-      .toLowerCase()
-      .includes("stars") &&
-    Number(plan?.stars_price || 0) > 0
-  ) {
+  if (isStarsPaymentMethod(methodId) && Number(plan?.stars_price || 0) > 0) {
     return `${Number(plan?.stars_price)} ⭐`;
   }
   return formatMoney(plan?.price || 0, plan?.currency || undefined);
@@ -126,12 +150,7 @@ export function methodAmountForPlan(
   plan: BillingPlan | null | undefined
 ): number {
   if (!method || !plan) return 0;
-  if (
-    String(method?.id || "")
-      .toLowerCase()
-      .includes("stars") &&
-    Number(plan?.stars_price || 0) > 0
-  ) {
+  if (isStarsPaymentMethod(method?.id) && Number(plan?.stars_price || 0) > 0) {
     return Number(plan.stars_price || 0);
   }
   return Number(plan?.price || 0);
@@ -141,7 +160,15 @@ export function methodAvailableForPlan(
   method: PaymentMethod | null | undefined,
   plan: BillingPlan | null | undefined
 ): boolean {
-  if (!method || !plan) return true;
+  if (!method) return true;
+  if (method.disabled) return false;
+  if (!plan) return true;
+  if (
+    Array.isArray(plan.available_payment_method_ids) &&
+    !plan.available_payment_method_ids.includes(String(method.id || "").toLowerCase())
+  ) {
+    return false;
+  }
   const minimum = Number(method?.min_amount || 0);
   const minimumCurrency = String(method?.min_currency || "").toUpperCase();
   const planCurrency = String(plan?.currency || "").toUpperCase();
@@ -254,24 +281,14 @@ export function planUnitHint(
   ) {
     const gb = Number(plan?.traffic_gb || plan?.months || 0);
     if (!gb) return "";
-    if (
-      String(selectedMethod || "")
-        .toLowerCase()
-        .includes("stars") &&
-      Number(plan?.stars_price || 0) > 0
-    ) {
+    if (isStarsPaymentMethod(selectedMethod) && Number(plan?.stars_price || 0) > 0) {
       return `${Number(Number(plan?.stars_price) / gb).toFixed(0)} ⭐${t("wa_per_gb_short")}`;
     }
     return `${formatMoney(Number(plan?.price || 0) / gb, plan?.currency || undefined)}${t("wa_per_gb_short")}`;
   }
   const months = Number(plan?.months || 0);
   if (!months || months <= 1) return "";
-  if (
-    String(selectedMethod || "")
-      .toLowerCase()
-      .includes("stars") &&
-    Number(plan?.stars_price || 0) > 0
-  ) {
+  if (isStarsPaymentMethod(selectedMethod) && Number(plan?.stars_price || 0) > 0) {
     return `${Number(Number(plan?.stars_price) / months).toFixed(0)} ⭐${t("wa_per_month_short")}`;
   }
   return `${formatMoney(Number(plan?.price || 0) / months, plan?.currency || undefined)}${t("wa_per_month_short")}`;

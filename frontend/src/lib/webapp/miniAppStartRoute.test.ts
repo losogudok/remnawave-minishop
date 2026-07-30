@@ -8,6 +8,11 @@ describe("Mini App start routes", () => {
     ["admin_user_100200300", "/admin/users/100200300"],
     ["admin_user_-42", "/admin/users/-42"],
     ["ticket_7", "/support/7"],
+    ["plans", "/plans"],
+    ["invite", "/invite"],
+    ["Support", "/support"],
+    ["devices", "/devices"],
+    ["home", "/home"],
   ])("maps %s to %s", (startParam, expected) => {
     expect(miniAppPathFromStartParam(startParam)).toBe(expected);
   });
@@ -15,6 +20,12 @@ describe("Mini App start routes", () => {
   it("ignores unrelated and malformed start parameters", () => {
     expect(miniAppPathFromStartParam("promo_SAVE20")).toBeNull();
     expect(miniAppPathFromStartParam("admin_ticket_bad")).toBeNull();
+  });
+
+  it("never routes a bare section into the admin panel", () => {
+    // Section payloads travel in links authored for customers; admin deep
+    // links keep their own admin_* prefixes.
+    expect(miniAppPathFromStartParam("admin")).toBeNull();
   });
 
   it("prefers the Telegram launch parameter", () => {

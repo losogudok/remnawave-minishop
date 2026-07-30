@@ -45,7 +45,6 @@ export type AdminStoreState = {
   openedUser: AdminUser | null;
   openedUserDetail: AdminUserDetail | null;
   userDetailLoading: boolean;
-  userMessageDraft: string;
   userExtendDays: DraftNumber;
   userExtendHwidDevices: boolean;
   userExtendTariffKey: string;
@@ -57,8 +56,8 @@ export type AdminStoreState = {
   trafficStrategyBaseline: string;
   userActionBusy: boolean;
   userDeleteOpen: boolean;
+  userSubscriptionReissueOpen: boolean;
   userBanConfirmOpen: boolean;
-  userMessageConfirmOpen: boolean;
   userReferralsOpen: boolean;
   userReferralsLoading: boolean;
   userReferrals: AdminUser[];
@@ -139,7 +138,6 @@ export function createInitialUsersState(): AdminStoreState {
     openedUser: null,
     openedUserDetail: null,
     userDetailLoading: false,
-    userMessageDraft: "",
     userExtendDays: 30,
     userExtendHwidDevices: true,
     userExtendTariffKey: "",
@@ -151,8 +149,8 @@ export function createInitialUsersState(): AdminStoreState {
     trafficStrategyBaseline: "",
     userActionBusy: false,
     userDeleteOpen: false,
+    userSubscriptionReissueOpen: false,
     userBanConfirmOpen: false,
-    userMessageConfirmOpen: false,
     userReferralsOpen: false,
     userReferralsLoading: false,
     userReferrals: [],
@@ -194,7 +192,6 @@ export function closedUserModalState(): Partial<AdminStoreState> {
     openedUser: null,
     openedUserDetail: null,
     userDetailLoading: false,
-    userMessageDraft: "",
     userExtendDays: 30,
     userExtendHwidDevices: true,
     userExtendTariffKey: "",
@@ -205,8 +202,8 @@ export function closedUserModalState(): Partial<AdminStoreState> {
     trafficStrategyDraft: "",
     trafficStrategyBaseline: "",
     userDeleteOpen: false,
+    userSubscriptionReissueOpen: false,
     userBanConfirmOpen: false,
-    userMessageConfirmOpen: false,
     userReferralsOpen: false,
     userReferralsLoading: false,
     userReferrals: [],

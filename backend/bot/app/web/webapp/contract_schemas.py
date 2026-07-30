@@ -170,7 +170,53 @@ PAYMENT_METHOD_SCHEMA: dict[str, Any] = {
         "min_amount": NUMBER_SCHEMA,
         "minimum_amount": NUMBER_SCHEMA,
         "minimum_amount_text": STRING_SCHEMA,
+        "shop_min_amount": NUMBER_SCHEMA,
+        "shop_max_amount": NUMBER_SCHEMA,
+        "shop_limit_currency": STRING_SCHEMA,
         "currency": STRING_SCHEMA,
+        "price_managed_externally": BOOLEAN_SCHEMA,
+    },
+}
+PENDING_PAYMENT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "payment_id",
+        "payment_url",
+        "provider",
+        "status",
+        "amount",
+        "base_amount",
+        "currency",
+        "discount_amount",
+        "discount_percent",
+        "months",
+        "purchased_gb",
+        "purchased_hwid_devices",
+        "sale_mode",
+        "tariff_key",
+        "promo_code",
+        "promo_effect_summary",
+        "created_at",
+    ],
+    "properties": {
+        "payment_id": INTEGER_SCHEMA,
+        "payment_url": STRING_SCHEMA,
+        "provider": STRING_SCHEMA,
+        "status": STRING_SCHEMA,
+        "amount": NUMBER_SCHEMA,
+        "base_amount": NUMBER_SCHEMA,
+        "currency": STRING_SCHEMA,
+        "discount_amount": NUMBER_SCHEMA,
+        "discount_percent": NUMBER_SCHEMA,
+        "months": NULLABLE_INTEGER_SCHEMA,
+        "purchased_gb": NULLABLE_NUMBER_SCHEMA,
+        "purchased_hwid_devices": NULLABLE_INTEGER_SCHEMA,
+        "sale_mode": STRING_SCHEMA,
+        "tariff_key": NULLABLE_STRING_SCHEMA,
+        "promo_code": STRING_SCHEMA,
+        "promo_effect_summary": STRING_SCHEMA,
+        "created_at": STRING_SCHEMA,
     },
 }
 HWID_RENEWAL_SCHEMA: dict[str, Any] = {
@@ -189,6 +235,7 @@ HWID_RENEWAL_SCHEMA: dict[str, Any] = {
         "active_until": NULLABLE_STRING_SCHEMA,
         "active_until_text": NULLABLE_STRING_SCHEMA,
         "pricing_period_months": INTEGER_SCHEMA,
+        "traffic_bonus_gb": NUMBER_SCHEMA,
     },
 }
 HWID_DEVICE_PACKAGE_SCHEMA: dict[str, Any] = {
@@ -207,6 +254,8 @@ HWID_DEVICE_PACKAGE_SCHEMA: dict[str, Any] = {
         "currency": STRING_SCHEMA,
         "title": STRING_SCHEMA,
         "subtitle": STRING_SCHEMA,
+        "available_payment_method_ids": STRING_ARRAY_SCHEMA,
+        "externally_managed_price_method_ids": STRING_ARRAY_SCHEMA,
     },
 }
 PLAN_SCHEMA: dict[str, Any] = {
@@ -237,7 +286,10 @@ PLAN_SCHEMA: dict[str, Any] = {
         "valid_until": NULLABLE_STRING_SCHEMA,
         "valid_until_text": NULLABLE_STRING_SCHEMA,
         "proration_ratio": NUMBER_SCHEMA,
+        "traffic_bonus_gb": NUMBER_SCHEMA,
         "hwid_renewal": HWID_RENEWAL_SCHEMA,
+        "available_payment_method_ids": STRING_ARRAY_SCHEMA,
+        "externally_managed_price_method_ids": STRING_ARRAY_SCHEMA,
     },
 }
 PLAN_LIST_SCHEMA: dict[str, Any] = {"type": "array", "items": PLAN_SCHEMA}
@@ -299,6 +351,8 @@ TARIFF_CHANGE_ACTION_SCHEMA: dict[str, Any] = {
         "months": INTEGER_SCHEMA,
         "price": NUMBER_SCHEMA,
         "currency": STRING_SCHEMA,
+        "available_payment_method_ids": STRING_ARRAY_SCHEMA,
+        "externally_managed_price_method_ids": STRING_ARRAY_SCHEMA,
     },
 }
 TARIFF_SWITCH_OPTIONS_SCHEMA: dict[str, Any] = {
@@ -486,6 +540,7 @@ WEBAPP_SETTINGS_SCHEMA: dict[str, Any] = {
         "support_ticket_max_subject_length": INTEGER_SCHEMA,
         "traffic_mode": BOOLEAN_SCHEMA,
         "my_devices_enabled": BOOLEAN_SCHEMA,
+        "subscription_reissue_enabled": BOOLEAN_SCHEMA,
         "user_hwid_device_limit": NULLABLE_INTEGER_SCHEMA,
         "trial_enabled": BOOLEAN_SCHEMA,
         "trial_available": BOOLEAN_SCHEMA,
@@ -506,6 +561,13 @@ ME_RESPONSE_SCHEMA: dict[str, Any] = ok_envelope_with(
         "subscription": WEBAPP_SUBSCRIPTION_SCHEMA,
         "referral": WEBAPP_REFERRAL_SCHEMA,
         "plans": PLAN_LIST_SCHEMA,
+        "pending_payment": {
+            "anyOf": [
+                PENDING_PAYMENT_SCHEMA,
+                {"type": "null"},
+            ]
+        },
+        "suggested_promo_code": NULLABLE_STRING_SCHEMA,
         "payment_methods": {"type": "array", "items": PAYMENT_METHOD_SCHEMA},
         "themes_catalog": THEMES_CATALOG_SCHEMA,
         "support_unread_count": INTEGER_SCHEMA,

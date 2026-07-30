@@ -21,12 +21,22 @@ async def upsert_yk_payment_method(
 ) -> UserBilling:
     existing = await get_user_billing(session, user_id)
     if existing:
+        method_changed = existing.yookassa_payment_method_id != payment_method_id
         existing.yookassa_payment_method_id = payment_method_id
         existing.card_last4 = card_last4
         existing.card_network = card_network
         existing.updated_at = func.now()
         await session.flush()
         await session.refresh(existing)
+        if method_changed:
+            from db.dal import subscription_dal
+
+            await subscription_dal.invalidate_user_auto_renew_consent(
+                session,
+                user_id,
+                reason="payment_method_changed",
+                provider="yookassa",
+            )
         return existing
     record = UserBilling(
         user_id=user_id,
@@ -48,6 +58,14 @@ async def delete_yk_payment_method(session: AsyncSession, user_id: int) -> bool:
     existing.card_last4 = None
     existing.card_network = None
     existing.updated_at = func.now()
+    from db.dal import subscription_dal
+
+    await subscription_dal.invalidate_user_auto_renew_consent(
+        session,
+        user_id,
+        reason="payment_method_removed",
+        provider="yookassa",
+    )
     await session.flush()
     await session.refresh(existing)
     return True
@@ -72,6 +90,7 @@ async def upsert_user_payment_method(
     result = await session.execute(existing_stmt)
     existing: UserPaymentMethod | None = result.scalar_one_or_none()
     if existing:
+        default_changed = bool(set_default and not existing.is_default)
         existing.card_last4 = card_last4
         existing.card_network = card_network
         if set_default:
@@ -88,6 +107,15 @@ async def upsert_user_payment_method(
         existing.updated_at = func.now()
         await session.flush()
         await session.refresh(existing)
+        if default_changed:
+            from db.dal import subscription_dal
+
+            await subscription_dal.invalidate_user_auto_renew_consent(
+                session,
+                user_id,
+                reason="payment_method_changed",
+                provider=provider,
+            )
         return existing
     if set_default:
         await session.execute(
@@ -109,6 +137,15 @@ async def upsert_user_payment_method(
     session.add(record)
     await session.flush()
     await session.refresh(record)
+    if set_default:
+        from db.dal import subscription_dal
+
+        await subscription_dal.invalidate_user_auto_renew_consent(
+            session,
+            user_id,
+            reason="payment_method_changed",
+            provider=provider,
+        )
     return record
 
 
@@ -143,6 +180,8 @@ async def set_user_default_payment_method(
     selected = next((m for m in methods if m.method_id == method_id), None)
     if not selected:
         return False
+    if selected.is_default:
+        return True
     await session.execute(
         update(UserPaymentMethod)
         .where(
@@ -156,6 +195,14 @@ async def set_user_default_payment_method(
         .where(UserPaymentMethod.method_id == method_id)
         .values(is_default=True)
     )
+    from db.dal import subscription_dal
+
+    await subscription_dal.invalidate_user_auto_renew_consent(
+        session,
+        user_id,
+        reason="payment_method_changed",
+        provider=selected.provider,
+    )
     return True
 
 
@@ -167,7 +214,16 @@ async def delete_user_payment_method(session: AsyncSession, user_id: int, method
     method = result.scalar_one_or_none()
     if not method:
         return False
+    provider = str(method.provider or "").strip().lower() or "yookassa"
     await session.delete(method)
+    from db.dal import subscription_dal
+
+    await subscription_dal.invalidate_user_auto_renew_consent(
+        session,
+        user_id,
+        reason="payment_method_removed",
+        provider=provider,
+    )
     await session.flush()
     return True
 
@@ -189,7 +245,16 @@ async def delete_user_payment_method_by_provider_id(
     method: UserPaymentMethod | None = result.scalar_one_or_none()
     if not method:
         return False
+    provider = str(method.provider or "").strip().lower() or "yookassa"
     await session.delete(method)
+    from db.dal import subscription_dal
+
+    await subscription_dal.invalidate_user_auto_renew_consent(
+        session,
+        user_id,
+        reason="payment_method_removed",
+        provider=provider,
+    )
     await session.flush()
     return True
 

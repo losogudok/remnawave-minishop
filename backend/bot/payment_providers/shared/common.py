@@ -168,6 +168,10 @@ def build_payment_record_payload(
     provider: str,
     sale_mode: str,
     hwid_quote: dict | None = None,
+    is_auto_renew: bool = False,
+    renewal_subscription_id: int | None = None,
+    renewal_cycle_end: Any = None,
+    entitlement_context_snapshot: str | None = None,
 ) -> dict:
     """Assemble the payment-record dict that every callback handler used to inline.
 
@@ -191,6 +195,9 @@ def build_payment_record_payload(
         "description": description,
         "subscription_duration_months": int(float(months)) if base == "subscription" else None,
         "provider": provider,
+        "is_auto_renew": bool(is_auto_renew),
+        "renewal_subscription_id": renewal_subscription_id,
+        "renewal_cycle_end": renewal_cycle_end,
         "sale_mode": sale_mode,
         "tariff_key": sale_mode_tariff_key(sale_mode),
         "purchased_gb": float(months) if is_traffic else None,
@@ -204,8 +211,11 @@ def build_payment_record_payload(
                 "hwid_pricing_period_months": hwid_quote.get("pricing_period_months"),
                 "hwid_proration_ratio": hwid_quote.get("proration_ratio"),
                 "hwid_full_price": hwid_quote.get("full_price"),
+                "hwid_traffic_bonus_bytes": hwid_quote.get("traffic_bonus_bytes"),
             }
         )
+    if entitlement_context_snapshot is not None:
+        payload["entitlement_context_snapshot"] = entitlement_context_snapshot
     return payload
 
 
@@ -339,6 +349,7 @@ async def create_base_payment_record(
     hwid_pricing_period_months: int | None = None,
     hwid_proration_ratio: float | None = None,
     hwid_full_price: float | None = None,
+    hwid_traffic_bonus_bytes: int | None = None,
     promo_code_id: int | None = None,
     promo_effect_summary: str | None = None,
     promo_bonus_days: int | None = None,
@@ -353,6 +364,8 @@ async def create_base_payment_record(
     checkout_charged_months: int | None = None,
     checkout_charged_gb: float | None = None,
     checkout_quoted_at: Any | None = None,
+    tariff_change_quote_snapshot: str | None = None,
+    entitlement_context_snapshot: str | None = None,
 ) -> Payment:
     payment = await payment_dal.create_payment_record(
         session,
@@ -373,6 +386,7 @@ async def create_base_payment_record(
             "hwid_pricing_period_months": hwid_pricing_period_months,
             "hwid_proration_ratio": hwid_proration_ratio,
             "hwid_full_price": hwid_full_price,
+            "hwid_traffic_bonus_bytes": hwid_traffic_bonus_bytes,
             "promo_code_id": promo_code_id,
             "promo_effect_summary": promo_effect_summary,
             "promo_bonus_days": promo_bonus_days,
@@ -387,6 +401,8 @@ async def create_base_payment_record(
             "checkout_charged_months": checkout_charged_months,
             "checkout_charged_gb": checkout_charged_gb,
             "checkout_quoted_at": checkout_quoted_at,
+            "tariff_change_quote_snapshot": tariff_change_quote_snapshot,
+            "entitlement_context_snapshot": entitlement_context_snapshot,
         },
     )
     await session.commit()
@@ -425,6 +441,7 @@ async def create_webapp_payment_record(
         hwid_pricing_period_months=ctx.hwid_pricing_period_months,
         hwid_proration_ratio=ctx.hwid_proration_ratio,
         hwid_full_price=ctx.hwid_full_price,
+        hwid_traffic_bonus_bytes=ctx.hwid_traffic_bonus_bytes,
         promo_code_id=ctx.promo_code_id,
         promo_effect_summary=ctx.promo_effect_summary,
         promo_bonus_days=ctx.promo_bonus_days,
@@ -439,6 +456,8 @@ async def create_webapp_payment_record(
         checkout_charged_months=ctx.checkout_charged_months,
         checkout_charged_gb=ctx.checkout_charged_gb,
         checkout_quoted_at=ctx.checkout_quoted_at,
+        tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
+        entitlement_context_snapshot=ctx.entitlement_context_snapshot,
     )
 
 
@@ -469,9 +488,12 @@ async def reusable_webapp_payment_response(
         months=amounts.months,
         purchased_gb=amounts.purchased_gb,
         purchased_hwid_devices=amounts.purchased_hwid_devices,
+        hwid_traffic_bonus_bytes=ctx.hwid_traffic_bonus_bytes,
         tariff_key=amounts.tariff_key,
         promo_code_id=ctx.promo_code_id,
         promo_effect_summary=ctx.promo_effect_summary,
+        tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
+        entitlement_context_snapshot=ctx.entitlement_context_snapshot,
         since_minutes=since_minutes,
     )
     if payment is None:

@@ -1,14 +1,6 @@
 ﻿<script lang="ts">
   import { Input } from "$components/ui/index.js";
-  import {
-    ArrowDown,
-    ArrowUp,
-    ChevronsUpDown,
-    DollarSign,
-    Sliders,
-    X,
-    UsersRound,
-  } from "$components/ui/icons.js";
+  import { DollarSign, Sliders, X, UsersRound } from "$components/ui/icons.js";
   import Dialog from "$components/ui/dialog.svelte";
   import { Label } from "$components/ui/primitives.js";
   import {
@@ -17,8 +9,10 @@
     AdminEmptyState,
     AdminPagination,
     AdminSelect,
+    AdminSortHeader,
     AdminTable,
     AdminTableSkeleton,
+    AdminUserCell,
     VirtualTableRows,
   } from "$components/patterns/admin/index.js";
   import type { AdminUser } from "$lib/admin/stores/usersStore";
@@ -343,27 +337,12 @@
           {#each userTableColumns() as column (column.key)}
             <th aria-sort={column.sort ? sortState(column.sort) : undefined}>
               {#if column.sort}
-                <button
-                  type="button"
-                  class="admin-sort-header"
+                <AdminSortHeader
+                  label={column.label}
+                  state={sortState(column.sort)}
                   title={sortTitle(column.sort)}
                   onclick={() => toggleUsersSortForColumn(column)}
-                >
-                  <span>{column.label}</span>
-                  <span
-                    class="admin-sort-state"
-                    data-state={sortState(column.sort)}
-                    aria-hidden="true"
-                  >
-                    {#if sortState(column.sort) === "ascending"}
-                      <ArrowUp size={13} />
-                    {:else if sortState(column.sort) === "descending"}
-                      <ArrowDown size={13} />
-                    {:else}
-                      <ChevronsUpDown size={13} />
-                    {/if}
-                  </span>
-                </button>
+                />
               {:else}
                 {column.label}
               {/if}
@@ -393,21 +372,17 @@
               }
             }}
           >
-            <td class="admin-users-cell-user" data-label={at("user", {}, "User")}>
-              <div class="admin-users-cell-user-inner">
-                <span class="admin-avatar admin-avatar-sm">
-                  {#if avatar}
-                    <img src={avatar} alt="" loading="lazy" referrerpolicy="no-referrer" />
-                  {:else}
-                    <span>{userInitials(user)}</span>
-                  {/if}
-                </span>
-                <div class="admin-users-cell-user-text">
-                  <span class="admin-users-cell-name">{userDisplayName(user)}</span>
-                  <span class="admin-users-cell-secondary">{userSecondaryName(user)}</span>
-                  <span class="admin-users-cell-id">#{user.user_id}</span>
-                </div>
-              </div>
+            <td
+              class="admin-users-cell-user admin-cell-primary"
+              data-label={at("user", {}, "User")}
+            >
+              <AdminUserCell
+                name={userDisplayName(user)}
+                secondary={userSecondaryName(user)}
+                idText={`#${user.user_id}`}
+                initials={userInitials(user)}
+                avatarUrl={avatar}
+              />
             </td>
             <td
               class="admin-users-cell-premium"
@@ -605,84 +580,10 @@
     overflow-x: auto;
   }
 
-  .admin-users-table-wrap :global(.admin-users-table) {
-    min-width: 1080px;
-  }
-
-  .admin-sort-header {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    max-width: 100%;
-    margin: -4px -6px;
-    padding: 4px 6px;
-    border: 0;
-    border-radius: 6px;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    letter-spacing: inherit;
-    text-transform: inherit;
-    cursor: pointer;
-  }
-
-  .admin-sort-header:hover,
-  .admin-sort-header:focus-visible {
-    color: var(--admin-text);
-    background: color-mix(in srgb, var(--admin-muted) 10%, transparent);
-    outline: none;
-  }
-
-  .admin-sort-header:focus-visible {
-    box-shadow: 0 0 0 2px var(--admin-ring);
-  }
-
-  .admin-sort-state {
-    display: inline-flex;
-    align-items: center;
-    color: var(--admin-dim);
-  }
-
-  .admin-sort-state[data-state="ascending"],
-  .admin-sort-state[data-state="descending"] {
-    color: color-mix(in srgb, var(--accent) 72%, var(--admin-muted));
-  }
-
-  .admin-users-cell-user-inner {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  .admin-users-cell-user-text {
-    display: grid;
-    gap: 2px;
-    min-width: 0;
-    text-align: left;
-  }
-
-  .admin-users-cell-name {
-    font-weight: 650;
-    font-size: 13px;
-    line-height: 1.25;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .admin-users-cell-secondary {
-    font-size: 11px;
-    color: var(--admin-dim);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .admin-users-cell-id {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--admin-muted);
+  @media (min-width: 721px) {
+    .admin-users-table-wrap :global(.admin-users-table) {
+      min-width: 1080px;
+    }
   }
 
   .admin-users-cell-premium {
@@ -784,30 +685,6 @@
       border-bottom: 0;
       border-left: 0;
       border-radius: 18px 18px 0 0;
-    }
-
-    .admin-users-table-wrap :global(.admin-users-table thead) {
-      display: table-header-group;
-    }
-
-    .admin-users-table-wrap :global(.admin-users-table tbody tr) {
-      display: table-row;
-      padding: 0;
-      border-bottom: 0;
-    }
-
-    .admin-users-table-wrap :global(.admin-users-table tbody tr:last-child td) {
-      border-bottom: 0;
-    }
-
-    .admin-users-table-wrap :global(.admin-users-table tbody td) {
-      display: table-cell;
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--admin-border);
-    }
-
-    .admin-users-table-wrap :global(.admin-users-table tbody td::before) {
-      content: none;
     }
   }
 </style>

@@ -52,6 +52,7 @@ async def _initiate_yk_payment(
     selected_method_internal_id: int | None = None,
     sale_mode: str = "subscription",
     hwid_quote: dict[str, Any] | None = None,
+    entitlement_context_snapshot: str | None = None,
 ) -> bool:
     """Create payment record and initiate YooKassa payment (new card or saved card)."""
     message = callback_message_or_none(callback)
@@ -93,6 +94,8 @@ async def _initiate_yk_payment(
         else None,
         "hwid_proration_ratio": hwid_quote.get("proration_ratio") if hwid_quote else None,
         "hwid_full_price": hwid_quote.get("full_price") if hwid_quote else None,
+        "hwid_traffic_bonus_bytes": hwid_quote.get("traffic_bonus_bytes") if hwid_quote else None,
+        "entitlement_context_snapshot": entitlement_context_snapshot,
     }
 
     db_payment_record = None
@@ -137,6 +140,7 @@ async def _initiate_yk_payment(
             "hwid_pricing_period_months": hwid_quote.get("pricing_period_months"),
             "hwid_proration_ratio": hwid_quote.get("proration_ratio"),
             "hwid_full_price": hwid_quote.get("full_price"),
+            "hwid_traffic_bonus_bytes": hwid_quote.get("traffic_bonus_bytes"),
         }
         yookassa_metadata.update(
             {key: str(value) for key, value in hwid_metadata.items() if value is not None}
@@ -208,6 +212,7 @@ async def _initiate_yk_payment(
                 payment_db_id=db_payment_record.payment_id,
                 new_status="pending_yookassa",
                 yk_payment_id=payment_response_yk.get("id"),
+                provider_payment_url=str(payment_response_yk["confirmation_url"]),
             )
             if selected_method_internal_id is not None:
                 try:

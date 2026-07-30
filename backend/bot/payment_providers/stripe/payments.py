@@ -20,6 +20,7 @@ from ..shared import (
     sale_mode_base,
 )
 from ..shared.app_context import app_optional, app_required
+from ..shared.checkout_expiration import resolve_checkout_expiration
 from .service import StripeService
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,7 @@ async def create_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
         payment_url=first_value(response_data, "url") if success else None,
         provider_payment_id=first_value(response_data, "id"),
         provider_response=response_data,
+        checkout_expires_at=resolve_checkout_expiration(response_data),
         log_prefix="Stripe",
     )
 

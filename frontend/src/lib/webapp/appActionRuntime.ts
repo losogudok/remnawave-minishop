@@ -1,6 +1,7 @@
 import { createAccountUiActions } from "./accountUiActions.js";
 import { createAdminPanelActions } from "./adminPanelActions.js";
 import { createAutoRenewAction } from "./autoRenewAction.js";
+import { createSubscriptionReissueAction } from "./subscriptionReissueAction.js";
 import { createBillingModalActions } from "./billingModalActions.js";
 import { createClipboardActions } from "./clipboardActions.js";
 import { createConnectActions } from "./connectActions.js";
@@ -17,6 +18,7 @@ type Translate = (key: string, params?: Record<string, unknown>, fallback?: stri
 type AccountUiDeps = Parameters<typeof createAccountUiActions>[0];
 type AdminPanelDeps = Parameters<typeof createAdminPanelActions>[0];
 type AutoRenewDeps = Parameters<typeof createAutoRenewAction>[0];
+type SubscriptionReissueDeps = Parameters<typeof createSubscriptionReissueAction>[0];
 type BillingModalDeps = Parameters<typeof createBillingModalActions>[0];
 type ConnectDeps = Parameters<typeof createConnectActions>[0];
 type InstallRuntimeDeps = Parameters<typeof createInstallRuntime>[0];
@@ -47,7 +49,7 @@ export type AppActionRuntimeDeps = {
     "cancelAdminAssetsPrefetch" | "ensureAdminBundle" | "ensureI18nScope"
   >;
   authStore: TelegramLoginDeps["authStore"];
-  billing: AutoRenewDeps["billing"];
+  billing: AutoRenewDeps["billing"] & SubscriptionReissueDeps["billing"];
   billingStore: BillingModalDeps["billingStore"] &
     TariffActionDeps["billingStore"] & {
       closePaymentModal: NavigationDeps["closePaymentModal"];
@@ -66,6 +68,7 @@ export type AppActionRuntimeDeps = {
   getMethods: BillingModalDeps["methods"];
   getOrigin: InstallRuntimeDeps["getOrigin"];
   getPlans: BillingModalDeps["plans"] & TariffActionDeps["getPlans"];
+  getSuggestedPromoCode: BillingModalDeps["suggestedPromoCode"];
   getPreloadHost: InstallRuntimeDeps["getPreloadHost"];
   getRoutePathname: AdminPanelDeps["getRoutePathname"];
   getSelectedPlan: PrimaryPayLabelDeps["getSelectedPlan"];
@@ -115,6 +118,7 @@ export function createAppActionRuntime({
   getMethods,
   getOrigin,
   getPlans,
+  getSuggestedPromoCode,
   getPreloadHost,
   getRoutePathname,
   getSelectedPlan,
@@ -226,6 +230,7 @@ export function createAppActionRuntime({
     devicesStore,
     methods: getMethods,
     plans: getPlans,
+    suggestedPromoCode: getSuggestedPromoCode,
     singleTariffMode: getSingleTariffMode,
     subscription: getSubscription,
     tariffCatalog: getTariffCatalog,
@@ -275,6 +280,20 @@ export function createAppActionRuntime({
       loadData,
       setBusy: (busy) => {
         shellState.autoRenewBusy = busy;
+      },
+      showToast,
+      t,
+    }),
+    ...createSubscriptionReissueAction({
+      billing,
+      getBusy: () => shellState.subscriptionReissueBusy,
+      loadData,
+      refreshDevices: () => devicesStore.loadDevices(getDevicesEnabled(), true),
+      setBusy: (busy) => {
+        shellState.subscriptionReissueBusy = busy;
+      },
+      setDialogOpen: (open) => {
+        shellState.subscriptionReissueDialogOpen = open;
       },
       showToast,
       t,

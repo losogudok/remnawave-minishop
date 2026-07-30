@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any
 
 from aiohttp import web
@@ -29,6 +30,7 @@ async def finalize_webapp_link_payment(
     payment_url: str | None,
     provider_payment_id: str | None = None,
     provider_response: Any | None = None,
+    checkout_expires_at: datetime | None = None,
     new_status: str | None = None,
     log_prefix: str,
 ) -> web.Response:
@@ -51,17 +53,24 @@ async def finalize_webapp_link_payment(
     """
     # Reuse logic needs both a provider id and a redirect URL; persisting only
     # the id creates orphan records that match find_recent but fail verification.
+    provider_id_stored = True
     if api_success and provider_payment_id and payment_url:
         try:
-            await payment_dal.update_provider_payment_and_status(
+            updated = await payment_dal.update_provider_payment_and_status(
                 session,
                 payment.payment_id,
                 str(provider_payment_id),
                 new_status or payment.status,
                 provider_payment_url=payment_url,
+                checkout_expires_at=checkout_expires_at,
             )
+            if updated is None:
+                raise LookupError(
+                    f"payment {payment.payment_id} disappeared before provider update"
+                )
             await session.commit()
         except Exception:
+            provider_id_stored = False
             await session.rollback()
             logger.exception(
                 "%s: failed to persist provider payment id for payment %s.",
@@ -69,7 +78,7 @@ async def finalize_webapp_link_payment(
                 payment.payment_id,
             )
 
-    if not payment_url:
+    if not api_success or not payment_url or not provider_payment_id or not provider_id_stored:
         logger.error(
             "%s: WebApp payment creation failed for payment %s "
             "(user_id=%s, api_success=%s, has_payment_url=%s, "

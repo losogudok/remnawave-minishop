@@ -37,6 +37,9 @@ class BroadcastEmailRecipient:
     # plain broadcasts and existing callers keep working unchanged.
     message_text: str | None = None
     subject: str | None = None
+    # Call-to-action links in this recipient's own language. ``None`` keeps the
+    # shared set, so a caller that has only one language passes it once.
+    buttons: Sequence[tuple[str, str]] | None = None
 
 
 async def _send_one(
@@ -93,7 +96,7 @@ async def deliver_broadcast_emails(
                 recipient,
                 subject=subject,
                 message_text=message_text,
-                buttons=buttons,
+                buttons=recipient.buttons if recipient.buttons is not None else buttons,
                 semaphore=semaphore,
             )
             for recipient in recipients

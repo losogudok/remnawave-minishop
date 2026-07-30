@@ -317,6 +317,18 @@ body {
   letter-spacing: 0;
 }
 
+/* Background scroll lock (see lib/webapp/scrollLock.ts). Only one scroller may
+   be live at a time, so an open dialog or drawer freezes the document and every
+   app-level scroller behind it: `overflow: hidden` keeps each container's
+   scroll position, so closing the overlay lands the page exactly where it was. */
+body[data-scroll-locked] {
+  overflow: hidden;
+}
+
+body[data-scroll-locked] [data-scroll-container] {
+  overflow: hidden;
+}
+
 button,
 input {
   font: inherit;

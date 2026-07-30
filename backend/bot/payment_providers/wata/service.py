@@ -48,6 +48,10 @@ from .config import (
     _wata_success_status,
     _wata_transaction_id,
 )
+from .link_expiration import (
+    expired_link_payload_for_payment,
+    payment_link_expired_locally,
+)
 from .rate_limit import WataGetRateLimiter, retry_after_seconds
 
 if TYPE_CHECKING:
@@ -701,7 +705,7 @@ class WataService(HttpClientMixin):
     ) -> Any | None:
         transaction_id = _wata_transaction_id(payload) or str(payment.payment_id)
         try:
-            await payment_dal.update_provider_payment_and_status(
+            updated, transitioned = await payment_dal.transition_provider_payment_to_terminal(
                 session,
                 payment.payment_id,
                 transaction_id,
@@ -717,55 +721,33 @@ class WataService(HttpClientMixin):
             )
             return None
 
-        if notify_user:
+        if updated is None:
+            return None
+        refreshed = await payment_dal.get_payment_by_db_id(session, payment.payment_id) or payment
+        if notify_user and transitioned:
             await notify_user_payment_failed(
                 bot=self.bot,
                 settings=self.settings,
                 i18n=self.i18n,
                 session=session,
-                payment=payment,
+                payment=refreshed,
             )
-        return await payment_dal.get_payment_by_db_id(session, payment.payment_id) or payment
+        return refreshed
 
-    def _local_payment_link_ttl_expired(self, payment: Any) -> bool:
-        profile = self.profile_for_payment(payment)
-        created_at = getattr(payment, "created_at", None)
-        created_dt: datetime | None
-        if isinstance(created_at, datetime):
-            created_dt = (
-                created_at.replace(tzinfo=UTC)
-                if created_at.tzinfo is None
-                else created_at.astimezone(UTC)
-            )
-        else:
-            created_dt = _parse_wata_datetime(created_at)
-        if created_dt is None:
-            return False
-        expires_at = created_dt + timedelta(minutes=profile.link_ttl_minutes)
-        return expires_at <= datetime.now(UTC)
+    def payment_link_expired_locally(
+        self,
+        payment: Any,
+        *,
+        grace_seconds: int = 0,
+    ) -> bool:
+        return payment_link_expired_locally(
+            payment,
+            profile=self.profile_for_payment(payment),
+            grace_seconds=grace_seconds,
+        )
 
     async def _expired_link_payload_for_payment(self, payment: Any) -> Mapping[str, Any] | None:
-        profile = self.profile_for_payment(payment)
-        if not self.profile_enabled(profile.provider):
-            return None
-        provider_payment_id = str(getattr(payment, "provider_payment_id", "") or "").strip()
-        if not provider_payment_id:
-            return None
-
-        success, data = await self.get_payment_link(provider_payment_id, profile=profile)
-        if not success or not isinstance(data, dict):
-            status_code = data.get("status") if isinstance(data, dict) else None
-            if status_code == 404 and self._local_payment_link_ttl_expired(payment):
-                return {"id": provider_payment_id}
-            return None
-
-        expiration_raw = data.get("expirationDateTime") or data.get("expiration_date_time")
-        expiration_dt = _parse_wata_datetime(expiration_raw)
-        if expiration_dt is None:
-            return None
-        if expiration_dt > datetime.now(UTC):
-            return None
-        return data
+        return await expired_link_payload_for_payment(self, payment)
 
     async def _mark_expired_link(
         self,
@@ -774,6 +756,7 @@ class WataService(HttpClientMixin):
         payload: Mapping[str, Any],
         *,
         log_prefix: str,
+        notify_user: bool,
     ) -> Any | None:
         provider_payment_id = (
             first_value(payload, "id", "paymentLinkId", "payment_link_id")
@@ -781,7 +764,7 @@ class WataService(HttpClientMixin):
             or str(payment.payment_id)
         )
         try:
-            await payment_dal.update_provider_payment_and_status(
+            updated, transitioned = await payment_dal.transition_provider_payment_to_terminal(
                 session,
                 payment.payment_id,
                 str(provider_payment_id),
@@ -796,9 +779,26 @@ class WataService(HttpClientMixin):
                 provider_payment_id,
             )
             return None
-        return await payment_dal.get_payment_by_db_id(session, payment.payment_id) or payment
+        if updated is None:
+            return None
+        refreshed = await payment_dal.get_payment_by_db_id(session, payment.payment_id) or payment
+        if notify_user and transitioned:
+            await notify_user_payment_failed(
+                bot=self.bot,
+                settings=self.settings,
+                i18n=self.i18n,
+                session=session,
+                payment=refreshed,
+            )
+        return refreshed
 
-    async def refresh_payment_status(self, session: AsyncSession, payment: Any) -> Any:
+    async def refresh_payment_status(
+        self,
+        session: AsyncSession,
+        payment: Any,
+        *,
+        notify_user: bool = True,
+    ) -> Any:
         provider = str(getattr(payment, "provider", "") or "").strip().lower()
         if provider not in {WATA_PROVIDER, WATA_CRYPTO_PROVIDER}:
             return payment
@@ -831,7 +831,7 @@ class WataService(HttpClientMixin):
                 payment,
                 final_payload,
                 log_prefix="Wata status refresh",
-                notify_user=False,
+                notify_user=notify_user,
             )
             return refreshed or payment
 
@@ -842,6 +842,7 @@ class WataService(HttpClientMixin):
                 payment,
                 expired_link_payload,
                 log_prefix="Wata status refresh",
+                notify_user=notify_user,
             )
             return refreshed or payment
 

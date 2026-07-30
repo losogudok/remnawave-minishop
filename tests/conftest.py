@@ -35,36 +35,32 @@ def _isolate_external_plugin_entry_points():
     monkeypatch.undo()
 
 
+def _provider_env_prefixes() -> tuple[str, ...]:
+    """Env prefixes every registered provider reads, derived from the registry.
+
+    A hand-written list silently misses the next provider: Tribute was added
+    with a ``TRIBUTE_SHOP_ENABLED`` cross-field rule, and a developer with that
+    variable exported saw unrelated suites fail. Reading the prefixes off the
+    provider models keeps isolation complete by construction.
+    """
+
+    from bot.payment_providers import iter_provider_specs
+
+    prefixes: set[str] = set()
+    for spec in iter_provider_specs():
+        for model_class in (spec.config_class, spec.presentation_class):
+            if model_class is None:
+                continue
+            prefix = str(model_class.model_config.get("env_prefix") or "").strip()
+            if prefix:
+                prefixes.add(prefix)
+    return tuple(sorted(prefixes))
+
+
 @pytest.fixture(autouse=True)
 def _isolate_provider_env(monkeypatch):
     monkeypatch.setenv("PROVIDER_ENV_FILE", "")
+    prefixes = _provider_env_prefixes()
     for key in list(os.environ.keys()):
-        if any(
-            key.startswith(prefix)
-            for prefix in (
-                "FREEKASSA_",
-                "PLATEGA_",
-                "SEVERPAY_",
-                "WATA_",
-                "HELEKET_",
-                "LAVA_",
-                "PALLY_",
-                "CRYPTOPAY_",
-                "YOOKASSA_",
-                "CLOUDPAYMENTS_",
-                "STRIPE_",
-                "PAYMENT_FREEKASSA_",
-                "PAYMENT_PLATEGA_",
-                "PAYMENT_SEVERPAY_",
-                "PAYMENT_WATA_",
-                "PAYMENT_HELEKET_",
-                "PAYMENT_LAVA_",
-                "PAYMENT_PALLY_",
-                "PAYMENT_CRYPTOPAY_",
-                "PAYMENT_YOOKASSA_",
-                "PAYMENT_CLOUDPAYMENTS_",
-                "PAYMENT_STRIPE_",
-                "PAYMENT_STARS_",
-            )
-        ):
+        if any(key.startswith(prefix) for prefix in prefixes):
             monkeypatch.delenv(key, raising=False)

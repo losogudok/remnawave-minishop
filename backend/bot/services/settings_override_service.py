@@ -110,19 +110,39 @@ def _apply_value(settings: Settings, key: str, value: Any) -> bool:
 
 
 def apply_overrides(settings: Settings, overrides: dict[str, Any]) -> int:
-    applied = 0
+    return len(_apply_overrides(settings, overrides)[0])
+
+
+def _apply_overrides(
+    settings: Settings,
+    overrides: dict[str, Any],
+) -> tuple[list[str], list[str]]:
+    """Apply overrides in-process, returning the applied and the skipped keys.
+
+    A key lands nowhere when its provider config could not be built from env or
+    when nothing owns it any more. That used to be a debug-level surprise: the
+    admin panel reported a successful save while the running process kept the
+    old value, so the setting looked like it refused to be changed.
+    """
+
+    applied: list[str] = []
+    skipped: list[str] = []
     for key, raw_value in overrides.items():
         field = get_field_by_key(key)
         if not field:
+            skipped.append(key)
             continue
         try:
             coerced = coerce_value(field, raw_value)
         except ValueError as exc:
             logger.warning("Skipping override %s: %s", key, exc)
+            skipped.append(key)
             continue
         if _apply_value(settings, key, coerced):
-            applied += 1
-    return applied
+            applied.append(key)
+        else:
+            skipped.append(key)
+    return applied, skipped
 
 
 def _normalize_exclusive_provider_toggles(
@@ -380,14 +400,25 @@ async def update_overrides(
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Failed to restore env defaults: %s", exc)
 
-    apply_overrides(settings, coerced_updates)
+    _, not_applied = _apply_overrides(settings, coerced_updates)
+    if not_applied:
+        logger.error(
+            "Saved settings that the running process could not apply: %s. "
+            "They take effect after a restart; check the provider env config above.",
+            ", ".join(sorted(not_applied)),
+        )
     appearance_changed = APPEARANCE_OVERRIDE_KEYS.intersection(
         coerced_updates
     ) or APPEARANCE_OVERRIDE_KEYS.intersection(valid_deletes)
     if appearance_changed:
         write_appearance_backup(settings)
 
-    return {"ok": True, "applied": len(coerced_updates), "reverted": len(valid_deletes)}
+    return {
+        "ok": True,
+        "applied": len(coerced_updates),
+        "reverted": len(valid_deletes),
+        "not_applied": sorted(not_applied),
+    }
 
 
 def overridable_keys() -> list:

@@ -1,6 +1,6 @@
 ﻿<script lang="ts">
   import { getPromosStore } from "$lib/admin/context";
-  import { FileText, Sliders, Trash2 } from "$components/ui/icons.js";
+  import { FileText, Sliders, Trash2, User } from "$components/ui/icons.js";
   import { onMount } from "svelte";
   import {
     AdminBadge,
@@ -11,10 +11,12 @@
     AdminTableSkeleton,
     VirtualTableRows,
   } from "$components/patterns/admin/index.js";
+  import { Tabs } from "$components/ui/primitives.js";
   import { TableHandler } from "@vincjo/datatables";
   import PromoCreateDialog from "./promos/PromoCreateDialog.svelte";
   import PromoEditDialog from "./promos/PromoEditDialog.svelte";
   import type { components } from "../../lib/api/openapi.generated";
+  import type { PromoKind } from "$lib/admin/stores/promosStore.svelte";
   import type { AdminBadgeVariant } from "$components/patterns/admin/types";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
@@ -98,6 +100,10 @@
   const promosTotal = $derived(Number(promosStore.promosTotal || 0));
   const promosPage = $derived(Number(promosStore.promosPage || 0));
   const promosLoading = $derived(Boolean(promosStore.promosLoading));
+  const promoKind = $derived(String(promosStore.promoKind || "shared"));
+  // The split only means something once some code carries an owner, so an
+  // install that never issues one keeps the plain single list.
+  const promoKindTabsVisible = $derived(Number(promosStore.promoOwnedTotal || 0) > 0);
   const promoCreateOpen = $derived(Boolean(promosStore.promoCreateOpen));
   const promoEditOpen = $derived(Boolean(promosStore.promoEditOpen));
   const promoEditing = $derived(promosStore.promoEditing as Promo | null);
@@ -186,6 +192,11 @@
     at("promo_col_status", {}, "Status"),
     at("promo_col_valid_until", {}, "Valid until"),
     at("actions", {}, "Actions"),
+  ]);
+  const promoKindTabs = $derived([
+    { value: "shared", label: at("promo_kind_shared", {}, "Shared") },
+    { value: "personal", label: at("promo_kind_personal", {}, "Personal") },
+    { value: "all", label: at("promo_kind_all", {}, "All") },
   ]);
   const scopeItems = $derived([
     { value: "all", label: at("promo_scope_all", {}, "All") },
@@ -384,6 +395,13 @@
     return parts.join(", ") || "-";
   }
 
+  /** Who a personal code was issued for, in whatever form the profile has. */
+  function promoOwnerLabel(promo: Promo): string {
+    if (promo.user_username) return `@${promo.user_username}`;
+    if (promo.user_name) return promo.user_name;
+    return at("promo_owner_id", { id: promo.user_id }, "ID {id}");
+  }
+
   function promoType(promo: Promo | PromoPatch): string {
     const hasBonus = Number(promo.bonus_days || 0) > 0;
     const hasDiscount = Number(promo.discount_percent || 0) > 0;
@@ -492,6 +510,20 @@
   }
 </script>
 
+{#if promoKindTabsVisible}
+  <Tabs.Root
+    value={promoKind}
+    onValueChange={(value) => promosStore.setPromoKind(value as PromoKind)}
+    class="admin-tabs-root admin-promo-kind-tabs"
+  >
+    <Tabs.List class="admin-tabs-list">
+      {#each promoKindTabs as tab (tab.value)}
+        <Tabs.Trigger value={tab.value} class="admin-tabs-trigger">{tab.label}</Tabs.Trigger>
+      {/each}
+    </Tabs.List>
+  </Tabs.Root>
+{/if}
+
 <div class="admin-table-wrap admin-promos-table-wrap">
   {#if promosLoading}
     <AdminTableSkeleton
@@ -525,9 +557,39 @@
         {#snippet children(p)}
           {@const status = promoStatus(p)}
           <tr data-admin-code-id={p.id}>
-            <td class="admin-cell-mono" data-label={at("promo_csv_code", {}, "Code")}>{p.code}</td>
+            <td
+              class="admin-cell-mono admin-cell-primary"
+              data-label={at("promo_csv_code", {}, "Code")}
+            >
+              {p.code}
+              {#if p.user_id}
+                <button
+                  type="button"
+                  class="admin-promo-owner"
+                  title={at("promo_owner_hint", {}, "Issued for this customer")}
+                  onclick={() => onOpenUserCard?.(Number(p.user_id))}
+                >
+                  <User size={12} />
+                  {promoOwnerLabel(p)}
+                </button>
+              {/if}
+            </td>
             <td data-label={at("promo_col_type", {}, "Type")}>
-              <AdminBadge variant="muted">{promoType(p)}</AdminBadge>
+              <div class="admin-promo-type">
+                <AdminBadge variant="muted">{promoType(p)}</AdminBadge>
+                {#if p.user_id}
+                  <AdminBadge
+                    variant="warning"
+                    title={at(
+                      "promo_reach_personal_hint",
+                      {},
+                      "Issued for one customer — do not send it to an audience."
+                    )}
+                  >
+                    {at("promo_reach_personal", {}, "Personal")}
+                  </AdminBadge>
+                {/if}
+              </div>
             </td>
             <td class="admin-cell-wrap" data-label={at("promo_col_effect", {}, "Effect")}>
               {effectText(p)}

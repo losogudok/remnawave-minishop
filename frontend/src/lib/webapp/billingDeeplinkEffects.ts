@@ -31,6 +31,8 @@ export type BillingDeeplinkEffectsDeps = {
    */
   handleCheckoutPromoDeeplink?: (code: string, context: { modalOpened: boolean }) => void;
   readCheckoutPromoDeeplink?: () => string;
+  /** True when the app was opened on the checkout route. */
+  readPlansDeeplink?: () => boolean;
   readRenewalDeeplink: () => { tariffKey: string } | null;
   setHomeRoute: () => void;
   stripCheckoutPromoQueryFromUrl?: () => void;
@@ -49,6 +51,7 @@ export function createBillingDeeplinkEffects({
   billingStore,
   handleCheckoutPromoDeeplink,
   readCheckoutPromoDeeplink = () => "",
+  readPlansDeeplink = () => false,
   readRenewalDeeplink,
   setHomeRoute,
   stripCheckoutPromoQueryFromUrl = () => {},
@@ -66,6 +69,23 @@ export function createBillingDeeplinkEffects({
     if (topupDeeplinkKind) {
       billingStore.openTopupModal(topupDeeplinkKind, defaultMethod);
       stripTopupQueryFromUrl();
+      openedBillingDeeplink = true;
+    }
+
+    if (!openedBillingDeeplink && readPlansDeeplink()) {
+      // The checkout route has no screen of its own: it lands on home and
+      // opens plan selection, so the customer picks a plan and a period in
+      // one step instead of hunting for the button.
+      setHomeRoute();
+      billingStore.openPaymentModal(
+        plans.some((plan) => plan?.tariff_key),
+        false,
+        buildTariffCatalog(plans),
+        subscription,
+        plans,
+        defaultMethod,
+        { preferCheckout: true, preferredTariffKey: "", selectDefaultTariff: true }
+      );
       openedBillingDeeplink = true;
     }
 

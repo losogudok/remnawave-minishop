@@ -62,6 +62,8 @@ plugin = ExamplePlugin()
 - `i18n`: каталог `JsonI18n`, если доступен.
 - `dispatcher`: aiogram dispatcher, если доступен.
 - `services`: изменяемый реестр сервисов текущего процесса.
+- `audience_segmentation_service`: типизированная точка регистрации дополнительных аудиторий
+  рассылки; обязательный вариант доступен как `require_audience_segmentation_service()`.
 
 Все хуки опциональны: базовый класс `Plugin` даёт no-op реализацию.
 
@@ -229,11 +231,99 @@ Registry сортирует extension-модули по пути, а descriptor'
 `order` и `id`, чтобы сборка была детерминированной. Если секция должна быть
 видна всегда, не указывайте `requiredFeature`.
 
+Extension-модуль может добавить новую группу навигации именованным экспортом
+`sectionGroups` (один descriptor или массив). Идентификаторы базовых групп
+зарезервированы за ядром:
+
+```ts
+export const sectionGroups = {
+  id: "reports",
+  order: 35,
+  i18nKey: "nav_reports",
+  fallbackLabel: "Reports",
+};
+```
+
 Новые extension descriptor'ы используют `requiredFeature` вместо legacy
 `feature`. Если `visibleWhenLocked: true`, секция остается в навигации без
 feature, чтобы сам extension-компонент отрисовал нейтральное locked-состояние.
 Эти поля управляют только frontend-discovery: серверная авторизация остается
 обязанностью extension route/API.
+
+Тот же extension-модуль может именованно экспортировать `userDetailPanels` — descriptor или массив
+descriptor'ов дополнительных вкладок карточки пользователя:
+
+```ts
+import ExampleTimeline from "./ExampleTimeline.svelte";
+
+export const userDetailPanels = {
+  id: "example-timeline",
+  order: 90,
+  i18nKey: "user_tab_example_timeline",
+  fallbackLabel: "Timeline",
+  requiredFeature: "example.timeline",
+  component: ExampleTimeline,
+};
+```
+
+### Composing an outbound message
+
+`bot.services.message_composition` — нейтральный контракт авторского сообщения, общий для
+рассылки, сообщения одному пользователю и цепочек плагина. Плагин собирает кнопки из простых
+значений, без импорта админских HTTP-схем:
+
+```python
+from bot.services.message_composition import MessageButtonInput, resolve_message_buttons
+
+buttons = resolve_message_buttons(
+    [MessageButtonInput(kind="promo_webapp", label="Применить код", promo_code=code)],
+    mini_app_url=settings.SUBSCRIPTION_MINI_APP_URL,
+    bot_username=bot_username,
+)
+await outbound_messaging.send_text(session, user_id=uid, text=text, buttons=buttons)
+```
+
+Виды кнопок — `url`, `promo_bot` (`/start promo_<CODE>` в боте), `promo_webapp` (открывает Mini App
+с предзаполненным кодом). Для `promo_webapp` контракт сам выбирает Telegram-кнопку `web_app`, чтобы
+цель открывалась **внутри** Mini App с его авторизацией, а не во внешнем браузере; при плоском
+`http`-адресе Mini App происходит откат на `t.me?startapp=`. Ошибки авторинга приходят как
+`MessageValidationError` со стабильным `code`. `normalize_message_channels` валидирует набор каналов
+(`telegram`, `email`), `email_links_for_buttons` даёт пары `(label, url)` для письма.
+
+Именованный экспорт `sectionTabs` добавляет вкладку в **уже существующий** раздел админки —
+свой или базовый (`promos`, `users`, `payments`, …). Так расширение дополняет базовый экран, не
+патча его исходники: ядро знает только о том, что раздел *может* нести вкладки, но не о том, что
+именно в них лежит.
+
+```ts
+import ExampleCodes from "./ExampleCodes.svelte";
+
+export const sectionTabs = {
+  id: "example-codes",
+  sectionId: "promos",
+  order: 10,
+  i18nKey: "section_tab_example_codes",
+  fallbackLabel: "Issued codes",
+  requiredFeature: "example.codes",
+  component: ExampleCodes,
+};
+```
+
+Первой вкладкой всегда остаётся сам раздел, подписанный своим `titleI18nKey`. Пока ни одно
+расширение не зарегистрировало вкладку для раздела, полоса вкладок не рендерится и раздел
+выглядит ровно как раньше. Компонент вкладки получает тот же контракт, что и компонент секции
+(`AdminSectionComponentProps`): `at`, `featureAvailable`, `featuresResolved`, `availableFeatures`,
+`routePrefix`, `onNavigateSection`, `onOpenUserCard` — внутренние props конкретного раздела ему не
+передаются, поэтому вкладка не привязывается к его устройству.
+
+Компонент вкладки карточки пользователя получает `at`, `user`, `userDetail`, `featureAvailable`,
+`active` и `routePrefix`.
+Extension-компонент полной секции получает `featureAvailable`, отсортированный массив
+`availableFeatures` и `onNavigateSection(sectionId)` вместе с общими props админки. Первый флаг
+отражает `requiredFeature` самой секции, а массив позволяет проверить дополнительные возможности
+внутри неё. Компонент также может использовать типизированные stores из `$lib/admin/context`. `requiredFeature` и
+`visibleWhenLocked` имеют ту же семантику discovery, что и для секций. Серверная route остаётся
+обязательной границей авторизации и доступности функции.
 
 ## Release Images
 

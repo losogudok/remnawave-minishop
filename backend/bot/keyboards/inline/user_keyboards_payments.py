@@ -91,6 +91,7 @@ def get_payment_method_keyboard(
             not spec
             or not spec.callback_prefix
             or not spec.is_usable_for_payment(settings, provider_currency_code, price)
+            or not spec.is_usable_for_payment_context(settings, months, payment_sale_mode)
             or not spec.is_available_to_user(
                 settings,
                 user_id=user_id,

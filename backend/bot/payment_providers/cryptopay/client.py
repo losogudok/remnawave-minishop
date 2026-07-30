@@ -26,6 +26,7 @@ class CryptoPayInvoice:
     web_app_invoice_url: str | None = None
     mini_app_invoice_url: str | None = None
     payload: str | None = None
+    expiration_date: str | None = None
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> CryptoPayInvoice:
@@ -48,6 +49,7 @@ class CryptoPayInvoice:
             web_app_invoice_url=_optional_str(data, "web_app_invoice_url"),
             mini_app_invoice_url=_optional_str(data, "mini_app_invoice_url"),
             payload=_optional_str(data, "payload"),
+            expiration_date=_optional_str(data, "expiration_date"),
         )
 
 
@@ -147,6 +149,32 @@ class CryptoPayApiClient(HttpClientMixin):
             return CryptoPayInvoice.from_mapping(cast(Mapping[str, Any], result))
         except ValueError as exc:
             raise CryptoPayApiError(str(exc)) from exc
+
+    async def get_invoices(self, *, invoice_ids: str) -> list[CryptoPayInvoice]:
+        session = await self._get_session()
+        success, response_data = await post_json_request(
+            session,
+            f"{self.base_url}/api/getInvoices",
+            body={"invoice_ids": str(invoice_ids)},
+            headers=self._headers(),
+            log_prefix="CryptoPay getInvoices",
+            is_success=_api_success,
+        )
+        if not success:
+            raise CryptoPayApiError(f"Crypto Pay API rejected getInvoices: {response_data}")
+        result = response_data.get("result")
+        items = result.get("items") if isinstance(result, Mapping) else None
+        if not isinstance(items, list):
+            raise CryptoPayApiError("Crypto Pay getInvoices response has no items")
+        invoices: list[CryptoPayInvoice] = []
+        for item in items:
+            if not isinstance(item, Mapping):
+                continue
+            try:
+                invoices.append(CryptoPayInvoice.from_mapping(item))
+            except ValueError:
+                continue
+        return invoices
 
 
 def _drop_none(data: Mapping[str, Any]) -> dict[str, Any]:

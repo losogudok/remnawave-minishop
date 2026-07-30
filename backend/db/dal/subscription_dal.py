@@ -42,6 +42,43 @@ async def get_active_subscription_by_user_id(
     return result.scalars().first()
 
 
+async def get_active_subscription_by_user_id_for_update(
+    session: AsyncSession,
+    user_id: int,
+) -> Subscription | None:
+    """Lock the current entitlement row before a payment mutates it."""
+
+    stmt = (
+        select(Subscription)
+        .where(
+            Subscription.user_id == user_id,
+            Subscription.is_active == True,
+            Subscription.end_date > datetime.now(UTC),
+        )
+        .order_by(Subscription.end_date.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    result = await session.execute(stmt)
+    return result.scalars().first()
+
+
+async def get_subscription_by_id_for_update(
+    session: AsyncSession,
+    subscription_id: int,
+) -> Subscription | None:
+    """Lock an exact renewal target, including just-expired subscriptions."""
+
+    stmt = (
+        select(Subscription)
+        .where(Subscription.subscription_id == int(subscription_id))
+        .limit(1)
+        .with_for_update()
+    )
+    result = await session.execute(stmt)
+    return result.scalars().first()
+
+
 async def user_has_active_subscription_after(
     session: AsyncSession,
     user_id: int,
@@ -206,10 +243,63 @@ async def update_subscription(
 
 
 async def set_auto_renew(
-    session: AsyncSession, subscription_id: int, enabled: bool
+    session: AsyncSession,
+    subscription_id: int,
+    enabled: bool,
+    *,
+    stop_reason: str = "consent_changed",
 ) -> Subscription | None:
-    """Toggle auto_renew_enabled for a subscription."""
-    return await update_subscription(session, subscription_id, {"auto_renew_enabled": enabled})
+    """Toggle auto-renew and invalidate every pending charge for the old consent."""
+
+    from db.dal import auto_renew_dal
+
+    sub = await get_subscription_by_id_for_update(session, subscription_id)
+    if sub is None:
+        return None
+    if bool(sub.auto_renew_enabled) == bool(enabled) and enabled:
+        return sub
+    sub.auto_renew_enabled = bool(enabled)
+    sub.auto_renew_consent_version = int(sub.auto_renew_consent_version or 0) + 1
+    await auto_renew_dal.stop_open_cycles_for_subscription(
+        session,
+        subscription_id,
+        stop_reason,
+    )
+    await session.flush()
+    await session.refresh(sub)
+    return sub
+
+
+async def invalidate_user_auto_renew_consent(
+    session: AsyncSession,
+    user_id: int,
+    *,
+    reason: str,
+    disable: bool = False,
+    provider: str | None = None,
+) -> None:
+    """Invalidate queued charges after a payment-method or provider consent change."""
+
+    from db.dal import auto_renew_dal
+
+    filters = [
+        Subscription.user_id == user_id,
+        Subscription.is_active.is_(True),
+    ]
+    if provider:
+        filters.append(func.lower(Subscription.provider) == provider.strip().lower())
+    values: dict[str, Any] = {
+        "auto_renew_consent_version": Subscription.auto_renew_consent_version + 1,
+    }
+    if disable:
+        values["auto_renew_enabled"] = False
+    await session.execute(update(Subscription).where(*filters).values(**values))
+    await auto_renew_dal.stop_open_cycles_for_user(
+        session,
+        user_id,
+        reason,
+        provider=provider,
+    )
 
 
 async def set_user_subscriptions_cancelled_with_grace(

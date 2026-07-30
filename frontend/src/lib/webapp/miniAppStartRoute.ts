@@ -1,4 +1,31 @@
+import { APP_SECTION_PATHS } from "./constants";
+import { PLANS_PATH } from "./routes.js";
+
 const START_PARAM_KEYS = ["tgWebAppStartParam", "startapp", "start_param"] as const;
+
+/**
+ * App screens a start parameter may open.
+ *
+ * ``plans`` is handled separately because checkout is a modal over home
+ * rather than a screen. The admin panel is deliberately absent: a bare
+ * section payload travels in links authored for customers, and admin deep
+ * links keep their own `admin_*` prefixes.
+ */
+const START_PARAM_SECTIONS = [
+  "home",
+  "install",
+  "trial",
+  "invite",
+  "devices",
+  "support",
+  "settings",
+] as const;
+
+type StartParamSection = (typeof START_PARAM_SECTIONS)[number];
+
+function isStartParamSection(value: string): value is StartParamSection {
+  return (START_PARAM_SECTIONS as readonly string[]).includes(value);
+}
 
 export function miniAppPathFromStartParam(value: unknown): string | null {
   const startParam = String(value || "").trim();
@@ -10,6 +37,10 @@ export function miniAppPathFromStartParam(value: unknown): string | null {
 
   const supportTicket = startParam.match(/^ticket_(\d+)$/i);
   if (supportTicket) return `/support/${supportTicket[1]}`;
+
+  const section = startParam.toLowerCase();
+  if (section === "plans") return PLANS_PATH;
+  if (isStartParamSection(section)) return APP_SECTION_PATHS[section];
 
   return null;
 }

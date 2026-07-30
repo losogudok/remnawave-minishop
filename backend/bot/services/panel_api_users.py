@@ -198,7 +198,15 @@ class PanelApiUsersMixin:
                 )
                 return None
             response = response_data.get("response")
-            users_batch = _panel_users_batch(response) or []
+            users_batch = _panel_users_batch(response)
+            if users_batch is None:
+                logger.error(
+                    "Panel API users endpoint returned an unsupported response shape "
+                    "(start: %s). Response: %s",
+                    start_offset,
+                    response_data,
+                )
+                return None
             if not users_batch:
                 break
             all_users.extend(users_batch)
@@ -587,6 +595,76 @@ class PanelApiUsersMixin:
         )
         return False
 
+    async def drop_user_connections(
+        self,
+        user_uuid: str,
+        node_uuids: list[str] | None = None,
+        log_response: bool = False,
+    ) -> bool:
+        """Tear down the live connections a user still holds on the given nodes.
+
+        Removing a user from an internal squad only stops *new* connections: an
+        already established session keeps flowing until the node drops it. The
+        panel exposes that teardown through ip-control, and the node performs it
+        only when its container has CAP_NET_ADMIN.
+        """
+        target_nodes: dict[str, Any] = (
+            {"target": "specificNodes", "nodeUuids": [str(uuid) for uuid in node_uuids]}
+            if node_uuids
+            else {"target": "allNodes"}
+        )
+        payload = {
+            "dropBy": {"by": "userUuids", "userUuids": [str(user_uuid)]},
+            "targetNodes": target_nodes,
+        }
+        response_data = await self._request(
+            "POST",
+            "/ip-control/drop-connections",
+            json=payload,
+            log_full_response=log_response,
+        )
+        if response_data and not response_data.get("error") and "response" in response_data:
+            logger.info(
+                "Dropped panel connections for user %s on %s node(s).",
+                user_uuid,
+                len(node_uuids) if node_uuids else "all",
+            )
+            return True
+
+        error_code = self._panel_response_error_code(response_data)
+        if error_code == "A219":
+            # No connected node matched the request: nothing to tear down.
+            logger.debug(
+                "Panel has no connected nodes to drop connections for user %s.",
+                user_uuid,
+            )
+            return False
+        if self._is_missing_endpoint_response(response_data):
+            logger.warning(
+                "Panel does not expose /ip-control/drop-connections; "
+                "live sessions of user %s stay until the node drops them.",
+                user_uuid,
+            )
+            return False
+        logger.error(
+            "Failed to drop connections for user %s on panel. Response: %s",
+            user_uuid,
+            response_data if not log_response else "(logged above)",
+        )
+        return False
+
+    @classmethod
+    def _is_missing_endpoint_response(cls, response_data: dict[str, Any] | None) -> bool:
+        """True when the panel build simply has no such route (older release)."""
+        if not isinstance(response_data, dict):
+            return False
+        if response_data.get("status_code") != 404:
+            return False
+        if cls._panel_response_error_code(response_data):
+            return False
+        message = (cls._panel_response_message(response_data) or "").lower()
+        return "cannot post" in message or "cannot get" in message or "not found" in message
+
     async def delete_user_from_panel(self, user_uuid: str, log_response: bool = False) -> bool:
         """Delete a user from the panel. Treat not-found as already deleted."""
         endpoint = f"/users/{user_uuid}"
@@ -620,3 +698,29 @@ class PanelApiUsersMixin:
         await self._invalidate_devices_cache(user_uuid)
         await self._invalidate_all_users_cache()
         return True
+
+    async def revoke_user_subscription(
+        self, user_uuid: str, log_response: bool = False
+    ) -> dict[str, Any] | None:
+        """Revoke the user's subscription on the panel.
+
+        The panel regenerates the user's short UUID, which invalidates the
+        previous subscription URL (disconnecting every client that still uses
+        it). Returns the updated panel user (including the new
+        ``subscriptionUrl``) or ``None`` on failure.
+        """
+        endpoint = f"/users/{user_uuid}/actions/revoke"
+        full_response = await self._request("POST", endpoint, log_full_response=log_response)
+
+        if full_response and not full_response.get("error") and "response" in full_response:
+            logger.info("User %s subscription revoked on panel.", user_uuid)
+            await self._invalidate_user_cache(user_uuid)
+            await self._invalidate_all_users_cache()
+            return _json_dict(full_response.get("response"))
+
+        logger.error(
+            "Failed to revoke subscription for user %s on panel. Response: %s",
+            user_uuid,
+            full_response if not log_response else "(logged above)",
+        )
+        return None

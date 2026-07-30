@@ -63,6 +63,7 @@ class WebAppDeviceTopupOptionsTests(IsolatedAsyncioTestCase):
                     "valid_from": valid_from,
                     "valid_until": active_until,
                     "proration_ratio": 0.5,
+                    "traffic_bonus_gb": 15,
                 }
             ),
         )
@@ -111,6 +112,8 @@ class WebAppDeviceTopupOptionsTests(IsolatedAsyncioTestCase):
         self.assertEqual(payload["extra_hwid_devices_valid_until_text"], "02.01.2099 03:04")
         self.assertEqual(payload["plans"][0]["valid_from"], valid_from.isoformat())
         self.assertEqual(payload["plans"][0]["valid_until"], active_until.isoformat())
+        # The package bonus is recurring and is not scaled by the proration ratio.
+        self.assertEqual(payload["plans"][0]["traffic_bonus_gb"], 15.0)
 
     async def test_offers_only_immediate_topup_when_existing_extra_expires_early(self):
         current_extra_until = datetime(2099, 1, 16, tzinfo=UTC)
@@ -238,9 +241,15 @@ class WebAppDeviceTopupOptionsTests(IsolatedAsyncioTestCase):
             "pricing_period_months": 3,
             "proration_ratio": 1.0,
             "full_price": 25,
+            # The invoice snapshots the entitlement the quote was priced
+            # against, so a subscription swapped between quote and payment is
+            # caught before activation.
+            "subscription_id": 777,
+            "tariff_key": "standard",
         }
         subscription_service = SimpleNamespace(
-            quote_hwid_device_topup=AsyncMock(return_value=quote)
+            hwid_device_traffic_bonus_gb=lambda count: 0.0,
+            quote_hwid_device_topup=AsyncMock(return_value=quote),
         )
         request = _JsonRequest(
             {
@@ -336,6 +345,8 @@ class WebAppDeviceTopupOptionsTests(IsolatedAsyncioTestCase):
             "pricing_period_months": 1,
             "proration_ratio": 1.0,
             "full_price": 50,
+            "subscription_id": 777,
+            "tariff_key": "standard",
         }
         subscription_service = SimpleNamespace(
             quote_hwid_device_renewal_for_subscription=AsyncMock(return_value=hwid_quote)
