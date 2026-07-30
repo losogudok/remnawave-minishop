@@ -39,11 +39,13 @@ stdlib/фреймворка); реализация живёт в сфокуси�
    `LinkPaymentDescriptor` (`shared/link_flow.py`) и делегируйте:
 
    ```python
-   async def create_webapp_payment(ctx):       # SPEC.create_webapp_payment
+   async def create_webapp_payment(ctx):  # SPEC.create_webapp_payment
        return await run_webapp_payment(_DESCRIPTOR, ctx)
+
 
    async def reuse_webapp_payment(ctx, payment):
        return await run_reuse_webapp_payment(_DESCRIPTOR, ctx, payment)
+
 
    @router.callback_query(F.data.startswith("pay_mypay:"))
    async def pay_mypay_callback_handler(callback, settings, i18n_data, mypay_service, session):
