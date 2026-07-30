@@ -227,11 +227,20 @@ class PaymentWebhookNotificationTests(IsolatedAsyncioTestCase):
             status="succeeded_pending_finalization",
         )
         subscription_service = SimpleNamespace(
-            activate_subscription=AsyncMock(return_value={"subscription_id": 55})
+            activate_subscription=AsyncMock(
+                return_value={
+                    "subscription_id": 55,
+                    "subscription_url": "https://panel.example/sub/secret-token",
+                }
+            )
         )
         referral_service = SimpleNamespace(apply_referral_bonuses_for_payment=AsyncMock())
 
         with (
+            self.assertLogs(
+                "bot.payment_providers.shared.success",
+                level="ERROR",
+            ) as captured_logs,
             patch(
                 "bot.payment_providers.shared.success.payment_dal.get_payment_by_db_id_for_update",
                 AsyncMock(return_value=payment),
@@ -271,6 +280,12 @@ class PaymentWebhookNotificationTests(IsolatedAsyncioTestCase):
         session.commit.assert_awaited_once()
         referral_service.apply_referral_bonuses_for_payment.assert_not_awaited()
         emit_model.assert_not_awaited()
+        rendered_logs = "\n".join(captured_logs.output)
+        self.assertIn(
+            "activation_keys=('subscription_id', 'subscription_url')",
+            rendered_logs,
+        )
+        self.assertNotIn("secret-token", rendered_logs)
 
     async def test_finalize_uses_payment_tariff_and_emits_referral_after_commit(self):
         order = []
