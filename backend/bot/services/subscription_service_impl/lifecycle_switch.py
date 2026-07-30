@@ -295,8 +295,14 @@ class SubscriptionLifecycleSwitchMixin(SubscriptionServiceMixinContract):
             premium_topup_used,
         )
         premium_used = int(sub.premium_used_bytes or 0)
+        tariff_binding_source = (
+            "admin" if mode == "admin_assign" else "payment" if mode == "paid_diff" else "user"
+        )
         update_data: dict[str, Any] = {
             "tariff_key": target.key,
+            "tariff_binding_source": tariff_binding_source,
+            "tariff_bound_at": now,
+            "tariff_binding_note": f"tariff_switch:{mode}",
             "is_throttled": False,
             "premium_baseline_bytes": premium_baseline,
             "premium_topup_balance_bytes": premium_topup_balance,

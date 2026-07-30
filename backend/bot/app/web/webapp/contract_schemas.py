@@ -457,6 +457,8 @@ WEBAPP_SUBSCRIPTION_SCHEMA: dict[str, Any] = {
         "can_topup_regular_traffic": BOOLEAN_SCHEMA,
         "can_topup_premium_traffic": BOOLEAN_SCHEMA,
         "can_topup_devices": BOOLEAN_SCHEMA,
+        "device_topup_unavailable_reason": NULLABLE_STRING_SCHEMA,
+        "device_topup_available_currencies": STRING_ARRAY_SCHEMA,
         "topup_always_available": BOOLEAN_SCHEMA,
         "premium_topup_always_available": BOOLEAN_SCHEMA,
         "period_start_at": NULLABLE_STRING_SCHEMA,

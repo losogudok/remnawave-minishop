@@ -14,6 +14,7 @@ export const USERS_FILTER_VALUES = [
   "trial",
   "inactive_subscription",
   "expired_subscription",
+  "unmapped_tariff",
   "tg_linked",
   "no_tg",
   "email_linked",

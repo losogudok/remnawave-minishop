@@ -225,6 +225,14 @@ class WebAppRouteContractTests(unittest.TestCase):
             ("PUT", "/api/admin/tariffs"): "admin_tariffs_save_route",
             (
                 "GET",
+                "/api/admin/tariffs/reconciliation",
+            ): "admin_tariff_reconciliation_get_route",
+            (
+                "POST",
+                "/api/admin/tariffs/reconciliation",
+            ): "admin_tariff_reconciliation_apply_route",
+            (
+                "GET",
                 "/api/admin/tariffs/tribute/catalog",
             ): "admin_tariffs_tribute_catalog_route",
             ("GET", "/api/admin/themes"): "admin_themes_get_route",

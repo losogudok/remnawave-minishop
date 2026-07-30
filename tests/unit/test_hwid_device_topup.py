@@ -72,6 +72,7 @@ def _make_settings(tmpdir: str, payload: dict, **overrides: Any) -> Settings:
         "POSTGRES_USER": "u",
         "POSTGRES_PASSWORD": "p",
         "TARIFFS_CONFIG_PATH": str(config_path),
+        "MY_DEVICES_SECTION_ENABLED": True,
     }
     values.update(overrides)
     return Settings(**values)
@@ -202,6 +203,67 @@ class HwidDeviceTopupInputTests(unittest.IsolatedAsyncioTestCase):
 
 
 class HwidDeviceTopupBehaviourTests(unittest.IsolatedAsyncioTestCase):
+    async def test_quote_rejects_when_devices_section_is_disabled(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(
+                tmpdir,
+                _tariffs_config_payload(),
+                MY_DEVICES_SECTION_ENABLED=False,
+            )
+            service = _make_service(settings)
+
+            with patch(
+                "bot.services.subscription_service_impl.devices.user_dal.get_user_by_id",
+                AsyncMock(),
+            ) as get_user:
+                quote = await service.quote_hwid_device_topup(
+                    session=AsyncMock(),
+                    user_id=42,
+                    device_count=1,
+                    tariff_key="standard",
+                )
+
+        self.assertIsNone(quote)
+        get_user.assert_not_awaited()
+
+    async def test_quote_rejects_tariff_that_is_not_bound_to_active_subscription(self):
+        payload = _tariffs_config_payload()
+        payload["tariffs"].append(
+            {
+                **payload["tariffs"][0],
+                "key": "premium",
+                "names": {"en": "Premium"},
+            }
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(tmpdir, payload)
+            service = _make_service(settings)
+            sub = _make_sub()
+
+            with (
+                patch(
+                    "bot.services.subscription_service_impl.devices.user_dal.get_user_by_id",
+                    AsyncMock(return_value=_make_user()),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.devices.subscription_dal.get_active_subscription_by_user_id",
+                    AsyncMock(return_value=sub),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.devices.tariff_dal.get_hwid_device_entitlement_summary",
+                    AsyncMock(),
+                ) as entitlement_summary,
+            ):
+                quote = await service.quote_hwid_device_topup(
+                    session=AsyncMock(),
+                    user_id=42,
+                    device_count=1,
+                    tariff_key="premium",
+                )
+
+        self.assertIsNone(quote)
+        entitlement_summary.assert_not_awaited()
+
     async def test_quote_prorates_period_price_for_remaining_subscription_window(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             settings = _make_settings(

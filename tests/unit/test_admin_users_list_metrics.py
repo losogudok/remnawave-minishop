@@ -187,6 +187,28 @@ class AdminUsersListMetricsTests(unittest.IsolatedAsyncioTestCase):
                 for condition in conditions:
                     self.assertIn(condition, sql)
 
+    async def test_unmapped_tariff_filter_includes_missing_and_unknown_catalog_keys(self):
+        session = SimpleNamespace(
+            execute=AsyncMock(side_effect=[FakeResult([]), FakeResult(scalar_value=0)])
+        )
+
+        await users_module._filter_and_sort_users(
+            session,
+            query="",
+            filter_value="unmapped_tariff",
+            panel_status="all",
+            premium_traffic="all",
+            sort_value="registered_desc",
+            page=0,
+            page_size=25,
+            valid_tariff_keys={"standard", "premium"},
+        )
+
+        sql = _compile_sql(session.execute.await_args_list[0].args[0])
+        self.assertIn("tariff_key is null", sql)
+        self.assertIn("trim(", sql)
+        self.assertIn("not in ('premium', 'standard')", sql)
+
     async def test_bulk_user_statuses_treats_expired_active_rows_as_expired(self):
         now = datetime.now(UTC)
         session = SimpleNamespace(

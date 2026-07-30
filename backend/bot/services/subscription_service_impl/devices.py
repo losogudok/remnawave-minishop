@@ -334,6 +334,12 @@ class HwidDeviceMixin(SubscriptionServiceMixinContract):
         currency: str = "rub",
         now: datetime | None = None,
     ) -> dict[str, Any] | None:
+        if not self.settings.MY_DEVICES_SECTION_ENABLED:
+            logger.info(
+                "Skipping HWID top-up quote for user %s because the devices section is disabled",
+                user_id,
+            )
+            return None
         try:
             purchased_devices = int(device_count)
         except (TypeError, ValueError):
@@ -350,7 +356,22 @@ class HwidDeviceMixin(SubscriptionServiceMixinContract):
         if not sub:
             return None
 
-        tariff = self._resolve_tariff(tariff_key or sub.tariff_key)
+        if not sub.tariff_key:
+            return None
+        try:
+            active_tariff = self._resolve_tariff(sub.tariff_key)
+            requested_tariff = self._resolve_tariff(tariff_key) if tariff_key else active_tariff
+        except (KeyError, ValueError):
+            return None
+        if active_tariff.key != requested_tariff.key:
+            logger.warning(
+                "Skipping stale HWID top-up quote for user %s: active tariff=%s, requested=%s",
+                user_id,
+                active_tariff.key,
+                requested_tariff.key,
+            )
+            return None
+        tariff = active_tariff
         if not tariff or tariff.billing_model != "period":
             return None
         base_hwid_limit = (
@@ -405,6 +426,12 @@ class HwidDeviceMixin(SubscriptionServiceMixinContract):
         currency: str = "rub",
         now: datetime | None = None,
     ) -> dict[str, Any] | None:
+        if not self.settings.MY_DEVICES_SECTION_ENABLED:
+            logger.info(
+                "Skipping HWID renewal quote for user %s because the devices section is disabled",
+                user_id,
+            )
+            return None
         try:
             period_months = int(months)
         except (TypeError, ValueError):

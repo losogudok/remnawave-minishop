@@ -27,6 +27,7 @@ from bot.payment_providers.shared.entitlement_context import (
     build_entitlement_context_snapshot_from_values,
     snapshot_current_entitlement_context,
 )
+from bot.services.device_topup_availability import resolve_device_topup_availability
 from bot.services.subscription_service_impl.core import SubscriptionService
 from config.settings import Settings
 from config.tariffs_config import (
@@ -71,6 +72,39 @@ class BasePaymentQuote:
     sale_mode: str
     traffic_gb_for_payment: float | None
     default_currency_code: str
+
+
+def _subscription_effective_hwid_limit(
+    settings: Settings,
+    subscription: Any,
+    tariff: Any,
+) -> int:
+    base_limit = getattr(subscription, "hwid_device_limit", None)
+    if base_limit is None:
+        base_limit = getattr(tariff, "hwid_device_limit", None)
+    if base_limit is None:
+        base_limit = settings.USER_HWID_DEVICE_LIMIT
+    if base_limit is None:
+        return 0
+    normalized_base = max(0, int(base_limit))
+    if normalized_base == 0:
+        return 0
+    return normalized_base + max(0, int(getattr(subscription, "extra_hwid_devices", 0) or 0))
+
+
+def _configured_tariff(config: Any, tariff_key: str | None) -> Any | None:
+    if config is None or not tariff_key:
+        return None
+    getter = getattr(config, "get", None)
+    if callable(getter):
+        return getter(tariff_key)
+    require = getattr(config, "require", None)
+    if not callable(require):
+        return None
+    try:
+        return require(tariff_key)
+    except Exception:
+        return None
 
 
 def _localized_payment_description(
@@ -153,6 +187,12 @@ async def _resolve_base_payment_quote(
             "Device renewal is part of subscription renewal",
         )
     if tariffs_config and requested_sale_mode in {"hwid_device", "hwid_devices"}:
+        if not settings.MY_DEVICES_SECTION_ENABLED:
+            return None, _json_error(
+                404,
+                "device_topup_section_disabled",
+                "Devices section is disabled",
+            )
         tariff_key = str(payment_payload.tariff_key or "").strip()
         if not tariff_key:
             return None, _json_error(400, "invalid_plan", "Tariff is not selected")
@@ -324,17 +364,28 @@ async def _resolve_base_payment_quote(
             session, user_id, db_user.panel_user_uuid
         )
         sale_tariff_key = _sale_mode_tariff_key(sale_mode)
-        if not sub or not sub.tariff_key or sub.tariff_key != sale_tariff_key:
-            return None, _json_error(
-                400, "subscription_required", "Active tariff subscription is required"
-            )
-        try:
-            active_tariff = tariffs_config.require(sub.tariff_key) if tariffs_config else None
-        except Exception:
-            active_tariff = None
-        if not active_tariff or active_tariff.billing_model != "period":
-            return None, _json_error(400, "invalid_plan", "Device top-up is not available")
+        active_tariff = _configured_tariff(
+            tariffs_config,
+            sub.tariff_key if sub is not None else None,
+        )
         currency = "stars" if method == "stars" else default_currency
+        availability = resolve_device_topup_availability(
+            settings,
+            subscription_active=sub is not None,
+            tariff_key=sub.tariff_key if sub is not None else None,
+            max_devices=(
+                _subscription_effective_hwid_limit(settings, sub, active_tariff)
+                if sub is not None and active_tariff is not None
+                else None
+            ),
+            expected_tariff_key=sale_tariff_key,
+        )
+        if not availability.allowed or not availability.supports(int(payment_units), currency):
+            return None, _json_error(
+                400,
+                availability.error_code,
+                "Device top-up is not available",
+            )
         hwid_quote = await subscription_service.quote_hwid_device_topup(
             session,
             user_id=user_id,
@@ -414,6 +465,12 @@ async def create_payment_route(request: web.Request) -> web.Response:
         "hwid_device",
         "hwid_devices",
     }:
+        if not settings.MY_DEVICES_SECTION_ENABLED:
+            return _json_error(
+                404,
+                "device_topup_section_disabled",
+                "Devices section is disabled",
+            )
         tariff_key = str(payment_payload.tariff_key or "").strip()
         if not tariff_key:
             return _json_error(400, "invalid_plan", "Tariff is not selected")
@@ -590,17 +647,31 @@ async def create_payment_route(request: web.Request) -> web.Response:
                 session, user_id, db_user.panel_user_uuid
             )
             sale_tariff_key = _sale_mode_tariff_key(sale_mode)
-            if not sub or not sub.tariff_key or sub.tariff_key != sale_tariff_key:
-                return _json_error(
-                    400, "subscription_required", "Active tariff subscription is required"
-                )
-            try:
-                active_tariff = tariffs_config.require(sub.tariff_key) if tariffs_config else None
-            except Exception:
-                active_tariff = None
-            if not active_tariff or active_tariff.billing_model != "period":
-                return _json_error(400, "invalid_plan", "Device top-up is not available")
+            active_tariff = _configured_tariff(
+                tariffs_config,
+                sub.tariff_key if sub is not None else None,
+            )
             currency = "stars" if method == "stars" else default_currency
+            availability = resolve_device_topup_availability(
+                settings,
+                subscription_active=sub is not None,
+                tariff_key=sub.tariff_key if sub is not None else None,
+                max_devices=(
+                    _subscription_effective_hwid_limit(settings, sub, active_tariff)
+                    if sub is not None and active_tariff is not None
+                    else None
+                ),
+                expected_tariff_key=sale_tariff_key,
+            )
+            if not availability.allowed or not availability.supports(
+                int(payment_units),
+                currency,
+            ):
+                return _json_error(
+                    400,
+                    availability.error_code,
+                    "Device top-up is not available",
+                )
             hwid_quote = await subscription_service.quote_hwid_device_topup(
                 session,
                 user_id=user_id,

@@ -707,6 +707,24 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/admin/tariffs/reconciliation": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Tariff Reconciliation Get */
+    get: operations["get_admin_tariff_reconciliation_get_route"];
+    put?: never;
+    /** Admin Tariff Reconciliation Apply */
+    post: operations["post_admin_tariff_reconciliation_apply_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/admin/tariffs/tribute/catalog": {
     parameters: {
       query?: never;
@@ -2547,6 +2565,21 @@ export interface components {
       /** Subscription Id */
       subscription_id: number;
       /**
+       * Tariff Binding Note
+       * @default null
+       */
+      tariff_binding_note: string | null;
+      /**
+       * Tariff Binding Source
+       * @default null
+       */
+      tariff_binding_source: string | null;
+      /**
+       * Tariff Bound At
+       * @default null
+       */
+      tariff_bound_at: string | null;
+      /**
        * Tariff Key
        * @default null
        */
@@ -2850,6 +2883,66 @@ export interface components {
     AdminSyncResultOut: {
       /** Status */
       status: string;
+    };
+    /** AdminTariffReconciliationApplyBody */
+    AdminTariffReconciliationApplyBody: {
+      /**
+       * Apply
+       * @default true
+       */
+      apply: boolean;
+    };
+    /** AdminTariffReconciliationItemOut */
+    AdminTariffReconciliationItemOut: {
+      /** Applied */
+      applied: boolean;
+      /**
+       * Current Tariff Key
+       * @default null
+       */
+      current_tariff_key: string | null;
+      /**
+       * Proposed Tariff Key
+       * @default null
+       */
+      proposed_tariff_key: string | null;
+      /** Reason */
+      reason: string;
+      /**
+       * Source
+       * @default null
+       */
+      source: string | null;
+      /** Status */
+      status: string;
+      /** Subscription Id */
+      subscription_id: number;
+      /** User Id */
+      user_id: number;
+    };
+    /** AdminTariffReconciliationOut */
+    AdminTariffReconciliationOut: {
+      /** Applied */
+      applied: number;
+      /** Candidates */
+      candidates: number;
+      /** Dry Run */
+      dry_run: boolean;
+      /**
+       * Generated At
+       * Format: date-time
+       */
+      generated_at: string;
+      /** Healthy */
+      healthy: number;
+      /** Items */
+      items: components["schemas"]["AdminTariffReconciliationItemOut"][];
+      /** Items Truncated */
+      items_truncated: boolean;
+      /** Scanned */
+      scanned: number;
+      /** Unresolved */
+      unresolved: number;
     };
     /** AdminTariffsCatalogOut */
     AdminTariffsCatalogOut: {
@@ -6556,6 +6649,56 @@ export interface operations {
       };
     };
   };
+  get_admin_tariff_reconciliation_get_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          } & components["schemas"]["AdminTariffReconciliationOut"];
+        };
+      };
+    };
+  };
+  post_admin_tariff_reconciliation_apply_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminTariffReconciliationApplyBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          } & components["schemas"]["AdminTariffReconciliationOut"];
+        };
+      };
+    };
+  };
   get_admin_tariffs_tribute_catalog_route: {
     parameters: {
       query?: never;
@@ -7930,7 +8073,9 @@ export interface operations {
               config_link?: string | null;
               connect_url?: string | null;
               days_left?: number;
+              device_topup_available_currencies?: string[];
               device_topup_renewal_available?: boolean;
+              device_topup_unavailable_reason?: string | null;
               end_date?: string | null;
               end_date_text?: string | null;
               extra_hwid_devices?: number;

@@ -42,6 +42,12 @@
           >{subscriptionDisplayLabel(openedUserDetail.active_subscription)}</strong
         >
       </li>
+      {#if openedUserDetail.active_subscription.tariff_binding_source}
+        <li>
+          <span>{at("user_label_tariff_binding_source", {}, "Tariff binding")}</span>
+          <strong>{openedUserDetail.active_subscription.tariff_binding_source}</strong>
+        </li>
+      {/if}
       <li>
         <span>{at("user_label_auto_renew", {}, "Auto-renew")}</span><strong
           >{pretty(openedUserDetail.active_subscription.auto_renew_enabled)}</strong

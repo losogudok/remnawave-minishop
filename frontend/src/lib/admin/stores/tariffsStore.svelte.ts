@@ -1,6 +1,7 @@
 import { adminErrorMessage } from "../errors.js";
 import {
   buildAdminPanelInternalSquadsPath,
+  buildAdminTariffReconciliationPath,
   buildAdminTariffsPath,
   buildAdminTariffsTributeCatalogPath,
   unwrap,
@@ -30,6 +31,7 @@ export type PanelSquad = {
   name: string;
 };
 export type ProviderCurrencySupport = components["schemas"]["ProviderCurrencySupportOut"];
+export type TariffReconciliation = components["schemas"]["AdminTariffReconciliationOut"];
 type TariffDraftRow = Record<string, unknown>;
 export type TariffDraft = ReturnType<typeof emptyTariffDraft> & Record<string, unknown>;
 export type DraftSquadField = "squadUuids" | "premiumSquadUuids";
@@ -55,6 +57,9 @@ export type TariffsState = {
   tributeCatalog: TributeCatalog | null;
   tributeCatalogLoading: boolean;
   tributeCatalogError: string;
+  tariffReconciliation: TariffReconciliation | null;
+  tariffReconciliationLoading: boolean;
+  tariffReconciliationApplying: boolean;
 };
 type TariffsStoreOptions = {
   api: AdminApi;
@@ -67,6 +72,8 @@ export type TariffsStore = TariffsState & {
   loadTariffs: () => Promise<void>;
   loadPanelSquads: () => Promise<void>;
   loadTributeCatalog: () => Promise<void>;
+  loadTariffReconciliation: () => Promise<void>;
+  applyTariffReconciliation: () => Promise<void>;
   squadLabel: (uuid: string) => string;
   addSquadToDraft: (field: DraftSquadField, uuid: string) => void;
   removeSquadFromDraft: (field: DraftSquadField, uuid: string) => void;
@@ -149,10 +156,15 @@ export function createTariffsStore({
     tributeCatalog: null,
     tributeCatalogLoading: false,
     tributeCatalogError: "",
+    tariffReconciliation: null,
+    tariffReconciliationLoading: false,
+    tariffReconciliationApplying: false,
     updateState,
     loadTariffs,
     loadPanelSquads,
     loadTributeCatalog,
+    loadTariffReconciliation,
+    applyTariffReconciliation,
     squadLabel,
     addSquadToDraft,
     removeSquadFromDraft,
@@ -188,6 +200,7 @@ export function createTariffsStore({
     updateStore((s) => ({ ...s, tariffsLoading: true }));
     try {
       void loadPanelSquads();
+      void loadTariffReconciliation();
       const data = await api(buildAdminTariffsPath());
       if (isOkResponse(data)) {
         const result = unwrap(data);
@@ -222,6 +235,65 @@ export function createTariffsStore({
       updateStore((s) => ({ ...s, panelSquads: [] }));
     } finally {
       updateStore((s) => ({ ...s, panelSquadsLoading: false }));
+    }
+  }
+
+  async function loadTariffReconciliation(): Promise<void> {
+    if (state.tariffReconciliationLoading) return;
+    updateStore((s) => ({ ...s, tariffReconciliationLoading: true }));
+    try {
+      const data = await api(buildAdminTariffReconciliationPath());
+      if (isOkResponse(data)) {
+        const result = unwrap(data);
+        updateStore((s) => ({
+          ...s,
+          tariffReconciliation: result as TariffReconciliation,
+        }));
+      } else {
+        updateStore((s) => ({ ...s, tariffReconciliation: null }));
+      }
+    } catch (_error) {
+      void _error;
+      updateStore((s) => ({ ...s, tariffReconciliation: null }));
+    } finally {
+      updateStore((s) => ({ ...s, tariffReconciliationLoading: false }));
+    }
+  }
+
+  async function applyTariffReconciliation(): Promise<void> {
+    if (state.tariffReconciliationApplying) return;
+    updateStore((s) => ({ ...s, tariffReconciliationApplying: true }));
+    try {
+      const data = await api(buildAdminTariffReconciliationPath(), {
+        method: "POST",
+        body: JSON.stringify({ apply: true }),
+      });
+      if (isOkResponse(data)) {
+        const result = unwrap(data);
+        const appliedCount = Number(result.applied || 0);
+        updateStore((s) => ({
+          ...s,
+          tariffReconciliation: result as TariffReconciliation,
+        }));
+        await loadTariffReconciliation();
+        flash(
+          at(
+            "tariff_reconciliation_applied",
+            { count: appliedCount },
+            "Safe tariff bindings applied: {count}"
+          )
+        );
+      } else {
+        flash(
+          adminErrorMessage(
+            data,
+            at,
+            at("tariff_reconciliation_apply_failed", {}, "Failed to reconcile subscriptions")
+          )
+        );
+      }
+    } finally {
+      updateStore((s) => ({ ...s, tariffReconciliationApplying: false }));
     }
   }
 
@@ -315,6 +387,7 @@ export function createTariffsStore({
           tariffDeleteTarget: null,
         }));
         if (onTariffsSaved) await onTariffsSaved(normalizeCatalog(result.catalog));
+        await loadTariffReconciliation();
         flash(successText || at("tariffs_saved", {}, "Tariffs saved"));
       } else {
         flash(adminErrorMessage(res, at, at("tariffs_save_failed", {}, "Failed to save tariffs")));

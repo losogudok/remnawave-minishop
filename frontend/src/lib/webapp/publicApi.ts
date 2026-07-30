@@ -434,6 +434,11 @@ export function buildAdminTariffsPath(): AdminTariffsPath {
   return "/admin/tariffs";
 }
 
+export type AdminTariffReconciliationPath = "/admin/tariffs/reconciliation";
+export function buildAdminTariffReconciliationPath(): AdminTariffReconciliationPath {
+  return "/admin/tariffs/reconciliation";
+}
+
 export type AdminTariffsTributeCatalogPath = "/admin/tariffs/tribute/catalog";
 export function buildAdminTariffsTributeCatalogPath(): AdminTariffsTributeCatalogPath {
   return "/admin/tariffs/tribute/catalog";

@@ -14,7 +14,10 @@ from bot.services.subscription_service_impl.panel_identity import (
 )
 from bot.utils.date_utils import add_months
 from config.settings import Settings
-from db.dal.subscription_dal import _subscription_model_payload
+from db.dal.subscription_dal import (
+    _subscription_model_payload,
+    _with_tariff_binding_metadata,
+)
 from db.database_setup import _trial_premium_baseline_bytes
 
 GIB = 1024**3
@@ -79,6 +82,39 @@ async def _echo_panel_expiry(_panel_uuid, payload, *_args, **_kwargs):
         "subscriptionUrl": "https://panel/sub",
         "shortUuid": "short",
     }
+
+
+class SubscriptionTariffBindingMetadataTests(unittest.TestCase):
+    def test_new_tariff_binding_gets_default_provenance(self):
+        payload = _with_tariff_binding_metadata(
+            {"tariff_key": " standard "},
+            previous_tariff_key=None,
+        )
+
+        self.assertEqual(payload["tariff_key"], "standard")
+        self.assertEqual(payload["tariff_binding_source"], "application")
+        self.assertIsInstance(payload["tariff_bound_at"], datetime)
+
+    def test_clearing_tariff_also_clears_provenance(self):
+        payload = _with_tariff_binding_metadata(
+            {"tariff_key": None},
+            previous_tariff_key="standard",
+            existing_source="payment",
+        )
+
+        self.assertIsNone(payload["tariff_key"])
+        self.assertIsNone(payload["tariff_binding_source"])
+        self.assertIsNone(payload["tariff_bound_at"])
+        self.assertIsNone(payload["tariff_binding_note"])
+
+    def test_unchanged_tariff_does_not_overwrite_existing_provenance(self):
+        payload = _with_tariff_binding_metadata(
+            {"tariff_key": "standard"},
+            previous_tariff_key="standard",
+            existing_source="payment",
+        )
+
+        self.assertEqual(payload, {"tariff_key": "standard"})
 
 
 def _configure_persisted_panel_echo(
@@ -848,6 +884,26 @@ class SubscriptionServiceActivationDispatchTests(unittest.IsolatedAsyncioTestCas
             self.assertIsNone(result)
             service.panel_service.update_user_details_on_panel.assert_not_awaited()
 
+    async def test_paid_subscription_activation_rejects_missing_tariff_key(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(_tariffs_config_payload(), tmpdir)
+            service = _make_service(settings)
+            service._record_payment_context = AsyncMock()
+
+            result = await service.activate_subscription(
+                session=AsyncMock(),
+                user_id=42,
+                months=1,
+                payment_amount=249,
+                payment_db_id=34,
+                provider="yookassa",
+                sale_mode="subscription",
+            )
+
+            self.assertIsNone(result)
+            service._record_payment_context.assert_not_awaited()
+            service.panel_service.update_user_details_on_panel.assert_not_awaited()
+
     async def test_paid_activation_does_not_promote_trial_squads_to_manual_overrides(self):
         for expired in (False, True):
             with self.subTest(expired=expired), tempfile.TemporaryDirectory() as tmpdir:
@@ -1429,6 +1485,7 @@ class SubscriptionServiceActivationDispatchTests(unittest.IsolatedAsyncioTestCas
             self.assertEqual(update_data["traffic_limit_bytes"], 135 * GIB)
             self.assertEqual(update_data["traffic_used_bytes"], 120 * GIB)
             self.assertEqual(update_data["tier_baseline_bytes"], 0)
+            self.assertEqual(update_data["tariff_binding_source"], "user")
             panel_payload = service.panel_service.update_user_details_on_panel.await_args.args[1]
             self.assertEqual(panel_payload["trafficLimitBytes"], 135 * GIB)
             create_topup.assert_awaited_once()

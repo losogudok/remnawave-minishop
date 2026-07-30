@@ -78,6 +78,7 @@ def _make_settings(tmpdir: str, payload: dict | None = None, **overrides: Any) -
         "BOT_TOKEN": "token",
         "POSTGRES_USER": "u",
         "POSTGRES_PASSWORD": "p",
+        "MY_DEVICES_SECTION_ENABLED": True,
     }
     if payload is not None:
         config_path = Path(tmpdir) / "tariffs.json"

@@ -108,6 +108,9 @@ class AdminSubscriptionOut(HttpResponseModel):
     hwid_device_limit: int | None = None
     extra_hwid_devices: int
     tariff_key: str | None = None
+    tariff_binding_source: str | None = None
+    tariff_bound_at: str | None = None
+    tariff_binding_note: str | None = None
     display_label: str | None = None
     is_trial: bool
     auto_renew_enabled: bool
@@ -157,6 +160,11 @@ class AdminSubscriptionOut(HttpResponseModel):
             hwid_device_limit=getattr(sub, "hwid_device_limit", None),
             extra_hwid_devices=int(getattr(sub, "extra_hwid_devices", 0) or 0),
             tariff_key=sub.tariff_key,
+            tariff_binding_source=getattr(sub, "tariff_binding_source", None),
+            tariff_bound_at=(
+                sub.tariff_bound_at.isoformat() if getattr(sub, "tariff_bound_at", None) else None
+            ),
+            tariff_binding_note=getattr(sub, "tariff_binding_note", None),
             display_label=display_label,
             is_trial=is_trial,
             auto_renew_enabled=bool(sub.auto_renew_enabled),

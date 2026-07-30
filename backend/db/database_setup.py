@@ -122,89 +122,47 @@ async def init_db(
             await session.rollback()
             logger.exception("Failed to initialize PanelSyncStatus: %s", e_sync_init)
 
-        if settings.tariffs_config:
-            try:
-                default_tariff = settings.tariffs_config.default
-                default_price = (
-                    default_tariff.period_price(1, "rub") or default_tariff.min_period_price_rub()
+        tariffs_config = settings.tariffs_config
+        if tariffs_config:
+            from db.tariff_reconciliation import reconcile_subscription_tariffs
+
+            trial_premium_baseline = _trial_premium_baseline_bytes(settings)
+            await session.execute(
+                text(
+                    """
+                    UPDATE subscriptions AS s
+                    SET
+                        tariff_key = NULL,
+                        tariff_binding_source = NULL,
+                        tariff_bound_at = NULL,
+                        tariff_binding_note = NULL,
+                        tier_baseline_bytes = COALESCE(s.traffic_limit_bytes, :trial_baseline),
+                        premium_baseline_bytes = :trial_premium_baseline,
+                        premium_topup_balance_bytes = 0,
+                        premium_topup_used_bytes = 0,
+                        premium_used_bytes = COALESCE(s.premium_used_bytes, 0),
+                        premium_is_limited = FALSE,
+                        effective_monthly_price_rub = NULL
+                    WHERE s.is_active = TRUE
+                      AND (
+                        COALESCE(LOWER(s.provider), '') = 'trial'
+                        OR COALESCE(UPPER(s.status_from_panel), '') = 'TRIAL'
+                      )
+                    """
+                ),
+                {
+                    "trial_baseline": settings.trial_traffic_limit_bytes,
+                    "trial_premium_baseline": trial_premium_baseline,
+                },
+            )
+            report = await reconcile_subscription_tariffs(
+                session,
+                tariffs_config,
+                apply=True,
+            )
+            await session.commit()
+            if report.unresolved:
+                logger.warning(
+                    "Startup tariff reconciliation left %s active subscriptions unresolved",
+                    report.unresolved,
                 )
-                trial_premium_baseline = _trial_premium_baseline_bytes(settings)
-                await session.execute(
-                    text(
-                        """
-                        UPDATE subscriptions AS s
-                        SET
-                            tariff_key = NULL,
-                            tier_baseline_bytes = COALESCE(s.traffic_limit_bytes, :trial_baseline),
-                            premium_baseline_bytes = :trial_premium_baseline,
-                            premium_topup_balance_bytes = 0,
-                            premium_topup_used_bytes = 0,
-                            premium_used_bytes = COALESCE(s.premium_used_bytes, 0),
-                            premium_is_limited = FALSE,
-                            effective_monthly_price_rub = NULL
-                        WHERE s.is_active = TRUE
-                          AND (
-                            COALESCE(LOWER(s.provider), '') = 'trial'
-                            OR COALESCE(UPPER(s.status_from_panel), '') = 'TRIAL'
-                          )
-                        """
-                    ),
-                    {
-                        "trial_baseline": settings.trial_traffic_limit_bytes,
-                        "trial_premium_baseline": trial_premium_baseline,
-                    },
-                )
-                await session.execute(
-                    text(
-                        """
-                        UPDATE subscriptions AS s
-                        SET
-                            tariff_key = COALESCE(s.tariff_key, :tariff_key),
-                            tier_baseline_bytes = COALESCE(s.tier_baseline_bytes, s.traffic_limit_bytes, :baseline),
-                            topup_balance_bytes = COALESCE(s.topup_balance_bytes, 0),
-                            premium_baseline_bytes = COALESCE(s.premium_baseline_bytes, :premium_baseline),
-                            premium_topup_balance_bytes = COALESCE(s.premium_topup_balance_bytes, 0),
-                            premium_topup_used_bytes = COALESCE(s.premium_topup_used_bytes, 0),
-                            premium_used_bytes = COALESCE(s.premium_used_bytes, 0),
-                            premium_is_limited = COALESCE(s.premium_is_limited, FALSE),
-                            period_start_at = NULL,
-                            effective_monthly_price_rub = COALESCE(
-                                s.effective_monthly_price_rub,
-                                (
-                                    SELECT p.amount / GREATEST(COALESCE(p.subscription_duration_months, 1), 1)
-                                    FROM payments p
-                                    WHERE p.user_id = s.user_id
-                                      AND p.status = 'succeeded'
-                                      AND COALESCE(p.subscription_duration_months, 0) > 0
-                                    ORDER BY p.created_at DESC
-                                    LIMIT 1
-                                ),
-                                :default_price
-                            )
-                        WHERE s.is_active = TRUE
-                          AND s.tariff_key IS NULL
-                          AND COALESCE(LOWER(s.provider), '') <> 'trial'
-                          AND COALESCE(UPPER(s.status_from_panel), '') <> 'TRIAL'
-                        """  # noqa: E501
-                    ),
-                    {
-                        "tariff_key": default_tariff.key,
-                        "baseline": default_tariff.monthly_bytes,
-                        "premium_baseline": default_tariff.premium_monthly_bytes,
-                        "default_price": default_price,
-                    },
-                )
-                await session.execute(
-                    text(
-                        """
-                        UPDATE subscriptions
-                        SET period_start_at = NULL
-                        WHERE is_active = TRUE
-                          AND tariff_key IS NOT NULL
-                        """
-                    )
-                )
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                logger.exception("Failed to backfill existing subscriptions for tariffs config.")

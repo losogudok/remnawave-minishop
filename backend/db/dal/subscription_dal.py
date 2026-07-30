@@ -27,6 +27,31 @@ def _subscription_model_payload(sub_payload: dict[str, Any]) -> dict[str, Any]:
     return filtered_payload
 
 
+def _with_tariff_binding_metadata(
+    payload: dict[str, Any],
+    *,
+    previous_tariff_key: str | None = None,
+    existing_source: str | None = None,
+) -> dict[str, Any]:
+    normalized = dict(payload)
+    if "tariff_key" not in normalized:
+        return normalized
+    tariff_key = str(normalized.get("tariff_key") or "").strip()
+    if not tariff_key:
+        normalized["tariff_key"] = None
+        normalized["tariff_binding_source"] = None
+        normalized["tariff_bound_at"] = None
+        normalized["tariff_binding_note"] = None
+        return normalized
+    normalized["tariff_key"] = tariff_key
+    changed = tariff_key != str(previous_tariff_key or "").strip()
+    if changed or not existing_source:
+        normalized.setdefault("tariff_binding_source", "application")
+        normalized.setdefault("tariff_bound_at", datetime.now(UTC))
+        normalized.setdefault("tariff_binding_note", None)
+    return normalized
+
+
 async def get_active_subscription_by_user_id(
     session: AsyncSession, user_id: int, panel_user_uuid: str | None = None
 ) -> Subscription | None:
@@ -235,7 +260,12 @@ async def update_subscription(
 ) -> Subscription | None:
     sub = await session.get(Subscription, subscription_id)
     if sub:
-        for key, value in update_data.items():
+        normalized_update = _with_tariff_binding_metadata(
+            update_data,
+            previous_tariff_key=sub.tariff_key,
+            existing_source=sub.tariff_binding_source,
+        )
+        for key, value in normalized_update.items():
             setattr(sub, key, value)
         await session.flush()
         await session.refresh(sub)
@@ -340,7 +370,12 @@ async def upsert_subscription(session: AsyncSession, sub_payload: dict[str, Any]
             existing_sub.subscription_id,
             panel_sub_uuid,
         )
-        for key, value in _subscription_model_payload(sub_payload).items():
+        normalized_payload = _with_tariff_binding_metadata(
+            _subscription_model_payload(sub_payload),
+            previous_tariff_key=existing_sub.tariff_key,
+            existing_source=existing_sub.tariff_binding_source,
+        )
+        for key, value in normalized_payload.items():
             setattr(existing_sub, key, value)
         await session.flush()
         await session.refresh(existing_sub)
@@ -361,7 +396,9 @@ async def upsert_subscription(session: AsyncSession, sub_payload: dict[str, Any]
                     f"User {sub_payload['user_id']} not found for new subscription with panel_uuid {panel_sub_uuid}."  # noqa: E501
                 )
 
-        new_sub = Subscription(**_subscription_model_payload(sub_payload))
+        new_sub = Subscription(
+            **_with_tariff_binding_metadata(_subscription_model_payload(sub_payload))
+        )
         session.add(new_sub)
         await session.flush()
         await session.refresh(new_sub)

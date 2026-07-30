@@ -1863,6 +1863,42 @@
             "title": "Subscription Id",
             "type": "integer"
           },
+          "tariff_binding_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tariff Binding Note"
+          },
+          "tariff_binding_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tariff Binding Source"
+          },
+          "tariff_bound_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tariff Bound At"
+          },
           "tariff_key": {
             "anyOf": [
               {
@@ -2628,6 +2664,143 @@
           "status"
         ],
         "title": "AdminSyncResultOut",
+        "type": "object"
+      },
+      "AdminTariffReconciliationApplyBody": {
+        "properties": {
+          "apply": {
+            "default": true,
+            "title": "Apply",
+            "type": "boolean"
+          }
+        },
+        "title": "AdminTariffReconciliationApplyBody",
+        "type": "object"
+      },
+      "AdminTariffReconciliationItemOut": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "current_tariff_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Current Tariff Key"
+          },
+          "proposed_tariff_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Proposed Tariff Key"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subscription_id": {
+            "title": "Subscription Id",
+            "type": "integer"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "subscription_id",
+          "user_id",
+          "status",
+          "reason",
+          "applied"
+        ],
+        "title": "AdminTariffReconciliationItemOut",
+        "type": "object"
+      },
+      "AdminTariffReconciliationOut": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "integer"
+          },
+          "candidates": {
+            "title": "Candidates",
+            "type": "integer"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "healthy": {
+            "title": "Healthy",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminTariffReconciliationItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "items_truncated": {
+            "title": "Items Truncated",
+            "type": "boolean"
+          },
+          "scanned": {
+            "title": "Scanned",
+            "type": "integer"
+          },
+          "unresolved": {
+            "title": "Unresolved",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dry_run",
+          "scanned",
+          "healthy",
+          "candidates",
+          "applied",
+          "unresolved",
+          "generated_at",
+          "items_truncated",
+          "items"
+        ],
+        "title": "AdminTariffReconciliationOut",
         "type": "object"
       },
       "AdminTariffsCatalogOut": {
@@ -10646,6 +10819,106 @@
         ]
       }
     },
+    "/api/admin/tariffs/reconciliation": {
+      "get": {
+        "operationId": "get_admin_tariff_reconciliation_get_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ok": {
+                          "const": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AdminTariffReconciliationOut"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Tariff Reconciliation Get",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "post_admin_tariff_reconciliation_apply_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminTariffReconciliationApplyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ok": {
+                          "const": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AdminTariffReconciliationOut"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Tariff Reconciliation Apply",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/admin/tariffs/tribute/catalog": {
       "get": {
         "operationId": "get_admin_tariffs_tribute_catalog_route",
@@ -14063,8 +14336,20 @@
                         "days_left": {
                           "type": "integer"
                         },
+                        "device_topup_available_currencies": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
                         "device_topup_renewal_available": {
                           "type": "boolean"
+                        },
+                        "device_topup_unavailable_reason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
                         "end_date": {
                           "type": [

@@ -233,6 +233,8 @@ class WebAppDeviceTopupOptionsTests(IsolatedAsyncioTestCase):
             DEFAULT_LANGUAGE="en",
             DEFAULT_CURRENCY_SYMBOL="RUB",
             ADMIN_IDS=[],
+            MY_DEVICES_SECTION_ENABLED=True,
+            USER_HWID_DEVICE_LIMIT=5,
         )
         quote = {
             "price": 25,
@@ -434,6 +436,7 @@ class WebAppDeviceTopupOptionsTests(IsolatedAsyncioTestCase):
             tariffs_config=SimpleNamespace(require=lambda key: tariff),
             DEFAULT_LANGUAGE="en",
             DEFAULT_CURRENCY_SYMBOL="RUB",
+            MY_DEVICES_SECTION_ENABLED=True,
         )
         subscription_service = SimpleNamespace(quote_hwid_device_topup=AsyncMock())
         request = _JsonRequest(

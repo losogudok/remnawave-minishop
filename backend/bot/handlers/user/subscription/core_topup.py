@@ -8,6 +8,10 @@ from bot.keyboards.inline.user_keyboards import (
     get_payment_method_keyboard,
 )
 from bot.middlewares.i18n import JsonI18n
+from bot.services.device_topup_availability import (
+    device_topup_reason_locale_key,
+    resolve_device_topup_availability,
+)
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.services.traffic_topup_availability import (
     TRAFFIC_TOPUP_UNLOCK_PERCENT,
@@ -216,30 +220,33 @@ async def hwid_devices_list_callback(
     current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
     i18n: JsonI18n = i18n_data.get("i18n_instance")
     get_text = lambda key, **kw: i18n.gettext(current_lang, key, **kw)
-    config = settings.tariffs_config
     active = await subscription_service.get_active_subscription_details(
         session, callback.from_user.id
     )
-    if not config or not active or not active.get("tariff_key") or not callback.message:
+    if not callback.message:
         await callback.answer(get_text("error_try_again"), show_alert=True)
         return
-    max_devices = active.get("max_devices")
-    if max_devices == 0:
-        await callback.answer(get_text("hwid_devices_unlimited_no_topup"), show_alert=True)
+    availability = resolve_device_topup_availability(
+        settings,
+        subscription_active=active is not None,
+        tariff_key=active.get("tariff_key") if active else None,
+        max_devices=active.get("max_devices") if active else None,
+    )
+    tariff = availability.tariff
+    if not availability.allowed or tariff is None:
+        await callback.answer(
+            get_text(device_topup_reason_locale_key(availability.reason)),
+            show_alert=True,
+        )
         return
-    tariff = config.require(active["tariff_key"])
-    if tariff.billing_model != "period":
-        await callback.answer(get_text("no_hwid_device_packages_available"), show_alert=True)
-        return
-    default_currency = default_currency_key_for_settings(settings)
     packages = (
-        tariff.hwid_device_packages.for_currency(default_currency)
+        tariff.hwid_device_packages.for_currency(availability.default_currency)
         if tariff.hwid_device_packages
         else []
     )
-    if not packages:
-        await callback.answer(get_text("no_hwid_device_packages_available"), show_alert=True)
-        return
+    stars_packages = (
+        tariff.hwid_device_packages.for_currency("stars") if tariff.hwid_device_packages else []
+    )
     markup = get_hwid_device_packages_keyboard(
         tariff,
         packages,
@@ -248,11 +255,12 @@ async def hwid_devices_list_callback(
         settings,
         back_callback="main_action:my_devices",
         renewal=False,
+        stars_packages=stars_packages,
     )
     await callback_message(callback).edit_text(
         get_text(
             "select_hwid_device_package",
-            date=active.get("extra_hwid_devices_valid_until_text") or "",
+            date=(active or {}).get("extra_hwid_devices_valid_until_text") or "",
         ),
         reply_markup=markup,
     )
@@ -271,52 +279,63 @@ async def hwid_devices_package_callback(
     current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
     i18n: JsonI18n = i18n_data.get("i18n_instance")
     get_text = lambda key, **kw: i18n.gettext(current_lang, key, **kw)
-    config = settings.tariffs_config
-    if not config or not callback.message:
+    if not callback.message:
         await callback.answer(get_text("error_occurred_try_again"), show_alert=True)
         return
-    _, action, tariff_key, count_raw = callback_data(callback).split(":", 3)
-    tariff = config.require(tariff_key)
-    if tariff.billing_model != "period":
-        await callback.answer(get_text("no_hwid_device_packages_available"), show_alert=True)
-        return
-    count = int(count_raw)
-    package = next(
-        (
-            pkg
-            for pkg in (
-                tariff.hwid_device_packages.for_currency(
-                    default_currency_key_for_settings(settings)
-                )
-                if tariff.hwid_device_packages
-                else []
-            )
-            if int(pkg.count) == count
-        ),
-        None,
-    )
-    if not package:
+    try:
+        _, action, tariff_key, count_raw = callback_data(callback).split(":", 3)
+        count = int(count_raw)
+    except (TypeError, ValueError):
         await callback.answer(get_text("error_try_again"), show_alert=True)
+        return
+    if action not in {"package", "renewal_package"}:
+        await callback.answer(get_text("error_try_again"), show_alert=True)
+        return
+    active = await subscription_service.get_active_subscription_details(
+        session,
+        callback.from_user.id,
+    )
+    availability = resolve_device_topup_availability(
+        settings,
+        subscription_active=active is not None,
+        tariff_key=active.get("tariff_key") if active else None,
+        max_devices=active.get("max_devices") if active else None,
+        expected_tariff_key=tariff_key,
+    )
+    tariff = availability.tariff
+    if not availability.allowed or tariff is None or count not in availability.package_counts:
+        await callback.answer(
+            get_text(device_topup_reason_locale_key(availability.reason)),
+            show_alert=True,
+        )
         return
     sale_mode_base = "hwid_devices_renewal" if action == "renewal_package" else "hwid_devices"
     renewal = action == "renewal_package"
-    default_currency = default_currency_key_for_settings(settings)
+    default_currency = availability.default_currency
     currency_code = default_payment_currency_code_for_settings(settings)
-    currency_quote = await subscription_service.quote_hwid_device_topup(
-        session,
-        user_id=callback.from_user.id,
-        device_count=count,
-        tariff_key=tariff.key,
-        renewal=renewal,
-        currency=default_currency,
+    currency_quote = (
+        await subscription_service.quote_hwid_device_topup(
+            session,
+            user_id=callback.from_user.id,
+            device_count=count,
+            tariff_key=tariff.key,
+            renewal=renewal,
+            currency=default_currency,
+        )
+        if count in availability.default_currency_counts
+        else None
     )
-    stars_quote = await subscription_service.quote_hwid_device_topup(
-        session,
-        user_id=callback.from_user.id,
-        device_count=count,
-        tariff_key=tariff.key,
-        renewal=renewal,
-        currency="stars",
+    stars_quote = (
+        await subscription_service.quote_hwid_device_topup(
+            session,
+            user_id=callback.from_user.id,
+            device_count=count,
+            tariff_key=tariff.key,
+            renewal=renewal,
+            currency="stars",
+        )
+        if count in availability.stars_counts
+        else None
     )
     if not currency_quote and not stars_quote:
         await callback.answer(get_text("error_try_again"), show_alert=True)

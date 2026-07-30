@@ -25,6 +25,7 @@ from bot.infra.promo_policies import (
     PromoCheckoutSuggestionContext,
     resolve_promo_checkout_suggestion,
 )
+from bot.services.device_topup_availability import resolve_device_topup_availability
 from bot.services.referral_service import ReferralService
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.services.telegram_notifications import (
@@ -548,9 +549,15 @@ def _serialize_subscription(
     can_topup_regular_traffic = False
     can_topup_premium_traffic = False
     can_topup_traffic = False
-    can_topup_devices = False
     topup_always_available = False
     premium_topup_always_available = False
+    device_topup_availability = resolve_device_topup_availability(
+        settings,
+        subscription_active=True,
+        tariff_key=active.get("tariff_key"),
+        max_devices=active.get("max_devices"),
+    )
+    can_topup_devices = device_topup_availability.allowed
     if settings.tariffs_config and active.get("tariff_key"):
         try:
             tariff = settings.tariffs_config.require(str(active.get("tariff_key")))
@@ -564,18 +571,10 @@ def _serialize_subscription(
             can_topup_traffic = bool(can_topup_regular_traffic or can_topup_premium_traffic)
             topup_always_available = bool(tariff.topup_always_available)
             premium_topup_always_available = bool(tariff.premium_topup_always_available)
-            max_devices = _coerce_int_or_none(active.get("max_devices"))
-            # max_devices == 0 or None means unlimited — top-up is pointless in that case.
-            can_topup_devices = bool(
-                tariff.billing_model == "period"
-                and tariff.has_hwid_device_packages()
-                and max_devices not in (None, 0)
-            )
         except Exception:
             can_topup_regular_traffic = False
             can_topup_premium_traffic = False
             can_topup_traffic = False
-            can_topup_devices = False
             topup_always_available = False
             premium_topup_always_available = False
 
@@ -675,6 +674,12 @@ def _serialize_subscription(
         "can_topup_regular_traffic": can_topup_regular_traffic,
         "can_topup_premium_traffic": can_topup_premium_traffic,
         "can_topup_devices": can_topup_devices,
+        "device_topup_unavailable_reason": (
+            device_topup_availability.reason.value
+            if device_topup_availability.reason is not None
+            else None
+        ),
+        "device_topup_available_currencies": list(device_topup_availability.available_currencies),
         "topup_always_available": topup_always_available,
         "premium_topup_always_available": premium_topup_always_available,
         "period_start_at": active.get("period_start_at").isoformat()

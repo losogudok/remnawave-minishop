@@ -66,6 +66,13 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                 )
                 return None
             tariff_key = resolved_tariff.key
+        if tariffs_config and sale_mode_base == "subscription" and not tariff_key:
+            logger.error(
+                "Paid subscription activation requires tariff_key when the tariff catalog "
+                "is enabled for user %s.",
+                user_id,
+            )
+            return None
         if sale_mode_base in {"traffic", "traffic_package"} or (
             getattr(self.settings, "traffic_sale_mode", False) and not tariffs_config
         ):
@@ -481,6 +488,9 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             "suppress_early_expiry_notifications": False,
             "auto_renew_enabled": auto_renew_should_enable,
             "tariff_key": tariff.key if tariff else None,
+            "tariff_binding_source": "payment" if tariff else None,
+            "tariff_bound_at": datetime.now(UTC) if tariff else None,
+            "tariff_binding_note": (f"paid_activation:{provider}" if tariff else None),
             "tier_baseline_bytes": tier_baseline_bytes,
             "topup_balance_bytes": topup_balance_bytes,
             "regular_bonus_bytes": regular_bonus_carry,

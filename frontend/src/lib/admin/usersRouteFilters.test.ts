@@ -49,6 +49,7 @@ describe("usersRouteFilters", () => {
       "trial",
       "inactive_subscription",
       "expired_subscription",
+      "unmapped_tariff",
     ]) {
       expect(readUsersRouteFilters(`?users_filter=${filter}`).usersFilter).toBe(filter);
     }

@@ -182,22 +182,27 @@ def get_hwid_device_packages_keyboard(
     settings: Settings,
     back_callback: str = "main_action:my_subscription",
     renewal: bool = False,
+    stars_packages: list[Any] | None = None,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
     currency_code = default_payment_currency_code_for_settings(settings)
-    for package in packages:
+    default_by_count = {int(package.count): package for package in packages}
+    stars_by_count = {int(package.count): package for package in (stars_packages or [])}
+    for count in sorted(set(default_by_count) | set(stars_by_count)):
+        package = default_by_count.get(count) or stars_by_count[count]
+        currency_symbol = currency_code if count in default_by_count else "⭐"
         builder.row(
             InlineKeyboardButton(
                 text=_(
                     "buy_hwid_devices_button",
-                    count=package.count,
+                    count=count,
                     price=package.price,
-                    currency_symbol=currency_code,
+                    currency_symbol=currency_symbol,
                 ),
                 callback_data=(
                     f"hwid_devices:{'renewal_package' if renewal else 'package'}:"
-                    f"{tariff.key}:{package.count}"
+                    f"{tariff.key}:{count}"
                 ),
             )
         )

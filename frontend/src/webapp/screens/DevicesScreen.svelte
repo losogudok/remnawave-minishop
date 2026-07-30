@@ -63,6 +63,9 @@
       (!devicesStatus || subscriptionNotActiveError)
   );
   const effectiveMaxDevices = $derived(devicesData?.max_devices ?? subscription?.max_devices);
+  const deviceTopupUnavailableReason = $derived(
+    String(subscription?.device_topup_unavailable_reason || "").trim()
+  );
 </script>
 
 <main class="content with-nav">
@@ -107,6 +110,10 @@
           <Plus size={17} />
           {t("wa_buy_hwid_devices")}
         </Button>
+      {:else if subscription?.active && subscription?.max_devices !== 0 && deviceTopupUnavailableReason}
+        <StatusMessage>
+          {t(`wa_device_topup_unavailable_${deviceTopupUnavailableReason}`)}
+        </StatusMessage>
       {/if}
       {#if subscriptionReissueEnabled && subscription?.active}
         <Button
