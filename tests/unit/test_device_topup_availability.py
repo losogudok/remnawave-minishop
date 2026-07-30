@@ -1,14 +1,13 @@
-import json
-import tempfile
 import unittest
-from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from bot.services.device_topup_availability import (
     DeviceTopupUnavailableReason,
     resolve_device_topup_availability,
 )
 from config.settings import Settings
+from config.tariffs_config import TariffsConfig
+from tests.support.settings_stub import settings_stub
 
 
 def _catalog(
@@ -62,45 +61,36 @@ def _catalog(
 
 
 def _settings(
-    tmpdir: str,
     *,
     catalog: dict[str, Any] | None = None,
     devices_enabled: bool = True,
 ) -> Settings:
-    values: dict[str, Any] = {
-        "_env_file": None,
-        "BOT_TOKEN": "token",
-        "POSTGRES_USER": "user",
-        "POSTGRES_PASSWORD": "password",
-        "MY_DEVICES_SECTION_ENABLED": devices_enabled,
-    }
-    if catalog is not None:
-        path = Path(tmpdir) / "tariffs.json"
-        path.write_text(json.dumps(catalog), encoding="utf-8")
-        values["TARIFFS_CONFIG_PATH"] = str(path)
-    else:
-        values["TARIFFS_CONFIG_PATH"] = str(Path(tmpdir) / "missing-tariffs.json")
-    return Settings(**values)
+    tariffs_config = TariffsConfig.model_validate(catalog) if catalog is not None else None
+    return cast(
+        Settings,
+        settings_stub(
+            MY_DEVICES_SECTION_ENABLED=devices_enabled,
+            tariffs_config=tariffs_config,
+        ),
+    )
 
 
 class DeviceTopupAvailabilityTests(unittest.TestCase):
     def test_allows_default_currency_and_stars_packages(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            settings = _settings(
-                tmpdir,
-                catalog=_catalog(
-                    packages={
-                        "rub": [{"count": 1, "price": 50}],
-                        "stars": [{"count": 2, "price": 75}],
-                    }
-                ),
-            )
-            result = resolve_device_topup_availability(
-                settings,
-                subscription_active=True,
-                tariff_key="standard",
-                max_devices=5,
-            )
+        settings = _settings(
+            catalog=_catalog(
+                packages={
+                    "rub": [{"count": 1, "price": 50}],
+                    "stars": [{"count": 2, "price": 75}],
+                }
+            ),
+        )
+        result = resolve_device_topup_availability(
+            settings,
+            subscription_active=True,
+            tariff_key="standard",
+            max_devices=5,
+        )
 
         self.assertTrue(result.allowed)
         self.assertIsNone(result.reason)
@@ -111,39 +101,35 @@ class DeviceTopupAvailabilityTests(unittest.TestCase):
         self.assertFalse(result.supports(2, "rub"))
 
     def test_allows_stars_only_package(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            settings = _settings(
-                tmpdir,
-                catalog=_catalog(
-                    packages={
-                        "eur": [{"count": 1, "price": 50}],
-                        "stars": [{"count": 3, "price": 75}],
-                    }
-                ),
-            )
-            result = resolve_device_topup_availability(
-                settings,
-                subscription_active=True,
-                tariff_key="standard",
-                max_devices=5,
-            )
+        settings = _settings(
+            catalog=_catalog(
+                packages={
+                    "eur": [{"count": 1, "price": 50}],
+                    "stars": [{"count": 3, "price": 75}],
+                }
+            ),
+        )
+        result = resolve_device_topup_availability(
+            settings,
+            subscription_active=True,
+            tariff_key="standard",
+            max_devices=5,
+        )
 
         self.assertTrue(result.allowed)
         self.assertEqual(result.package_counts, (3,))
         self.assertEqual(result.available_currencies, ("stars",))
 
     def test_rejects_package_only_in_unavailable_currency(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            settings = _settings(
-                tmpdir,
-                catalog=_catalog(packages={"eur": [{"count": 1, "price": 50}]}),
-            )
-            result = resolve_device_topup_availability(
-                settings,
-                subscription_active=True,
-                tariff_key="standard",
-                max_devices=5,
-            )
+        settings = _settings(
+            catalog=_catalog(packages={"eur": [{"count": 1, "price": 50}]}),
+        )
+        result = resolve_device_topup_availability(
+            settings,
+            subscription_active=True,
+            tariff_key="standard",
+            max_devices=5,
+        )
 
         self.assertFalse(result.allowed)
         self.assertEqual(
@@ -207,9 +193,8 @@ class DeviceTopupAvailabilityTests(unittest.TestCase):
         ]
 
         for settings_overrides, arguments, expected in cases:
-            with self.subTest(reason=expected), tempfile.TemporaryDirectory() as tmpdir:
+            with self.subTest(reason=expected):
                 settings = _settings(
-                    tmpdir,
                     catalog=settings_overrides.get(
                         "catalog",
                         _catalog(packages={"rub": [{"count": 1, "price": 50}]}),
@@ -221,18 +206,16 @@ class DeviceTopupAvailabilityTests(unittest.TestCase):
             self.assertEqual(result.reason, expected)
 
     def test_rejects_stale_tariff_callback(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            settings = _settings(
-                tmpdir,
-                catalog=_catalog(packages={"rub": [{"count": 1, "price": 50}]}),
-            )
-            result = resolve_device_topup_availability(
-                settings,
-                subscription_active=True,
-                tariff_key="standard",
-                max_devices=5,
-                expected_tariff_key="other",
-            )
+        settings = _settings(
+            catalog=_catalog(packages={"rub": [{"count": 1, "price": 50}]}),
+        )
+        result = resolve_device_topup_availability(
+            settings,
+            subscription_active=True,
+            tariff_key="standard",
+            max_devices=5,
+            expected_tariff_key="other",
+        )
 
         self.assertFalse(result.allowed)
         self.assertEqual(result.reason, DeviceTopupUnavailableReason.TARIFF_MISMATCH)
