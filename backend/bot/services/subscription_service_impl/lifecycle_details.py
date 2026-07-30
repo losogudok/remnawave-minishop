@@ -4,7 +4,10 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.services.panel_activity import record_subscription_panel_activity
+from bot.services.panel_activity import (
+    panel_status_means_active,
+    record_subscription_panel_activity,
+)
 from bot.utils.config_link import prepare_config_links
 from bot.utils.locale_defaults import tariff_premium_title
 from bot.utils.traffic_reset import (
@@ -116,7 +119,7 @@ class SubscriptionLifecycleDetailsMixin(SubscriptionServiceMixinContract):
             ):
                 update_payload_local["panel_subscription_uuid"] = panel_sub_uuid_from_panel
 
-            is_active_based_on_panel = panel_status == "ACTIVE" and (
+            is_active_based_on_panel = panel_status_means_active(panel_status) and (
                 panel_expire_dt > now if panel_expire_dt else False
             )
             if local_active_sub.is_active != is_active_based_on_panel:

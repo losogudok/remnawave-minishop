@@ -8,6 +8,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.dal import subscription_dal
 from db.models import Subscription
 
+PANEL_STATUSES_MEANING_ACTIVE = frozenset({"ACTIVE", "LIMITED"})
+
+
+def panel_status_means_active(panel_status: Any) -> bool:
+    """Whether a panel status still represents a live, paid entitlement.
+
+    ``LIMITED`` means the monthly traffic quota is exhausted, not that the
+    subscription ended: the entitlement is still valid and paid for. Mapping it
+    onto ``is_active=False`` locks the user out of the traffic top-up that
+    resolves it and drops the row out of the monthly traffic reset, so the state
+    becomes permanent. ``EXPIRED``/``DISABLED`` are genuine non-active states.
+
+    Mirrors the mapping already used by the legacy importer
+    (``scripts/legacy_import/remnashop_sales.py``).
+    """
+    return str(panel_status or "").strip().upper() in PANEL_STATUSES_MEANING_ACTIVE
+
+
 _PANEL_LAST_CONNECTED_KEYS = (
     "onlineAt",
     "online_at",
