@@ -60,7 +60,7 @@ class PromoCheckoutSuggestionContext:
 
 PromoCheckoutSuggestionProvider = Callable[
     [PromoCheckoutSuggestionContext],
-    str | None | Awaitable[str | None],
+    str | Awaitable[str | None] | None,
 ]
 
 _extra_promo_redemption_policies: list[PromoRedemptionPolicy] = []

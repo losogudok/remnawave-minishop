@@ -573,7 +573,7 @@ async def network_alerts(app: Any, settings: Any, *, refresh: bool = False) -> l
         alerts: list[ConfigAlert] = []
         for result in results:
             if isinstance(result, BaseException):
-                logger.exception("Network config health check failed", exc_info=result)
+                logger.error("Network config health check failed", exc_info=result)
                 continue
             alerts.extend(result)
         _network_cache[cache_key] = (time.monotonic(), alerts)
