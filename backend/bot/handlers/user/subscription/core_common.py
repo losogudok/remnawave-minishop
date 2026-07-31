@@ -98,6 +98,10 @@ def _tariff_purchase_markup(
     settings: Settings,
     back_callback: str = "main_action:subscribe",
     callback_context: str | None = None,
+    promo_quotes: dict[int, Any] | None = None,
+    promo_available: bool = False,
+    promo_enabled: bool = True,
+    promo_toggle_callback: str | None = None,
 ) -> InlineKeyboardMarkup:
     if tariff.billing_model == "period":
         return cast(
@@ -109,6 +113,10 @@ def _tariff_purchase_markup(
                 settings,
                 back_callback=back_callback,
                 callback_context=callback_context,
+                promo_quotes=promo_quotes,
+                promo_available=promo_available,
+                promo_enabled=promo_enabled,
+                promo_toggle_callback=promo_toggle_callback,
             ),
         )
     default_currency = default_currency_key_for_settings(settings)

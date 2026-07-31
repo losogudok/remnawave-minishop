@@ -29,8 +29,18 @@ async def create_promo_code(session: AsyncSession, promo_data: dict[str, Any]) -
     return new_promo
 
 
-async def get_promo_code_by_id(session: AsyncSession, promo_code_id: int) -> PromoCode | None:
-    return await session.get(PromoCode, promo_code_id)
+async def get_promo_code_by_id(
+    session: AsyncSession,
+    promo_code_id: int,
+    *,
+    for_update: bool = False,
+) -> PromoCode | None:
+    if not for_update:
+        return await session.get(PromoCode, promo_code_id)
+    result = await session.execute(
+        select(PromoCode).where(PromoCode.promo_code_id == promo_code_id).with_for_update()
+    )
+    return result.scalar_one_or_none()
 
 
 def _promo_lookup_candidates(code_str: str, *, preserve_case: bool) -> list[str]:
