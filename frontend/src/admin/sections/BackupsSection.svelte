@@ -6,6 +6,7 @@
     AdminButton,
     AdminEmptyState,
     AdminPagination,
+    AdminSortableHeader,
     AdminTable,
     AdminTableSkeleton,
   } from "$components/patterns/admin/index.js";
@@ -22,6 +23,7 @@
   import { Tooltip } from "$components/ui/primitives.js";
   import { TableHandler } from "@vincjo/datatables";
   import type { BackupArchive, BackupRestoreResult } from "../../lib/admin/stores/backupsStore";
+  import { sortAdminRows, type AdminSortColumn } from "$lib/admin/tableSort.js";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
 
@@ -36,6 +38,7 @@
   const BACKUPS_PAGE_SIZE = 10;
   const backupsTable = new TableHandler<BackupArchive>([], { rowsPerPage: BACKUPS_PAGE_SIZE });
   const backupsStore = getBackupsStore();
+  let backupsSort = $state("created_desc");
 
   let selectedName = $state("");
   let restoreDatabase = $state(false);
@@ -51,9 +54,43 @@
   const backupsRestoring = $derived(Boolean(backupsStore.backupsRestoring));
   const lastRestore = $derived(backupsStore.lastRestore as BackupRestoreResult | null);
   const totalArchives = $derived(archives?.length || 0);
+  const backupSortColumns = [
+    {
+      asc: "archive_asc",
+      desc: "archive_desc",
+      defaultDirection: "asc",
+      value: (archive) => archive.name,
+    },
+    {
+      asc: "created_asc",
+      desc: "created_desc",
+      defaultDirection: "desc",
+      value: (archive) =>
+        archive.created_at || archive.modified_at || archive.created_at_local || "",
+    },
+    {
+      asc: "size_asc",
+      desc: "size_desc",
+      defaultDirection: "desc",
+      value: (archive) => archive.size_bytes,
+    },
+    {
+      asc: "contents_asc",
+      desc: "contents_desc",
+      defaultDirection: "desc",
+      value: (archive) => [archive.has_database, archive.has_compose],
+    },
+    {
+      asc: "warnings_asc",
+      desc: "warnings_desc",
+      defaultDirection: "desc",
+      value: (archive) => archive.warnings?.length || 0,
+    },
+  ] satisfies AdminSortColumn<BackupArchive>[];
+  const sortedArchives = $derived(sortAdminRows(archives, backupsSort, backupSortColumns));
 
   $effect(() => {
-    backupsTable.setRows(archives || []);
+    backupsTable.setRows(sortedArchives);
     if (backupsTable.currentPage > (backupsTable.pageCount || 1))
       backupsTable.setPage(backupsTable.pageCount || 1);
   });
@@ -126,8 +163,13 @@
   }
 
   function focusArchivePage(name: string): void {
-    const index = (archives || []).findIndex((item) => item.name === name);
+    const index = sortedArchives.findIndex((item) => item.name === name);
     if (index >= 0) backupsTable.setPage(Math.floor(index / BACKUPS_PAGE_SIZE) + 1);
+  }
+
+  function setBackupsSort(sort: string): void {
+    backupsSort = sort;
+    backupsTable.setPage(1);
   }
 
   function warningsText(warnings: string[]): string {
@@ -307,11 +349,41 @@
           <thead>
             <tr>
               <th aria-label={at("select", {}, "Select")}></th>
-              <th>{at("backups_col_archive", {}, "Archive")}</th>
-              <th>{at("backups_col_created", {}, "Created")}</th>
-              <th>{at("backups_col_size", {}, "Size")}</th>
-              <th>{at("backups_col_contents", {}, "Contents")}</th>
-              <th>{at("backups_col_warnings", {}, "Warnings")}</th>
+              <AdminSortableHeader
+                label={at("backups_col_archive", {}, "Archive")}
+                column={backupSortColumns[0]}
+                currentSort={backupsSort}
+                {at}
+                onSort={setBackupsSort}
+              />
+              <AdminSortableHeader
+                label={at("backups_col_created", {}, "Created")}
+                column={backupSortColumns[1]}
+                currentSort={backupsSort}
+                {at}
+                onSort={setBackupsSort}
+              />
+              <AdminSortableHeader
+                label={at("backups_col_size", {}, "Size")}
+                column={backupSortColumns[2]}
+                currentSort={backupsSort}
+                {at}
+                onSort={setBackupsSort}
+              />
+              <AdminSortableHeader
+                label={at("backups_col_contents", {}, "Contents")}
+                column={backupSortColumns[3]}
+                currentSort={backupsSort}
+                {at}
+                onSort={setBackupsSort}
+              />
+              <AdminSortableHeader
+                label={at("backups_col_warnings", {}, "Warnings")}
+                column={backupSortColumns[4]}
+                currentSort={backupsSort}
+                {at}
+                onSort={setBackupsSort}
+              />
             </tr>
           </thead>
           <tbody>
