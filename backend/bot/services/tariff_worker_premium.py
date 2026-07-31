@@ -255,6 +255,16 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
             tariff,
             include_premium=not should_limit,
         )
+        override_detection_managed_squads = self.subscription_service._panel_squads_for_tariff(
+            tariff,
+            include_premium=True,
+        )
+        await self.subscription_service.deactivate_panel_managed_internal_overrides(
+            session,
+            user_id=int(sub.user_id),
+            panel_user_uuid=sub.panel_user_uuid,
+            managed_internal_squads=override_detection_managed_squads,
+        )
         effective_payload = {
             "uuid": sub.panel_user_uuid,
             **(
@@ -263,6 +273,7 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
                     user_id=int(sub.user_id),
                     panel_user_uuid=sub.panel_user_uuid,
                     managed_internal_squads=managed_squads,
+                    override_detection_managed_internal_squads=(override_detection_managed_squads),
                     panel_user_snapshot=panel_user_dict,
                     discover_panel_overrides=True,
                     fetch_panel_snapshot=False,
@@ -309,6 +320,9 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
                                     user_id=int(sub.user_id),
                                     panel_user_uuid=sub.panel_user_uuid,
                                     managed_internal_squads=managed_squads,
+                                    override_detection_managed_internal_squads=(
+                                        override_detection_managed_squads
+                                    ),
                                     panel_user_snapshot=full_panel_user,
                                     discover_panel_overrides=True,
                                     fetch_panel_snapshot=False,

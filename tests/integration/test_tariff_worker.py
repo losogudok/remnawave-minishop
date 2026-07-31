@@ -8,7 +8,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import ClassVar
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.services.panel_api_service import PanelApiService
 from bot.services.subscription_service_impl.core import SubscriptionService
@@ -727,6 +729,106 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
             panel_service.update_user_details_on_panel.assert_awaited_once()
             payload = panel_service.update_user_details_on_panel.await_args.args[1]
             self.assertEqual(payload["activeInternalSquads"], ["squad-1"])
+
+    async def test_premium_limit_does_not_persist_managed_premium_as_panel_override(self):
+        payload = _tariffs_config_payload()
+        payload["tariffs"][0]["premium_squad_uuids"] = ["premium-squad"]
+        payload["tariffs"][0]["premium_monthly_gb"] = 1
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "tariffs.json"
+            config_path.write_text(json.dumps(payload), encoding="utf-8")
+            settings = Settings(
+                _env_file=None,
+                BOT_TOKEN="token",
+                POSTGRES_USER="app_user",
+                POSTGRES_PASSWORD="app_password",
+                TARIFFS_CONFIG_PATH=str(config_path),
+            )
+            panel_service = AsyncMock(spec=PanelApiService)
+            panel_service.get_internal_squad_accessible_nodes = AsyncMock(
+                return_value=[{"uuid": "node-1", "name": "Premium"}]
+            )
+            panel_service.get_node_users_bandwidth_stats = AsyncMock(
+                return_value={"topUsers": [{"username": "tg_123", "total": 2 * (1024**3)}]}
+            )
+            panel_service.update_user_details_on_panel = AsyncMock(return_value={"response": {}})
+            subscription_service = SubscriptionService(settings, panel_service)
+            worker = TariffTrafficWorker(
+                settings=settings,
+                session_factory=SimpleNamespace(),
+                panel_service=panel_service,
+                subscription_service=subscription_service,
+            )
+            sub = SimpleNamespace(
+                subscription_id=1,
+                user_id=123,
+                panel_user_uuid="panel-uuid",
+                premium_baseline_bytes=1 * (1024**3),
+                premium_topup_balance_bytes=0,
+                premium_topup_used_bytes=0,
+                premium_used_bytes=0,
+                premium_is_limited=False,
+                premium_period_start_at=None,
+            )
+            tariff = settings.tariffs_config.require("standard")
+            session = MagicMock(spec=AsyncSession)
+            captured_overrides: list[str] = []
+
+            async def capture_override(*_args, **kwargs):
+                captured_overrides.append(kwargs["squad_uuid"])
+
+            async def active_overrides(*_args, **_kwargs):
+                return list(captured_overrides)
+
+            with (
+                patch(
+                    "bot.services.tariff_worker.tariff_dal.get_warning",
+                    new=AsyncMock(return_value=True),
+                ),
+                patch(
+                    "bot.services.tariff_worker_premium.tariff_dal.sum_traffic_topups",
+                    new=AsyncMock(return_value=0),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.squad_overrides.override_dal.deactivate_panel_internal_overrides_for_squads",
+                    new=AsyncMock(return_value=1),
+                ) as deactivate_managed,
+                patch(
+                    "bot.services.subscription_service_impl.squad_overrides.override_dal.upsert_internal_override",
+                    new=AsyncMock(side_effect=capture_override),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.squad_overrides.override_dal.get_active_internal_squad_uuids",
+                    new=AsyncMock(side_effect=active_overrides),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.squad_overrides.override_dal.get_active_external_override",
+                    new=AsyncMock(return_value=None),
+                ),
+            ):
+                await worker._sync_premium_squad_limit(
+                    session,
+                    sub,
+                    tariff,
+                    datetime.now(UTC),
+                    panel_username="tg_123",
+                    panel_user_dict={
+                        "activeInternalSquads": [
+                            {"uuid": "squad-1"},
+                            {"uuid": "premium-squad"},
+                        ]
+                    },
+                    panel_view="full_fetch",
+                )
+
+            self.assertEqual(captured_overrides, [])
+            deactivate_kwargs = deactivate_managed.await_args.kwargs
+            self.assertEqual(
+                deactivate_kwargs["squad_uuids"],
+                ["squad-1", "premium-squad"],
+            )
+            panel_payload = panel_service.update_user_details_on_panel.await_args.args[1]
+            self.assertEqual(panel_payload["activeInternalSquads"], ["squad-1"])
 
     async def test_unmetered_premium_squad_is_added_to_existing_subscription(self):
         payload = _tariffs_config_payload()
@@ -2366,6 +2468,47 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(sub.premium_is_limited)
         self.assertNotIn(41, worker._premium_leak_usage)
+
+    async def test_resolved_premium_leak_is_removed_from_admin_warning(self):
+        worker, _panel_service = self._premium_enforcement_worker()
+        sub = self._premium_enforcement_subscription(used_gb=10, limited=False)
+        worker.settings.REDIS_URL = "redis://localhost:6379/0"
+        worker.settings.REDIS_KEY_PREFIX = "test"
+
+        await self._run_premium_sync(worker, sub, node_usage_gb=30)
+        sub.premium_topup_balance_bytes = 50 * (1024**3)
+        stored = {
+            "node-1": {
+                "name": "Premium A",
+                "last_seen_at": datetime.now(UTC).isoformat(),
+                "subscriptions": [41, 99],
+            },
+            "node-2": {
+                "name": "Premium B",
+                "last_seen_at": datetime.now(UTC).isoformat(),
+                "subscriptions": [41],
+            },
+        }
+        with (
+            patch(
+                "bot.services.tariff_worker_premium_enforcement.cache_get_json",
+                new=AsyncMock(return_value=stored),
+            ),
+            patch(
+                "bot.services.tariff_worker_premium_enforcement.cache_set_json",
+                new=AsyncMock(),
+            ) as cache_set,
+            patch(
+                "bot.services.tariff_worker_premium_enforcement.cache_delete",
+                new=AsyncMock(),
+            ) as cache_delete,
+        ):
+            await self._run_premium_sync(worker, sub, node_usage_gb=30)
+
+        cache_delete.assert_not_awaited()
+        persisted = cache_set.await_args.args[2]
+        self.assertEqual(persisted["node-1"]["subscriptions"], [99])
+        self.assertNotIn("node-2", persisted)
 
     async def test_premium_usage_keeps_stored_total_when_node_stats_are_unavailable(self):
         settings = SimpleNamespace(
