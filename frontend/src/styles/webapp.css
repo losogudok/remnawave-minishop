@@ -1855,6 +1855,21 @@ a {
   align-items: stretch;
 }
 
+.referral-link-list,
+.referral-link-item {
+  display: grid;
+  gap: 8px;
+}
+
+.referral-link-list {
+  gap: 12px;
+}
+
+.referral-link-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .referral-copy-button {
   height: 100%;
 }

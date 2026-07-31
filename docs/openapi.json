@@ -7800,6 +7800,13 @@
             "title": "Appversion",
             "type": "string"
           },
+          "authProviders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Authproviders",
+            "type": "array"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
@@ -7919,6 +7926,7 @@
           "language",
           "languages",
           "emailAuthEnabled",
+          "authProviders",
           "registrationInviteOnlyEnabled",
           "appVersion",
           "appRepositoryUrl"
@@ -14201,6 +14209,12 @@
                     "settings": {
                       "additionalProperties": false,
                       "properties": {
+                        "auth_providers": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
                         "email_auth_enabled": {
                           "type": "boolean"
                         },

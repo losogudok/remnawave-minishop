@@ -57,6 +57,7 @@ from .common import (
     _normalize_language,
     _telegram_avatar_url,
 )
+from .referral_links import visible_referral_links
 from .serializers_billing_options import (
     _attach_payment_methods_to_plans,
     _serialize_hwid_device_packages,
@@ -220,6 +221,11 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
         webapp_referral_link = _build_webapp_referral_link(
             get_settings(request).SUBSCRIPTION_MINI_APP_URL,
             referral_code,
+        )
+        referral_link, webapp_referral_link = visible_referral_links(
+            referral_settings,
+            bot_link=referral_link,
+            webapp_link=webapp_referral_link,
         )
         referral_stats = (
             await referral_service.get_referral_stats(session, user_id)
@@ -389,6 +395,7 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             ),
             "subscription_guides_enabled": subscription_guides_available(settings),
             "email_auth_enabled": settings.email_auth_configured,
+            "auth_providers": settings.webapp_auth_providers,
         },
     }
 

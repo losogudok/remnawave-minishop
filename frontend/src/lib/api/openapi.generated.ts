@@ -5208,6 +5208,8 @@ export interface components {
       appRepositoryUrl: string;
       /** Appversion */
       appVersion: string;
+      /** Authproviders */
+      authProviders: string[];
       /** Currency */
       currency: string;
       /** Emailauthenabled */
@@ -8037,6 +8039,7 @@ export interface operations {
               welcome_bonus_without_telegram_enabled?: boolean;
             };
             settings: {
+              auth_providers?: string[];
               email_auth_enabled?: boolean;
               my_devices_enabled?: boolean;
               server_status_url?: string | null;
