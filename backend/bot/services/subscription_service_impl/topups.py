@@ -85,11 +85,28 @@ class TopupMixin(SubscriptionServiceMixinContract):
         )
         db_user = await user_dal.get_user_by_id(session, user_id)
         if not db_user or not db_user.panel_user_uuid:
+            logger.error(
+                "Traffic top-up activation has no panel identity"
+                " (payment_id=%s user_id=%s tariff_key=%s granted_gb=%s).",
+                payment_db_id,
+                user_id,
+                tariff.key,
+                granted_gb,
+            )
             return None
         sub = await subscription_dal.get_active_subscription_by_user_id(
             session, user_id, db_user.panel_user_uuid
         )
         if not sub:
+            logger.error(
+                "Traffic top-up activation found no active subscription"
+                " (payment_id=%s user_id=%s panel_user_uuid=%s tariff_key=%s granted_gb=%s).",
+                payment_db_id,
+                user_id,
+                db_user.panel_user_uuid,
+                tariff.key,
+                granted_gb,
+            )
             return None
 
         purchase_bytes = self.gb_to_bytes(granted_gb)
@@ -98,14 +115,17 @@ class TopupMixin(SubscriptionServiceMixinContract):
         rb = int(getattr(sub, "regular_bonus_bytes", 0) or 0)
         runl = bool(getattr(sub, "regular_unlimited_override", False))
         used_for_lim = int(getattr(sub, "traffic_used_bytes", 0) or 0)
+        hwid_limits = await self._resolve_hwid_device_limits(session, sub, tariff)
         new_limit = self._compute_main_traffic_limit_bytes(
             tier_baseline_bytes=baseline,
             topup_balance_bytes=new_topup_balance,
             regular_bonus_bytes=rb,
             regular_unlimited_override=runl,
             traffic_used_bytes=used_for_lim,
+            hwid_device_bonus_bytes=await self._hwid_device_traffic_bonus_bytes_for_sub(
+                session, sub, active_devices=hwid_limits.extra
+            ),
         )
-        hwid_limits = await self._resolve_hwid_device_limits(session, sub, tariff)
         base_hwid_limit = hwid_limits.base
         extra_hwid_devices = hwid_limits.extra
         effective_hwid_limit = hwid_limits.effective
@@ -369,14 +389,17 @@ class TopupMixin(SubscriptionServiceMixinContract):
         rb = int(getattr(sub, "regular_bonus_bytes", 0) or 0)
         runl = bool(getattr(sub, "regular_unlimited_override", False))
         used_for_lim = int(getattr(sub, "traffic_used_bytes", 0) or 0)
+        hwid_limits = await self._resolve_hwid_device_limits(session, sub, tariff)
         new_limit = self._compute_main_traffic_limit_bytes(
             tier_baseline_bytes=baseline_bytes,
             topup_balance_bytes=new_topup_balance,
             regular_bonus_bytes=rb,
             regular_unlimited_override=runl,
             traffic_used_bytes=used_for_lim,
+            hwid_device_bonus_bytes=await self._hwid_device_traffic_bonus_bytes_for_sub(
+                session, sub, active_devices=hwid_limits.extra
+            ),
         )
-        hwid_limits = await self._resolve_hwid_device_limits(session, sub, tariff)
         base_hwid_limit = hwid_limits.base
         extra_hwid_devices = hwid_limits.extra
         effective_hwid_limit = hwid_limits.effective

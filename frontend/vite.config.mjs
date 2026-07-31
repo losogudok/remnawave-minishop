@@ -55,7 +55,10 @@ export default defineConfig(({ command, mode }) => {
       lib: {
         entry: path.resolve(__dirname, entry),
         name: isAdminBuild ? "SubscriptionWebAppAdmin" : "SubscriptionWebApp",
-        formats: [isAdminBuild ? "es" : "iife"],
+        // Every bundle ships as an ES module so a screen the customer has not
+        // opened yet can stay in its own chunk. The shells load it with
+        // `<script type="module">`.
+        formats: ["es"],
         fileName: () => `${outputBase}.js`,
         cssFileName: outputBase,
       },
@@ -64,9 +67,13 @@ export default defineConfig(({ command, mode }) => {
           pluginTimings: false,
         },
         output: {
-          chunkFileNames: isAdminBuild
-            ? "subscription_webapp_admin.[name].[hash].js"
-            : undefined,
+          // `[name]` comes from the chunk's entry module, so `foo.svelte.ts`
+          // would put a second dot in the file name — and every consumer
+          // (the aiohttp route, the nginx copy, the docs demo) matches chunk
+          // names segment by segment. Flattening it here keeps one dot before
+          // the hash no matter what a source file is called.
+          chunkFileNames: (chunkInfo) =>
+            `${outputBase}.${String(chunkInfo.name || "chunk").replace(/[^A-Za-z0-9_-]+/g, "-")}.[hash].js`,
           manualChunks: isAdminBuild
             ? (id) => {
                 const normalizedId = id.split(path.sep).join("/");
@@ -77,7 +84,22 @@ export default defineConfig(({ command, mode }) => {
                   return "admin-vendor";
                 }
               }
-            : undefined,
+            : (id) => {
+                // The editor is only mounted on the support screens, and it is
+                // the heaviest thing the customer app can pull in. Keeping its
+                // dependencies together makes that one chunk cacheable instead
+                // of smeared across every screen that lazily needs it.
+                const normalizedId = id.split(path.sep).join("/");
+                if (
+                  normalizedId.includes("/node_modules/@tiptap/") ||
+                  normalizedId.includes("/node_modules/prosemirror-") ||
+                  normalizedId.includes("/node_modules/orderedmap/") ||
+                  normalizedId.includes("/node_modules/w3c-keyname/") ||
+                  normalizedId.includes("/node_modules/rope-sequence/")
+                ) {
+                  return "richtext";
+                }
+              },
           assetFileNames: (assetInfo) => {
             if (assetInfo.name && assetInfo.name.endsWith(".css")) {
               return `${outputBase}.css`;

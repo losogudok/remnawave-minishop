@@ -6,6 +6,8 @@ from aiogram import F, types
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from bot.infra.auto_renew import auto_renew_user_lock_name
+from bot.infra.redis import redis_lock
 from bot.keyboards.inline.user_keyboards import (
     get_bind_url_keyboard,
     get_payment_method_delete_confirm_keyboard,
@@ -184,23 +186,31 @@ async def payment_method_delete(
             list_user_payment_methods,
         )
 
-        if pm_id_raw:
-            if pm_id_raw.isdigit():
-                deleted = await delete_user_payment_method(
-                    session, callback.from_user.id, int(pm_id_raw)
+        async with redis_lock(
+            settings,
+            auto_renew_user_lock_name(callback.from_user.id),
+            ttl_seconds=60,
+        ) as acquired:
+            if not acquired:
+                await callback.answer(_("error_try_again"), show_alert=True)
+                return
+            if pm_id_raw:
+                if pm_id_raw.isdigit():
+                    deleted = await delete_user_payment_method(
+                        session, callback.from_user.id, int(pm_id_raw)
+                    )
+                else:
+                    deleted = await delete_user_payment_method_by_provider_id(
+                        session, callback.from_user.id, pm_id_raw
+                    )
+            try:
+                legacy_deleted = await user_billing_dal.delete_yk_payment_method(
+                    session, callback.from_user.id
                 )
-            else:
-                deleted = await delete_user_payment_method_by_provider_id(
-                    session, callback.from_user.id, pm_id_raw
-                )
-        try:
-            legacy_deleted = await user_billing_dal.delete_yk_payment_method(
-                session, callback.from_user.id
-            )
-            deleted = deleted or legacy_deleted
-        except Exception:
-            pass
-        await session.commit()
+                deleted = deleted or legacy_deleted
+            except Exception:
+                pass
+            await session.commit()
 
         methods = await list_user_payment_methods(session, callback.from_user.id)
         text = _("payment_methods_title")

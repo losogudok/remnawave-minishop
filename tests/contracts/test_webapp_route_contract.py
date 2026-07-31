@@ -79,6 +79,7 @@ class WebAppRouteContractTests(unittest.TestCase):
             ("GET", "/"): "index_route",
             ("GET", "/login/password"): "index_route",
             ("GET", "/home"): "index_route",
+            ("GET", "/plans"): "index_route",
             ("GET", "/install"): "index_route",
             ("GET", "/trial"): "index_route",
             ("GET", "/open-app"): "app_deeplink_route",
@@ -222,6 +223,18 @@ class WebAppRouteContractTests(unittest.TestCase):
             ("PATCH", "/api/admin/translations"): "admin_translations_patch_route",
             ("GET", "/api/admin/tariffs"): "admin_tariffs_get_route",
             ("PUT", "/api/admin/tariffs"): "admin_tariffs_save_route",
+            (
+                "GET",
+                "/api/admin/tariffs/reconciliation",
+            ): "admin_tariff_reconciliation_get_route",
+            (
+                "POST",
+                "/api/admin/tariffs/reconciliation",
+            ): "admin_tariff_reconciliation_apply_route",
+            (
+                "GET",
+                "/api/admin/tariffs/tribute/catalog",
+            ): "admin_tariffs_tribute_catalog_route",
             ("GET", "/api/admin/themes"): "admin_themes_get_route",
             ("PUT", "/api/admin/themes"): "admin_themes_save_route",
             ("POST", "/api/admin/appearance/logo"): "admin_appearance_logo_upload_route",

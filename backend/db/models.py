@@ -2,6 +2,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -174,7 +175,11 @@ class Subscription(Base):
     # the local fallback reminder spectrum.
     suppress_early_expiry_notifications = Column(Boolean, nullable=False, default=False)
     auto_renew_enabled = Column(Boolean, default=True, index=True)
+    auto_renew_consent_version = Column(Integer, nullable=False, default=0)
     tariff_key = Column(String, nullable=True, index=True)
+    tariff_binding_source = Column(String(32), nullable=True, index=True)
+    tariff_bound_at = Column(DateTime(timezone=True), nullable=True)
+    tariff_binding_note = Column(String(255), nullable=True)
     tier_baseline_bytes = Column(BigInteger, nullable=True)
     topup_balance_bytes = Column(BigInteger, nullable=False, default=0)
     premium_baseline_bytes = Column(BigInteger, nullable=False, default=0)
@@ -197,6 +202,68 @@ class Subscription(Base):
 
     def __repr__(self) -> str:
         return f"<Subscription(id={self.subscription_id}, user_id={self.user_id}, panel_uuid='{self.panel_user_uuid}', ends='{self.end_date}')>"  # noqa: E501
+
+
+class AutoRenewCycle(Base):
+    """Durable coordinator for one subscription renewal billing cycle."""
+
+    __tablename__ = "auto_renew_cycles"
+    __table_args__ = (
+        UniqueConstraint(
+            "subscription_id",
+            "cycle_anchor",
+            name="uq_auto_renew_cycles_subscription_anchor",
+        ),
+        Index("ix_auto_renew_cycles_state_next_attempt", "state", "next_attempt_at"),
+        Index("ix_auto_renew_cycles_user_state", "user_id", "state"),
+    )
+
+    cycle_id = Column(Integer, primary_key=True, autoincrement=True)
+    subscription_id = Column(
+        Integer,
+        ForeignKey("subscriptions.subscription_id"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False, index=True)
+    provider = Column(String(32), nullable=False, index=True)
+    cycle_anchor = Column(Date, nullable=False)
+    renewal_cycle_end = Column(DateTime(timezone=True), nullable=False, index=True)
+    state = Column(String(32), nullable=False, default="scheduled", index=True)
+    base_idempotence_key = Column(String(64), nullable=False, unique=True)
+    consent_version = Column(Integer, nullable=False, default=0)
+    payment_method_id = Column(
+        Integer,
+        ForeignKey("user_payment_methods.method_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    payment_method_provider_id = Column(String, nullable=False)
+    financial_attempts = Column(Integer, nullable=False, default=0)
+    transport_replays = Column(Integer, nullable=False, default=0)
+    next_attempt_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    lease_expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    current_payment_id = Column(Integer, nullable=True, index=True)
+    request_snapshot = Column(Text, nullable=False)
+    last_failure_kind = Column(String(64), nullable=True, index=True)
+    last_http_status = Column(Integer, nullable=True)
+    last_provider_code = Column(String(128), nullable=True)
+    cancellation_party = Column(String(64), nullable=True)
+    cancellation_reason = Column(String(128), nullable=True, index=True)
+    stopped_reason = Column(String(128), nullable=True, index=True)
+    retry_notified_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    subscription = relationship("Subscription")
+    user = relationship("User")
+    payment_method = relationship("UserPaymentMethod")
 
 
 class EmailVerificationCode(Base):
@@ -249,6 +316,11 @@ class Payment(Base):
             "provider_payment_id",
             name="uq_payments_provider_payment_id",
         ),
+        UniqueConstraint(
+            "auto_renew_cycle_id",
+            "renewal_attempt_number",
+            name="uq_payments_auto_renew_cycle_attempt",
+        ),
     )
 
     payment_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -256,6 +328,9 @@ class Payment(Base):
     yookassa_payment_id = Column(String, unique=True, index=True, nullable=True)
     provider_payment_id = Column(String, nullable=True)
     provider_payment_url = Column(String, nullable=True)
+    checkout_expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    provider_checked_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    failure_notified_at = Column(DateTime(timezone=True), nullable=True, index=True)
     provider = Column(String, nullable=False, default="yookassa", index=True)
     idempotence_key = Column(String, unique=True, nullable=True)
     amount = Column(Float, nullable=False)
@@ -263,6 +338,26 @@ class Payment(Base):
     status = Column(String, nullable=False, index=True)
     description = Column(String, nullable=True)
     subscription_duration_months = Column(Integer, nullable=True)
+    # Persistent attribution for merchant-initiated recurring charges. These
+    # fields stay nullable for historic and ordinary one-off payments.
+    is_auto_renew = Column(Boolean, nullable=False, default=False, index=True)
+    renewal_subscription_id = Column(Integer, nullable=True, index=True)
+    renewal_cycle_end = Column(DateTime(timezone=True), nullable=True)
+    auto_renew_cycle_id = Column(
+        Integer,
+        ForeignKey("auto_renew_cycles.cycle_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    renewal_attempt_number = Column(Integer, nullable=True)
+    renewal_consent_version = Column(Integer, nullable=True)
+    renewal_payment_method_id = Column(Integer, nullable=True, index=True)
+    provider_request_snapshot = Column(Text, nullable=True)
+    failure_kind = Column(String(64), nullable=True, index=True)
+    failure_http_status = Column(Integer, nullable=True)
+    failure_provider_code = Column(String(128), nullable=True)
+    provider_cancellation_party = Column(String(64), nullable=True)
+    provider_cancellation_reason = Column(String(128), nullable=True, index=True)
     sale_mode = Column(String, nullable=True, index=True)
     tariff_key = Column(String, nullable=True, index=True)
     purchased_gb = Column(Float, nullable=True)
@@ -272,6 +367,7 @@ class Payment(Base):
     hwid_pricing_period_months = Column(Integer, nullable=True)
     hwid_proration_ratio = Column(Float, nullable=True)
     hwid_full_price = Column(Float, nullable=True)
+    hwid_traffic_bonus_bytes = Column(BigInteger, nullable=True)
     promo_code_id = Column(Integer, ForeignKey("promo_codes.promo_code_id"), nullable=True)
     promo_effect_summary = Column(String, nullable=True)
     promo_bonus_days = Column(Integer, nullable=True)
@@ -286,11 +382,157 @@ class Payment(Base):
     checkout_charged_months = Column(Integer, nullable=True)
     checkout_charged_gb = Column(Float, nullable=True)
     checkout_quoted_at = Column(DateTime(timezone=True), nullable=True)
+    tariff_change_quote_snapshot = Column(Text, nullable=True)
+    entitlement_context_snapshot = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
     user = relationship("User", back_populates="payments")
     promo_code_used = relationship("PromoCode", back_populates="payments_where_used")
+    auto_renew_cycle = relationship("AutoRenewCycle")
+
+
+class TributeEntitlement(Base):
+    """Provider-side subscription binding kept stable across tariff config edits."""
+
+    __tablename__ = "tribute_entitlements"
+    __table_args__ = (
+        UniqueConstraint(
+            "tribute_subscription_id",
+            "trb_user_id",
+            name="uq_tribute_entitlements_subscription_user",
+        ),
+        Index(
+            "ix_tribute_entitlements_telegram_subscription",
+            "telegram_user_id",
+            "tribute_subscription_id",
+        ),
+    )
+
+    entitlement_id = Column(Integer, primary_key=True, autoincrement=True)
+    tribute_subscription_id = Column(BigInteger, nullable=False, index=True)
+    tribute_period_id = Column(BigInteger, nullable=False)
+    trb_user_id = Column(String(128), nullable=False)
+    telegram_user_id = Column(BigInteger, nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=True, index=True)
+    tariff_key = Column(String, nullable=True, index=True)
+    duration_months = Column(Integer, nullable=True)
+    subscription_type = Column(String(16), nullable=True)
+    status = Column(String(32), nullable=False, default="active", index=True)
+    active_until = Column(DateTime(timezone=True), nullable=False, index=True)
+    last_event_name = Column(String(64), nullable=False)
+    last_event_created_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    last_event_fingerprint = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    user = relationship("User")
+
+
+class TributeWebhookEvent(Base):
+    """Immutable, privacy-minimized receipt used for webhook idempotency."""
+
+    __tablename__ = "tribute_webhook_events"
+
+    event_id = Column(Integer, primary_key=True, autoincrement=True)
+    fingerprint = Column(String(64), nullable=False, unique=True, index=True)
+    event_name = Column(String(64), nullable=False, index=True)
+    tribute_subscription_id = Column(BigInteger, nullable=False, index=True)
+    tribute_period_id = Column(BigInteger, nullable=False)
+    trb_user_id = Column(String(128), nullable=False)
+    telegram_user_id = Column(BigInteger, nullable=False, index=True)
+    event_created_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    event_sent_at = Column(DateTime(timezone=True), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    price = Column(BigInteger, nullable=False)
+    amount = Column(BigInteger, nullable=False)
+    currency = Column(String(16), nullable=False)
+    status = Column(String(32), nullable=False, default="processing", index=True)
+    status_reason = Column(String(128), nullable=True)
+    payment_id = Column(
+        Integer,
+        ForeignKey("payments.payment_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+
+    payment = relationship("Payment")
+
+
+class TributeProductPurchase(Base):
+    """Immutable SKU snapshot and lifecycle for one Tribute Digital Product purchase."""
+
+    __tablename__ = "tribute_product_purchases"
+
+    purchase_row_id = Column(Integer, primary_key=True, autoincrement=True)
+    tribute_purchase_id = Column(BigInteger, nullable=False, unique=True, index=True)
+    tribute_transaction_id = Column(BigInteger, nullable=False)
+    tribute_product_id = Column(BigInteger, nullable=False, index=True)
+    trb_user_id = Column(String(128), nullable=True)
+    telegram_user_id = Column(BigInteger, nullable=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=True, index=True)
+    tariff_key = Column(String, nullable=True, index=True)
+    sale_mode = Column(String(64), nullable=True)
+    units = Column(Float, nullable=True)
+    amount = Column(BigInteger, nullable=False)
+    currency = Column(String(16), nullable=False)
+    status = Column(String(32), nullable=False, default="processing", index=True)
+    status_reason = Column(String(128), nullable=True)
+    payment_id = Column(
+        Integer,
+        ForeignKey("payments.payment_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    purchase_created_at = Column(DateTime(timezone=True), nullable=True)
+    fulfilled_at = Column(DateTime(timezone=True), nullable=True)
+    refunded_at = Column(DateTime(timezone=True), nullable=True)
+    refund_reason = Column(String(512), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    user = relationship("User")
+    payment = relationship("Payment")
+
+
+class TributeShopWebhookEvent(Base):
+    """Durable receipt for one semantic Tribute Shop webhook delivery."""
+
+    __tablename__ = "tribute_shop_webhook_events"
+
+    event_id = Column(Integer, primary_key=True, autoincrement=True)
+    fingerprint = Column(String(64), nullable=False, unique=True, index=True)
+    event_name = Column(String(64), nullable=False, index=True)
+    order_uuid = Column(String(36), nullable=False, index=True)
+    event_created_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    event_sent_at = Column(DateTime(timezone=True), nullable=False)
+    amount = Column(BigInteger, nullable=True)
+    currency = Column(String(16), nullable=True)
+    transaction_id = Column(BigInteger, nullable=True, index=True)
+    status = Column(String(32), nullable=False, default="processing", index=True)
+    status_reason = Column(String(128), nullable=True)
+    payment_id = Column(
+        Integer,
+        ForeignKey("payments.payment_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+
+    payment = relationship("Payment")
 
 
 class TrafficTopup(Base):
@@ -326,6 +568,7 @@ class HwidDevicePurchase(Base):
     )
     payment_id = Column(Integer, ForeignKey("payments.payment_id"), nullable=True, index=True)
     purchased_devices = Column(Integer, nullable=False)
+    traffic_bonus_bytes = Column(BigInteger, nullable=True)
     valid_from = Column(DateTime(timezone=True), nullable=True)
     valid_until = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -445,6 +688,8 @@ class PromoCode(Base):
     min_subscription_months = Column(Integer, nullable=True)
     min_traffic_gb = Column(Numeric(10, 2), nullable=True)
     origin = Column(String(32), nullable=False, default="admin")
+    # Set only for a code minted for one customer; NULL means a shared code.
+    user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=True, index=True)
     max_activations = Column(Integer, nullable=False)
     current_activations = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
@@ -586,6 +831,14 @@ class SupportTicketMessage(Base):
     author_role = Column(String(16), nullable=False)
     author_user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=True, index=True)
     body = Column(Text, nullable=False)
+    # "text" for everything written before the rich composer; "html" for the
+    # Telegram-subset markup it produces. Stored rather than guessed so an old
+    # body containing literal tag characters keeps reading as literal text.
+    body_format = Column(String(8), nullable=False, default="text", server_default="text")
+    # Resolved buttons attached by an admin, as a JSON array of objects: the
+    # caption plus the link every channel opens. Resolved at send time so the
+    # chat, Telegram and e-mail agree even after the promo code is edited.
+    buttons = Column(Text, nullable=True)
     is_internal_note = Column(Boolean, nullable=False, default=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     read_by_user_at = Column(DateTime(timezone=True), nullable=True)

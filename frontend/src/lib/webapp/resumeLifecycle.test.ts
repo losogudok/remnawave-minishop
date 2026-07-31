@@ -31,6 +31,7 @@ function makeLifecycle(overrides: TestOverrides = {}) {
   const deps = {
     clearLoginTooltip: vi.fn(),
     documentTarget,
+    refreshAccountDataOnResume: vi.fn(),
     refreshPendingActivationOnResume: vi.fn(),
     refreshTelegramNotificationsOnResume: vi.fn(),
     windowTarget,
@@ -62,6 +63,7 @@ describe("createResumeLifecycle", () => {
 
     expect(deps.refreshPendingActivationOnResume).toHaveBeenCalledOnce();
     expect(deps.refreshTelegramNotificationsOnResume).toHaveBeenCalledOnce();
+    expect(deps.refreshAccountDataOnResume).toHaveBeenCalledOnce();
   });
 
   it("skips resume refreshes while document is hidden", () => {
@@ -73,6 +75,32 @@ describe("createResumeLifecycle", () => {
 
     expect(deps.refreshPendingActivationOnResume).not.toHaveBeenCalled();
     expect(deps.refreshTelegramNotificationsOnResume).not.toHaveBeenCalled();
+    expect(deps.refreshAccountDataOnResume).not.toHaveBeenCalled();
+  });
+
+  it("re-reads the account payload only once per cooldown", () => {
+    let clock = 1_000;
+    const { deps, lifecycle } = makeLifecycle({
+      deps: { accountRefreshCooldownMs: 15_000, now: () => clock },
+    });
+
+    lifecycle.onResume();
+    clock += 5_000;
+    lifecycle.onResume();
+    clock += 15_000;
+    lifecycle.onResume();
+
+    expect(deps.refreshAccountDataOnResume).toHaveBeenCalledTimes(2);
+    expect(deps.refreshPendingActivationOnResume).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not re-read the account payload before sign-in", () => {
+    const { deps, lifecycle } = makeLifecycle();
+    shellState.mode = "login";
+
+    lifecycle.onResume();
+
+    expect(deps.refreshAccountDataOnResume).not.toHaveBeenCalled();
   });
 
   it("registers and unregisters browser listeners", () => {

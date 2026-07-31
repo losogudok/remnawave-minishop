@@ -33,6 +33,8 @@ from db.advisory_locks import acquire_subscription_background_sync_lock
 from db.dal import user_dal
 from db.models import Subscription
 
+from .tariff_worker_shared import PanelLimitPatchState
+
 logger = logging.getLogger(__name__)
 
 PREMIUM_WARNING_LEVEL_OFFSET = 1000
@@ -96,6 +98,8 @@ class TariffWorkerCoreMixin:
         def _fmt_bytes(self, value: int) -> str: ...
         async def traffic_period_tick(self, session: AsyncSession) -> None: ...
         async def legacy_throttle_recovery_tick(self, session: AsyncSession) -> None: ...
+        async def premium_fast_tick(self, session: AsyncSession) -> None: ...
+        def premium_fast_tick_seconds(self) -> int: ...
 
     def __init__(
         self,
@@ -114,6 +118,10 @@ class TariffWorkerCoreMixin:
         self.i18n = i18n
         self._stopped = asyncio.Event()
         self._premium_nodes_cache: dict[tuple[str, ...], dict[str, Any]] = {}
+        self._premium_node_names: dict[str, str] = {}
+        self._premium_leak_usage: dict[int, dict[str, int]] = {}
+        self._premium_drop_connections_at: dict[int, float] = {}
+        self._panel_limit_patches: dict[str, PanelLimitPatchState] = {}
         self._premium_node_usage_tick_cache: dict[
             tuple[str, str, str],
             dict[str, dict[Any, int]] | None,
@@ -389,6 +397,10 @@ class TariffWorkerCoreMixin:
     async def run(self) -> None:
         if not self.settings.tariffs_config:
             return
+        full_tick_seconds = max(1, int(self.settings.TARIFF_WORKER_TICK_SECONDS or 0))
+        fast_tick_seconds = self.premium_fast_tick_seconds()
+        sleep_seconds = fast_tick_seconds or full_tick_seconds
+        next_full_tick_at = 0.0
         while not self._stopped.is_set():
             try:
                 async with redis_lock(
@@ -400,24 +412,35 @@ class TariffWorkerCoreMixin:
                         logger.info("TariffTrafficWorker tick skipped: Redis lock is held")
                     else:
                         started = time.monotonic()
-                        await self._run_db_tick_with_retry(
-                            "traffic_period",
-                            self.traffic_period_tick,
-                        )
-                        await self._run_db_tick_with_retry(
-                            "legacy_throttle_recovery",
-                            self.legacy_throttle_recovery_tick,
-                        )
+                        full_tick_due = not fast_tick_seconds or started >= next_full_tick_at
+                        if full_tick_due:
+                            await self._run_db_tick_with_retry(
+                                "traffic_period",
+                                self.traffic_period_tick,
+                            )
+                            await self._run_db_tick_with_retry(
+                                "legacy_throttle_recovery",
+                                self.legacy_throttle_recovery_tick,
+                            )
+                            next_full_tick_at = time.monotonic() + full_tick_seconds
+                        else:
+                            # Between full ticks only the subscriptions that are about to
+                            # exhaust their premium quota are re-checked.
+                            await self._run_db_tick_with_retry(
+                                "premium_fast",
+                                self.premium_fast_tick,
+                            )
                         logger.info(
-                            "metric worker_tick_duration_seconds=%.3f worker=tariff",
+                            "metric worker_tick_duration_seconds=%.3f worker=tariff kind=%s",
                             time.monotonic() - started,
+                            "full" if full_tick_due else "premium_fast",
                         )
             except Exception:
                 logger.exception("TariffTrafficWorker tick failed")
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(
                     self._stopped.wait(),
-                    timeout=self.settings.TARIFF_WORKER_TICK_SECONDS,
+                    timeout=sleep_seconds,
                 )
 
     def stop(self) -> None:

@@ -65,6 +65,7 @@ async def create_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
                 "hwid_pricing_period_months": ctx.hwid_pricing_period_months,
                 "hwid_proration_ratio": ctx.hwid_proration_ratio,
                 "hwid_full_price": ctx.hwid_full_price,
+                "hwid_traffic_bonus_bytes": ctx.hwid_traffic_bonus_bytes,
             }
             metadata.update(
                 {key: str(value) for key, value in hwid_metadata.items() if value is not None}
@@ -100,6 +101,7 @@ async def create_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
             payment.payment_id,
             "pending_yookassa",
             yk_payment_id=provider_payment_id or None,
+            provider_payment_url=str(payment_url),
         )
         await ctx.session.commit()
         return payment_link_response(payment_url=payment_url, payment_id=payment.payment_id)

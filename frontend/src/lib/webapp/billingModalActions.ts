@@ -10,7 +10,8 @@ type BillingModalStore = {
     tariffCatalog: TariffCatalogEntry[],
     subscription: SubscriptionView,
     plans: BillingPlan[],
-    defaultMethod?: string
+    defaultMethod?: string,
+    options?: Record<string, unknown>
   ) => void;
   openTariffChangeModal: (defaultMethod?: string) => void;
   openTopupModal: (kind?: string, defaultMethod?: string) => void;
@@ -27,6 +28,7 @@ type BillingModalActionDeps = {
   devicesStore: DevicesActionsStore;
   methods: () => PaymentMethod[];
   plans: () => BillingPlan[];
+  suggestedPromoCode: () => string;
   singleTariffMode: () => boolean;
   subscription: () => SubscriptionView;
   tariffCatalog: () => TariffCatalogEntry[];
@@ -34,7 +36,7 @@ type BillingModalActionDeps = {
 };
 
 export function defaultPaymentMethod(methods: PaymentMethod[] | null | undefined): string {
-  return String(methods?.[0]?.id || "");
+  return String((methods || []).find((method) => !method.disabled)?.id || "");
 }
 
 export function createBillingModalActions({
@@ -43,6 +45,7 @@ export function createBillingModalActions({
   devicesStore,
   methods,
   plans,
+  suggestedPromoCode,
   singleTariffMode,
   subscription,
   tariffCatalog,
@@ -59,7 +62,8 @@ export function createBillingModalActions({
       tariffCatalog(),
       subscription(),
       plans(),
-      currentDefaultPaymentMethod()
+      currentDefaultPaymentMethod(),
+      { suggestedPromoCode: suggestedPromoCode() }
     );
   }
 

@@ -9,6 +9,7 @@ from bot.app.web.route_contracts import (
 )
 from bot.app.web.support_schemas import (
     SupportCountsOut,
+    SupportMessageButtonOut,
     SupportMessageOut,
     SupportTicketOut,
     SupportTypingIn,
@@ -46,7 +47,7 @@ SUPPORT_ROUTE_CONTRACTS: dict[str, RouteContract] = {
                 "peer_typing": BOOLEAN_SCHEMA,
             }
         ),
-        models=(SupportMessageOut, SupportTicketOut),
+        models=(SupportMessageButtonOut, SupportMessageOut, SupportTicketOut),
     ),
     "support_ticket_reply_route": user_contract(
         request_model=TicketReplyPayload,
@@ -56,7 +57,12 @@ SUPPORT_ROUTE_CONTRACTS: dict[str, RouteContract] = {
                 "message": schema_ref(SupportMessageOut),
             }
         ),
-        models=(SupportMessageOut, SupportTicketOut, TicketReplyPayload),
+        models=(
+            SupportMessageButtonOut,
+            SupportMessageOut,
+            SupportTicketOut,
+            TicketReplyPayload,
+        ),
     ),
     "support_ticket_read_route": user_contract(response_schema=ok_envelope_with()),
     "support_ticket_typing_route": user_contract(

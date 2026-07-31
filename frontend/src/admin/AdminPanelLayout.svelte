@@ -9,6 +9,7 @@
   import BrandMark from "$lib/webapp/BrandMark.svelte";
   import AdminHeaderActions from "./AdminHeaderActions.svelte";
   import AdminLazyModals from "./AdminLazyModals.svelte";
+  import AdminSectionTabs from "./AdminSectionTabs.svelte";
   import ConfigAlertsBanner from "./ConfigAlertsBanner.svelte";
   import { dynamicComponent, type DynamicComponent } from "./adminLazyComponents";
   import type { AdminSectionDescriptor } from "./sections/registry";
@@ -16,6 +17,7 @@
   import type { TranslationsSavedPayload } from "$lib/admin/stores/translationsStore";
   import type { AdminUser } from "$lib/admin/stores/usersStore";
   import type { UsersFilter, UsersRouteFilters } from "$lib/admin/usersRouteFilters";
+  import { lockPageScroll } from "$lib/webapp/scrollLock.js";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
   type SettingsPath = string[];
@@ -50,6 +52,7 @@
     active,
     activeSectionComponent,
     activeSectionLoading,
+    availableFeatures,
     adsStore,
     appFaviconUrl,
     appFaviconUseCustom,
@@ -63,6 +66,8 @@
     fmtDate,
     fmtDateShort,
     fmtMoney,
+    featureAvailable,
+    featuresResolved,
     initialTicketId,
     languageBusy,
     languageOptions,
@@ -113,6 +118,7 @@
     active: string;
     activeSectionComponent: DynamicComponent | null;
     activeSectionLoading: boolean;
+    availableFeatures: readonly string[];
     adsStore: AdsStoreBridge;
     appFaviconUrl: string;
     appFaviconUseCustom: boolean;
@@ -126,6 +132,8 @@
     fmtDate: DateFormatter;
     fmtDateShort: DateFormatter;
     fmtMoney: MoneyFormatter;
+    featureAvailable: boolean;
+    featuresResolved: boolean;
     initialTicketId: number | null;
     languageBusy: boolean;
     languageOptions: LanguageOption[];
@@ -243,6 +251,13 @@
     event.stopPropagation();
     if (adminLanguageClickGuardArmed) setAdminLanguageMenuOpen(false);
   }
+
+  // The drawer is an overlay like any dialog, so the content behind it stops
+  // scrolling while it is open instead of tracking the finger under the scrim.
+  $effect(() => {
+    if (!sidebarOpen) return;
+    return lockPageScroll();
+  });
 
   onDestroy(() => {
     clearAdminLanguageClickGuard();
@@ -421,7 +436,9 @@
       />
     </header>
 
-    <main class="admin-main">
+    <!-- The panel scrolls here, not on the document, so overlays freeze it by
+         this marker (see lib/webapp/scrollLock.ts). -->
+    <main class="admin-main" data-scroll-container>
       <ConfigAlertsBanner {at} section={active} onNavigate={onSetActive} />
       {#key active}
         <div
@@ -430,41 +447,58 @@
           in:fade={sectionFade()}
           out:fade={sectionFade()}
         >
-          {#if activeSectionComponent}
-            {@const ActiveSectionComponent = activeSectionComponent}
-            <ActiveSectionComponent
-              {at}
-              {brand}
-              {currentLang}
-              {fmtDate}
-              {fmtDateShort}
-              {fmtMoney}
-              onSettingsSaved={onSaveSettings}
-              onTranslationsSaved={onSaveTranslations}
-              {paymentStatusVariant}
-              {panelStatusBadge}
-              {resolvedAvatarUrl}
-              {routePrefix}
-              {settingsPath}
-              {userDisplayName}
-              {userInitials}
-              {userSecondaryName}
-              {appFaviconUrl}
-              {appFaviconUseCustom}
-              {onOpenUserCard}
-              {onOpenUsersFilter}
-              {onUsersFiltersChange}
-              {onOpenSettingsPath}
-              {onSettingsPathChange}
-              {initialTicketId}
-            />
-          {:else if activeSectionLoading}
-            <div class="admin-section-loading" aria-busy="true" aria-live="polite">
-              <span class="admin-skeleton admin-skeleton-line admin-skeleton-line-short"></span>
-              <span class="admin-skeleton admin-skeleton-line admin-skeleton-line-strong"></span>
-              <span class="admin-skeleton admin-skeleton-line"></span>
-            </div>
-          {/if}
+          <AdminSectionTabs
+            sectionId={active}
+            {at}
+            {availableFeatures}
+            {featuresResolved}
+            {routePrefix}
+            {onOpenUserCard}
+            onNavigateSection={onSetActive}
+          >
+            {#snippet section()}
+              {#if activeSectionComponent}
+                {@const ActiveSectionComponent = activeSectionComponent}
+                <ActiveSectionComponent
+                  {at}
+                  {availableFeatures}
+                  {brand}
+                  {currentLang}
+                  {fmtDate}
+                  {fmtDateShort}
+                  {fmtMoney}
+                  {featureAvailable}
+                  {featuresResolved}
+                  onSettingsSaved={onSaveSettings}
+                  onTranslationsSaved={onSaveTranslations}
+                  {paymentStatusVariant}
+                  {panelStatusBadge}
+                  {resolvedAvatarUrl}
+                  {routePrefix}
+                  {settingsPath}
+                  {userDisplayName}
+                  {userInitials}
+                  {userSecondaryName}
+                  {appFaviconUrl}
+                  {appFaviconUseCustom}
+                  {onOpenUserCard}
+                  {onOpenUsersFilter}
+                  {onUsersFiltersChange}
+                  {onOpenSettingsPath}
+                  {onSettingsPathChange}
+                  {initialTicketId}
+                  onNavigateSection={onSetActive}
+                />
+              {:else if activeSectionLoading}
+                <div class="admin-section-loading" aria-busy="true" aria-live="polite">
+                  <span class="admin-skeleton admin-skeleton-line admin-skeleton-line-short"></span>
+                  <span class="admin-skeleton admin-skeleton-line admin-skeleton-line-strong"
+                  ></span>
+                  <span class="admin-skeleton admin-skeleton-line"></span>
+                </div>
+              {/if}
+            {/snippet}
+          </AdminSectionTabs>
         </div>
       {/key}
     </main>
@@ -489,4 +523,5 @@
   {userTelegramProfileLinkKind}
   {onCloseUser}
   {onOpenPaymentUserCard}
+  {routePrefix}
 />

@@ -21,6 +21,42 @@ from .common import (
 )
 
 
+def _attach_payment_methods_to_plans(
+    settings: Settings,
+    plans: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    from bot.payment_providers import get_provider_spec
+
+    for plan in plans:
+        sale_mode = str(plan.get("sale_mode") or "subscription")
+        tariff_key = str(plan.get("tariff_key") or "").strip()
+        context_sale_mode = (
+            sale_mode if "@" in sale_mode or not tariff_key else f"{sale_mode}@{tariff_key}"
+        )
+        available: list[str] = []
+        externally_managed: list[str] = []
+        for method in settings.payment_methods_order:
+            method_id = str(method).strip().lower()
+            spec = get_provider_spec(method_id)
+            if not spec or not spec.is_usable_for_payment_context(
+                settings,
+                plan.get("months"),
+                context_sale_mode,
+            ):
+                continue
+            available.append(method_id)
+            if spec.is_price_managed_externally(
+                settings,
+                plan.get("months"),
+                context_sale_mode,
+            ):
+                externally_managed.append(method_id)
+        plan["available_payment_method_ids"] = available
+        if externally_managed:
+            plan["externally_managed_price_method_ids"] = externally_managed
+    return plans
+
+
 def _traffic_percent(used: int | None, limit: int | None) -> int:
     used_val = int(used or 0)
     limit_val = int(limit or 0)
@@ -73,7 +109,7 @@ def _serialize_topup_packages(
         if stars_price is not None and int(stars_price) > 0:
             plan["stars_price"] = int(stars_price)
         plans.append(plan)
-    return plans
+    return _attach_payment_methods_to_plans(settings, plans)
 
 
 def _serialize_hwid_device_packages(
@@ -114,7 +150,7 @@ def _serialize_hwid_device_packages(
         if stars_price is not None and int(stars_price) > 0:
             plan["stars_price"] = int(stars_price)
         plans.append(plan)
-    return plans
+    return _attach_payment_methods_to_plans(settings, plans)
 
 
 def _serialize_tariff_change_target(
@@ -192,6 +228,32 @@ def _serialize_tariff_change_target(
                         "currency": default_currency_code,
                     }
                 )
+    for action in actions:
+        if action.get("kind") != "payment":
+            continue
+        action_mode = str(action.get("mode") or "")
+        if action_mode == "paid_diff":
+            sale_mode = "tariff_upgrade"
+            context_units: float | int = 1
+        elif action_mode == "buy_package":
+            sale_mode = "topup"
+            context_units = float(action.get("traffic_gb") or 0)
+        else:
+            sale_mode = "subscription"
+            context_units = int(action.get("months") or 0)
+        payment_context = {
+            **action,
+            "sale_mode": sale_mode,
+            "months": context_units,
+            "tariff_key": tariff.key,
+        }
+        _attach_payment_methods_to_plans(settings, [payment_context])
+        for key in (
+            "available_payment_method_ids",
+            "externally_managed_price_method_ids",
+        ):
+            if key in payment_context:
+                action[key] = payment_context[key]
     return {
         "tariff_key": tariff.key,
         "title": tariff.name(lang),
@@ -228,6 +290,8 @@ def _serialize_payment_methods(
                 "name": presentation.webapp_label,
                 "icon": presentation.webapp_icon,
             }
+            if spec.price_managed_externally:
+                payload["price_managed_externally"] = True
             minimum = spec.payment_minimum(settings, payment_currency)
             if minimum:
                 payload.update(minimum)

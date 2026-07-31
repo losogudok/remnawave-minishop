@@ -76,6 +76,7 @@ async def _load_admin_users_list_payload(
     sort_value: str,
 ) -> dict[str, Any]:
     cache = _admin_users_list_cache(settings)
+    valid_tariff_keys = _admin_tariff_keys(settings)
     cache_key = _admin_users_list_cache_key(
         page=page,
         page_size=page_size,
@@ -84,6 +85,7 @@ async def _load_admin_users_list_payload(
         panel_status=panel_status,
         premium_traffic=premium_traffic,
         sort_value=sort_value,
+        valid_tariff_keys=sorted(valid_tariff_keys),
     )
     if cache is None:
         return await _load_admin_users_list_payload_uncached(
@@ -95,6 +97,7 @@ async def _load_admin_users_list_payload(
             panel_status=panel_status,
             premium_traffic=premium_traffic,
             sort_value=sort_value,
+            valid_tariff_keys=valid_tariff_keys,
         )
     return cast(
         dict[str, Any],
@@ -109,6 +112,7 @@ async def _load_admin_users_list_payload(
                 panel_status=panel_status,
                 premium_traffic=premium_traffic,
                 sort_value=sort_value,
+                valid_tariff_keys=valid_tariff_keys,
             ),
         ),
     )
@@ -124,6 +128,7 @@ async def _load_admin_users_list_payload_uncached(
     panel_status: str,
     premium_traffic: str,
     sort_value: str,
+    valid_tariff_keys: set[str],
 ) -> dict[str, Any]:
     async with async_session_factory() as session:
         users, total = await _filter_and_sort_users(
@@ -135,6 +140,7 @@ async def _load_admin_users_list_payload_uncached(
             sort_value=sort_value,
             page=page,
             page_size=page_size,
+            valid_tariff_keys=valid_tariff_keys,
         )
 
         statuses = await _bulk_user_statuses(session, [u.user_id for u in users])
@@ -225,6 +231,17 @@ def _enabled_admin_tariffs(settings: Settings) -> list[Any]:
     if not config:
         return []
     return list(getattr(config, "enabled_tariffs", []) or [])
+
+
+def _admin_tariff_keys(settings: Settings) -> set[str]:
+    config = settings.tariffs_config
+    if not config:
+        return set()
+    return {
+        str(tariff.key)
+        for tariff in getattr(config, "tariffs", []) or []
+        if str(getattr(tariff, "key", "") or "")
+    }
 
 
 def _enabled_admin_period_tariffs(settings: Settings) -> list[Any]:

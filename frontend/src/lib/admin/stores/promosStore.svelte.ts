@@ -24,6 +24,8 @@ type AdminApi = ApiClient["api"];
 type ToastFn = (message: string) => void;
 type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
 type Promo = components["schemas"]["PromoOut"];
+/** Which promo tab is listed; the backend pages each kind separately. */
+export type PromoKind = "shared" | "personal" | "all";
 type PromoActivation = components["schemas"]["PromoActivationOut"];
 type PromoDraft = Omit<components["schemas"]["PromoCreateBody"], "valid_days"> & {
   valid_days: number;
@@ -44,6 +46,8 @@ type PromosState = {
   promos: Promo[];
   promosTotal: number;
   promosPage: number;
+  promoKind: PromoKind;
+  promoOwnedTotal: number;
   promosLoading: boolean;
   promoCreateOpen: boolean;
   promoDraft: PromoDraft;
@@ -78,6 +82,7 @@ export type PromosStore = PromosState & {
   loadActivations: (page?: number) => Promise<void>;
   setActivationsPage: (page: number) => void;
   setPage: (page: number) => void;
+  setPromoKind: (kind: PromoKind) => void;
   setCreateOpen: (open: boolean) => void;
   updateDraft: (fields: Partial<PromoDraft>) => void;
   PROMOS_PAGE_SIZE: number;
@@ -186,6 +191,8 @@ export function createPromosStore({
   const state = $state<Omit<PromosState, "promos" | "promoActivations">>({
     promosTotal: 0,
     promosPage: 0,
+    promoKind: "shared",
+    promoOwnedTotal: 0,
     promosLoading: false,
     promoCreateOpen: false,
     promoDraft: defaultPromoDraft(),
@@ -215,21 +222,24 @@ export function createPromosStore({
   const PROMOS_PAGE_SIZE = 25;
   const ACTIVATIONS_PAGE_SIZE = 25;
 
-  function promosQueryKey(page: number): AdminQueryKey {
+  function promosQueryKey(page: number, kind: PromoKind): AdminQueryKey {
     return [
       PROMOS_QUERY_KEY[0],
       PROMOS_QUERY_KEY[1],
       {
         page,
+        kind,
       },
     ];
   }
 
-  async function requestPromos(page: number): Promise<PromosListResponse> {
+  async function requestPromos(page: number, kind: PromoKind): Promise<PromosListResponse> {
     const params = new URLSearchParams({
       page: String(page),
       page_size: String(PROMOS_PAGE_SIZE),
     });
+    // The backend pages each kind on its own, so a tab never mixes the two.
+    if (kind !== "all") params.set("kind", kind);
     const data = await api(buildAdminPromosPath(params));
     if (!isOkResponse(data)) {
       throw new AdminPromosError(adminErrorMessage(data, at, "Error"), data);
@@ -270,16 +280,25 @@ export function createPromosStore({
   async function loadPromos({ refresh = false }: { refresh?: boolean } = {}): Promise<void> {
     state.promosLoading = true;
     const currentPage = state.promosPage;
+    const currentKind = state.promoKind;
     try {
       const data = await fetchAdminQuery({
         queryClient,
-        queryKey: promosQueryKey(currentPage),
-        queryFn: () => requestPromos(currentPage),
+        queryKey: promosQueryKey(currentPage, currentKind),
+        queryFn: () => requestPromos(currentPage, currentKind),
         refresh,
       });
       const payload = unwrap(data);
       promos = payload.promos || [];
       state.promosTotal = payload.total || 0;
+      state.promoOwnedTotal = payload.owned_total || 0;
+      // Nothing issues codes for a named customer here, so drop back to the
+      // plain single list instead of stranding the admin on an empty tab.
+      if (!state.promoOwnedTotal && currentKind !== "shared") {
+        state.promoKind = "shared";
+        state.promosPage = 0;
+        void loadPromos({ refresh });
+      }
     } catch (error) {
       if (error instanceof AdminPromosError) {
         onToast(adminErrorMessage(error.payload, at, "Error"));
@@ -438,6 +457,14 @@ export function createPromosStore({
     void loadPromos();
   }
 
+  function setPromoKind(kind: PromoKind): void {
+    if (state.promoKind === kind) return;
+    state.promoKind = kind;
+    // Each tab has its own paging, so switching starts from the first page.
+    state.promosPage = 0;
+    void loadPromos();
+  }
+
   function setCreateOpen(open: boolean): void {
     if (open) {
       closeEditPromo();
@@ -465,6 +492,7 @@ export function createPromosStore({
     loadActivations,
     setActivationsPage,
     setPage,
+    setPromoKind,
     setCreateOpen,
     updateDraft,
     PROMOS_PAGE_SIZE,

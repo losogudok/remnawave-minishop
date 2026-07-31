@@ -20,11 +20,14 @@ from bot.infra.pricing import (
     resolve_effective_price,
 )
 from bot.infra.promo_policies import (
+    PromoCheckoutSuggestionContext,
     PromoRedemptionContext,
     PromoRedemptionDecision,
     evaluate_promo_redemption,
+    register_promo_checkout_suggestion_provider,
     register_promo_redemption_policy,
     reset_promo_redemption_policies,
+    resolve_promo_checkout_suggestion,
 )
 from bot.services.promo_effects import PromoEffects
 from db.dal import promo_code_dal
@@ -187,3 +190,42 @@ def test_redemption_policy_counts_pending_invoices_against_global_limit(monkeypa
 
     assert decision.allowed is False
     assert decision.reason_key == "promo_code_exhausted"
+
+
+def test_checkout_suggestion_uses_first_nonempty_plugin_provider():
+    seen: list[int] = []
+
+    async def empty_provider(ctx: PromoCheckoutSuggestionContext) -> None:
+        seen.append(ctx.user_id)
+
+    def code_provider(ctx: PromoCheckoutSuggestionContext) -> str:
+        seen.append(ctx.user_id)
+        return " PERSONAL20 "
+
+    register_promo_checkout_suggestion_provider(empty_provider)
+    register_promo_checkout_suggestion_provider(code_provider)
+
+    result = asyncio.run(
+        resolve_promo_checkout_suggestion(
+            PromoCheckoutSuggestionContext(session=object(), user_id=42)
+        )
+    )
+
+    assert result == "PERSONAL20"
+    assert seen == [42, 42]
+
+
+def test_checkout_suggestion_skips_failing_provider():
+    def failing_provider(_ctx: PromoCheckoutSuggestionContext) -> str:
+        raise RuntimeError("provider unavailable")
+
+    register_promo_checkout_suggestion_provider(failing_provider)
+    register_promo_checkout_suggestion_provider(lambda _ctx: "SAFE10")
+
+    result = asyncio.run(
+        resolve_promo_checkout_suggestion(
+            PromoCheckoutSuggestionContext(session=object(), user_id=7)
+        )
+    )
+
+    assert result == "SAFE10"

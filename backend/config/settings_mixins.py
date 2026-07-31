@@ -107,6 +107,7 @@ if TYPE_CHECKING:
         QA_PAYMENT_SECRET: str
         TRIAL_TRAFFIC_LIMIT_GB: float | None
         TRIAL_PREMIUM_TRAFFIC_LIMIT_GB: float | None
+        TRIAL_HWID_DEVICE_LIMIT: int | None
         USER_TRAFFIC_LIMIT_GB: float | None
         USER_SQUAD_UUIDS: str | None
         TRIAL_SQUAD_UUIDS: str | None
@@ -823,7 +824,7 @@ class SettingsValidationMixin:
         value = str(v or "").strip()
         return value or "X-Minishop-Edge-Token"
 
-    @field_validator("USER_HWID_DEVICE_LIMIT", mode="before")
+    @field_validator("USER_HWID_DEVICE_LIMIT", "TRIAL_HWID_DEVICE_LIMIT", mode="before")
     @classmethod
     def validate_optional_int(cls, v):
         if isinstance(v, str):

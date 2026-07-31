@@ -1,3 +1,4 @@
+import logging
 from typing import cast
 
 from aiogram import Bot
@@ -24,6 +25,8 @@ from bot.services.referral_service import ReferralService
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.services.support_service import SupportService
 from config.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 
 def build_core_services(
@@ -65,6 +68,7 @@ def build_core_services(
         async_session_factory,
         panel_service=panel_service,
         admin_ids=settings.ADMIN_IDS,
+        tariffs=_broadcast_tariff_audiences(settings),
     )
     outbound_messaging_service = OutboundMessagingService(bot)
     provider_configs = build_provider_configs()
@@ -101,3 +105,19 @@ def build_core_services(
         outbound_messaging_service=outbound_messaging_service,
         payment_services=payment_services,
     )
+
+
+def _broadcast_tariff_audiences(settings: Settings) -> list[tuple[str, str]]:
+    """Offer every enabled tariff as its own broadcast audience.
+
+    Reads the configured catalog rather than the database, so a tariff shows up
+    as a target the moment it is offered, even before anyone buys it. A broken
+    or absent catalog simply means no tariff audiences.
+    """
+
+    try:
+        tariffs = settings.tariffs_config.enabled_tariffs
+    except Exception:
+        logger.debug("Broadcast tariff audiences are unavailable", exc_info=True)
+        return []
+    return [(str(tariff.key), tariff.name("ru")) for tariff in tariffs if tariff.key]

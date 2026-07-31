@@ -27,6 +27,31 @@ def _subscription_model_payload(sub_payload: dict[str, Any]) -> dict[str, Any]:
     return filtered_payload
 
 
+def _with_tariff_binding_metadata(
+    payload: dict[str, Any],
+    *,
+    previous_tariff_key: str | None = None,
+    existing_source: str | None = None,
+) -> dict[str, Any]:
+    normalized = dict(payload)
+    if "tariff_key" not in normalized:
+        return normalized
+    tariff_key = str(normalized.get("tariff_key") or "").strip()
+    if not tariff_key:
+        normalized["tariff_key"] = None
+        normalized["tariff_binding_source"] = None
+        normalized["tariff_bound_at"] = None
+        normalized["tariff_binding_note"] = None
+        return normalized
+    normalized["tariff_key"] = tariff_key
+    changed = tariff_key != str(previous_tariff_key or "").strip()
+    if changed or not existing_source:
+        normalized.setdefault("tariff_binding_source", "application")
+        normalized.setdefault("tariff_bound_at", datetime.now(UTC))
+        normalized.setdefault("tariff_binding_note", None)
+    return normalized
+
+
 async def get_active_subscription_by_user_id(
     session: AsyncSession, user_id: int, panel_user_uuid: str | None = None
 ) -> Subscription | None:
@@ -38,6 +63,43 @@ async def get_active_subscription_by_user_id(
     if panel_user_uuid:
         stmt = stmt.where(Subscription.panel_user_uuid == panel_user_uuid)
     stmt = stmt.order_by(Subscription.end_date.desc()).limit(1)
+    result = await session.execute(stmt)
+    return result.scalars().first()
+
+
+async def get_active_subscription_by_user_id_for_update(
+    session: AsyncSession,
+    user_id: int,
+) -> Subscription | None:
+    """Lock the current entitlement row before a payment mutates it."""
+
+    stmt = (
+        select(Subscription)
+        .where(
+            Subscription.user_id == user_id,
+            Subscription.is_active == True,
+            Subscription.end_date > datetime.now(UTC),
+        )
+        .order_by(Subscription.end_date.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    result = await session.execute(stmt)
+    return result.scalars().first()
+
+
+async def get_subscription_by_id_for_update(
+    session: AsyncSession,
+    subscription_id: int,
+) -> Subscription | None:
+    """Lock an exact renewal target, including just-expired subscriptions."""
+
+    stmt = (
+        select(Subscription)
+        .where(Subscription.subscription_id == int(subscription_id))
+        .limit(1)
+        .with_for_update()
+    )
     result = await session.execute(stmt)
     return result.scalars().first()
 
@@ -198,7 +260,12 @@ async def update_subscription(
 ) -> Subscription | None:
     sub = await session.get(Subscription, subscription_id)
     if sub:
-        for key, value in update_data.items():
+        normalized_update = _with_tariff_binding_metadata(
+            update_data,
+            previous_tariff_key=sub.tariff_key,
+            existing_source=sub.tariff_binding_source,
+        )
+        for key, value in normalized_update.items():
             setattr(sub, key, value)
         await session.flush()
         await session.refresh(sub)
@@ -206,10 +273,63 @@ async def update_subscription(
 
 
 async def set_auto_renew(
-    session: AsyncSession, subscription_id: int, enabled: bool
+    session: AsyncSession,
+    subscription_id: int,
+    enabled: bool,
+    *,
+    stop_reason: str = "consent_changed",
 ) -> Subscription | None:
-    """Toggle auto_renew_enabled for a subscription."""
-    return await update_subscription(session, subscription_id, {"auto_renew_enabled": enabled})
+    """Toggle auto-renew and invalidate every pending charge for the old consent."""
+
+    from db.dal import auto_renew_dal
+
+    sub = await get_subscription_by_id_for_update(session, subscription_id)
+    if sub is None:
+        return None
+    if bool(sub.auto_renew_enabled) == bool(enabled) and enabled:
+        return sub
+    sub.auto_renew_enabled = bool(enabled)
+    sub.auto_renew_consent_version = int(sub.auto_renew_consent_version or 0) + 1
+    await auto_renew_dal.stop_open_cycles_for_subscription(
+        session,
+        subscription_id,
+        stop_reason,
+    )
+    await session.flush()
+    await session.refresh(sub)
+    return sub
+
+
+async def invalidate_user_auto_renew_consent(
+    session: AsyncSession,
+    user_id: int,
+    *,
+    reason: str,
+    disable: bool = False,
+    provider: str | None = None,
+) -> None:
+    """Invalidate queued charges after a payment-method or provider consent change."""
+
+    from db.dal import auto_renew_dal
+
+    filters = [
+        Subscription.user_id == user_id,
+        Subscription.is_active.is_(True),
+    ]
+    if provider:
+        filters.append(func.lower(Subscription.provider) == provider.strip().lower())
+    values: dict[str, Any] = {
+        "auto_renew_consent_version": Subscription.auto_renew_consent_version + 1,
+    }
+    if disable:
+        values["auto_renew_enabled"] = False
+    await session.execute(update(Subscription).where(*filters).values(**values))
+    await auto_renew_dal.stop_open_cycles_for_user(
+        session,
+        user_id,
+        reason,
+        provider=provider,
+    )
 
 
 async def set_user_subscriptions_cancelled_with_grace(
@@ -250,7 +370,12 @@ async def upsert_subscription(session: AsyncSession, sub_payload: dict[str, Any]
             existing_sub.subscription_id,
             panel_sub_uuid,
         )
-        for key, value in _subscription_model_payload(sub_payload).items():
+        normalized_payload = _with_tariff_binding_metadata(
+            _subscription_model_payload(sub_payload),
+            previous_tariff_key=existing_sub.tariff_key,
+            existing_source=existing_sub.tariff_binding_source,
+        )
+        for key, value in normalized_payload.items():
             setattr(existing_sub, key, value)
         await session.flush()
         await session.refresh(existing_sub)
@@ -271,7 +396,9 @@ async def upsert_subscription(session: AsyncSession, sub_payload: dict[str, Any]
                     f"User {sub_payload['user_id']} not found for new subscription with panel_uuid {panel_sub_uuid}."  # noqa: E501
                 )
 
-        new_sub = Subscription(**_subscription_model_payload(sub_payload))
+        new_sub = Subscription(
+            **_with_tariff_binding_metadata(_subscription_model_payload(sub_payload))
+        )
         session.add(new_sub)
         await session.flush()
         await session.refresh(new_sub)

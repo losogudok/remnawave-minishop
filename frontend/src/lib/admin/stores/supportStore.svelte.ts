@@ -24,6 +24,11 @@ type TicketViewOptions = { skipPush?: boolean };
 type LoadListOptions = { silent?: boolean };
 type TicketPatch = Partial<components["schemas"]["AdminTicketPatchPayload"]>;
 type TicketReplyPayload = components["schemas"]["AdminTicketReplyPayload"];
+export type SupportReplyButton = components["schemas"]["AdminBroadcastButtonBody"];
+export type SendReplyOptions = {
+  bodyFormat?: TicketReplyPayload["body_format"];
+  buttons?: SupportReplyButton[];
+};
 type BaseSupportTicket = components["schemas"]["SupportTicketOut"];
 type AdminSupportTicket = components["schemas"]["AdminSupportTicketOut"];
 type AdminSupportUser = components["schemas"]["AdminSupportUserOut"];
@@ -78,7 +83,7 @@ export type AdminSupportStore = AdminSupportState & {
   loadList(options?: LoadListOptions): Promise<void>;
   openTicket(ticketId: TicketId, opts?: TicketViewOptions): Promise<void>;
   closeTicketView(opts?: TicketViewOptions): void;
-  sendReply(body: string): Promise<boolean | undefined>;
+  sendReply(body: string, options?: SendReplyOptions): Promise<boolean | undefined>;
   notifyTyping(typing: boolean): void;
   patchTicket(updates: TicketPatch): Promise<void>;
   closeTicket(): void;
@@ -377,7 +382,7 @@ export function createAdminSupportStore({
     if (!opts.skipPush) pushTicketPath(null);
   }
 
-  async function sendReply(body: string) {
+  async function sendReply(body: string, options: SendReplyOptions = {}) {
     const snapshot = getSnapshot();
     if (snapshot.sending) return false;
     const current = snapshot.openedTicketId;
@@ -389,7 +394,13 @@ export function createAdminSupportStore({
     }
     typingHeartbeat.stop(current);
     try {
-      const payload: TicketReplyPayload = snapshotForPayload({ body, is_internal_note: internal });
+      const payload: TicketReplyPayload = snapshotForPayload({
+        body,
+        body_format: options.bodyFormat || "text",
+        // A note never leaves the panel, so it carries no customer buttons.
+        buttons: internal ? [] : options.buttons || [],
+        is_internal_note: internal,
+      });
       const res = await api(buildAdminSupportTicketMessagesPath(current), {
         method: "POST",
         body: JSON.stringify(payload),

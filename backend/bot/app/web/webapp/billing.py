@@ -26,6 +26,8 @@ from .billing_payments import (
     _sale_mode_is_traffic,
     _sale_mode_tariff_key,
     create_payment_route,
+)
+from .billing_promo_quote import (
     quote_promo_route,
 )
 from .billing_status import (

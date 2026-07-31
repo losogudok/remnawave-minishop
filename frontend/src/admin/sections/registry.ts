@@ -13,53 +13,98 @@ import {
   Tag,
   UsersRound,
 } from "$components/ui/icons.js";
+import {
+  ADMIN_SECTION_EXTENSIONS,
+  ADMIN_SECTION_GROUP_EXTENSIONS,
+  ADMIN_SECTION_TABS,
+} from "./extensionRegistry";
+import {
+  isFeatureBoundDescriptorVisible,
+  requiredFeatureForDescriptor,
+  type AdminSectionDescriptor,
+  type AdminSectionGroupDescriptor,
+  type AdminSectionTabDescriptor,
+} from "./extensionTypes";
 
-export interface AdminSectionDescriptor {
-  id: string;
-  group: string;
-  order: number;
-  i18nKey: string;
-  fallbackLabel: string;
-  titleI18nKey: string;
-  fallbackTitle: string;
-  subtitleI18nKey: string;
-  fallbackSubtitle: string;
-  icon: unknown;
-  component?: unknown;
-  loadComponent?: () => Promise<unknown>;
-  /** @deprecated Prefer requiredFeature for new extension descriptors. */
-  feature?: string;
-  /** Feature required to use this extension section. Navigation-only metadata. */
-  requiredFeature?: string;
-  /** Keep a feature-locked extension discoverable so it can render its own locked state. */
-  visibleWhenLocked?: boolean;
+export type {
+  AdminSectionDescriptor,
+  AdminSectionGroupDescriptor,
+  AdminSectionTabDescriptor,
+} from "./extensionTypes";
+
+/**
+ * Tabs an extension registered for one section, in render order. A locked tab
+ * stays listed when it opts into `visibleWhenLocked`, exactly like a section,
+ * so it can explain the lock instead of vanishing.
+ */
+export function adminSectionTabsFor(
+  sectionId: string,
+  availableFeatures: ReadonlySet<string>
+): AdminSectionTabDescriptor[] {
+  return ADMIN_SECTION_TABS.filter(
+    (tab) => tab.sectionId === sectionId && isFeatureBoundDescriptorVisible(tab, availableFeatures)
+  );
 }
 
 export function requiredFeatureForAdminSection(section: AdminSectionDescriptor): string {
-  return String(section.requiredFeature || section.feature || "").trim();
+  return requiredFeatureForDescriptor(section);
 }
 
 export function isAdminSectionVisible(
   section: AdminSectionDescriptor,
   availableFeatures: ReadonlySet<string>
 ): boolean {
-  const requiredFeature = requiredFeatureForAdminSection(section);
-  return (
-    !requiredFeature || availableFeatures.has(requiredFeature) || Boolean(section.visibleWhenLocked)
-  );
+  return isFeatureBoundDescriptorVisible(section, availableFeatures);
 }
 
-export const ADMIN_SECTION_GROUPS = [
+export function defaultQueryForAdminSection(
+  section: AdminSectionDescriptor | undefined,
+  availableFeatures: ReadonlySet<string>
+): Readonly<Record<string, string>> {
+  for (const routeDefault of section?.routeDefaults || []) {
+    const requiredFeature = String(routeDefault.requiredFeature || "").trim();
+    if (requiredFeature && !availableFeatures.has(requiredFeature)) continue;
+    return routeDefault.query;
+  }
+  return {};
+}
+
+const CORE_ADMIN_SECTION_GROUPS: AdminSectionGroupDescriptor[] = [
   { id: "overview", order: 10, i18nKey: "nav_overview", fallbackLabel: "Overview" },
   { id: "operations", order: 20, i18nKey: "nav_operations", fallbackLabel: "Operations" },
+  { id: "marketing", order: 30, i18nKey: "nav_marketing", fallbackLabel: "Marketing" },
+  { id: "support", order: 40, i18nKey: "nav_support", fallbackLabel: "Support" },
+  { id: "system", order: 50, i18nKey: "nav_system", fallbackLabel: "System" },
   {
+    // Kept for at least one release cycle so external extensions that still
+    // register sections into the legacy group keep a visible home; the group
+    // stays hidden while it has no items.
     id: "communication",
-    order: 30,
+    order: 60,
     i18nKey: "nav_communication",
     fallbackLabel: "Communication",
   },
-  { id: "system", order: 40, i18nKey: "nav_system", fallbackLabel: "System" },
 ];
+
+export function mergeAdminSectionGroups(
+  coreGroups: readonly AdminSectionGroupDescriptor[],
+  extensionGroups: readonly AdminSectionGroupDescriptor[]
+): AdminSectionGroupDescriptor[] {
+  const groups = new Map<string, AdminSectionGroupDescriptor>();
+  for (const group of [...coreGroups, ...extensionGroups]) {
+    const id = String(group?.id || "").trim();
+    if (!id || groups.has(id)) continue;
+    groups.set(id, { ...group, id });
+  }
+  return [...groups.values()].sort(
+    (left, right) => left.order - right.order || left.id.localeCompare(right.id)
+  );
+}
+
+export const ADMIN_SECTION_GROUPS = mergeAdminSectionGroups(
+  CORE_ADMIN_SECTION_GROUPS,
+  ADMIN_SECTION_GROUP_EXTENSIONS
+);
 
 const CORE_ADMIN_SECTIONS: AdminSectionDescriptor[] = [
   {
@@ -103,8 +148,8 @@ const CORE_ADMIN_SECTIONS: AdminSectionDescriptor[] = [
   },
   {
     id: "promos",
-    group: "operations",
-    order: 30,
+    group: "marketing",
+    order: 20,
     i18nKey: "nav_promos",
     fallbackLabel: "Promos",
     titleI18nKey: "section_promos_title",
@@ -116,8 +161,8 @@ const CORE_ADMIN_SECTIONS: AdminSectionDescriptor[] = [
   },
   {
     id: "ads",
-    group: "operations",
-    order: 40,
+    group: "marketing",
+    order: 30,
     i18nKey: "nav_ads",
     fallbackLabel: "Ads",
     titleI18nKey: "section_ads_title",
@@ -129,7 +174,7 @@ const CORE_ADMIN_SECTIONS: AdminSectionDescriptor[] = [
   },
   {
     id: "broadcast",
-    group: "communication",
+    group: "marketing",
     order: 10,
     i18nKey: "nav_broadcast",
     fallbackLabel: "Broadcast",
@@ -142,7 +187,7 @@ const CORE_ADMIN_SECTIONS: AdminSectionDescriptor[] = [
   },
   {
     id: "logs",
-    group: "communication",
+    group: "support",
     order: 20,
     i18nKey: "nav_logs",
     fallbackLabel: "Logs",
@@ -155,8 +200,8 @@ const CORE_ADMIN_SECTIONS: AdminSectionDescriptor[] = [
   },
   {
     id: "support",
-    group: "communication",
-    order: 30,
+    group: "support",
+    order: 10,
     i18nKey: "nav_support",
     fallbackLabel: "Support",
     titleI18nKey: "section_support_title",
@@ -234,19 +279,44 @@ const CORE_ADMIN_SECTIONS: AdminSectionDescriptor[] = [
   },
 ];
 
-function extensionSections(): AdminSectionDescriptor[] {
-  const modules = import.meta.glob("./extensions/*.ts", {
-    eager: true,
-    import: "default",
-  }) as Record<string, AdminSectionDescriptor | AdminSectionDescriptor[]>;
-  // Build-time extensions are sorted by path first and then by descriptor order
-  // below. This keeps output deterministic while letting extended builds add
-  // files without editing the core registry.
-  return Object.keys(modules)
-    .sort()
-    .flatMap((key) => modules[key] || []);
-}
-
-export const ADMIN_SECTIONS = [...CORE_ADMIN_SECTIONS, ...extensionSections()]
+export const ADMIN_SECTIONS = [...CORE_ADMIN_SECTIONS, ...ADMIN_SECTION_EXTENSIONS]
   .filter((section) => section?.id && (section?.component || section?.loadComponent))
   .sort((a, b) => a.group.localeCompare(b.group) || a.order - b.order || a.id.localeCompare(b.id));
+
+export function buildAdminSectionRouteAliases(
+  sections: readonly AdminSectionDescriptor[]
+): Map<string, string> {
+  const ids = new Set(sections.map((section) => section.id));
+  const aliases = new Map<string, string>();
+  for (const section of sections) {
+    for (const rawAlias of section.routeAliases || []) {
+      const alias = String(rawAlias || "")
+        .trim()
+        .toLowerCase();
+      // An alias may never shadow a registered section id or an earlier alias.
+      if (!alias || ids.has(alias) || aliases.has(alias)) continue;
+      aliases.set(alias, section.id);
+    }
+  }
+  return aliases;
+}
+
+export const ADMIN_SECTION_ROUTE_ALIASES: ReadonlyMap<string, string> =
+  buildAdminSectionRouteAliases(ADMIN_SECTIONS);
+
+const ADMIN_SECTION_IDS: ReadonlySet<string> = new Set(ADMIN_SECTIONS.map((section) => section.id));
+
+/**
+ * Resolve a requested admin route slug against the full section registry,
+ * including extension sections and their registered route aliases. Returns
+ * the canonical section id, or an empty string when the slug is unknown to
+ * the registry (the caller decides the fallback).
+ */
+export function resolveAdminSectionId(value: unknown): string {
+  const slug = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (!slug) return "";
+  if (ADMIN_SECTION_IDS.has(slug)) return slug;
+  return ADMIN_SECTION_ROUTE_ALIASES.get(slug) || "";
+}

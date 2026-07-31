@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Mapping
 from typing import Any, cast
 
@@ -17,6 +18,7 @@ from . import (
     severpay,
     stars,
     stripe,
+    tribute,
     wata,
     yookassa,
 )
@@ -28,6 +30,8 @@ from .base import (
     ServiceFactoryContext,
 )
 from .shared import RecurringProviderService
+
+logger = logging.getLogger(__name__)
 
 PAYMENT_PROVIDER_SPECS: tuple[PaymentProviderSpec, ...] = (
     freekassa.SPEC,
@@ -46,6 +50,7 @@ PAYMENT_PROVIDER_SPECS: tuple[PaymentProviderSpec, ...] = (
     cloudpayments.SPEC,
     overpay.SPEC,
     stripe.SPEC,
+    tribute.SPEC,
     qa.SPEC,
 )
 
@@ -72,6 +77,32 @@ def get_provider_spec(method: str) -> PaymentProviderSpec | None:
         if normalized in spec.method_ids:
             return spec
     return None
+
+
+def _build_provider_model(
+    spec: PaymentProviderSpec,
+    model_class: type[Any],
+    init_kwargs: dict[str, Any],
+) -> Any | None:
+    """Build one provider env model, or ``None`` when its env is unusable.
+
+    One provider with an invalid env value used to abort the whole build: every
+    other provider lost its config bundle, every DB setting override silently
+    stopped applying, and startup died on the second call. A provider that
+    cannot read its own env is disabled instead — the rest of the deployment,
+    including the admin panel that has to fix it, keeps working.
+    """
+
+    try:
+        return model_class(**init_kwargs)
+    except Exception as exc:
+        logger.error(
+            "Payment provider %s is disabled: its env config is invalid (%s): %s",
+            spec.id,
+            model_class.__name__,
+            exc,
+        )
+        return None
 
 
 def build_provider_configs(*, force: bool = False) -> dict[str, ProviderConfigBundle]:
@@ -102,7 +133,9 @@ def build_provider_configs(*, force: bool = False) -> dict[str, ProviderConfigBu
     seen_services: set[str] = set()
     for spec in PAYMENT_PROVIDER_SPECS:
         if spec.presentation_class is not None:
-            presentations[spec.id] = spec.presentation_class(**init_kwargs)
+            presentation = _build_provider_model(spec, spec.presentation_class, init_kwargs)
+            if presentation is not None:
+                presentations[spec.id] = presentation
 
         if not spec.service_key or spec.service_key in seen_services:
             continue
@@ -110,7 +143,11 @@ def build_provider_configs(*, force: bool = False) -> dict[str, ProviderConfigBu
             continue
         seen_services.add(spec.service_key)
         bundles[spec.service_key] = ProviderConfigBundle(
-            config=spec.config_class(**init_kwargs) if spec.config_class else None,
+            config=(
+                _build_provider_model(spec, spec.config_class, init_kwargs)
+                if spec.config_class
+                else None
+            ),
             presentation=presentations.get(spec.id),
         )
     _provider_configs.clear()

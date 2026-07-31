@@ -707,6 +707,41 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/admin/tariffs/reconciliation": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Tariff Reconciliation Get */
+    get: operations["get_admin_tariff_reconciliation_get_route"];
+    put?: never;
+    /** Admin Tariff Reconciliation Apply */
+    post: operations["post_admin_tariff_reconciliation_apply_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/tariffs/tribute/catalog": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Tariffs Tribute Catalog */
+    get: operations["get_admin_tariffs_tribute_catalog_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/admin/themes": {
     parameters: {
       query?: never;
@@ -976,6 +1011,23 @@ export interface paths {
     put?: never;
     /** Admin User Squad Overrides Refresh */
     post: operations["post_admin_user_squad_overrides_refresh_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/users/{user_id}/subscription-reissue": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin User Subscription Reissue */
+    post: operations["post_admin_user_subscription_reissue_route"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1458,6 +1510,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/subscription/reissue": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Subscription Reissue */
+    post: operations["post_subscription_reissue_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/support/tickets": {
     parameters: {
       query?: never;
@@ -1834,6 +1903,8 @@ export interface components {
     };
     /** AdminBroadcastAudienceCountsOut */
     AdminBroadcastAudienceCountsOut: {
+      /** Audiences */
+      audiences?: components["schemas"]["AdminBroadcastAudienceOut"][];
       /** Counts */
       counts: {
         [key: string]: number | null;
@@ -1843,6 +1914,40 @@ export interface components {
        * @default false
        */
       email_enabled: boolean;
+    };
+    /** AdminBroadcastAudienceOut */
+    AdminBroadcastAudienceOut: {
+      /**
+       * Available
+       * @default true
+       */
+      available: boolean;
+      /** Fallback Label */
+      fallback_label: string;
+      /**
+       * Group Fallback Label
+       * @default null
+       */
+      group_fallback_label: string | null;
+      /**
+       * Group Label Key
+       * @default null
+       */
+      group_label_key: string | null;
+      /**
+       * Icon
+       * @default null
+       */
+      icon: string | null;
+      /** Label Key */
+      label_key: string;
+      /**
+       * Order
+       * @default 100
+       */
+      order: number;
+      /** Target */
+      target: string;
     };
     /** AdminBroadcastBody */
     AdminBroadcastBody: {
@@ -1855,6 +1960,10 @@ export interface components {
        * @default
        */
       email_subject: unknown;
+      /** Email Subjects */
+      email_subjects?: {
+        [key: string]: string;
+      };
       /**
        * Target
        * @default all
@@ -1865,6 +1974,10 @@ export interface components {
        * @default
        */
       text: unknown;
+      /** Texts */
+      texts?: {
+        [key: string]: string;
+      };
     };
     /**
      * AdminBroadcastButtonBody
@@ -1873,7 +1986,9 @@ export interface components {
      *     ``kind`` selects how the button URL is produced:
      *     - ``url`` — explicit ``url`` field;
      *     - ``promo_bot`` — deep link into the bot applying ``promo_code``;
-     *     - ``promo_webapp`` — link into the Mini App checkout with ``promo_code``.
+     *     - ``promo_webapp`` — link into the Mini App checkout with ``promo_code``;
+     *     - ``webapp_section`` — link that opens the Mini App screen named by
+     *       ``section`` (invite, support, devices, …).
      */
     AdminBroadcastButtonBody: {
       /**
@@ -1886,11 +2001,20 @@ export interface components {
        * @default
        */
       label: string;
+      /** Labels */
+      labels?: {
+        [key: string]: string;
+      };
       /**
        * Promo Code
        * @default
        */
       promo_code: string;
+      /**
+       * Section
+       * @default
+       */
+      section: string;
       /**
        * Url
        * @default
@@ -1906,6 +2030,10 @@ export interface components {
        * @default
        */
       email_subject: unknown;
+      /** Email Subjects */
+      email_subjects?: {
+        [key: string]: string;
+      };
       /**
        * Mode
        * @default render
@@ -1916,6 +2044,10 @@ export interface components {
        * @default
        */
       text: unknown;
+      /** Texts */
+      texts?: {
+        [key: string]: string;
+      };
       /**
        * User Id
        * @default null
@@ -2246,6 +2378,11 @@ export interface components {
        */
       value: unknown;
       /**
+       * Value Source
+       * @default null
+       */
+      value_source: string | null;
+      /**
        * Webhook Base Url Configured
        * @default null
        */
@@ -2428,6 +2565,21 @@ export interface components {
       /** Subscription Id */
       subscription_id: number;
       /**
+       * Tariff Binding Note
+       * @default null
+       */
+      tariff_binding_note: string | null;
+      /**
+       * Tariff Binding Source
+       * @default null
+       */
+      tariff_binding_source: string | null;
+      /**
+       * Tariff Bound At
+       * @default null
+       */
+      tariff_bound_at: string | null;
+      /**
        * Tariff Key
        * @default null
        */
@@ -2484,6 +2636,13 @@ export interface components {
       author_user_id: number | null;
       /** Body */
       body: string;
+      /**
+       * Body Format
+       * @default text
+       */
+      body_format: string;
+      /** Buttons */
+      buttons?: components["schemas"]["SupportMessageButtonOut"][];
       /**
        * Created At
        * @default null
@@ -2725,6 +2884,66 @@ export interface components {
       /** Status */
       status: string;
     };
+    /** AdminTariffReconciliationApplyBody */
+    AdminTariffReconciliationApplyBody: {
+      /**
+       * Apply
+       * @default true
+       */
+      apply: boolean;
+    };
+    /** AdminTariffReconciliationItemOut */
+    AdminTariffReconciliationItemOut: {
+      /** Applied */
+      applied: boolean;
+      /**
+       * Current Tariff Key
+       * @default null
+       */
+      current_tariff_key: string | null;
+      /**
+       * Proposed Tariff Key
+       * @default null
+       */
+      proposed_tariff_key: string | null;
+      /** Reason */
+      reason: string;
+      /**
+       * Source
+       * @default null
+       */
+      source: string | null;
+      /** Status */
+      status: string;
+      /** Subscription Id */
+      subscription_id: number;
+      /** User Id */
+      user_id: number;
+    };
+    /** AdminTariffReconciliationOut */
+    AdminTariffReconciliationOut: {
+      /** Applied */
+      applied: number;
+      /** Candidates */
+      candidates: number;
+      /** Dry Run */
+      dry_run: boolean;
+      /**
+       * Generated At
+       * Format: date-time
+       */
+      generated_at: string;
+      /** Healthy */
+      healthy: number;
+      /** Items */
+      items: components["schemas"]["AdminTariffReconciliationItemOut"][];
+      /** Items Truncated */
+      items_truncated: boolean;
+      /** Scanned */
+      scanned: number;
+      /** Unresolved */
+      unresolved: number;
+    };
     /** AdminTariffsCatalogOut */
     AdminTariffsCatalogOut: {
       /**
@@ -2784,6 +3003,14 @@ export interface components {
     AdminTicketReplyPayload: {
       /** Body */
       body: string;
+      /**
+       * Body Format
+       * @default text
+       * @enum {string}
+       */
+      body_format: "text" | "html";
+      /** Buttons */
+      buttons?: components["schemas"]["AdminBroadcastButtonBody"][];
       /**
        * Is Internal Note
        * @default false
@@ -2869,6 +3096,51 @@ export interface components {
       deletes?: unknown;
       /** Updates */
       updates?: unknown;
+    };
+    /** AdminTributeProductOut */
+    AdminTributeProductOut: {
+      /** Currency */
+      currency: string;
+      /**
+       * Link
+       * @default null
+       */
+      link: string | null;
+      /** Name */
+      name: string;
+      /** Price */
+      price: number;
+      /** Product Id */
+      product_id: number;
+      /** Status */
+      status: string;
+      /** Type */
+      type: string;
+    };
+    /** AdminTributeSubscriptionOut */
+    AdminTributeSubscriptionOut: {
+      /** Currency */
+      currency: string;
+      /** Name */
+      name: string;
+      /** Periods */
+      periods?: components["schemas"]["AdminTributeSubscriptionPeriodOut"][];
+      /** Subscription Id */
+      subscription_id: number;
+    };
+    /** AdminTributeSubscriptionPeriodOut */
+    AdminTributeSubscriptionPeriodOut: {
+      /**
+       * Months
+       * @default null
+       */
+      months: number | null;
+      /** Period */
+      period: string;
+      /** Period Id */
+      period_id: number;
+      /** Price */
+      price: number;
     };
     /** AdminUserBanBody */
     AdminUserBanBody: {
@@ -3197,6 +3469,12 @@ export interface components {
       /** Body */
       body: string;
       /**
+       * Body Format
+       * @default text
+       * @enum {string}
+       */
+      body_format: "text" | "html";
+      /**
        * Category
        * @default other
        * @enum {string}
@@ -3228,6 +3506,11 @@ export interface components {
       prices?: {
         [key: string]: number;
       };
+      /**
+       * Traffic Bonus Gb
+       * @default 0
+       */
+      traffic_bonus_gb: number;
     };
     /** HwidDevicePackageSet */
     HwidDevicePackageSet: {
@@ -3723,6 +4006,21 @@ export interface components {
        */
       traffic_multiplier: number | null;
       /**
+       * User Id
+       * @default null
+       */
+      user_id: number | null;
+      /**
+       * User Name
+       * @default null
+       */
+      user_name: string | null;
+      /**
+       * User Username
+       * @default null
+       */
+      user_username: string | null;
+      /**
        * Valid Until
        * @default null
        */
@@ -3929,6 +4227,28 @@ export interface components {
     } & {
       [key: string]: unknown;
     };
+    /**
+     * SupportMessageButtonOut
+     * @description A button the admin attached, already resolved to the link it opens.
+     */
+    SupportMessageButtonOut: {
+      /** Kind */
+      kind: string;
+      /** Label */
+      label: string;
+      /**
+       * Promo Code
+       * @default
+       */
+      promo_code: string;
+      /**
+       * Section
+       * @default
+       */
+      section: string;
+      /** Url */
+      url: string;
+    };
     /** SupportMessageOut */
     SupportMessageOut: {
       /** Author Role */
@@ -3940,6 +4260,13 @@ export interface components {
       author_user_id: number | null;
       /** Body */
       body: string;
+      /**
+       * Body Format
+       * @default text
+       */
+      body_format: string;
+      /** Buttons */
+      buttons?: components["schemas"]["SupportMessageButtonOut"][];
       /**
        * Created At
        * @default null
@@ -4143,6 +4470,8 @@ export interface components {
       traffic_limit_strategy: ("NO_RESET" | "DAY" | "WEEK" | "MONTH" | "MONTH_ROLLING") | null;
       /** @default null */
       traffic_packages: components["schemas"]["PackageSet"] | null;
+      /** @default null */
+      tribute: components["schemas"]["TributeTariffConfig"] | null;
     };
     /** TariffsSaveBody */
     TariffsSaveBody: {
@@ -4480,6 +4809,12 @@ export interface components {
     TicketReplyPayload: {
       /** Body */
       body: string;
+      /**
+       * Body Format
+       * @default text
+       * @enum {string}
+       */
+      body_format: "text" | "html";
     };
     /** TrafficPackage */
     TrafficPackage: {
@@ -4487,6 +4822,56 @@ export interface components {
       gb: number;
       /** Price */
       price: number;
+    };
+    /** TributeProductConfig */
+    TributeProductConfig: {
+      /** Link */
+      link: string;
+      /** Product Id */
+      product_id: number;
+    };
+    /**
+     * TributeTariffConfig
+     * @description Creator-side mapping for one tariff.
+     *
+     *     A period may be sold by its own Tribute subscription, with its own share
+     *     link and subscription id, because Tribute publishes one subscription per
+     *     offer rather than one per tariff. ``period_links`` and
+     *     ``period_subscription_ids`` carry those overrides; the tariff-level
+     *     ``link``/``subscription_id`` pair stays as the default for periods that do
+     *     not declare their own, which is what a single-subscription tariff uses.
+     */
+    TributeTariffConfig: {
+      /**
+       * Link
+       * @default null
+       */
+      link: string | null;
+      /** Period Ids */
+      period_ids?: {
+        [key: string]: number;
+      };
+      /** Period Links */
+      period_links?: {
+        [key: string]: string;
+      };
+      /** Period Subscription Ids */
+      period_subscription_ids?: {
+        [key: string]: number;
+      };
+      /** Premium Traffic Products */
+      premium_traffic_products?: {
+        [key: string]: components["schemas"]["TributeProductConfig"];
+      };
+      /**
+       * Subscription Id
+       * @default null
+       */
+      subscription_id: number | null;
+      /** Traffic Products */
+      traffic_products?: {
+        [key: string]: components["schemas"]["TributeProductConfig"];
+      };
     };
     /** WebAppAutoRenewPayload */
     WebAppAutoRenewPayload: {
@@ -4766,6 +5151,11 @@ export interface components {
       /** Password Confirm */
       password_confirm: string;
     };
+    /**
+     * WebAppSubscriptionReissuePayload
+     * @description Empty body for the subscription reissue action (extra keys ignored).
+     */
+    WebAppSubscriptionReissuePayload: Record<string, never>;
     /** WebAppTariffChangePayload */
     WebAppTariffChangePayload: {
       /** Mode */
@@ -5794,6 +6184,7 @@ export interface operations {
           "application/json": {
             /** @constant */
             ok: true;
+            owned_total: number;
             page: number;
             page_size: number;
             promos: components["schemas"]["PromoOut"][];
@@ -5959,6 +6350,7 @@ export interface operations {
         content: {
           "application/json": {
             applied: number;
+            not_applied: string[];
             /** @constant */
             ok: true;
             reverted: number;
@@ -6253,6 +6645,81 @@ export interface operations {
             /** @constant */
             ok: true;
           } & components["schemas"]["AdminTariffsOut"];
+        };
+      };
+    };
+  };
+  get_admin_tariff_reconciliation_get_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          } & components["schemas"]["AdminTariffReconciliationOut"];
+        };
+      };
+    };
+  };
+  post_admin_tariff_reconciliation_apply_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminTariffReconciliationApplyBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          } & components["schemas"]["AdminTariffReconciliationOut"];
+        };
+      };
+    };
+  };
+  get_admin_tariffs_tribute_catalog_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            products: components["schemas"]["AdminTributeProductOut"][];
+            subscriptions: components["schemas"]["AdminTributeSubscriptionOut"][];
+          };
         };
       };
     };
@@ -6809,6 +7276,32 @@ export interface operations {
       };
     };
   };
+  post_admin_user_subscription_reissue_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        user_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            email_sent: boolean;
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
   post_admin_user_tariff_route: {
     parameters: {
       query?: never;
@@ -7300,15 +7793,19 @@ export interface operations {
             /** @constant */
             ok: true;
             plans?: {
+              available_payment_method_ids?: string[];
               billing_model?: string;
               currency?: string;
               description?: string;
               device_count?: number;
+              externally_managed_price_method_ids?: string[];
               hwid_device_limit?: number | null;
               hwid_device_packages?: {
+                available_payment_method_ids?: string[];
                 billing_model?: string;
                 currency?: string;
                 device_count?: number;
+                externally_managed_price_method_ids?: string[];
                 id?: string;
                 months?: number;
                 price?: number;
@@ -7328,6 +7825,7 @@ export interface operations {
                 price?: number;
                 pricing_period_months?: number;
                 stars_price?: number;
+                traffic_bonus_gb?: number;
                 valid_from?: string | null;
                 valid_from_text?: string | null;
                 valid_until?: string | null;
@@ -7346,6 +7844,7 @@ export interface operations {
               tariff_key?: string;
               tariff_name?: string;
               title?: string;
+              traffic_bonus_gb?: number;
               traffic_gb?: number;
               valid_from?: string | null;
               valid_from_text?: string | null;
@@ -7425,17 +7924,44 @@ export interface operations {
               minimum_amount?: number;
               minimum_amount_text?: string;
               name?: string;
+              price_managed_externally?: boolean;
+              shop_limit_currency?: string;
+              shop_max_amount?: number;
+              shop_min_amount?: number;
             }[];
+            pending_payment: {
+              amount: number;
+              base_amount: number;
+              created_at: string;
+              currency: string;
+              discount_amount: number;
+              discount_percent: number;
+              months: number | null;
+              payment_id: number;
+              payment_url: string;
+              promo_code: string;
+              promo_effect_summary: string;
+              provider: string;
+              purchased_gb: number | null;
+              purchased_hwid_devices: number | null;
+              sale_mode: string;
+              status: string;
+              tariff_key: string | null;
+            } | null;
             plans: {
+              available_payment_method_ids?: string[];
               billing_model?: string;
               currency?: string;
               description?: string;
               device_count?: number;
+              externally_managed_price_method_ids?: string[];
               hwid_device_limit?: number | null;
               hwid_device_packages?: {
+                available_payment_method_ids?: string[];
                 billing_model?: string;
                 currency?: string;
                 device_count?: number;
+                externally_managed_price_method_ids?: string[];
                 id?: string;
                 months?: number;
                 price?: number;
@@ -7455,6 +7981,7 @@ export interface operations {
                 price?: number;
                 pricing_period_months?: number;
                 stars_price?: number;
+                traffic_bonus_gb?: number;
                 valid_from?: string | null;
                 valid_from_text?: string | null;
                 valid_until?: string | null;
@@ -7473,6 +8000,7 @@ export interface operations {
               tariff_key?: string;
               tariff_name?: string;
               title?: string;
+              traffic_bonus_gb?: number;
               traffic_gb?: number;
               valid_from?: string | null;
               valid_from_text?: string | null;
@@ -7514,6 +8042,7 @@ export interface operations {
               server_status_url?: string | null;
               subscription_guides_enabled?: boolean;
               subscription_purchase_description?: string;
+              subscription_reissue_enabled?: boolean;
               support_ticket_max_body_length?: number;
               support_ticket_max_subject_length?: number;
               support_tickets_enabled?: boolean;
@@ -7544,7 +8073,9 @@ export interface operations {
               config_link?: string | null;
               connect_url?: string | null;
               days_left?: number;
+              device_topup_available_currencies?: string[];
               device_topup_renewal_available?: boolean;
+              device_topup_unavailable_reason?: string | null;
               end_date?: string | null;
               end_date_text?: string | null;
               extra_hwid_devices?: number;
@@ -7592,6 +8123,7 @@ export interface operations {
               traffic_used?: string;
               traffic_used_bytes?: number | null;
             };
+            suggested_promo_code: string | null;
             support_unread_count: number;
             themes_catalog: {
               default_theme?: string;
@@ -7944,6 +8476,34 @@ export interface operations {
       };
     };
   };
+  post_subscription_reissue_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WebAppSubscriptionReissuePayload"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            email_sent: boolean;
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
   get_support_tickets_route: {
     parameters: {
       query?: never;
@@ -8189,12 +8749,14 @@ export interface operations {
             ok: true;
             targets: {
               actions: {
+                available_payment_method_ids?: string[];
                 converted_gb?: number;
                 converted_hwid_days?: number;
                 converted_hwid_gb?: number;
                 converted_hwid_value_rub?: number;
                 currency?: string;
                 days_after?: number;
+                externally_managed_price_method_ids?: string[];
                 kind?: string;
                 mode?: string;
                 months?: number;
@@ -8277,15 +8839,19 @@ export interface operations {
             /** @constant */
             ok: true;
             plans?: {
+              available_payment_method_ids?: string[];
               billing_model?: string;
               currency?: string;
               description?: string;
               device_count?: number;
+              externally_managed_price_method_ids?: string[];
               hwid_device_limit?: number | null;
               hwid_device_packages?: {
+                available_payment_method_ids?: string[];
                 billing_model?: string;
                 currency?: string;
                 device_count?: number;
+                externally_managed_price_method_ids?: string[];
                 id?: string;
                 months?: number;
                 price?: number;
@@ -8305,6 +8871,7 @@ export interface operations {
                 price?: number;
                 pricing_period_months?: number;
                 stars_price?: number;
+                traffic_bonus_gb?: number;
                 valid_from?: string | null;
                 valid_from_text?: string | null;
                 valid_until?: string | null;
@@ -8323,6 +8890,7 @@ export interface operations {
               tariff_key?: string;
               tariff_name?: string;
               title?: string;
+              traffic_bonus_gb?: number;
               traffic_gb?: number;
               valid_from?: string | null;
               valid_from_text?: string | null;

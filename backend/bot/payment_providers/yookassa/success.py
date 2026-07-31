@@ -21,7 +21,7 @@ from bot.services.panel_api_service import PanelApiService
 from bot.utils.config_link import prepare_config_links
 from bot.utils.install_links import ensure_user_install_guide_links
 from config.settings import Settings
-from db.dal import payment_dal, user_billing_dal, user_dal
+from db.dal import auto_renew_dal, payment_dal, subscription_dal, user_billing_dal, user_dal
 
 from ..base import normalize_payment_currency_code
 from ..shared import (
@@ -34,12 +34,15 @@ from ..shared import (
     parse_positive_int_units,
     payment_amount_and_currency_match,
     payment_units_for_activation,
+    payment_uses_entitlement_context,
+    preflight_payment_entitlement,
     resolve_inviter_name,
     send_success_message_to_user,
 )
 from ..shared import (
     sale_mode_tariff_key as _sale_mode_tariff_key,
 )
+from .cancellation import cancellation_can_finalize, handle_auto_renew_cancellation
 from .legacy_auto_renew import ensure_legacy_auto_renew_payment
 
 if TYPE_CHECKING:
@@ -476,6 +479,84 @@ async def process_successful_payment(
 
             return None
 
+        active_subscription = None
+        if payment_uses_entitlement_context(payment_record) or sale_mode_base in {
+            "subscription",
+            "tariff_upgrade",
+        }:
+            active_subscription = (
+                await subscription_dal.get_active_subscription_by_user_id_for_update(
+                    session,
+                    user_id,
+                )
+            )
+            if (
+                active_subscription is None
+                and payment_uses_entitlement_context(payment_record)
+                and bool(getattr(payment_record, "is_auto_renew", False))
+                and getattr(payment_record, "renewal_subscription_id", None) is not None
+            ):
+                renewal_subscription = await subscription_dal.get_subscription_by_id_for_update(
+                    session,
+                    int(payment_record.renewal_subscription_id),
+                )
+                if (
+                    renewal_subscription is not None
+                    and int(getattr(renewal_subscription, "user_id", 0) or 0) == user_id
+                ):
+                    active_subscription = renewal_subscription
+
+        payment_provider = (
+            str(getattr(payment_record, "provider", "") or "yookassa").strip().lower()
+        )
+        # The only payment allowed to land on a live Tribute recurrence is that
+        # recurrence's own subscription webhook. A Tribute tariff_upgrade is not
+        # it: an upgrade replaces the plan the recurrence was created for and
+        # Tribute cannot reprice an existing recurrence, so it is blocked like
+        # any other provider's.
+        tribute_subscription_event = (
+            sale_mode_base == "subscription" and payment_provider == "tribute"
+        )
+        if (
+            sale_mode_base in {"subscription", "tariff_upgrade"}
+            and not tribute_subscription_event
+            and active_subscription is not None
+            and str(getattr(active_subscription, "provider", "") or "").strip().lower() == "tribute"
+            and bool(getattr(active_subscription, "auto_renew_enabled", False))
+        ):
+            logger.error(
+                "Rejecting YooKassa payment %s because Tribute recurrence became active "
+                "before entitlement mutation.",
+                payment_db_id,
+            )
+            await payment_dal.update_payment_status_by_db_id(
+                session,
+                payment_db_id,
+                "activation_failed",
+                yk_payment_id_from_hook,
+            )
+            return None
+
+        if payment_uses_entitlement_context(payment_record):
+            entitlement_preflight = preflight_payment_entitlement(
+                payment_record,
+                active_subscription,
+            )
+            if not entitlement_preflight.allowed:
+                logger.error(
+                    "Rejecting YooKassa payment %s before entitlement mutation: %s (%s).",
+                    payment_db_id,
+                    entitlement_preflight.status,
+                    entitlement_preflight.reason,
+                )
+                await payment_dal.update_payment_status_by_db_id(
+                    session,
+                    payment_db_id,
+                    "activation_failed",
+                    yk_payment_id_from_hook,
+                )
+                return None
+
     except (TypeError, ValueError) as e:
         logger.error("Invalid metadata format for payment processing: %s - %s", metadata, e)
 
@@ -512,7 +593,6 @@ async def process_successful_payment(
             and payment_before_update
             and payment_before_update.status != "succeeded"
         )
-        # Try to capture and save payment method for future charges if available
         try:
             payment_method = payment_info_from_webhook.get("payment_method")
             if (
@@ -602,6 +682,7 @@ async def process_successful_payment(
                 yk_payment_id_from_hook,
             )
             raise Exception(f"DB Error: Could not update payment record {payment_db_id}")
+        await auto_renew_dal.mark_cycle_succeeded_for_record(session, updated_payment_record)
 
         tariff_key_for_event = (
             str(getattr(updated_payment_record, "tariff_key", "") or "").strip()
@@ -623,6 +704,10 @@ async def process_successful_payment(
             activation=activation_details,
             end_date=events.iso(activation_details.get("end_date")),
             is_auto_renew=is_auto_renew,
+            renewal_subscription_id=(
+                activation_details.get("subscription_id")
+                or getattr(updated_payment_record, "renewal_subscription_id", None)
+            ),
         )
         deferred_events = []
         if sale_mode_base == "subscription":
@@ -830,7 +915,6 @@ async def process_cancelled_payment(
     i18n: JsonI18n,
     settings: Settings,
 ) -> dict[str, Any] | None:
-
     metadata_raw = payment_info_from_webhook.get("metadata")
     metadata = metadata_raw if isinstance(metadata_raw, dict) else {}
     user_id_str = metadata.get("user_id")
@@ -849,6 +933,10 @@ async def process_cancelled_payment(
         return None
 
     try:
+        cancellation_raw = payment_info_from_webhook.get("cancellation_details")
+        cancellation = cancellation_raw if isinstance(cancellation_raw, dict) else {}
+        cancellation_party = str(cancellation.get("party") or "").strip().lower() or None
+        cancellation_reason = str(cancellation.get("reason") or "").strip().lower() or None
         updated_payment = await payment_dal.update_payment_status_by_db_id(
             session,
             payment_db_id=payment_db_id,
@@ -857,6 +945,24 @@ async def process_cancelled_payment(
         )
 
         if updated_payment:
+            if not cancellation_can_finalize(updated_payment, payment_db_id, logger):
+                return None
+            await auto_renew_dal.record_provider_cancellation(
+                session,
+                payment_id=payment_db_id,
+                party=cancellation_party,
+                reason=cancellation_reason,
+            )
+            decision = await handle_auto_renew_cancellation(
+                session,
+                payment=updated_payment,
+                user_id=user_id,
+                cancellation_party=cancellation_party,
+                cancellation_reason=cancellation_reason,
+                settings=settings,
+            )
+            cycle_id = decision.cycle_id
+            retry_at = decision.retry_at
             logger.info(
                 "Payment %s (YK: %s) status updated to cancelled for user %s.",
                 payment_db_id,
@@ -869,14 +975,19 @@ async def process_cancelled_payment(
                 provider="yookassa",
                 provider_payment_id=payment_info_from_webhook.get("id"),
                 status=payment_info_from_webhook.get("status", "canceled"),
+                cancellation_party=cancellation_party,
+                cancellation_reason=cancellation_reason,
+                auto_renew_cycle_id=cycle_id,
+                auto_renew_retry_scheduled=retry_at is not None,
+                retry_at=retry_at,
+                message_key=("autorenew_retry_scheduled" if retry_at is not None else None),
             ).to_payload(exclude_unset=True)
             return payload
-        else:
-            logger.warning(
-                "Could not find payment record %s to update status to cancelled for user %s.",
-                payment_db_id,
-                user_id,
-            )
+        logger.warning(
+            "Could not find payment record %s to update status to cancelled for user %s.",
+            payment_db_id,
+            user_id,
+        )
 
     except Exception as e_process_cancel:
         logger.exception(

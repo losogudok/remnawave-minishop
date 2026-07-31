@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +9,29 @@ from db.dal import subscription_dal, tariff_dal, user_dal
 from .panel_identity import PanelUserCreateOptions
 
 logger = logging.getLogger(__name__)
+
+
+def immutable_subscription_start(
+    current_subscription: Any | None,
+    *,
+    now: datetime,
+) -> datetime:
+    """Preserve the first reliable start of an entitlement across renewals.
+
+    ``end_date`` is the renewal boundary. Reusing that boundary as
+    ``start_date`` destroys subscription history and can even put the start in
+    the future when a customer renews early. Invalid future anchors are
+    repaired to the current activation time.
+    """
+
+    current_start = getattr(current_subscription, "start_date", None)
+    if not isinstance(current_start, datetime):
+        return now
+    if current_start.tzinfo is None:
+        current_start = current_start.replace(tzinfo=UTC)
+    else:
+        current_start = current_start.astimezone(UTC)
+    return current_start if current_start <= now else now
 
 
 async def active_subscription_tariff_key(session: AsyncSession, user_id: int) -> str | None:

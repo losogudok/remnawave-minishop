@@ -32,6 +32,8 @@ export interface TariffDraft extends UnknownRecord {
   premium_monthly_gb: string | number;
   hwid_device_limit: string | number;
   conversion_rate_rub_per_gb: string | number;
+  tributeLink: string;
+  tributeSubscriptionId: string | number;
   periodRows: DraftRow[];
   topupRows: DraftRow[];
   premiumTopupRows: DraftRow[];
@@ -45,6 +47,9 @@ type ParsedPeriodRow = {
   stars: number | null;
   referral_inviter: number | null;
   referral_referee: number | null;
+  tribute_period_id: number | null;
+  tribute_link: string;
+  tribute_subscription_id: number | null;
 };
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -94,17 +99,67 @@ export function emptyTariffDraft(): TariffDraft {
     premium_monthly_gb: "",
     hwid_device_limit: "",
     conversion_rate_rub_per_gb: "",
+    tributeLink: "",
+    tributeSubscriptionId: "",
     periodRows: [
-      { months: 1, rub: 200, stars: "", referral_inviter: 3, referral_referee: 1 },
-      { months: 3, rub: 600, stars: "", referral_inviter: 7, referral_referee: 3 },
-      { months: 6, rub: 1200, stars: "", referral_inviter: 15, referral_referee: 7 },
-      { months: 12, rub: 2400, stars: "", referral_inviter: 30, referral_referee: 15 },
+      {
+        months: 1,
+        rub: 200,
+        stars: "",
+        referral_inviter: 3,
+        referral_referee: 1,
+        tribute_period_id: "",
+        tribute_link: "",
+        tribute_subscription_id: "",
+      },
+      {
+        months: 3,
+        rub: 600,
+        stars: "",
+        referral_inviter: 7,
+        referral_referee: 3,
+        tribute_period_id: "",
+        tribute_link: "",
+        tribute_subscription_id: "",
+      },
+      {
+        months: 6,
+        rub: 1200,
+        stars: "",
+        referral_inviter: 15,
+        referral_referee: 7,
+        tribute_period_id: "",
+        tribute_link: "",
+        tribute_subscription_id: "",
+      },
+      {
+        months: 12,
+        rub: 2400,
+        stars: "",
+        referral_inviter: 30,
+        referral_referee: 15,
+        tribute_period_id: "",
+        tribute_link: "",
+        tribute_subscription_id: "",
+      },
     ],
     topupRows: [],
     premiumTopupRows: [],
     trafficRows: [
-      { gb: 10, price: 199, stars: "" },
-      { gb: 50, price: 799, stars: "" },
+      {
+        gb: 10,
+        price: 199,
+        stars: "",
+        tribute_product_id: "",
+        tribute_product_link: "",
+      },
+      {
+        gb: 50,
+        price: 799,
+        stars: "",
+        tribute_product_id: "",
+        tribute_product_link: "",
+      },
     ],
     hwidRows: [],
   };
@@ -134,14 +189,21 @@ export function normalizeCurrencyKey(value: unknown, fallback = "rub"): string {
 export function rowsFromPackages(
   packageSet: PackageSet | null | undefined,
   currency: string,
-  valueKey: string
+  valueKey: string,
+  options: { sharedNumberKeys?: string[] } = {}
 ): DraftRow[] {
-  return (packageSet?.[currency] || []).map((pkg) => ({
-    [valueKey]: pkg[valueKey],
-    price: pkg.price,
-    prices: pkg.prices ? cloneValue(pkg.prices) : undefined,
-    min_price: pkg.min_price ?? "",
-  }));
+  return (packageSet?.[currency] || []).map((pkg) => {
+    const row: DraftRow = {
+      [valueKey]: pkg[valueKey],
+      price: pkg.price,
+      prices: pkg.prices ? cloneValue(pkg.prices) : undefined,
+      min_price: pkg.min_price ?? "",
+    };
+    for (const key of options.sharedNumberKeys || []) {
+      row[key] = pkg[key];
+    }
+    return row;
+  });
 }
 
 function packageValueSignature(value: unknown): string {
@@ -149,13 +211,30 @@ function packageValueSignature(value: unknown): string {
   return Number.isFinite(num) ? String(num) : String(value || "");
 }
 
+function rowsWithTributeProducts(
+  rows: DraftRow[],
+  valueKey: string,
+  productsValue: unknown
+): DraftRow[] {
+  const products = asRecord(productsValue);
+  return rows.map((row) => {
+    const product = asRecord(products[packageValueSignature(row[valueKey])]);
+    return {
+      ...row,
+      tribute_product_id: scalarDraftValue(product.product_id),
+      tribute_product_link: String(product.link || ""),
+    };
+  });
+}
+
 export function packageRowsFromPackageSet(
   packageSet: PackageSet | null | undefined,
   currency: string,
-  valueKey: string
+  valueKey: string,
+  options: { sharedNumberKeys?: string[] } = {}
 ): DraftRow[] {
-  const currencyRows = rowsFromPackages(packageSet, currency, valueKey);
-  const starsRows = rowsFromPackages(packageSet, "stars", valueKey);
+  const currencyRows = rowsFromPackages(packageSet, currency, valueKey, options);
+  const starsRows = rowsFromPackages(packageSet, "stars", valueKey, options);
   const usedStars = new Set();
 
   const rows: DraftRow[] = currencyRows.map((row) => {
@@ -167,7 +246,7 @@ export function packageRowsFromPackageSet(
     const starsRow = starsIndex >= 0 ? starsRows[starsIndex] : null;
     if (starsIndex >= 0) usedStars.add(starsIndex);
 
-    return {
+    const merged: DraftRow = {
       [valueKey]: row[valueKey],
       price: row.price,
       stars: starsRow?.price ?? "",
@@ -176,17 +255,25 @@ export function packageRowsFromPackageSet(
       stars_prices: starsRow?.prices,
       stars_min_price: starsRow?.min_price ?? "",
     };
+    for (const key of options.sharedNumberKeys || []) {
+      merged[key] = row[key] ?? starsRow?.[key] ?? 0;
+    }
+    return merged;
   });
 
   starsRows.forEach((starsRow, index) => {
     if (usedStars.has(index)) return;
-    rows.push({
+    const merged: DraftRow = {
       [valueKey]: starsRow[valueKey],
       price: "",
       stars: starsRow.price,
       stars_prices: starsRow.prices,
       stars_min_price: starsRow.min_price ?? "",
-    });
+    };
+    for (const key of options.sharedNumberKeys || []) {
+      merged[key] = starsRow[key] ?? 0;
+    }
+    rows.push(merged);
   });
 
   return rows;
@@ -197,6 +284,10 @@ export function draftFromTariff(tariff: UnknownRecord, defaultCurrency = "rub"):
   const prices = asRecord(tariff.prices);
   const defaultPrices = asRecord(prices[currency]);
   const rubPrices = asRecord(tariff.prices_rub);
+  const tribute = asRecord(tariff.tribute);
+  const tributePeriodIds = asRecord(tribute.period_ids);
+  const tributePeriodLinks = asRecord(tribute.period_links);
+  const tributePeriodSubscriptionIds = asRecord(tribute.period_subscription_ids);
   // enabled_periods comes first so its order (the configured purchase order)
   // is preserved; any extra price-only months are appended afterwards.
   const months = new Set([
@@ -204,6 +295,7 @@ export function draftFromTariff(tariff: UnknownRecord, defaultCurrency = "rub"):
     ...Object.keys(defaultPrices).map(Number),
     ...(currency === "rub" ? Object.keys(asRecord(tariff.prices_rub)).map(Number) : []),
     ...Object.keys(asRecord(tariff.prices_stars)).map(Number),
+    ...Object.keys(tributePeriodIds).map(Number),
   ]);
   const periodRows = [...months]
     .filter((month) => Number.isFinite(month) && month > 0)
@@ -216,6 +308,9 @@ export function draftFromTariff(tariff: UnknownRecord, defaultCurrency = "rub"):
       stars: asRecord(tariff.prices_stars)[String(month)] ?? "",
       referral_inviter: asRecord(tariff.referral_bonus_days_inviter)[String(month)] ?? "",
       referral_referee: asRecord(tariff.referral_bonus_days_referee)[String(month)] ?? "",
+      tribute_period_id: tributePeriodIds[String(month)] ?? "",
+      tribute_link: String(tributePeriodLinks[String(month)] ?? ""),
+      tribute_subscription_id: scalarDraftValue(tributePeriodSubscriptionIds[String(month)]),
     }));
   const names = asStringRecord(tariff.names);
   const descriptions = asStringRecord(tariff.descriptions);
@@ -243,18 +338,29 @@ export function draftFromTariff(tariff: UnknownRecord, defaultCurrency = "rub"):
     premium_monthly_gb: scalarDraftValue(tariff.premium_monthly_gb),
     hwid_device_limit: scalarDraftValue(tariff.hwid_device_limit),
     conversion_rate_rub_per_gb: scalarDraftValue(tariff.conversion_rate_rub_per_gb),
+    tributeLink: String(tribute.link || ""),
+    tributeSubscriptionId: scalarDraftValue(tribute.subscription_id),
     periodRows: periodRows.length ? periodRows : emptyTariffDraft().periodRows,
-    topupRows: packageRowsFromPackageSet(tariff.topup_packages as PackageSet, currency, "gb"),
-    premiumTopupRows: packageRowsFromPackageSet(
-      tariff.premium_topup_packages as PackageSet,
-      currency,
-      "gb"
+    topupRows: rowsWithTributeProducts(
+      packageRowsFromPackageSet(tariff.topup_packages as PackageSet, currency, "gb"),
+      "gb",
+      tribute.traffic_products
     ),
-    trafficRows: packageRowsFromPackageSet(tariff.traffic_packages as PackageSet, currency, "gb"),
+    premiumTopupRows: rowsWithTributeProducts(
+      packageRowsFromPackageSet(tariff.premium_topup_packages as PackageSet, currency, "gb"),
+      "gb",
+      tribute.premium_traffic_products
+    ),
+    trafficRows: rowsWithTributeProducts(
+      packageRowsFromPackageSet(tariff.traffic_packages as PackageSet, currency, "gb"),
+      "gb",
+      tribute.traffic_products
+    ),
     hwidRows: packageRowsFromPackageSet(
       tariff.hwid_device_packages as PackageSet,
       currency,
-      "count"
+      "count",
+      { sharedNumberKeys: ["traffic_bonus_gb"] }
     ),
   };
 }
@@ -301,7 +407,7 @@ export function packagesFromPackageRows(
   rows: DraftRow[],
   valueKey: string,
   priceKey: string,
-  options: { pricesKey?: string; minPriceKey?: string } = {}
+  options: { pricesKey?: string; minPriceKey?: string; sharedNumberKeys?: string[] } = {}
 ): DraftRow[] {
   const pricesKey = options.pricesKey || "prices";
   const minPriceKey = options.minPriceKey || "min_price";
@@ -318,6 +424,9 @@ export function packagesFromPackageRows(
       if (minPrice !== null) {
         pkg.min_price = minPrice;
       }
+      for (const key of options.sharedNumberKeys || []) {
+        pkg[key] = parseNumber(row[key], 0) ?? 0;
+      }
       return pkg;
     })
     .filter(
@@ -328,19 +437,37 @@ export function packagesFromPackageRows(
 export function packageSetFromRows(
   rows: DraftRow[],
   valueKey: string,
-  defaultCurrency = "rub"
+  defaultCurrency = "rub",
+  options: { sharedNumberKeys?: string[] } = {}
 ): PackageSet | null {
   const currency = normalizeCurrencyKey(defaultCurrency);
-  const defaultCurrencyPackages = packagesFromPackageRows(rows, valueKey, "price");
+  const defaultCurrencyPackages = packagesFromPackageRows(rows, valueKey, "price", options);
   const stars = packagesFromPackageRows(rows, valueKey, "stars", {
     pricesKey: "stars_prices",
     minPriceKey: "stars_min_price",
+    sharedNumberKeys: options.sharedNumberKeys,
   });
   if (!defaultCurrencyPackages.length && !stars.length) return null;
   return {
     ...(defaultCurrencyPackages.length ? { [currency]: defaultCurrencyPackages } : {}),
     ...(stars.length ? { stars } : {}),
   };
+}
+
+export function tributeProductsFromRows(rows: DraftRow[], valueKey: string): UnknownRecord {
+  const products: UnknownRecord = {};
+  for (const row of rows || []) {
+    const unit = parseNumber(row[valueKey]);
+    if (unit === null || unit <= 0) continue;
+    const productId = parseNumber(row.tribute_product_id);
+    const link = String(row.tribute_product_link || "").trim();
+    if (productId === null && !link) continue;
+    products[String(unit)] = {
+      product_id: productId,
+      link,
+    };
+  }
+  return products;
 }
 
 export function normalizeUuidList(value: unknown): string[] {
@@ -378,13 +505,20 @@ export function tariffFromDraft(draft: TariffDraft, fallbackCurrency = "rub"): U
 
   const hwidLimit = parseIntNumber(draft.hwid_device_limit);
   if (hwidLimit !== null) tariff.hwid_device_limit = hwidLimit;
-  const hwidPackages = packageSetFromRows(draft.hwidRows, "count", defaultCurrency);
+  const hwidPackages = packageSetFromRows(draft.hwidRows, "count", defaultCurrency, {
+    sharedNumberKeys: ["traffic_bonus_gb"],
+  });
   if (hwidPackages) tariff.hwid_device_packages = hwidPackages;
   const premiumMonthlyGb = parseNumber(draft.premium_monthly_gb);
   if (premiumMonthlyGb !== null) tariff.premium_monthly_gb = premiumMonthlyGb;
   const premiumTopupPackages = packageSetFromRows(draft.premiumTopupRows, "gb", defaultCurrency);
   if (premiumTopupPackages) tariff.premium_topup_packages = premiumTopupPackages;
   tariff.premium_topup_always_available = Boolean(draft.premium_topup_always_available);
+  const tribute: UnknownRecord = {};
+  const premiumTrafficProducts = tributeProductsFromRows(draft.premiumTopupRows, "gb");
+  if (Object.keys(premiumTrafficProducts).length) {
+    tribute.premium_traffic_products = premiumTrafficProducts;
+  }
 
   if (tariff.billing_model === "period") {
     const trafficLimitStrategy = String(draft.traffic_limit_strategy || "").trim();
@@ -397,6 +531,9 @@ export function tariffFromDraft(draft: TariffDraft, fallbackCurrency = "rub"): U
         stars: parseNumber(row.stars, 0),
         referral_inviter: parseIntNumber(row.referral_inviter),
         referral_referee: parseIntNumber(row.referral_referee),
+        tribute_period_id: parseNumber(row.tribute_period_id),
+        tribute_link: String(row.tribute_link || "").trim(),
+        tribute_subscription_id: parseNumber(row.tribute_subscription_id),
       }))
       .filter(hasPositiveMonths)
       .filter((row) => {
@@ -425,14 +562,59 @@ export function tariffFromDraft(draft: TariffDraft, fallbackCurrency = "rub"): U
         .filter((row) => row.referral_referee !== null)
         .map((row) => [String(row.months), row.referral_referee])
     );
+    const tributeLink = String(draft.tributeLink || "").trim();
+    const tributeSubscriptionId = parseNumber(draft.tributeSubscriptionId);
+    const tributePeriodIds = Object.fromEntries(
+      rows
+        .filter((row) => row.tribute_period_id !== null)
+        .map((row) => [String(row.months), row.tribute_period_id])
+    );
+    // A period may be sold by its own Tribute subscription; the tariff-level
+    // pair stays as the default for the periods that do not name one.
+    const tributePeriodLinks = Object.fromEntries(
+      rows.filter((row) => row.tribute_link).map((row) => [String(row.months), row.tribute_link])
+    );
+    const tributePeriodSubscriptionIds = Object.fromEntries(
+      rows
+        .filter((row) => row.tribute_subscription_id !== null)
+        .map((row) => [String(row.months), row.tribute_subscription_id])
+    );
+    if (
+      tributeLink ||
+      tributeSubscriptionId !== null ||
+      Object.keys(tributePeriodIds).length > 0 ||
+      Object.keys(tributePeriodLinks).length > 0 ||
+      Object.keys(tributePeriodSubscriptionIds).length > 0
+    ) {
+      if (tributeLink) tribute.link = tributeLink;
+      if (tributeSubscriptionId !== null) tribute.subscription_id = tributeSubscriptionId;
+      tribute.period_ids = tributePeriodIds;
+      if (Object.keys(tributePeriodLinks).length) {
+        tribute.period_links = tributePeriodLinks;
+      }
+      if (Object.keys(tributePeriodSubscriptionIds).length) {
+        tribute.period_subscription_ids = tributePeriodSubscriptionIds;
+      }
+    }
     const topupPackages = packageSetFromRows(draft.topupRows, "gb", defaultCurrency);
     if (topupPackages) tariff.topup_packages = topupPackages;
+    const trafficProducts = tributeProductsFromRows(draft.topupRows, "gb");
+    if (Object.keys(trafficProducts).length) {
+      tribute.traffic_products = trafficProducts;
+    }
     tariff.topup_always_available = Boolean(draft.topup_always_available);
   } else {
     const trafficPackages = packageSetFromRows(draft.trafficRows, "gb", defaultCurrency);
     if (trafficPackages) tariff.traffic_packages = trafficPackages;
+    const trafficProducts = tributeProductsFromRows(draft.trafficRows, "gb");
+    if (Object.keys(trafficProducts).length) {
+      tribute.traffic_products = trafficProducts;
+    }
     const conversion = parseNumber(draft.conversion_rate_rub_per_gb);
     if (conversion !== null) tariff.conversion_rate_rub_per_gb = conversion;
+  }
+  if (Object.keys(tribute).length) {
+    tariff.tribute = tribute;
   }
 
   return tariff;

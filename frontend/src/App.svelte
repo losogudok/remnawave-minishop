@@ -39,6 +39,8 @@
   import { createAppLoadExecutor, type AppLoadDataOptions } from "./lib/webapp/appLoadExecutor.js";
   import { createPopstateLifecycle } from "./lib/webapp/popstateLifecycle.js";
   import { miniAppPathFromSearch } from "./lib/webapp/miniAppStartRoute.js";
+  import { isPlansRoute } from "./lib/webapp/deeplinks.js";
+  import { PLANS_PATH } from "./lib/webapp/routes.js";
   import {
     buildAppAdminPanelProps,
     createAppFactories,
@@ -102,6 +104,11 @@
   const routePrefix = isDocsDemo ? "/demo/runtime" : "";
   const query = new URLSearchParams(window.location.search);
   const miniAppStartPath = miniAppPathFromSearch(window.location.search);
+  // Checkout has no screen of its own, so the boot sync moves the URL to home
+  // before the data load finishes. Remember the intent while it is still
+  // readable; the modal opens once plans and the subscription are known.
+  const plansRouteRequested =
+    miniAppStartPath === PLANS_PATH || isPlansRoute(window.location.pathname, routePrefix);
   if (miniAppStartPath && window.location.pathname !== miniAppStartPath) {
     window.history.replaceState(
       null,
@@ -254,6 +261,7 @@
     openExternalLink,
     readCheckoutPromoDeeplink,
     readRenewalDeeplink,
+    plansRouteRequested,
     readTelegramMiniAppInitDataFromLocation,
     routePathnameFromLocation,
     routePrefix,

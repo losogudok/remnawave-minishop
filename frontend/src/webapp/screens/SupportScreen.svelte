@@ -5,7 +5,10 @@
   import { Check, ChevronsUpDown, LifeBuoy, MessageSquarePlus } from "$components/ui/icons.js";
   import Button from "$components/ui/button.svelte";
   import Card from "$components/ui/card.svelte";
-  import { Input, ScrollArea, Skeleton, Textarea } from "$components/ui/index.js";
+  import { Input, ScrollArea, Skeleton } from "$components/ui/index.js";
+  import RichTextEditor from "$lib/richtext/RichTextEditor.svelte";
+  import { wireTextLength } from "$lib/richtext/telegramHtml";
+  import { webappRichTextLabels } from "$lib/webapp/richTextLabels.js";
   import { TicketCard } from "$components/patterns/webapp/index.js";
   import { Select, Tabs } from "$components/ui/primitives.js";
   import {
@@ -22,7 +25,6 @@
   type DraftPayload = {
     body: string;
     category: SupportCategory;
-    maxBodyLength: number;
     maxSubjectLength: number;
     open: boolean;
     priority: SupportPriority;
@@ -94,6 +96,13 @@
     priorityOptions.find((option) => option.value === priority) || priorityOptions[0]
   );
   const draftScope = $derived(supportDraftScope(user));
+  const editorLabels = $derived(webappRichTextLabels(t));
+  // A stored draft is markup, so it cannot be cut at the message limit without
+  // splitting a tag. The message limit is enforced on the visible text below;
+  // this only keeps a runaway draft out of local storage.
+  const DRAFT_BODY_STORAGE_CAP = 32_000;
+  // The server limit counts what an admin reads, not the markup around it.
+  const bodyLength = $derived(wireTextLength(body, "html"));
 
   $effect.pre(() => {
     if (!draftScope || draftScope === loadedCreateDraftScope) return;
@@ -109,7 +118,6 @@
       priority,
       open: createOpen,
       maxSubjectLength,
-      maxBodyLength,
     });
   });
 
@@ -119,7 +127,13 @@
 
   async function createTicket() {
     const currentDraftScope = draftScope;
-    const ticket = await supportStore.createTicket({ subject, body, category, priority });
+    const ticket = await supportStore.createTicket({
+      subject,
+      body,
+      body_format: "html",
+      category,
+      priority,
+    });
     if (ticket) {
       clearSupportDraft("new", currentDraftScope);
       subject = "";
@@ -141,7 +155,7 @@
   function loadCreateDraft(scope: string) {
     const draft = readSupportDraft("new", scope);
     subject = typeof draft?.subject === "string" ? draft.subject.slice(0, maxSubjectLength) : "";
-    body = typeof draft?.body === "string" ? draft.body.slice(0, maxBodyLength) : "";
+    body = typeof draft?.body === "string" ? draft.body.slice(0, DRAFT_BODY_STORAGE_CAP) : "";
     category = optionValue(categoryOptions, draft?.category, "other");
     priority = optionValue(priorityOptions, draft?.priority, "normal");
     createOpen = Boolean(draft?.open || subject.trim() || body.trim());
@@ -150,7 +164,7 @@
 
   function persistCreateDraft(scope: string, draft: DraftPayload) {
     const draftSubject = String(draft.subject || "").slice(0, draft.maxSubjectLength);
-    const draftBody = String(draft.body || "").slice(0, draft.maxBodyLength);
+    const draftBody = String(draft.body || "").slice(0, DRAFT_BODY_STORAGE_CAP);
     const hasDraft =
       Boolean(draftSubject.trim()) ||
       Boolean(draftBody.trim()) ||
@@ -294,22 +308,23 @@
             </label>
           </div>
 
-          <label class="support-field">
+          <div class="support-field">
             <span>{t("wa_support_message")}</span>
-            <Textarea
-              class="textarea support-message-input"
-              bind:value={body}
-              maxlength={maxBodyLength}
-              rows={5}
+            <RichTextEditor
+              value={body}
+              onInput={(next) => (body = next)}
+              labels={editorLabels}
               placeholder={t("wa_support_message_placeholder")}
+              minHeight="120px"
+              autolink
             />
-            <small>{body.length}/{maxBodyLength}</small>
-          </label>
+            <small class:is-over={bodyLength > maxBodyLength}>{bodyLength}/{maxBodyLength}</small>
+          </div>
 
           <Button
             class="wide support-submit-button"
             size="lg"
-            disabled={creating || !subject.trim() || !body.trim()}
+            disabled={creating || !subject.trim() || !bodyLength || bodyLength > maxBodyLength}
             onclick={createTicket}
           >
             <MessageSquarePlus size={18} />

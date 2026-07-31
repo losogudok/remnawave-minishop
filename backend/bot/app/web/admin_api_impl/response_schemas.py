@@ -79,8 +79,20 @@ class AdminBackupRestoreOut(HttpResponseModel):
     result: AdminBackupRestoreResultOut
 
 
+class AdminBroadcastAudienceOut(HttpResponseModel):
+    target: str
+    label_key: str
+    fallback_label: str
+    order: int = 100
+    available: bool = True
+    group_label_key: str | None = None
+    group_fallback_label: str | None = None
+    icon: str | None = None
+
+
 class AdminBroadcastAudienceCountsOut(HttpResponseModel):
     counts: dict[str, int | None]
+    audiences: list[AdminBroadcastAudienceOut] = Field(default_factory=list)
     email_enabled: bool = False
 
 
@@ -108,6 +120,31 @@ class AdminPanelInternalSquadOut(HttpResponseModel):
     name: str
     members_count: int | float | str | bool | None = None
     active_inbounds_count: int | float | str | bool | None = None
+
+
+class AdminTributeSubscriptionPeriodOut(HttpResponseModel):
+    period_id: int
+    period: str
+    price: float
+    # ``null`` for a period Minishop cannot sell recurrently (weekly, trial…).
+    months: int | None = None
+
+
+class AdminTributeSubscriptionOut(HttpResponseModel):
+    subscription_id: int
+    name: str
+    currency: str
+    periods: list[AdminTributeSubscriptionPeriodOut] = Field(default_factory=list)
+
+
+class AdminTributeProductOut(HttpResponseModel):
+    product_id: int
+    name: str
+    type: str
+    status: str
+    price: float
+    currency: str
+    link: str | None = None
 
 
 class AdminSyncResultOut(HttpResponseModel):
@@ -167,6 +204,7 @@ class AdminSettingsFieldOut(HttpResponseModel):
     provider_logo_url: str | None = None
     value: Any = None
     overridden: bool | None = None
+    value_source: str | None = None
     updated_at: str | None = None
     source: str | None = None
     read_error: str | None = None

@@ -305,6 +305,13 @@ class LegacyAutoRenewFulfillmentTests(IsolatedAsyncioTestCase):
                 update_status,
             ),
             patch.object(success.user_dal, "lock_user_by_id", AsyncMock(return_value=None)),
+            # Fulfillment locks the entitlement row it is about to extend; the
+            # legacy renewal targets the subscription the quote was built from.
+            patch.object(
+                success.subscription_dal,
+                "get_active_subscription_by_user_id_for_update",
+                AsyncMock(return_value=_subscription()),
+            ),
             patch.object(
                 success.user_dal,
                 "get_user_by_id",

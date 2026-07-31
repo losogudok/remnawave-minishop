@@ -48,7 +48,7 @@ class WebAppAutoRenewRouteTests(IsolatedAsyncioTestCase):
         request = _Request(
             payload,
             {
-                "settings": SimpleNamespace(DEFAULT_LANGUAGE="en"),
+                "settings": SimpleNamespace(DEFAULT_LANGUAGE="en", REDIS_URL=None),
                 "subscription_service": subscription_service,
                 "async_session_factory": _SessionFactory(session),
             },
@@ -78,9 +78,9 @@ class WebAppAutoRenewRouteTests(IsolatedAsyncioTestCase):
             ),
             patch.object(
                 billing_module.subscription_dal,
-                "update_subscription",
+                "set_auto_renew",
                 AsyncMock(),
-            ) as update_subscription,
+            ) as set_auto_renew,
             patch.object(
                 user_billing_dal,
                 "user_has_saved_payment_method",
@@ -92,10 +92,11 @@ class WebAppAutoRenewRouteTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(response.status, 200)
         self.assertEqual(json.loads(response.text)["auto_renew_enabled"], False)
-        update_subscription.assert_awaited_once_with(
+        set_auto_renew.assert_awaited_once_with(
             session,
             7,
-            {"auto_renew_enabled": False},
+            False,
+            stop_reason="customer_disabled",
         )
         has_saved_method.assert_not_awaited()
         session.commit.assert_awaited_once()
@@ -120,9 +121,9 @@ class WebAppAutoRenewRouteTests(IsolatedAsyncioTestCase):
             ),
             patch.object(
                 billing_module.subscription_dal,
-                "update_subscription",
+                "set_auto_renew",
                 AsyncMock(),
-            ) as update_subscription,
+            ) as set_auto_renew,
             patch.object(
                 user_billing_dal,
                 "user_has_saved_payment_method",
@@ -134,10 +135,11 @@ class WebAppAutoRenewRouteTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(response.status, 200)
         self.assertEqual(json.loads(response.text)["auto_renew_enabled"], True)
-        update_subscription.assert_awaited_once_with(
+        set_auto_renew.assert_awaited_once_with(
             session,
             8,
-            {"auto_renew_enabled": True},
+            True,
+            stop_reason="consent_changed",
         )
         has_saved_method.assert_awaited_once_with(session, 42, provider="yookassa")
         session.commit.assert_awaited_once()

@@ -8,9 +8,11 @@
   import Dialog from "$components/ui/dialog.svelte";
   import type { DevicesStore } from "../lib/webapp/stores/devicesStore.js";
   import PaymentDialogs from "./PaymentDialogs.svelte";
+  import SubscriptionReissueDialog from "./payment-dialogs/SubscriptionReissueDialog.svelte";
   import TariffDialogs from "./TariffDialogs.svelte";
   import type {
     PaymentMethod,
+    PendingPaymentView,
     PlanView,
     SubscriptionView,
     TariffView,
@@ -33,8 +35,14 @@
     devicesStore: DevicesStore;
     disconnectDevice: VoidAction;
     emailAuthEnabled?: boolean;
+    subscriptionReissueDialogOpen?: boolean;
+    subscriptionReissueBusy?: boolean;
+    confirmSubscriptionReissue?: VoidAction;
+    closeSubscriptionReissueDialog?: VoidAction;
+    openLinkEmailDialog?: VoidAction;
     hasMultipleTariffs?: boolean;
     methods?: PaymentMethod[];
+    pendingPayment?: PendingPaymentView | null;
     plans?: PlanView[];
     selectTariff: (tariff: TariffView) => void;
     selectedTariff?: TariffView | null;
@@ -63,8 +71,14 @@
     devicesStore,
     disconnectDevice,
     emailAuthEnabled = true,
+    subscriptionReissueDialogOpen = false,
+    subscriptionReissueBusy = false,
+    confirmSubscriptionReissue = () => {},
+    closeSubscriptionReissueDialog = () => {},
+    openLinkEmailDialog = () => {},
     hasMultipleTariffs = false,
     methods = [],
+    pendingPayment = null,
     plans = [],
     selectTariff,
     selectedTariff = null,
@@ -114,6 +128,7 @@
   bind:setPasswordValue={accountStore.setPasswordValue}
   setPasswordEmail={user?.email || ""}
   createPayment={billingStore.createPayment}
+  resumePendingPayment={billingStore.resumePendingPayment}
   deviceConfirmOpen={devicesStore.deviceConfirmOpen}
   deviceDisconnectBusy={devicesStore.deviceDisconnectBusy}
   deviceToDisconnect={devicesStore.deviceToDisconnect}
@@ -143,6 +158,7 @@
   clearCheckoutPromo={billingStore.clearCheckoutPromo}
   {hasMultipleTariffs}
   {methods}
+  {pendingPayment}
   payBusy={billingStore.payBusy}
   {plans}
   {selectedTariff}
@@ -165,6 +181,16 @@
   {termUnitLabel}
   verifyLinkEmailCode={accountStore.verifyLinkEmailCode}
   confirmSetPassword={accountStore.confirmSetPassword}
+/>
+
+<SubscriptionReissueDialog
+  {subscriptionReissueDialogOpen}
+  {subscriptionReissueBusy}
+  userEmail={user?.email || ""}
+  {confirmSubscriptionReissue}
+  {closeSubscriptionReissueDialog}
+  {openLinkEmailDialog}
+  {t}
 />
 
 <TariffDialogs

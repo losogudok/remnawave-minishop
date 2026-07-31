@@ -1,9 +1,20 @@
 import type { LoadDataOptions } from "../dataClient";
 import type { BillingActions } from "../billingActions";
+import {
+  createPaymentResponseHandler,
+  createPendingPaymentResume,
+} from "../billingPaymentResume.js";
+import { emptyCheckoutPromoQuote, suggestedCheckoutPromoPatch } from "../billingPromoSuggestion.js";
 import { unwrap } from "../publicApi";
+import { priceLabel } from "../tariffs";
+import {
+  openTelegramInvoice as openTelegramInvoiceUrl,
+  type TelegramWebApp,
+} from "../telegramInvoice";
 import type {
   BillingOptionsResponse,
   DeviceTopupOptions,
+  PendingPaymentView,
   PlanView,
   SubscriptionView,
   TariffChangeAction,
@@ -13,9 +24,6 @@ import type {
   WebappRecord,
 } from "../types";
 
-type TelegramWebApp = Record<string, unknown> & {
-  openInvoice?: (url: string, callback: (status: string) => void) => void;
-};
 type BillingRecord = WebappRecord & {
   action?: string;
   actions?: BillingRecord[];
@@ -34,7 +42,6 @@ type BillingRecord = WebappRecord & {
   targets?: BillingRecord[];
   topup_kind?: string;
 };
-type BillingOkRecord = BillingRecord & { ok: boolean };
 export type BillingState = {
   paymentModalOpen: boolean;
   paymentStep: string;
@@ -58,6 +65,7 @@ export type BillingState = {
   tariffActionBusy: boolean;
   payBusy: boolean;
   checkoutPromoInput: string;
+  checkoutPromoAutoApply: boolean;
   checkoutPromoAppliedCode: string;
   checkoutPromoStatus: string;
   checkoutPromoIsError: boolean;
@@ -83,6 +91,7 @@ export type BillingStore = BillingState & {
   continueWithSelectedTariff(selectedTariffPlans?: PlanView[]): void;
   backToTariffList(subscription: SubscriptionView, tariffCatalog?: TariffView[]): void;
   createPayment(): Promise<void>;
+  resumePendingPayment(payment: PendingPaymentView): Promise<void>;
   setCheckoutPromoInput(value: string): void;
   applyCheckoutPromo(): Promise<void>;
   clearCheckoutPromo(): void;
@@ -125,6 +134,7 @@ export function createBillingStore({
   tg?: TelegramWebApp | null;
   getTg?: (() => TelegramWebApp | null) | null;
   telegramSdk?: {
+    hasLaunchParams?: () => boolean;
     refresh?: () => TelegramWebApp | null;
     ensureForAction?: () => Promise<TelegramWebApp | null>;
   } | null;
@@ -146,6 +156,25 @@ export function createBillingStore({
   function unwrapBilling<T extends { ok: boolean }>(response: T): T & BillingRecord {
     return unwrap(response) as T & BillingRecord;
   }
+
+  const handlePaymentResponse = createPaymentResponseHandler({
+    afterOpened: () => loadData({ fresh: true, preserveView: true }),
+    notifyOpened: (resumed) =>
+      showToast(t(resumed ? "wa_pending_payment_opened" : "wa_payment_created")),
+    openExternalLink,
+    openTelegramInvoice,
+    startPaymentStatusPolling,
+  });
+  const resumePendingPayment = createPendingPaymentResume({
+    closeModal: () => updateState((s) => ({ ...s, paymentModalOpen: false })),
+    getPaymentStartedWithActiveSubscription: () => state.paymentStartedWithActiveSubscription,
+    handlePaymentResponse,
+    isBusy: () => state.payBusy,
+    onError: (error) =>
+      showToast(stringField(asRecord(error).message) || t("wa_payment_create_failed")),
+    rememberPending: rememberSubscriptionActivationPending,
+    setBusy: (payBusy) => updateState((s) => ({ ...s, payBusy })),
+  });
 
   const state = $state<BillingStore>({
     paymentModalOpen: false,
@@ -170,6 +199,7 @@ export function createBillingStore({
     tariffActionBusy: false,
     payBusy: false,
     checkoutPromoInput: "",
+    checkoutPromoAutoApply: false,
     checkoutPromoAppliedCode: "",
     checkoutPromoStatus: "",
     checkoutPromoIsError: false,
@@ -185,6 +215,7 @@ export function createBillingStore({
     continueWithSelectedTariff,
     backToTariffList,
     createPayment,
+    resumePendingPayment,
     setCheckoutPromoInput,
     applyCheckoutPromo,
     clearCheckoutPromo,
@@ -213,17 +244,20 @@ export function createBillingStore({
 
   let topupOptionsRequestId = 0;
   let paymentPollToken = 0;
+  let checkoutPromoRequestId = 0;
   let lastCheckoutQuoteKey = "";
   const successfulPaymentIds = new Set<string>();
 
   function setCheckoutPromoInput(value: string): void {
+    checkoutPromoRequestId += 1;
     state.checkoutPromoInput = value;
+    state.checkoutPromoAutoApply = false;
     state.checkoutPromoStatus = "";
     state.checkoutPromoIsError = false;
     if (String(value || "").trim() !== String(state.checkoutPromoAppliedCode || "").trim()) {
       state.checkoutPromoAppliedCode = "";
       state.checkoutPromoPriceText = "";
-      Object.assign(state, resetCheckoutPromoQuote());
+      Object.assign(state, emptyCheckoutPromoQuote());
     }
   }
 
@@ -231,21 +265,6 @@ export function createBillingStore({
     if (value == null || value === "") return null;
     const number = Number(value);
     return Number.isFinite(number) ? number : null;
-  }
-
-  function resetCheckoutPromoQuote(): Pick<
-    BillingState,
-    | "checkoutPromoDiscountPercent"
-    | "checkoutPromoAppliesTo"
-    | "checkoutPromoMinSubscriptionMonths"
-    | "checkoutPromoMinTrafficGb"
-  > {
-    return {
-      checkoutPromoDiscountPercent: 0,
-      checkoutPromoAppliesTo: "all",
-      checkoutPromoMinSubscriptionMonths: null,
-      checkoutPromoMinTrafficGb: null,
-    };
   }
 
   function checkoutPromoCode(): string | null {
@@ -298,7 +317,8 @@ export function createBillingStore({
 
   function checkoutQuoteKey(): string {
     const code = String(
-      state.checkoutPromoAppliedCode || (state.checkoutPromoIsError ? state.checkoutPromoInput : "")
+      state.checkoutPromoAppliedCode ||
+        (state.checkoutPromoAutoApply || state.checkoutPromoIsError ? state.checkoutPromoInput : "")
     ).trim();
     if (!code || !state.selectedMethod) return "";
     if (state.paymentModalOpen && state.selectedPlan) {
@@ -337,17 +357,24 @@ export function createBillingStore({
       return;
     }
     if (key === lastCheckoutQuoteKey) return;
-    const shouldRefresh = lastCheckoutQuoteKey !== "";
+    const shouldRefresh = state.checkoutPromoAutoApply || lastCheckoutQuoteKey !== "";
     lastCheckoutQuoteKey = key;
     if (shouldRefresh) void applyCheckoutPromo();
   });
 
   function promoPriceText(payload: BillingRecord): string {
-    const stars = payload.effective_stars;
-    if (typeof stars === "number" && stars > 0) return `${stars} stars`;
     const amount = Number(payload.effective_amount || 0);
+    const stars = Number(payload.effective_stars || 0);
+    if (amount <= 0 && stars <= 0) return "";
     const currency = stringField(payload.currency);
-    return amount > 0 ? `${amount.toFixed(2)}${currency ? ` ${currency}` : ""}` : "";
+    return priceLabel(
+      {
+        price: amount,
+        stars_price: stars,
+        currency: currency || undefined,
+      },
+      state.selectedMethod
+    );
   }
 
   async function applyCheckoutPromo(): Promise<void> {
@@ -358,25 +385,28 @@ export function createBillingStore({
         checkoutPromoIsError: true,
         checkoutPromoStatus: t("wa_promo_select_plan_first", {}, "Choose a plan first"),
         checkoutPromoPriceText: "",
-        ...resetCheckoutPromoQuote(),
+        ...emptyCheckoutPromoQuote(),
       }));
       return;
     }
     const attemptedCode = stringField(body.promo_code);
+    const requestId = ++checkoutPromoRequestId;
     try {
       const response = await billing.quotePromo(body);
+      if (requestId !== checkoutPromoRequestId) return;
       const payload = unwrapBilling(response);
       if (!payload.valid) {
         updateState((s) => ({
           ...s,
           checkoutPromoInput: attemptedCode,
+          checkoutPromoAutoApply: false,
           checkoutPromoAppliedCode: "",
           checkoutPromoIsError: true,
           checkoutPromoStatus:
             stringField(payload.reason) ||
             t("wa_promo_activation_failed", {}, "Code does not apply here"),
           checkoutPromoPriceText: "",
-          ...resetCheckoutPromoQuote(),
+          ...emptyCheckoutPromoQuote(),
         }));
         return;
       }
@@ -384,6 +414,7 @@ export function createBillingStore({
       updateState((s) => ({
         ...s,
         checkoutPromoInput: appliedCode,
+        checkoutPromoAutoApply: false,
         checkoutPromoAppliedCode: appliedCode,
         checkoutPromoIsError: false,
         checkoutPromoStatus: stringField(payload.effect_summary),
@@ -394,28 +425,32 @@ export function createBillingStore({
         checkoutPromoMinTrafficGb: optionalNumber(payload.min_traffic_gb),
       }));
     } catch (error: unknown) {
+      if (requestId !== checkoutPromoRequestId) return;
       updateState((s) => ({
         ...s,
         checkoutPromoInput: attemptedCode,
+        checkoutPromoAutoApply: false,
         checkoutPromoAppliedCode: "",
         checkoutPromoIsError: true,
         checkoutPromoStatus:
           stringField(asRecord(error).message) || t("wa_promo_activation_failed"),
         checkoutPromoPriceText: "",
-        ...resetCheckoutPromoQuote(),
+        ...emptyCheckoutPromoQuote(),
       }));
     }
   }
 
   function clearCheckoutPromo(): void {
+    checkoutPromoRequestId += 1;
     updateState((s) => ({
       ...s,
       checkoutPromoInput: "",
+      checkoutPromoAutoApply: false,
       checkoutPromoAppliedCode: "",
       checkoutPromoStatus: "",
       checkoutPromoIsError: false,
       checkoutPromoPriceText: "",
-      ...resetCheckoutPromoQuote(),
+      ...emptyCheckoutPromoQuote(),
     }));
   }
 
@@ -598,8 +633,13 @@ export function createBillingStore({
         selectedMethod: s.selectedMethod || defaultMethod,
         renewHwidDevices: true,
         paymentStartedWithActiveSubscription: Boolean(subscription?.active),
+        ...suggestedCheckoutPromoPatch(s, options),
       };
     });
+    if (state.checkoutPromoAutoApply && checkoutQuoteBody()) {
+      lastCheckoutQuoteKey = checkoutQuoteKey();
+      void applyCheckoutPromo();
+    }
   }
 
   function closePaymentModal() {
@@ -695,68 +735,23 @@ export function createBillingStore({
     updateState((s) => ({ ...s, changeConfirmOpen: false }));
   }
 
-  function resolveTelegramWebApp() {
-    if (typeof getTg === "function") {
-      const currentTg = getTg();
-      if (currentTg) return currentTg;
-    }
-    if (tg) return tg;
-    if (telegramSdk?.refresh) return telegramSdk.refresh();
-    return null;
-  }
-
-  async function resolveInvoiceTelegramWebApp(): Promise<TelegramWebApp | null> {
-    const currentTg = resolveTelegramWebApp();
-    if (currentTg?.openInvoice) return currentTg;
-    if (telegramSdk?.ensureForAction) {
-      const loadedTg = await telegramSdk.ensureForAction();
-      if (loadedTg?.openInvoice) return loadedTg;
-    }
-    return resolveTelegramWebApp();
-  }
-
   async function openTelegramInvoice(url: string, successContext: BillingRecord = {}) {
-    if (!url) return false;
-    const invoiceTg = await resolveInvoiceTelegramWebApp();
-    if (invoiceTg?.openInvoice) {
-      invoiceTg.openInvoice(url, async (status) => {
-        if (status === "paid") {
-          await handlePaymentSuccess(successContext);
-        } else if (status === "failed") {
-          showToast(t("wa_payment_create_failed"));
-        }
-      });
-      return true;
-    }
-    showToast(
-      t("wa_payment_stars_telegram_required", {}, "Open this payment in Telegram to pay with Stars")
-    );
-    return false;
-  }
-
-  async function handlePaymentResponse(
-    response: BillingOkRecord,
-    successContext: BillingRecord = {},
-    closeModal: () => void = () => {}
-  ) {
-    if (!response.ok) throw response;
-    const payload = unwrapBilling(response);
-    showToast(t("wa_payment_created"));
-    if (payload.action === "open_invoice") {
-      if (!payload.payment_url) throw response;
-      const opened = await openTelegramInvoice(payload.payment_url, successContext);
-      if (!opened) return false;
-    } else if (payload.action === "invoice_sent") {
-      startPaymentStatusPolling(payload.payment_id, successContext);
-      closeModal();
-      return true;
-    } else {
-      if (!payload.payment_url) throw response;
-      openExternalLink(payload.payment_url);
-    }
-    startPaymentStatusPolling(payload.payment_id, successContext);
-    closeModal();
-    return true;
+    return openTelegramInvoiceUrl({
+      getTg,
+      onFailed: () => showToast(t("wa_payment_create_failed")),
+      onPaid: () => handlePaymentSuccess(successContext),
+      onUnavailable: () =>
+        showToast(
+          t(
+            "wa_payment_stars_telegram_required",
+            {},
+            "Open Minishop from the bot in Telegram to pay with Stars"
+          )
+        ),
+      telegramSdk,
+      tg,
+      url,
+    });
   }
 
   function startPaymentStatusPolling(

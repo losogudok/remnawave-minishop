@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Protocol
 
 
@@ -46,10 +47,17 @@ class RecurringChargeContext:
     description: str
     metadata: Mapping[str, str] = field(default_factory=dict)
     hwid_quote: Mapping[str, Any] | None = None
+    entitlement_context_snapshot: str | None = None
     # A provider-safe stable key for one renewal attempt.  YooKassa persists
     # it on the local order and sends it as Idempotence-Key, while providers
     # that do not support that contract may ignore it.
     idempotence_key: str | None = None
+    renewal_cycle_end: datetime | None = None
+    consent_version: int = 0
+    payment_method_db_id: int | None = None
+    auto_renew_cycle_id: int | None = None
+    attempt_number: int = 1
+    retry_kind: str | None = None
 
 
 @dataclass(frozen=True)
@@ -63,21 +71,51 @@ class RecurringChargeResult:
 
     initiated: bool
     provider_payment_id: str | None = None
+    payment_db_id: int | None = None
     status: str | None = None
     message: str | None = None
+    retryable: bool = False
+    failure_kind: str | None = None
+    http_status: int | None = None
+    provider_code: str | None = None
 
     @classmethod
-    def failed(cls, message: str | None = None) -> RecurringChargeResult:
-        return cls(initiated=False, message=message)
+    def failed(
+        cls,
+        message: str | None = None,
+        *,
+        provider_payment_id: str | None = None,
+        payment_db_id: int | None = None,
+        retryable: bool = False,
+        failure_kind: str | None = None,
+        http_status: int | None = None,
+        provider_code: str | None = None,
+    ) -> RecurringChargeResult:
+        return cls(
+            initiated=False,
+            message=message,
+            provider_payment_id=provider_payment_id,
+            payment_db_id=payment_db_id,
+            retryable=retryable,
+            failure_kind=failure_kind,
+            http_status=http_status,
+            provider_code=provider_code,
+        )
 
     @classmethod
     def ok(
         cls,
         *,
         provider_payment_id: str | None = None,
+        payment_db_id: int | None = None,
         status: str | None = None,
     ) -> RecurringChargeResult:
-        return cls(initiated=True, provider_payment_id=provider_payment_id, status=status)
+        return cls(
+            initiated=True,
+            provider_payment_id=provider_payment_id,
+            payment_db_id=payment_db_id,
+            status=status,
+        )
 
 
 class RecurringProviderService(Protocol):

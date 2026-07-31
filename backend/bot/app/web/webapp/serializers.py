@@ -21,6 +21,11 @@ from bot.app.web.webapp.auth import (
     _trial_telegram_required_reason,
     _user_has_linked_telegram,
 )
+from bot.infra.promo_policies import (
+    PromoCheckoutSuggestionContext,
+    resolve_promo_checkout_suggestion,
+)
+from bot.services.device_topup_availability import resolve_device_topup_availability
 from bot.services.referral_service import ReferralService
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.services.telegram_notifications import (
@@ -35,11 +40,12 @@ from config.settings import Settings
 from config.subscription_guides_config import subscription_guides_available
 from config.tariffs_config import default_currency_key_for_settings, payment_currency_code
 from config.webapp_themes_config import public_themes_catalog_payload
-from db.dal import subscription_dal, support_dal, user_dal
+from db.dal import payment_dal, subscription_dal, support_dal, user_dal
 
 from .assets import (
     _get_cached_webapp_settings,
 )
+from .billing_status import refresh_payment_status_for_request
 from .common import (
     _coerce_int_or_none,
     _ensure_cached_telegram_avatar,
@@ -52,6 +58,7 @@ from .common import (
     _telegram_avatar_url,
 )
 from .serializers_billing_options import (
+    _attach_payment_methods_to_plans,
     _serialize_hwid_device_packages,
     _serialize_payment_methods,
     _serialize_tariff_change_target,
@@ -60,15 +67,112 @@ from .serializers_billing_options import (
 )
 
 logger = logging.getLogger(__name__)
+_MAX_PENDING_PROMO_REFRESHES = 10
 
 __all__ = [
     "_build_user_payload",
     "_serialize_hwid_device_packages",
     "_serialize_payment_methods",
+    "_serialize_pending_promo_payment",
     "_serialize_tariff_change_target",
     "_serialize_topup_packages",
     "_traffic_percent",
 ]
+
+
+def _serialize_pending_promo_payment(payment: Any | None) -> dict[str, Any] | None:
+    if payment is None:
+        return None
+
+    promo = getattr(payment, "promo_code_used", None)
+    promo_code = str(
+        getattr(promo, "archived_code", None) or getattr(promo, "code", None) or ""
+    ).strip()
+    amount = float(getattr(payment, "amount", 0) or 0)
+    discount_amount = max(
+        0.0,
+        float(getattr(payment, "checkout_discount_amount", 0) or 0),
+    )
+    base_amount_raw = getattr(payment, "checkout_base_amount", None)
+    base_amount = (
+        float(base_amount_raw) if base_amount_raw is not None else amount + discount_amount
+    )
+    created_at = getattr(payment, "created_at", None)
+    return {
+        "payment_id": int(payment.payment_id),
+        "payment_url": str(payment.provider_payment_url),
+        "provider": str(payment.provider or ""),
+        "status": str(payment.status or ""),
+        "amount": amount,
+        "base_amount": max(amount, base_amount),
+        "currency": str(payment.currency or ""),
+        "discount_amount": discount_amount,
+        "discount_percent": float(getattr(payment, "promo_discount_percent", 0) or 0),
+        "months": getattr(payment, "subscription_duration_months", None),
+        "purchased_gb": getattr(payment, "purchased_gb", None),
+        "purchased_hwid_devices": getattr(payment, "purchased_hwid_devices", None),
+        "sale_mode": str(getattr(payment, "sale_mode", None) or ""),
+        "tariff_key": getattr(payment, "tariff_key", None),
+        "promo_code": promo_code,
+        "promo_effect_summary": str(getattr(payment, "promo_effect_summary", None) or ""),
+        "created_at": created_at.isoformat() if created_at is not None else "",
+    }
+
+
+async def _suggested_checkout_promo(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    pending_payment: dict[str, Any] | None,
+) -> str | None:
+    if pending_payment is not None:
+        return None
+    return await resolve_promo_checkout_suggestion(
+        PromoCheckoutSuggestionContext(session=session, user_id=user_id)
+    )
+
+
+async def _refresh_pending_promo_payment(
+    request: web.Request,
+    session: AsyncSession,
+    *,
+    user_id: int,
+) -> dict[str, Any] | None:
+    """Reconcile stale resumable checkouts before exposing one to the user."""
+
+    seen_payment_ids: set[int] = set()
+    for _ in range(_MAX_PENDING_PROMO_REFRESHES):
+        payment = await payment_dal.get_latest_resumable_promo_payment(
+            session,
+            user_id=user_id,
+        )
+        if payment is None:
+            return None
+
+        payment_id = int(payment.payment_id)
+        if payment_id in seen_payment_ids:
+            return _serialize_pending_promo_payment(payment)
+        seen_payment_ids.add(payment_id)
+
+        await refresh_payment_status_for_request(request, session, payment)
+        current = await payment_dal.get_latest_resumable_promo_payment(
+            session,
+            user_id=user_id,
+        )
+        if current is None:
+            return None
+        if int(current.payment_id) == payment_id:
+            return _serialize_pending_promo_payment(current)
+
+    logger.warning(
+        "Pending promo reconciliation reached the per-request limit for user %s",
+        user_id,
+    )
+    payment = await payment_dal.get_latest_resumable_promo_payment(
+        session,
+        user_id=user_id,
+    )
+    return _serialize_pending_promo_payment(payment)
 
 
 async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, Any]:
@@ -80,6 +184,21 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
     support_settings = settings.support_settings
 
     async with async_session_factory() as session:
+        db_user = await user_dal.get_user_by_id(session, user_id)
+        if not db_user or db_user.is_banned:
+            raise web.HTTPForbidden(
+                text=json.dumps({"ok": False, "error": "access_denied"}),
+                content_type="application/json",
+            )
+
+        pending_promo_payment = await _refresh_pending_promo_payment(
+            request,
+            session,
+            user_id=user_id,
+        )
+        # Provider reconciliation may roll back or commit this session while
+        # making an external request. Reload the authenticated user before
+        # continuing with referral or subscription writes.
         db_user = await user_dal.get_user_by_id(session, user_id)
         if not db_user or db_user.is_banned:
             raise web.HTTPForbidden(
@@ -120,6 +239,11 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             )
             if db_user.panel_user_uuid
             else None
+        )
+        suggested_promo_code = await _suggested_checkout_promo(
+            session,
+            user_id=user_id,
+            pending_payment=pending_promo_payment,
         )
         install_share_token = (
             await subscription_dal.ensure_install_share_token(session, local_sub)
@@ -220,6 +344,8 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             "bonus_details": _serialize_referral_bonus_details(settings, lang),
         },
         "plans": plans_payload,
+        "pending_payment": pending_promo_payment,
+        "suggested_promo_code": suggested_promo_code,
         "payment_methods": _serialize_payment_methods(
             settings,
             request.app,
@@ -242,6 +368,9 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             ),
             "traffic_mode": bool(settings.traffic_sale_mode),
             "my_devices_enabled": bool(settings.MY_DEVICES_SECTION_ENABLED),
+            "subscription_reissue_enabled": bool(
+                settings.SUBSCRIPTION_REISSUE_ENABLED and settings.email_auth_configured
+            ),
             "user_hwid_device_limit": (
                 int(settings.USER_HWID_DEVICE_LIMIT)
                 if settings.USER_HWID_DEVICE_LIMIT is not None
@@ -420,9 +549,15 @@ def _serialize_subscription(
     can_topup_regular_traffic = False
     can_topup_premium_traffic = False
     can_topup_traffic = False
-    can_topup_devices = False
     topup_always_available = False
     premium_topup_always_available = False
+    device_topup_availability = resolve_device_topup_availability(
+        settings,
+        subscription_active=True,
+        tariff_key=active.get("tariff_key"),
+        max_devices=active.get("max_devices"),
+    )
+    can_topup_devices = device_topup_availability.allowed
     if settings.tariffs_config and active.get("tariff_key"):
         try:
             tariff = settings.tariffs_config.require(str(active.get("tariff_key")))
@@ -436,18 +571,10 @@ def _serialize_subscription(
             can_topup_traffic = bool(can_topup_regular_traffic or can_topup_premium_traffic)
             topup_always_available = bool(tariff.topup_always_available)
             premium_topup_always_available = bool(tariff.premium_topup_always_available)
-            max_devices = _coerce_int_or_none(active.get("max_devices"))
-            # max_devices == 0 or None means unlimited — top-up is pointless in that case.
-            can_topup_devices = bool(
-                tariff.billing_model == "period"
-                and tariff.has_hwid_device_packages()
-                and max_devices not in (None, 0)
-            )
         except Exception:
             can_topup_regular_traffic = False
             can_topup_premium_traffic = False
             can_topup_traffic = False
-            can_topup_devices = False
             topup_always_available = False
             premium_topup_always_available = False
 
@@ -547,6 +674,12 @@ def _serialize_subscription(
         "can_topup_regular_traffic": can_topup_regular_traffic,
         "can_topup_premium_traffic": can_topup_premium_traffic,
         "can_topup_devices": can_topup_devices,
+        "device_topup_unavailable_reason": (
+            device_topup_availability.reason.value
+            if device_topup_availability.reason is not None
+            else None
+        ),
+        "device_topup_available_currencies": list(device_topup_availability.available_currencies),
         "topup_always_available": topup_always_available,
         "premium_topup_always_available": premium_topup_always_available,
         "period_start_at": active.get("period_start_at").isoformat()
@@ -673,6 +806,7 @@ async def _attach_hwid_renewal_quotes_to_plans(
             "active_until": _webapp_iso_datetime(active_until),
             "active_until_text": _webapp_datetime_text(active_until),
             "pricing_period_months": int(quote.get("pricing_period_months") or months),
+            "traffic_bonus_gb": float(quote.get("traffic_bonus_gb") or 0),
         }
         if stars_quote and int(stars_quote.get("price") or 0) > 0:
             renewal["stars_price"] = int(stars_quote["price"])
@@ -801,7 +935,7 @@ def _serialize_plans(
                     if stars_price is not None and int(stars_price) > 0:
                         plan["stars_price"] = int(stars_price)
                     plans.append(plan)
-        return plans
+        return _attach_payment_methods_to_plans(settings, plans)
 
     if settings.traffic_sale_mode:
         active_traffic_packages = traffic_packages or settings.traffic_packages
@@ -825,7 +959,7 @@ def _serialize_plans(
             if stars_price is not None and int(stars_price) > 0:
                 plan["stars_price"] = int(stars_price)
             plans.append(plan)
-        return plans
+        return _attach_payment_methods_to_plans(settings, plans)
 
     active_subscription_options = subscription_options or settings.subscription_options
     active_stars_subscription_options = (
@@ -847,4 +981,4 @@ def _serialize_plans(
         if stars_price is not None and int(stars_price) > 0:
             plan["stars_price"] = int(stars_price)
         plans.append(plan)
-    return plans
+    return _attach_payment_methods_to_plans(settings, plans)

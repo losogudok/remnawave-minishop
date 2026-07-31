@@ -378,8 +378,10 @@ async function assertUserTicketScrolling(page: Page, nav: Locator): Promise<void
     .first();
   await expect(readReceipt).toBeVisible();
   await expect(readReceipt.locator(".lucide-check-check")).toBeVisible();
-  await composer.locator("textarea").fill("Проверка статуса доставки");
-  await composer.getByRole("button").click();
+  const composerInput = composer.locator(".rt-surface .ProseMirror");
+  await composerInput.click();
+  await composerInput.pressSequentially("Проверка статуса доставки");
+  await composer.locator(".ticket-composer-send").click();
   const sentReceipt = page
     .locator('.support-ticket-screen .ticket-message-receipt[title="Отправлено"]')
     .last();
@@ -568,7 +570,8 @@ async function openUserDetailFromCurrentSection(
   setPhase(`${phasePrefix}:user-card`);
   await expect(userDialog).toBeVisible();
   await assertFormFieldsNamed(page, `${phasePrefix}:user-card`);
-  await exerciseDialogTabs(userDialog, 4, setPhase, `${phasePrefix}:user-tabs`);
+  // Subscription, Activity, Logs, Actions, Message.
+  await exerciseDialogTabs(userDialog, 5, setPhase, `${phasePrefix}:user-tabs`);
 
   setPhase(`${phasePrefix}:user-avatar`);
   if (
@@ -607,13 +610,19 @@ async function openUserDetailFromCurrentSection(
     );
   }
 
-  setPhase(`${phasePrefix}:message-confirm`);
-  await actionsPanel.locator("textarea").fill("E2E smoke message");
-  await actionsPanel.locator('[data-admin-action="request-user-message"]').click();
-  const messageDialog = page.locator(".dialog-card.admin-user-message-confirm-dialog");
-  await expect(messageDialog).toBeVisible();
-  await assertFormFieldsNamed(page, `${phasePrefix}:message-confirm`);
-  await closeDialog(messageDialog);
+  setPhase(`${phasePrefix}:message-composer`);
+  // Messaging one customer moved out of the actions sheet into its own tab,
+  // where the shared composer carries channels and buttons.
+  // bits-ui renders the trigger's value as `data-value`, and the demo runs in
+  // Russian, so neither the label text nor a `value` attribute identifies it.
+  await userDialog.locator('.admin-tabs-trigger[data-value="message"]').first().click();
+  const composerCard = userDialog.locator(".admin-user-action-sheet--message");
+  await expect(composerCard).toBeVisible();
+  await expect(composerCard.locator(".ProseMirror")).toBeVisible();
+  await expect(composerCard.locator('[data-admin-action="send-user-message"]')).toBeDisabled();
+  await assertFormFieldsNamed(page, `${phasePrefix}:message-composer`);
+  await userDialog.locator('.admin-tabs-trigger[data-value="actions"]').first().click();
+  await expect(actionsPanel).toBeVisible();
 
   setPhase(`${phasePrefix}:ban-confirm`);
   await actionsPanel.locator('[data-admin-action="request-user-ban-toggle"]').click();
@@ -810,6 +819,31 @@ test("support ticket conversations scroll on desktop and mobile", async ({ page 
   await assertAdminTicketScrolling(page, supportDialog);
 });
 
+test("device traffic bonuses stay legible on mobile", async ({ page }) => {
+  await page.setViewportSize(MOBILE_VIEWPORT);
+  await page.goto(`${APP_URL}?mock=devices`);
+  const nav = page.locator("nav.bottom-nav");
+  await expect(nav).toBeVisible();
+  await nav.getByRole("button", { name: "Устройства", exact: true }).click();
+
+  const openTopup = webappAction(page, "open-device-topup");
+  await expect(openTopup).toBeVisible();
+  await openTopup.click();
+
+  const dialog = page.locator(".dialog-card.webapp-device-topup-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.locator(".hwid-traffic-bonus", {
+      hasText: "Плюс 15 ГБ к месячному трафику",
+    })
+  ).toBeVisible();
+  await expect(
+    dialog.locator(".hwid-traffic-bonus", {
+      hasText: "Плюс 45 ГБ к месячному трафику",
+    })
+  ).toBeVisible();
+});
+
 test("webapp and admin sections, dialogs, tabs stay interactive without console errors", async ({
   page,
 }) => {
@@ -868,35 +902,35 @@ test("webapp and admin sections, dialogs, tabs stay interactive without console 
 
   setPhase("admin-broadcast:shortcode-picker");
   await openAdminSection(page, "broadcast");
-  const shortcodeToggle = page.locator(".broadcast-tool-shortcode");
+  const shortcodeToggle = page.locator("[data-rt-shortcodes-toggle]");
   await expect(shortcodeToggle).toBeVisible();
   await shortcodeToggle.click();
-  const shortcodeList = page.locator(".broadcast-shortcode-list");
+  const shortcodeList = page.locator(".rt-menu-list");
   await expect(shortcodeList).toBeVisible();
   await expect(
-    shortcodeList.locator(".broadcast-shortcode-scroll .scroll-area__viewport")
+    shortcodeList.locator(".rt-menu-scroll .scroll-area__viewport")
   ).toBeVisible();
-  await shortcodeList.locator(".broadcast-shortcode-item").first().click();
-  await expect(page.locator(".broadcast-surface .broadcast-chip").first()).toBeVisible();
-  await page.locator("[data-broadcast-source-toggle]").click();
-  const broadcastSource = page.locator("textarea.broadcast-source");
+  await shortcodeList.locator(".rt-menu-item").first().click();
+  await expect(page.locator(".rt-surface .rt-chip").first()).toBeVisible();
+  await page.locator("[data-rt-source-toggle]").click();
+  const broadcastSource = page.locator("textarea.rt-source");
   await expect(broadcastSource).toBeVisible();
   await broadcastSource.evaluate((element) => {
     const textarea = element as HTMLTextAreaElement;
     textarea.focus();
     textarea.setSelectionRange(0, textarea.value.length);
   });
-  await page.locator('[data-broadcast-format="bold"]').click();
+  await page.locator('[data-rt-format="bold"]').click();
   await expect(broadcastSource).toHaveValue("<b>{first_name}</b>");
   await broadcastSource.evaluate((element) => {
     const textarea = element as HTMLTextAreaElement;
     textarea.focus();
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
   });
-  await page.locator('[data-broadcast-format="link"]').click();
+  await page.locator('[data-rt-format="link"]').click();
   await expect(broadcastSource).toHaveValue('<b>{first_name}</b><a href="https://">https://</a>');
-  await page.locator("[data-broadcast-source-toggle]").click();
-  await expect(page.locator(".broadcast-surface .broadcast-chip").first()).toBeVisible();
+  await page.locator("[data-rt-source-toggle]").click();
+  await expect(page.locator(".rt-surface .rt-chip").first()).toBeVisible();
 
   setPhase("admin-users:filter-dialog");
   await openAdminSection(page, "users");

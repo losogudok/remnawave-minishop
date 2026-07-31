@@ -1,8 +1,12 @@
 <script lang="ts">
   import { Tabs } from "$components/ui/primitives.js";
   import Dialog from "$components/ui/dialog.svelte";
+  import { getSettingsStore } from "$lib/admin/context";
+  import { ADMIN_USER_DETAIL_PANELS } from "../extensionRegistry";
+  import { isFeatureBoundDescriptorVisible, requiredFeatureForDescriptor } from "../extensionTypes";
   import UserActivityTab from "./UserActivityTab.svelte";
   import UserActionsTab from "./UserActionsTab.svelte";
+  import UserMessageComposerCard from "./UserMessageComposerCard.svelte";
   import UserDetailAside from "./UserDetailAside.svelte";
   import UserLogsTab from "./UserLogsTab.svelte";
   import UserSubscriptionTab from "./UserSubscriptionTab.svelte";
@@ -18,12 +22,15 @@
     UsersStoreBridge,
   } from "./userDetailTypes";
 
+  const settingsStore = getSettingsStore();
+
   let {
     at,
     usersStore,
     openedUser,
     openedUserDetail,
     userDetailLoading,
+    routePrefix,
     onClose,
     openedUserAvatarUrl,
     openAvatarPreview,
@@ -56,7 +63,6 @@
     userLogsLoading,
     userLogsLoaded,
     userActionBusy,
-    userMessageDraft,
     extendTariffItems,
     extendTariffsLoading,
     userExtendDaysValid,
@@ -101,6 +107,7 @@
     openedUser: AdminUser | null;
     openedUserDetail: AdminUserDetail | null;
     userDetailLoading: boolean;
+    routePrefix: string;
     onClose: () => void;
     openedUserAvatarUrl: string;
     openAvatarPreview: () => void;
@@ -133,7 +140,6 @@
     userLogsLoading: boolean;
     userLogsLoaded: boolean;
     userActionBusy: boolean;
-    userMessageDraft: string;
     extendTariffItems: SelectOption[];
     extendTariffsLoading: boolean;
     userExtendDaysValid: boolean;
@@ -173,6 +179,23 @@
     userExternalSquadUuidDraft: string;
     updateUserExternalSquadUuid: (value: string) => void;
   } = $props();
+
+  const availableFeatures = $derived(new Set<string>((settingsStore.features || []) as string[]));
+  const visibleExtensionPanels = $derived(
+    ADMIN_USER_DETAIL_PANELS.filter((panel) =>
+      isFeatureBoundDescriptorVisible(panel, availableFeatures)
+    )
+  );
+  const visibleExtensionPanelTabs = $derived(
+    new Set(visibleExtensionPanels.map((panel) => `extension:${panel.id}`))
+  );
+
+  $effect(() => {
+    const selected = String(usersStore.userDetailTab || "");
+    if (selected.startsWith("extension:") && !visibleExtensionPanelTabs.has(selected)) {
+      usersStore.userDetailTab = "subscription";
+    }
+  });
 </script>
 
 <Dialog
@@ -227,6 +250,14 @@
               <Tabs.Trigger value="actions" class="admin-tabs-trigger"
                 >{at("user_tab_actions", {}, "Actions")}</Tabs.Trigger
               >
+              <Tabs.Trigger value="message" class="admin-tabs-trigger"
+                >{at("user_tab_message", {}, "Message")}</Tabs.Trigger
+              >
+              {#each visibleExtensionPanels as panel (panel.id)}
+                <Tabs.Trigger value={`extension:${panel.id}`} class="admin-tabs-trigger">
+                  {at(panel.i18nKey, {}, panel.fallbackLabel)}
+                </Tabs.Trigger>
+              {/each}
             </Tabs.List>
 
             <UserSubscriptionTab
@@ -268,7 +299,6 @@
               {openedUser}
               {openedUserDetail}
               {userActionBusy}
-              {userMessageDraft}
               {extendTariffItems}
               {extendTariffsLoading}
               {userExtendDaysValid}
@@ -309,6 +339,29 @@
               {userExternalSquadUuidDraft}
               {updateUserExternalSquadUuid}
             />
+
+            <Tabs.Content value="message" class="admin-tabs-content">
+              <UserMessageComposerCard
+                {at}
+                userId={openedUser?.user_id ?? null}
+                hasEmail={Boolean(openedUser?.email)}
+              />
+            </Tabs.Content>
+
+            {#each visibleExtensionPanels as panel (panel.id)}
+              {@const PanelComponent = panel.component}
+              {@const requiredFeature = requiredFeatureForDescriptor(panel)}
+              <Tabs.Content value={`extension:${panel.id}`} class="admin-tabs-content">
+                <PanelComponent
+                  {at}
+                  user={openedUser}
+                  userDetail={openedUserDetail}
+                  featureAvailable={!requiredFeature || availableFeatures.has(requiredFeature)}
+                  active={usersStore.userDetailTab === `extension:${panel.id}`}
+                  {routePrefix}
+                />
+              </Tabs.Content>
+            {/each}
           </Tabs.Root>
         </main>
       </div>

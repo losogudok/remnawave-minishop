@@ -29,6 +29,7 @@ from ..shared import (
     render_payment_link,
     safe_callback_answer,
 )
+from ..shared.checkout_expiration import resolve_checkout_expiration
 from .router import router
 from .service import StripeService
 
@@ -100,6 +101,7 @@ async def pay_stripe_callback_handler(
         purchased_gb=reuse_amounts.purchased_gb,
         purchased_hwid_devices=reuse_amounts.purchased_hwid_devices,
         tariff_key=reuse_amounts.tariff_key,
+        entitlement_context_snapshot=parts.entitlement_context_snapshot,
     )
     if reusable_payment is not None:
         reusable_url = await stripe_service.try_reuse_pending_payment(reusable_payment)
@@ -126,6 +128,7 @@ async def pay_stripe_callback_handler(
         provider="stripe",
         sale_mode=parts.sale_mode,
         hwid_quote=hwid_quote,
+        entitlement_context_snapshot=parts.entitlement_context_snapshot,
     )
     try:
         payment_record = await payment_dal.create_payment_record(session, record_payload)
@@ -165,6 +168,7 @@ async def pay_stripe_callback_handler(
         api_success=success,
         payment_url=first_value(response_data, "url") if success else None,
         provider_payment_id=first_value(response_data, "id"),
+        checkout_expires_at=resolve_checkout_expiration(response_data),
         provider_response=response_data,
         log_prefix=_LOG,
     )

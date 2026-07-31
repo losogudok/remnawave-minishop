@@ -126,6 +126,65 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, {"response": {"ok": True}})
         self.assertEqual(request_calls, 2)
 
+    async def test_successful_html_response_is_a_protocol_error(self):
+        service = self._make_service()
+
+        class HtmlResponse:
+            status = 200
+            headers: ClassVar[dict[str, str]] = {"Content-Type": "text/html; charset=utf-8"}
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc_val, exc_tb):
+                return None
+
+            async def text(self):
+                return "<html><body>Sign in</body></html>"
+
+        service._get_session = AsyncMock(
+            return_value=SimpleNamespace(request=lambda *_args, **_kwargs: HtmlResponse())
+        )
+
+        result = await service._request_once("GET", "/system/stats")
+
+        self.assertTrue(result["error"])
+        self.assertEqual(result["status_code"], 200)
+        self.assertEqual(
+            result["message"],
+            "Panel API returned an unexpected non-JSON response.",
+        )
+        self.assertEqual(result["details"]["content_type"], "text/html; charset=utf-8")
+        self.assertNotIn("data_text", result)
+
+    async def test_successful_invalid_json_response_is_a_protocol_error(self):
+        service = self._make_service()
+
+        class InvalidJsonResponse:
+            status = 200
+            headers: ClassVar[dict[str, str]] = {"Content-Type": "application/json"}
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc_val, exc_tb):
+                return None
+
+            async def text(self):
+                return "not-json"
+
+        service._get_session = AsyncMock(
+            return_value=SimpleNamespace(request=lambda *_args, **_kwargs: InvalidJsonResponse())
+        )
+
+        result = await service._request_once("GET", "/system/stats")
+
+        self.assertTrue(result["error"])
+        self.assertEqual(result["status_code"], 200)
+        self.assertEqual(result["message"], "Panel API returned invalid JSON.")
+        self.assertIn("parse_error", result["details"])
+        self.assertNotIn("data_text", result)
+
     async def test_get_internal_squads_uses_stale_cache_after_refresh_failure(self):
         service = self._make_service()
         stale_squads = [{"uuid": "squad-1", "name": "Squad 1"}]
@@ -597,6 +656,86 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(users, [{"uuid": "user-uuid"}])
         self.assertEqual(requested_sizes, [1000, 1000, 100])
+
+    async def test_get_all_panel_users_rejects_unsupported_legacy_response_shape(self):
+        service = self._make_service()
+        calls = []
+
+        async def fake_request(method, endpoint, **kwargs):
+            calls.append(endpoint)
+            if endpoint == "/users/stream":
+                return {"error": True, "status_code": 404}
+            return {"response": {"unexpected": []}}
+
+        service._request = AsyncMock(side_effect=fake_request)
+
+        users = await service.get_all_panel_users()
+
+        self.assertIsNone(users)
+        self.assertEqual(calls, ["/users/stream", "/users", "/users/stream", "/users"])
+
+    async def test_drop_user_connections_targets_only_given_nodes(self):
+        service = self._make_service()
+        service._request = AsyncMock(return_value={"response": {"eventSent": True}})
+
+        dropped = await service.drop_user_connections("user-uuid", ["node-1", "node-2"])
+
+        self.assertTrue(dropped)
+        service._request.assert_awaited_once_with(
+            "POST",
+            "/ip-control/drop-connections",
+            json={
+                "dropBy": {"by": "userUuids", "userUuids": ["user-uuid"]},
+                "targetNodes": {
+                    "target": "specificNodes",
+                    "nodeUuids": ["node-1", "node-2"],
+                },
+            },
+            log_full_response=False,
+        )
+
+    async def test_drop_user_connections_without_nodes_targets_all_nodes(self):
+        service = self._make_service()
+        service._request = AsyncMock(return_value={"response": {"eventSent": True}})
+
+        await service.drop_user_connections("user-uuid")
+
+        payload = service._request.await_args.kwargs["json"]
+        self.assertEqual(payload["targetNodes"], {"target": "allNodes"})
+
+    async def test_drop_user_connections_tolerates_panel_without_connected_nodes(self):
+        service = self._make_service()
+        service._request = AsyncMock(
+            return_value={
+                "error": True,
+                "status_code": 404,
+                "details": {"message": "Connected nodes not found", "errorCode": "A219"},
+            }
+        )
+
+        with self.assertNoLogs("bot.services.panel_api_users", level="ERROR"):
+            dropped = await service.drop_user_connections("user-uuid", ["node-1"])
+
+        self.assertFalse(dropped)
+
+    async def test_drop_user_connections_warns_when_panel_lacks_the_endpoint(self):
+        service = self._make_service()
+        service._request = AsyncMock(
+            return_value={
+                "error": True,
+                "status_code": 404,
+                "details": {
+                    "message": "Cannot POST /api/ip-control/drop-connections",
+                    "error": "Not Found",
+                },
+            }
+        )
+
+        with self.assertLogs("bot.services.panel_api_users", level="WARNING") as logs:
+            dropped = await service.drop_user_connections("user-uuid", ["node-1"])
+
+        self.assertFalse(dropped)
+        self.assertTrue(any("ip-control" in line for line in logs.output))
 
 
 if __name__ == "__main__":

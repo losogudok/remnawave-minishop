@@ -164,6 +164,23 @@ export function adminFallbackResponse(
       },
     };
   }
+  if (path === "/admin/tariffs/tribute/catalog") {
+    return {
+      ok: true,
+      subscriptions: [
+        {
+          subscription_id: 101,
+          name: "Minishop Standard",
+          currency: "rub",
+          periods: [
+            { period_id: 1001, period: "monthly", price: 299, months: 1 },
+            { period_id: 1003, period: "quarterly", price: 799, months: 3 },
+          ],
+        },
+      ],
+      products: [],
+    };
+  }
   if (path === "/admin/panel/internal-squads") {
     return {
       ok: true,
@@ -317,6 +334,9 @@ export function adminFallbackResponse(
       }
       if (Object.prototype.hasOwnProperty.call(updates, "TRIAL_PREMIUM_TRAFFIC_LIMIT_GB")) {
         DEV_MOCK.config.trialPremiumTrafficLimitGb = updates.TRIAL_PREMIUM_TRAFFIC_LIMIT_GB;
+      }
+      if (Object.prototype.hasOwnProperty.call(updates, "TRIAL_HWID_DEVICE_LIMIT")) {
+        DEV_MOCK.config.trialHwidDeviceLimit = updates.TRIAL_HWID_DEVICE_LIMIT;
       }
       if (Object.prototype.hasOwnProperty.call(updates, "TRIAL_TRAFFIC_STRATEGY")) {
         DEV_MOCK.config.trialTrafficStrategy = updates.TRIAL_TRAFFIC_STRATEGY || "NO_RESET";
@@ -535,6 +555,14 @@ export function adminFallbackResponse(
               subsection: "trial",
               label: "Trial premium traffic limit (GB)",
               value: DEV_MOCK.config.trialPremiumTrafficLimitGb ?? 0,
+            },
+            {
+              key: "TRIAL_HWID_DEVICE_LIMIT",
+              type: "int",
+              section: "pricing",
+              subsection: "trial",
+              label: "Trial HWID device limit",
+              value: DEV_MOCK.config.trialHwidDeviceLimit ?? 1,
             },
             {
               key: "TRIAL_TRAFFIC_STRATEGY",

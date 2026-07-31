@@ -216,6 +216,17 @@ SETTINGS_MANIFEST: list[SettingField] = [
         ),
     ),
     SettingField(
+        "SUBSCRIPTION_REISSUE_ENABLED",
+        "bool",
+        "subscription_guides",
+        "Subscription link reissue",
+        (
+            "Let users reissue (revoke and regenerate) their subscription link from the "
+            "Web App. The new link and connection instructions are delivered by email, "
+            "so configured email auth is required."
+        ),
+    ),
+    SettingField(
         "SUBSCRIPTION_PAGE_CONFIG_PANEL_ENABLED",
         "bool",
         "subscription_guides",
@@ -429,6 +440,18 @@ SETTINGS_MANIFEST: list[SettingField] = [
         (
             "Separate premium traffic limit for trial subscriptions. "
             "0 disables premium traffic enforcement."
+        ),
+        min=0,
+        subsection="trial",
+    ),
+    SettingField(
+        "TRIAL_HWID_DEVICE_LIMIT",
+        "int",
+        "pricing",
+        "Trial HWID device limit",
+        (
+            "Hardware device limit for trial subscriptions. "
+            "Empty keeps the panel/default limit; 0 means unlimited."
         ),
         min=0,
         subsection="trial",

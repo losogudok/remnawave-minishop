@@ -5,7 +5,6 @@
   import UserQuickActionsBlock from "./UserQuickActionsBlock.svelte";
   import UserSquadOverridesActionCard from "./UserSquadOverridesActionCard.svelte";
   import UserTariffActionCard from "./UserTariffActionCard.svelte";
-  import UserTelegramMessageActionCard from "./UserTelegramMessageActionCard.svelte";
   import UserTrafficGrantActionCard from "./UserTrafficGrantActionCard.svelte";
   import UserTrafficOverrideActionCard from "./UserTrafficOverrideActionCard.svelte";
   import UserTrafficStrategyActionCard from "./UserTrafficStrategyActionCard.svelte";
@@ -18,7 +17,6 @@
     openedUser?: AdminUser | null;
     openedUserDetail?: AdminUserDetail | null;
     userActionBusy?: boolean;
-    userMessageDraft?: string;
     extendTariffItems?: SelectOption[];
     extendTariffsLoading?: boolean;
     userExtendDaysValid?: boolean;
@@ -65,7 +63,6 @@
     openedUser = null,
     openedUserDetail = null,
     userActionBusy = false,
-    userMessageDraft = "",
     extendTariffItems = [],
     extendTariffsLoading = false,
     userExtendDaysValid = false,
@@ -188,8 +185,6 @@
       {selectGrantTrafficKind}
     />
   {/if}
-
-  <UserTelegramMessageActionCard {at} {userActionBusy} {userMessageDraft} />
 
   <UserSquadOverridesActionCard
     {at}

@@ -16,11 +16,16 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from bot.app.web.context import get_app_bot, get_app_panel_service, get_app_settings
+from bot.infra.redis import cache_get_json, redis_key
+from bot.services.tariff_worker_premium_enforcement import PREMIUM_LEAK_CACHE_PARTS
+from bot.services.tariff_worker_shared import PANEL_LIMIT_DRIFT_CACHE_PARTS
 from bot.utils.request_security import ip_in_allowlist
+from bot.utils.traffic_reset import parse_panel_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +81,12 @@ ALL_MESSAGE_KEYS = (
     "telegram_webhook_pending",
     "panel_api_not_configured",
     "panel_api_unreachable",
+    "premium_squad_enforcement_leak",
+    "panel_limit_drift",
 )
+
+# Premium enforcement leaks older than this are treated as resolved.
+PREMIUM_LEAK_ALERT_MAX_AGE_SECONDS = 6 * 60 * 60
 
 
 @dataclass(frozen=True)
@@ -447,6 +457,76 @@ async def panel_alerts(panel_service: Any, settings: Any) -> list[ConfigAlert]:
     return []
 
 
+async def premium_enforcement_alerts(settings: Any) -> list[ConfigAlert]:
+    """Surface premium nodes where limiting a subscription did not stop its traffic.
+
+    The tariff worker records a node here when a limited subscription keeps
+    spending premium traffic on it. The usual cause is a Remnawave node started
+    without CAP_NET_ADMIN: such a node cannot tear down the sessions a client
+    already holds.
+    """
+    record = await cache_get_json(settings, redis_key(settings, *PREMIUM_LEAK_CACHE_PARTS))
+    if not isinstance(record, dict) or not record:
+        return []
+    now = datetime.now(UTC)
+    labels: list[str] = []
+    for node_uuid, entry in record.items():
+        if not isinstance(entry, dict):
+            continue
+        seen_at = parse_panel_datetime(entry.get("last_seen_at"))
+        if seen_at is None:
+            continue
+        if (now - seen_at).total_seconds() > PREMIUM_LEAK_ALERT_MAX_AGE_SECONDS:
+            continue
+        labels.append(str(entry.get("name") or node_uuid))
+    if not labels:
+        return []
+    labels.sort()
+    return [
+        ConfigAlert(
+            id="premium_squad_enforcement_leak",
+            severity=SEVERITY_WARNING,
+            sections=(SECTION_TARIFFS, SECTION_USERS),
+            params={"nodes": ", ".join(labels), "count": len(labels)},
+        )
+    ]
+
+
+async def panel_limit_drift_alerts(settings: Any) -> list[ConfigAlert]:
+    """Report subscriptions whose limits the panel keeps losing.
+
+    The tariff worker records a subscription here after its device/traffic limit
+    failed to stick several ticks in a row. In practice that means a second
+    writer (another shop instance, a script, a panel admin) owns the same panel
+    user and pushes its own values.
+    """
+    record = await cache_get_json(settings, redis_key(settings, *PANEL_LIMIT_DRIFT_CACHE_PARTS))
+    if not isinstance(record, dict) or not record:
+        return []
+    now = datetime.now(UTC)
+    subscriptions: list[str] = []
+    for entry in record.values():
+        if not isinstance(entry, dict):
+            continue
+        seen_at = parse_panel_datetime(entry.get("last_seen_at"))
+        if seen_at is None:
+            continue
+        if (now - seen_at).total_seconds() > PREMIUM_LEAK_ALERT_MAX_AGE_SECONDS:
+            continue
+        subscriptions.append(str(entry.get("subscription_id") or "?"))
+    if not subscriptions:
+        return []
+    subscriptions.sort()
+    return [
+        ConfigAlert(
+            id="panel_limit_drift",
+            severity=SEVERITY_WARNING,
+            sections=(SECTION_TARIFFS, SECTION_USERS),
+            params={"subscriptions": ", ".join(subscriptions), "count": len(subscriptions)},
+        )
+    ]
+
+
 # ─── Aggregation ───────────────────────────────────────────────────
 
 _network_cache: dict[int, tuple[float, list[ConfigAlert]]] = {}
@@ -486,12 +566,14 @@ async def network_alerts(app: Any, settings: Any, *, refresh: bool = False) -> l
         results = await asyncio.gather(
             telegram_alerts(get_app_bot(app), settings),
             panel_alerts(get_app_panel_service(app), settings),
+            premium_enforcement_alerts(settings),
+            panel_limit_drift_alerts(settings),
             return_exceptions=True,
         )
         alerts: list[ConfigAlert] = []
         for result in results:
             if isinstance(result, BaseException):
-                logger.exception("Network config health check failed", exc_info=result)
+                logger.error("Network config health check failed", exc_info=result)
                 continue
             alerts.extend(result)
         _network_cache[cache_key] = (time.monotonic(), alerts)

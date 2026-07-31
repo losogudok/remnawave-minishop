@@ -39,16 +39,40 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
         sale_mode: str = "subscription",
         traffic_gb: float | None = None,
         tariff_key: str | None = None,
+        authoritative_end_at: datetime | None = None,
     ) -> dict[str, Any] | None:
 
         sale_mode_context = parse_sale_mode_context(sale_mode, tariff_key)
         sale_mode_base = sale_mode_context.base
         tariff_key = sale_mode_context.tariff_key
         tariffs_config = self._tariffs_config()
+        if tariff_key and not tariffs_config:
+            logger.error(
+                "Tariff-scoped %s activation requires an available tariff catalog "
+                "for user %s (tariff=%s).",
+                sale_mode_base,
+                user_id,
+                tariff_key,
+            )
+            return None
         if tariffs_config and tariff_key:
             resolved_tariff = tariffs_config.get(tariff_key)
-            if resolved_tariff is not None:
-                tariff_key = resolved_tariff.key
+            if resolved_tariff is None:
+                logger.error(
+                    "Tariff-scoped %s activation references unknown tariff %s for user %s.",
+                    sale_mode_base,
+                    tariff_key,
+                    user_id,
+                )
+                return None
+            tariff_key = resolved_tariff.key
+        if tariffs_config and sale_mode_base == "subscription" and not tariff_key:
+            logger.error(
+                "Paid subscription activation requires tariff_key when the tariff catalog "
+                "is enabled for user %s.",
+                user_id,
+            )
+            return None
         if sale_mode_base in {"traffic", "traffic_package"} or (
             getattr(self.settings, "traffic_sale_mode", False) and not tariffs_config
         ):
@@ -191,6 +215,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
         current_active_sub = await subscription_dal.get_active_subscription_by_user_id(
             session, user_id
         )
+        previous_squad_subscription = current_active_sub
         current_billing_model = self._subscription_billing_model(current_active_sub)
         current_panel_used = getattr(current_active_sub, "traffic_used_bytes", None)
         current_panel_limit = getattr(current_active_sub, "traffic_limit_bytes", None)
@@ -222,17 +247,25 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                 current_panel_used = getattr(current_active_sub, "traffic_used_bytes", None)
             if current_panel_limit is None:
                 current_panel_limit = getattr(current_active_sub, "traffic_limit_bytes", None)
-        start_date = datetime.now(UTC)
+        activation_at = datetime.now(UTC)
+        # Billing providers, promo grants, and HWID renewals use the next paid
+        # period boundary. Keep it separate from the immutable entitlement
+        # history persisted as ``subscription.start_date``.
+        period_start_date = activation_at
         if (
             current_active_sub
             and current_billing_model != "traffic"
             and current_active_sub.end_date
-            and current_active_sub.end_date > start_date
+            and current_active_sub.end_date > period_start_date
         ):
-            start_date = current_active_sub.end_date
+            period_start_date = current_active_sub.end_date
+        subscription_start_date = entitlement_helpers.immutable_subscription_start(
+            current_active_sub if current_billing_model != "traffic" else None,
+            now=activation_at,
+        )
 
-        end_after_months = add_months(start_date, months_int)
-        base_period_days = (end_after_months - start_date).days
+        end_after_months = add_months(period_start_date, months_int)
+        base_period_days = (end_after_months - period_start_date).days
         duration_days_total = base_period_days
         applied_promo_bonus_days = 0
 
@@ -251,7 +284,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                         charged_gb=None,
                         scope="regular",
                         promo=promo_effects,
-                        period_start=start_date,
+                        period_start=period_start_date,
                         base_period_end=end_after_months,
                     )
                 )
@@ -283,7 +316,16 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                 )
                 promo_code_id_from_payment = None
 
-        final_end_date = start_date + timedelta(days=duration_days_total)
+        provider_end_at = self._as_aware_utc(authoritative_end_at)
+        if provider_end_at is not None:
+            # Webhook-driven subscription providers already calculated the
+            # paid entitlement boundary. Never derive a second calendar period
+            # locally or shrink access that another purchase has extended.
+            final_end_date = max(period_start_date, provider_end_at) + timedelta(
+                days=applied_promo_bonus_days
+            )
+        else:
+            final_end_date = period_start_date + timedelta(days=duration_days_total)
         if hwid_renewal_devices > 0 and hwid_renewal_valid_until and applied_promo_bonus_days:
             hwid_renewal_valid_until = hwid_renewal_valid_until + timedelta(
                 days=applied_promo_bonus_days
@@ -296,7 +338,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                     session,
                     subscription_id=current_active_sub.subscription_id,
                     at=datetime.now(UTC),
-                    subscription_end_before=start_date,
+                    subscription_end_before=period_start_date,
                     delta=timedelta(days=applied_promo_bonus_days),
                 )
             except Exception:
@@ -332,6 +374,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
         else:
             topup_balance_bytes = int(getattr(current_active_sub, "topup_balance_bytes", 0) or 0)
         extra_hwid_devices = 0
+        hwid_traffic_bonus_bytes = 0
         hwid_devices_valid_until = None
         if current_active_sub:
             try:
@@ -341,13 +384,14 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                     at=datetime.now(UTC),
                 )
                 extra_hwid_devices = int(hwid_summary.get("active_devices") or 0)
+                hwid_traffic_bonus_bytes = self._hwid_traffic_bonus_bytes_from_summary(hwid_summary)
                 hwid_devices_valid_until = hwid_summary.get("active_until")
             except Exception:
                 logger.exception(
                     "Failed to recalculate active HWID devices for renewal of user %s",
                     user_id,
                 )
-                extra_hwid_devices = int(getattr(current_active_sub, "extra_hwid_devices", 0) or 0)
+                raise
         premium_topup_balance_bytes = int(
             getattr(current_active_sub, "premium_topup_balance_bytes", 0) or 0
         )
@@ -375,6 +419,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             regular_bonus_carry,
             regular_unlimited_override=regular_unl_carry,
             traffic_used_bytes=0,
+            hwid_device_bonus_bytes=hwid_traffic_bonus_bytes,
         )
         base_hwid_limit = self._base_hwid_limit_for_tariff(tariff)
         effective_hwid_limit = self._effective_hwid_limit(base_hwid_limit, extra_hwid_devices)
@@ -407,6 +452,22 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             logger.error("Failed to ensure panel user for TG %s during paid subscription.", user_id)
             return None
 
+        if previous_squad_subscription is None and not panel_user_created_now:
+            previous_squad_subscription = (
+                await subscription_dal.get_subscription_by_panel_subscription_uuid(
+                    session,
+                    panel_sub_link_id,
+                )
+            )
+        previous_managed_squads: list[str] = []
+        if previous_squad_subscription is not None:
+            previous_managed_squads, _ = self._managed_panel_squad_uuids_for_subscription(
+                previous_squad_subscription
+            )
+        override_detection_managed_squads = list(
+            dict.fromkeys([*previous_managed_squads, *(managed_squads or [])])
+        )
+
         await subscription_dal.deactivate_other_active_subscriptions(
             session, panel_user_uuid, panel_sub_link_id
         )
@@ -414,7 +475,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             "user_id": user_id,
             "panel_user_uuid": panel_user_uuid,
             "panel_subscription_uuid": panel_sub_link_id,
-            "start_date": start_date,
+            "start_date": subscription_start_date,
             "end_date": final_end_date,
             "duration_months": months_int,
             "is_active": True,
@@ -427,6 +488,9 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             "suppress_early_expiry_notifications": False,
             "auto_renew_enabled": auto_renew_should_enable,
             "tariff_key": tariff.key if tariff else None,
+            "tariff_binding_source": "payment" if tariff else None,
+            "tariff_bound_at": datetime.now(UTC) if tariff else None,
+            "tariff_binding_note": (f"paid_activation:{provider}" if tariff else None),
             "tier_baseline_bytes": tier_baseline_bytes,
             "topup_balance_bytes": topup_balance_bytes,
             "regular_bonus_bytes": regular_bonus_carry,
@@ -472,6 +536,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                     subscription_id=new_or_updated_sub.subscription_id,
                     payment_id=payment_db_id,
                     purchased_devices=hwid_renewal_devices,
+                    traffic_bonus_bytes=getattr(payment, "hwid_traffic_bonus_bytes", None),
                     valid_from=hwid_renewal_valid_from,
                     valid_until=hwid_renewal_valid_until,
                 )
@@ -500,6 +565,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                 user_id=user_id,
                 panel_user_uuid=panel_user_uuid,
                 managed_internal_squads=managed_squads,
+                override_detection_managed_internal_squads=(override_detection_managed_squads),
                 include_internal_squads=bool(tariff or managed_squads),
                 source="paid_activation",
             )

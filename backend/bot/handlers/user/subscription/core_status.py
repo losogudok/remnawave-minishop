@@ -12,6 +12,10 @@ from bot.keyboards.inline.user_keyboards import (
     get_back_to_main_menu_markup,
 )
 from bot.middlewares.i18n import JsonI18n
+from bot.services.device_topup_availability import (
+    device_topup_reason_locale_key,
+    resolve_device_topup_availability,
+)
 from bot.services.panel_api_service import PanelApiService
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.services.traffic_topup_availability import resolve_traffic_topup_availability
@@ -23,9 +27,6 @@ from bot.utils.install_links import (
     ensure_user_install_guide_links,
 )
 from config.settings import Settings
-from config.tariffs_config import (
-    default_currency_key_for_settings,
-)
 from db.dal import subscription_dal
 
 from .core_common import (
@@ -365,32 +366,30 @@ async def my_subscription_command_handler(
             # Skip the buy-devices button entirely when the user has unlimited
             # devices (max_devices == 0). Otherwise the button leads to an
             # alert "hwid_devices_unlimited_no_topup" — confusing dead end.
-            devices_topup_allowed = (
-                settings.tariffs_config
-                and local_sub
-                and local_sub.tariff_key
-                and max_devices_value not in (None, 0)
+            device_topup_availability = resolve_device_topup_availability(
+                settings,
+                subscription_active=local_sub is not None,
+                tariff_key=local_sub.tariff_key if local_sub else None,
+                max_devices=max_devices_value,
             )
-            if devices_topup_allowed:
-                try:
-                    tariff_for_devices = settings.tariffs_config.require(local_sub.tariff_key)
-                    if (
-                        tariff_for_devices.billing_model == "period"
-                        and tariff_for_devices.hwid_device_packages
-                        and tariff_for_devices.hwid_device_packages.for_currency(
-                            default_currency_key_for_settings(settings)
+            if device_topup_availability.allowed:
+                prepend_rows.append(
+                    [
+                        InlineKeyboardButton(
+                            text=get_text("buy_hwid_devices_menu_button"),
+                            callback_data="hwid_devices:list",
                         )
-                    ):
-                        prepend_rows.append(
-                            [
-                                InlineKeyboardButton(
-                                    text=get_text("buy_hwid_devices_menu_button"),
-                                    callback_data="hwid_devices:list",
-                                )
-                            ]
+                    ]
+                )
+            elif max_devices_value not in (None, 0):
+                prepend_rows.append(
+                    [
+                        InlineKeyboardButton(
+                            text=get_text("device_topup_unavailable_menu_button"),
+                            callback_data="hwid_devices:list",
                         )
-                except Exception:
-                    pass
+                    ]
+                )
 
         # 2) Auto-renew toggle
         if (
@@ -578,26 +577,34 @@ async def my_devices_command_handler(
     kb = base_markup.inline_keyboard
 
     devices_kb = []
-    if settings.tariffs_config and active.get("tariff_key") and max_devices_value != 0:
-        try:
-            tariff_for_devices = settings.tariffs_config.require(active["tariff_key"])
-            if (
-                tariff_for_devices.billing_model == "period"
-                and tariff_for_devices.hwid_device_packages
-                and tariff_for_devices.hwid_device_packages.for_currency(
-                    default_currency_key_for_settings(settings)
+    device_topup_availability = resolve_device_topup_availability(
+        settings,
+        subscription_active=True,
+        tariff_key=active.get("tariff_key"),
+        max_devices=max_devices_value,
+    )
+    if device_topup_availability.allowed:
+        devices_kb.append(
+            [
+                InlineKeyboardButton(
+                    text=get_text("buy_hwid_devices_menu_button"),
+                    callback_data="hwid_devices:list",
                 )
-            ):
-                devices_kb.append(
-                    [
-                        InlineKeyboardButton(
-                            text=get_text("buy_hwid_devices_menu_button"),
-                            callback_data="hwid_devices:list",
-                        )
-                    ]
+            ]
+        )
+    elif max_devices_value not in (None, 0):
+        text = (
+            f"{text}\n\n"
+            f"{get_text(device_topup_reason_locale_key(device_topup_availability.reason))}"
+        )
+        devices_kb.append(
+            [
+                InlineKeyboardButton(
+                    text=get_text("device_topup_unavailable_menu_button"),
+                    callback_data="hwid_devices:list",
                 )
-        except Exception:
-            pass
+            ]
+        )
     for index, device in enumerate(devices_list_raw, start=1):
         hwid = device.get("hwid")
         if not hwid:

@@ -874,7 +874,7 @@ def test_refresh_marks_expired_wata_link_as_canceled(monkeypatch):
     payment = _payment(
         provider="wata",
         provider_payment_id="link-id",
-        created_at=datetime.now(UTC) - timedelta(minutes=16),
+        created_at=datetime.now(UTC) - timedelta(minutes=5),
     )
     updates = []
 
@@ -889,7 +889,7 @@ def test_refresh_marks_expired_wata_link_as_canceled(monkeypatch):
             "expirationDateTime": "2000-01-01T00:00:00Z",
         }
 
-    async def update_provider_payment_and_status(
+    async def transition_provider_payment_to_terminal(
         _session,
         payment_id,
         provider_payment_id,
@@ -898,6 +898,7 @@ def test_refresh_marks_expired_wata_link_as_canceled(monkeypatch):
         updates.append((payment_id, provider_payment_id, status))
         payment.provider_payment_id = provider_payment_id
         payment.status = status
+        return payment, True
 
     async def get_payment_by_db_id(_session, payment_id):
         assert payment_id == payment.payment_id
@@ -905,15 +906,151 @@ def test_refresh_marks_expired_wata_link_as_canceled(monkeypatch):
 
     service._find_final_transaction_for_payment = find_final_transaction_for_payment
     service.get_payment_link = get_payment_link
+    notify_failed = AsyncMock()
     monkeypatch.setattr(
         wata_service.payment_dal,
-        "update_provider_payment_and_status",
-        update_provider_payment_and_status,
+        "transition_provider_payment_to_terminal",
+        transition_provider_payment_to_terminal,
     )
     monkeypatch.setattr(wata_service.payment_dal, "get_payment_by_db_id", get_payment_by_db_id)
+    monkeypatch.setattr(wata_service, "notify_user_payment_failed", notify_failed)
 
     result = asyncio.run(service.refresh_payment_status(session, payment))
 
     assert result is payment
     assert updates == [(465, "link-id", "canceled")]
     assert session.commits == 1
+    notify_failed.assert_awaited_once()
+    assert notify_failed.await_args.kwargs["payment"] is payment
+
+
+def test_refresh_marks_declined_wata_transaction_and_notifies(monkeypatch):
+    session = _FakeSession()
+    service = _service(session)
+    payment = _payment(provider="wata", provider_payment_id="link-id")
+    updates = []
+
+    async def find_final_transaction_for_payment(_payment):
+        return {
+            "transactionId": "tx-declined",
+            "status": "Declined",
+            "amount": 100,
+            "currency": "RUB",
+        }
+
+    async def transition_provider_payment_to_terminal(
+        _session,
+        payment_id,
+        provider_payment_id,
+        status,
+    ):
+        updates.append((payment_id, provider_payment_id, status))
+        payment.provider_payment_id = provider_payment_id
+        payment.status = status
+        return payment, True
+
+    async def get_payment_by_db_id(_session, payment_id):
+        assert payment_id == payment.payment_id
+        return payment
+
+    notify_failed = AsyncMock()
+    service._find_final_transaction_for_payment = find_final_transaction_for_payment
+    monkeypatch.setattr(
+        wata_service.payment_dal,
+        "transition_provider_payment_to_terminal",
+        transition_provider_payment_to_terminal,
+    )
+    monkeypatch.setattr(wata_service.payment_dal, "get_payment_by_db_id", get_payment_by_db_id)
+    monkeypatch.setattr(wata_service, "notify_user_payment_failed", notify_failed)
+
+    result = asyncio.run(service.refresh_payment_status(session, payment))
+
+    assert result is payment
+    assert updates == [(465, "tx-declined", "failed")]
+    assert session.commits == 1
+    notify_failed.assert_awaited_once()
+    assert notify_failed.await_args.kwargs["payment"] is payment
+
+
+def test_refresh_uses_local_wata_ttl_without_link_lookup(monkeypatch):
+    session = _FakeSession()
+    service = _service(session)
+    payment = _payment(
+        provider="wata",
+        provider_payment_id="link-id",
+        created_at=datetime.now(UTC) - timedelta(minutes=16),
+    )
+
+    service._find_final_transaction_for_payment = AsyncMock(return_value=None)
+    service.get_payment_link = AsyncMock()
+    mark_expired = AsyncMock(return_value=payment)
+    monkeypatch.setattr(service, "_mark_expired_link", mark_expired)
+
+    result = asyncio.run(service.refresh_payment_status(session, payment))
+
+    assert result is payment
+    service.get_payment_link.assert_not_awaited()
+    mark_expired.assert_awaited_once()
+    assert mark_expired.await_args.kwargs["notify_user"] is True
+
+
+def test_refresh_does_not_expire_payment_already_claimed_for_success(monkeypatch):
+    session = _FakeSession()
+    service = _service(session)
+    payment = _payment(
+        provider="wata",
+        provider_payment_id="link-id",
+        status="succeeded_pending_finalization",
+        created_at=datetime.now(UTC) - timedelta(minutes=16),
+    )
+
+    service._find_final_transaction_for_payment = AsyncMock(return_value=None)
+    service.get_payment_link = AsyncMock()
+    mark_expired = AsyncMock(return_value=payment)
+    monkeypatch.setattr(service, "_mark_expired_link", mark_expired)
+
+    result = asyncio.run(service.refresh_payment_status(session, payment))
+
+    assert result is payment
+    service.get_payment_link.assert_not_awaited()
+    mark_expired.assert_not_awaited()
+
+
+def test_expired_wata_link_emits_only_one_failure_notification(monkeypatch):
+    session = _FakeSession()
+    service = _service(session)
+    stale_snapshot = _payment(
+        provider="wata",
+        provider_payment_id="link-id",
+        status="pending_wata",
+    )
+    persisted = _payment(
+        provider="wata",
+        provider_payment_id="link-id",
+        status="canceled",
+    )
+
+    transition = AsyncMock(return_value=(persisted, False))
+    get_payment = AsyncMock(return_value=persisted)
+    notify_failed = AsyncMock()
+    monkeypatch.setattr(
+        wata_service.payment_dal,
+        "transition_provider_payment_to_terminal",
+        transition,
+    )
+    monkeypatch.setattr(wata_service.payment_dal, "get_payment_by_db_id", get_payment)
+    monkeypatch.setattr(wata_service, "notify_user_payment_failed", notify_failed)
+
+    result = asyncio.run(
+        service._mark_expired_link(
+            session,
+            stale_snapshot,
+            {"id": "link-id"},
+            log_prefix="Wata status refresh",
+            notify_user=True,
+        )
+    )
+
+    assert result is persisted
+    assert session.commits == 1
+    notify_failed.assert_not_awaited()

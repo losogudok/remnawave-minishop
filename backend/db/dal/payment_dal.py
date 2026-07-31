@@ -16,6 +16,16 @@ logger = logging.getLogger(__name__)
 
 _PAYMENT_STATUS_SUCCEEDED = "succeeded"
 _PAYMENT_STATUS_PENDING_FINALIZATION = "succeeded_pending_finalization"
+_PAYMENT_TERMINAL_STATUSES = frozenset(
+    {
+        _PAYMENT_STATUS_SUCCEEDED,
+        "failed",
+        "canceled",
+        "cancelled",
+        "failed_creation",
+        "refunded",
+    }
+)
 _YOOKASSA_RECONCILABLE_STATUSES = (
     "pending_yookassa",
     "pending",
@@ -35,10 +45,13 @@ def _normalize_payment_status(status: Any) -> str:
 
 
 def _would_overwrite_succeeded_payment(current_status: Any, new_status: Any) -> bool:
-    return (
-        _normalize_payment_status(current_status) == _PAYMENT_STATUS_SUCCEEDED
-        and _normalize_payment_status(new_status) != _PAYMENT_STATUS_SUCCEEDED
-    )
+    normalized_new_status = _normalize_payment_status(new_status)
+    return _normalize_payment_status(
+        current_status
+    ) == _PAYMENT_STATUS_SUCCEEDED and normalized_new_status not in {
+        _PAYMENT_STATUS_SUCCEEDED,
+        "refunded",
+    }
 
 
 def _decimal_order_value(value: Any) -> Decimal | None:
@@ -76,6 +89,8 @@ def _validate_existing_provider_payment_order(
     hwid_pricing_period_months: int | None,
     hwid_proration_ratio: float | None,
     hwid_full_price: float | None,
+    hwid_traffic_bonus_bytes: int | None,
+    entitlement_context_snapshot: str | None,
 ) -> None:
     """Ensure a provider id cannot be rebound to a different entitlement."""
     comparisons = {
@@ -131,6 +146,14 @@ def _validate_existing_provider_payment_order(
         "hwid_full_price": (
             _decimal_order_value(getattr(payment, "hwid_full_price", None)),
             _decimal_order_value(hwid_full_price),
+        ),
+        "hwid_traffic_bonus_bytes": (
+            getattr(payment, "hwid_traffic_bonus_bytes", None),
+            hwid_traffic_bonus_bytes,
+        ),
+        "entitlement_context_snapshot": (
+            getattr(payment, "entitlement_context_snapshot", None),
+            entitlement_context_snapshot,
         ),
     }
     mismatched = [field for field, (stored, expected) in comparisons.items() if stored != expected]
@@ -335,6 +358,8 @@ async def ensure_payment_with_provider_id(
     hwid_pricing_period_months: int | None = None,
     hwid_proration_ratio: float | None = None,
     hwid_full_price: float | None = None,
+    hwid_traffic_bonus_bytes: int | None = None,
+    entitlement_context_snapshot: str | None = None,
 ) -> Payment:
     """Atomically create or validate one order for a provider payment id."""
     provider_key = str(provider or "").strip().lower()
@@ -367,6 +392,8 @@ async def ensure_payment_with_provider_id(
             hwid_pricing_period_months=hwid_pricing_period_months,
             hwid_proration_ratio=hwid_proration_ratio,
             hwid_full_price=hwid_full_price,
+            hwid_traffic_bonus_bytes=hwid_traffic_bonus_bytes,
+            entitlement_context_snapshot=entitlement_context_snapshot,
         )
         return existing
 
@@ -391,6 +418,8 @@ async def ensure_payment_with_provider_id(
         "hwid_pricing_period_months": hwid_pricing_period_months,
         "hwid_proration_ratio": hwid_proration_ratio,
         "hwid_full_price": hwid_full_price,
+        "hwid_traffic_bonus_bytes": hwid_traffic_bonus_bytes,
+        "entitlement_context_snapshot": entitlement_context_snapshot,
     }
     payment_payload.update(
         {field: value for field, value in optional_fields.items() if value is not None}
@@ -429,6 +458,8 @@ async def ensure_payment_with_provider_id(
         hwid_pricing_period_months=hwid_pricing_period_months,
         hwid_proration_ratio=hwid_proration_ratio,
         hwid_full_price=hwid_full_price,
+        hwid_traffic_bonus_bytes=hwid_traffic_bonus_bytes,
+        entitlement_context_snapshot=entitlement_context_snapshot,
     )
     if created:
         logger.info(
@@ -533,9 +564,12 @@ async def find_recent_pending_provider_payment(
     months: int | None,
     purchased_gb: float | None,
     purchased_hwid_devices: int | None,
+    hwid_traffic_bonus_bytes: int | None = None,
     tariff_key: str | None = None,
     promo_code_id: int | None = None,
     promo_effect_summary: str | None = None,
+    tariff_change_quote_snapshot: str | None = None,
+    entitlement_context_snapshot: str | None = None,
     since_minutes: int | None = None,
 ) -> Payment | None:
     """Return the most recent pending payment matching the given tariff parameters.
@@ -567,6 +601,14 @@ async def find_recent_pending_provider_payment(
         conditions.append(func.upper(Payment.currency) == str(currency).strip().upper())
     if sale_mode is not None:
         conditions.append(Payment.sale_mode == sale_mode)
+    if tariff_change_quote_snapshot is not None:
+        conditions.append(Payment.tariff_change_quote_snapshot == tariff_change_quote_snapshot)
+    else:
+        conditions.append(Payment.tariff_change_quote_snapshot.is_(None))
+    if entitlement_context_snapshot is not None:
+        conditions.append(Payment.entitlement_context_snapshot == entitlement_context_snapshot)
+    else:
+        conditions.append(Payment.entitlement_context_snapshot.is_(None))
     if tariff_key is not None:
         conditions.append(Payment.tariff_key == tariff_key)
     if promo_code_id is not None:
@@ -587,6 +629,10 @@ async def find_recent_pending_provider_payment(
         conditions.append(Payment.purchased_hwid_devices == purchased_hwid_devices)
     else:
         conditions.append(Payment.purchased_hwid_devices.is_(None))
+    if hwid_traffic_bonus_bytes is not None:
+        conditions.append(Payment.hwid_traffic_bonus_bytes == hwid_traffic_bonus_bytes)
+    else:
+        conditions.append(Payment.hwid_traffic_bonus_bytes.is_(None))
 
     stmt = (
         select(Payment)
@@ -599,8 +645,53 @@ async def find_recent_pending_provider_payment(
     return result.scalar_one_or_none()
 
 
+async def get_latest_resumable_promo_payment(
+    session: AsyncSession,
+    *,
+    user_id: int,
+) -> Payment | None:
+    """Return the newest discounted checkout that still has a reusable link."""
+
+    normalized_status = func.lower(func.trim(Payment.status))
+    stmt = (
+        select(Payment)
+        .where(
+            Payment.user_id == user_id,
+            Payment.promo_code_id.isnot(None),
+            Payment.provider_payment_url.isnot(None),
+            func.length(func.trim(Payment.provider_payment_url)) > 0,
+            or_(
+                normalized_status == "pending",
+                normalized_status.like("pending_%"),
+                normalized_status.in_(
+                    (
+                        "created",
+                        "active",
+                        "new",
+                        "open",
+                        "process",
+                        "processing",
+                        "underpaid",
+                        "waiting_for_capture",
+                    )
+                ),
+            ),
+        )
+        .options(joinedload(Payment.promo_code_used))
+        .order_by(Payment.created_at.desc(), Payment.payment_id.desc())
+        .limit(1)
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
 async def update_payment_status_by_db_id(
-    session: AsyncSession, payment_db_id: int, new_status: str, yk_payment_id: str | None = None
+    session: AsyncSession,
+    payment_db_id: int,
+    new_status: str,
+    yk_payment_id: str | None = None,
+    provider_payment_url: str | None = None,
+    checkout_expires_at: datetime | None = None,
 ) -> Payment | None:
     payment = await get_payment_by_db_id_for_update(session, payment_db_id)
     if payment:
@@ -616,6 +707,10 @@ async def update_payment_status_by_db_id(
             payment.updated_at = func.now()
         if yk_payment_id and payment.yookassa_payment_id is None:
             payment.yookassa_payment_id = yk_payment_id
+        if provider_payment_url:
+            payment.provider_payment_url = provider_payment_url
+        if checkout_expires_at is not None:
+            payment.checkout_expires_at = checkout_expires_at
         await session.flush()
         await session.refresh(payment)
         if not preserve_succeeded:
@@ -709,6 +804,7 @@ async def update_provider_payment_and_status(
     provider_payment_id: str,
     new_status: str,
     provider_payment_url: str | None = None,
+    checkout_expires_at: datetime | None = None,
 ) -> Payment | None:
     payment = await get_payment_by_db_id_for_update(session, payment_db_id)
     if payment:
@@ -725,6 +821,8 @@ async def update_provider_payment_and_status(
         payment.provider_payment_id = provider_payment_id
         if provider_payment_url:
             payment.provider_payment_url = provider_payment_url
+        if checkout_expires_at is not None:
+            payment.checkout_expires_at = checkout_expires_at
         await session.flush()
         await session.refresh(payment)
         if not preserve_succeeded:
@@ -737,6 +835,44 @@ async def update_provider_payment_and_status(
     else:
         logger.warning("Payment record with DB ID %s not found for provider update.", payment_db_id)
     return payment
+
+
+async def transition_provider_payment_to_terminal(
+    session: AsyncSession,
+    payment_db_id: int,
+    provider_payment_id: str,
+    new_status: str,
+) -> tuple[Payment | None, bool]:
+    """Lock and finalize a payment once, returning whether this call changed it."""
+
+    normalized_new_status = _normalize_payment_status(new_status)
+    if normalized_new_status not in _PAYMENT_TERMINAL_STATUSES:
+        raise ValueError(f"Payment status is not terminal: {new_status}")
+
+    payment = await get_payment_by_db_id_for_update(session, payment_db_id)
+    if payment is None:
+        logger.warning("Payment record with DB ID %s not found for terminal update.", payment_db_id)
+        return None, False
+
+    if _normalize_payment_status(payment.status) in _PAYMENT_TERMINAL_STATUSES:
+        logger.info(
+            "Payment record %s is already terminal with status %s; skipping duplicate update.",
+            payment.payment_id,
+            payment.status,
+        )
+        return payment, False
+
+    payment.status = normalized_new_status
+    payment.updated_at = func.now()
+    payment.provider_payment_id = provider_payment_id
+    await session.flush()
+    await session.refresh(payment)
+    logger.info(
+        "Payment record %s transitioned to terminal status %s.",
+        payment.payment_id,
+        normalized_new_status,
+    )
+    return payment, True
 
 
 async def _daily_revenue_series_utc(session: AsyncSession, days: int = 14) -> list[dict[str, Any]]:

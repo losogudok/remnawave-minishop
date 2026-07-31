@@ -106,6 +106,8 @@ export type AppFactoriesDeps = {
   readCheckoutPromoDeeplink: () => string;
   readRenewalDeeplink: () => { tariffKey: string } | null;
   readTelegramMiniAppInitDataFromLocation: () => string;
+  /** The app was opened on the checkout route, captured before boot sync. */
+  plansRouteRequested: boolean;
   routePathnameFromLocation: () => string;
   routePrefix: string;
   showToast: (message: unknown) => void;
@@ -166,6 +168,7 @@ export function createAppFactories({
   readCheckoutPromoDeeplink,
   readRenewalDeeplink,
   readTelegramMiniAppInitDataFromLocation,
+  plansRouteRequested,
   routePathnameFromLocation,
   routePrefix,
   showToast,
@@ -306,6 +309,7 @@ export function createAppFactories({
       void actionsStore.handlePromoDeeplink(code, context);
     },
     readCheckoutPromoDeeplink,
+    readPlansDeeplink: () => plansRouteRequested,
     readRenewalDeeplink,
     setHomeRoute: () => {
       shellState.activeTab = "home";
@@ -396,6 +400,9 @@ export function createAppFactories({
   const resumeLifecycle = createResumeLifecycle({
     clearLoginTooltip: () => {
       authStore.update((state) => ({ ...state, loginEmailTooltipOpen: false }));
+    },
+    refreshAccountDataOnResume: () => {
+      void loadData({ fresh: true, preserveView: true });
     },
     refreshPendingActivationOnResume: () => {
       void activation.refreshPendingActivationOnResume();
@@ -547,6 +554,7 @@ export function createShellAppActions({
     getMethods: () => getShellView().appDataView.methods,
     getOrigin: () => (typeof window !== "undefined" ? window.location.origin : ""),
     getPlans: () => getShellView().appDataView.plans,
+    getSuggestedPromoCode: () => getShellView().appDataView.suggestedPromoCode,
     getPreloadHost: () => (typeof window !== "undefined" ? asWebappRecord(window) : null),
     getRoutePathname,
     getSelectedPlan,

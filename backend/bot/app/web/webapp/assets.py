@@ -96,6 +96,7 @@ from .assets_static import (
     css_asset_route,
     health_route,
     js_asset_route,
+    js_chunk_asset_route,
     provider_logo_asset_route,
     robots_txt_route,
 )
@@ -683,9 +684,11 @@ async def index_route(request: web.Request) -> web.Response:
             + "</script>"
         ),
     )
+    # The bundle is an ES module so screens the customer has not opened stay in
+    # their own chunks; module scripts defer by themselves.
     html = html.replace(
         WEBAPP_JS_PLACEHOLDER,
-        f'<script src="/{js_asset_name}" defer></script>',
+        f'<script type="module" src="/{js_asset_name}"></script>',
     )
     brand_asset_url = cached["logo_url"]
     if brand_asset_url:
@@ -836,6 +839,7 @@ __all__ = [
     "i18n_route",
     "index_route",
     "js_asset_route",
+    "js_chunk_asset_route",
     "provider_logo_asset_route",
     "robots_txt_route",
     "theme_asset_route",

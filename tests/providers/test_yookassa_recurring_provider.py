@@ -1,12 +1,38 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from unittest import IsolatedAsyncioTestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, patch
 
 from bot.payment_providers.shared import RecurringChargeContext
 from bot.payment_providers.yookassa import YooKassaConfig, YooKassaService
 from bot.payment_providers.yookassa import service as yookassa_service
+
+
+class YooKassaConfigTests(TestCase):
+    def test_receipt_defaults_match_payment_field_semantics(self):
+        one_time = YooKassaConfig(_env_file=None, AUTOPAYMENTS_ENABLED=False)
+        recurring = YooKassaConfig(_env_file=None, AUTOPAYMENTS_ENABLED=True)
+
+        self.assertEqual(
+            (one_time.yk_receipt_payment_mode, one_time.yk_receipt_payment_subject),
+            ("full_prepayment", "payment"),
+        )
+        self.assertEqual(
+            (recurring.yk_receipt_payment_mode, recurring.yk_receipt_payment_subject),
+            ("full_payment", "service"),
+        )
+
+    def test_receipt_fields_honor_normalized_explicit_overrides(self):
+        config = YooKassaConfig(
+            _env_file=None,
+            AUTOPAYMENTS_ENABLED=True,
+            PAYMENT_MODE=" full_prepayment ",
+            PAYMENT_SUBJECT=" payment ",
+        )
+
+        self.assertEqual(config.yk_receipt_payment_mode, "full_prepayment")
+        self.assertEqual(config.yk_receipt_payment_subject, "payment")
 
 
 def _service(*, autopayments_enabled: bool = True, response=None):
@@ -289,4 +315,12 @@ class YooKassaRecurringProviderTests(IsolatedAsyncioTestCase):
         self.assertEqual(
             FakeBuilder.instance.receipt["items"][0]["amount"],
             {"value": "1.13", "currency": "RUB"},
+        )
+        self.assertEqual(
+            FakeBuilder.instance.receipt["items"][0]["payment_mode"],
+            "full_payment",
+        )
+        self.assertEqual(
+            FakeBuilder.instance.receipt["items"][0]["payment_subject"],
+            "service",
         )

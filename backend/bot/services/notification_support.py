@@ -15,6 +15,13 @@ from bot.services.email_templates import (
     render_support_user_reply_admin,
 )
 from bot.services.email_templates_common import EmailContent
+from bot.services.message_composition import telegram_markup_for_buttons
+from bot.services.support_message_body import (
+    BODY_FORMAT_TEXT,
+    support_body_plain_text,
+    support_body_telegram_html,
+)
+from bot.services.support_message_buttons import decode_support_buttons
 from bot.utils import MessageContent, send_message_via_queue
 from bot.utils.message_queue import get_queue_manager
 from bot.utils.mini_app_url import subscription_main_mini_app_deep_link
@@ -110,9 +117,22 @@ class NotificationSupportMixin:
         return fallback.format(**kwargs)
 
     @staticmethod
-    def _support_preview(body: str, limit: int = 700) -> str:
-        text = (body or "").strip()
-        return text if len(text) <= limit else f"{text[: limit - 1]}…"
+    def _support_preview(body: str, body_format: str = BODY_FORMAT_TEXT, limit: int = 700) -> str:
+        """Markup-free excerpt for e-mail bodies, which escape what they get."""
+
+        return support_body_plain_text(body, body_format, limit=limit)
+
+    @staticmethod
+    def _support_preview_html(
+        body: str, body_format: str = BODY_FORMAT_TEXT, limit: int = 700
+    ) -> str:
+        """Excerpt ready to embed in a ``parse_mode=HTML`` message.
+
+        Already escaped (plain text) or already sanitized and closed on a tag
+        boundary (markup), so callers must not quote it a second time.
+        """
+
+        return support_body_telegram_html(body, body_format, limit=limit)
 
     @staticmethod
     def _support_user_display(user: User) -> str:
@@ -261,7 +281,13 @@ class NotificationSupportMixin:
             reply_markup=log_markup,
         )
 
-    def _support_user_keyboard(self, ticket: SupportTicket, user: User) -> InlineKeyboardMarkup:
+    def _support_user_keyboard(
+        self,
+        ticket: SupportTicket,
+        user: User,
+        *,
+        message: SupportTicketMessage | None = None,
+    ) -> InlineKeyboardMarkup:
         button_text = self._support_text(
             getattr(user, "language_code", None),
             "wa_support_open_ticket",
@@ -275,7 +301,13 @@ class NotificationSupportMixin:
                 text=button_text,
                 url=self._support_ticket_url(ticket.ticket_id, admin=False),
             )
-        return InlineKeyboardMarkup(inline_keyboard=[[button]])
+        # Buttons the admin attached come first: they are the reason the reply
+        # was sent, while "open ticket" is always available.
+        attached = telegram_markup_for_buttons(
+            decode_support_buttons(getattr(message, "buttons", None))
+        )
+        rows = [*(attached.inline_keyboard if attached else []), [button]]
+        return InlineKeyboardMarkup(inline_keyboard=rows)
 
     async def _admin_email_users(self) -> list[User]:
         if not self.session_factory:
@@ -316,6 +348,8 @@ class NotificationSupportMixin:
         user: User,
         first_message: str,
         snapshot: dict[str, object],
+        *,
+        body_format: str = BODY_FORMAT_TEXT,
     ) -> None:
         if not getattr(self.settings, "LOG_SUPPORT", True):
             return
@@ -323,7 +357,8 @@ class NotificationSupportMixin:
             ticket.priority,
             "🟡",
         )
-        preview = self._support_preview(first_message)
+        preview = self._support_preview(first_message, body_format)
+        preview_html = self._support_preview_html(first_message, body_format)
         user_display = self._support_user_display(user)
         message = self._support_text(
             self.settings.DEFAULT_LANGUAGE,
@@ -345,7 +380,7 @@ class NotificationSupportMixin:
             end_date=hd.quote(str(snapshot.get("end_date") or "—")),
             remaining=hd.quote(str(snapshot.get("remaining") or "—")),
             status=hd.quote(str(snapshot.get("panel_status") or "—")),
-            message=hd.quote(preview),
+            message=preview_html,
         )
         admin_keyboard = self._support_keyboard(ticket, user, admin=True)
         log_keyboard = self._support_keyboard(ticket, user, admin=True, web_app_buttons=False)
@@ -377,7 +412,9 @@ class NotificationSupportMixin:
     ) -> None:
         if not getattr(self.settings, "LOG_SUPPORT", True):
             return
-        preview = self._support_preview(message.body)
+        body_format = str(getattr(message, "body_format", BODY_FORMAT_TEXT) or BODY_FORMAT_TEXT)
+        preview = self._support_preview(message.body, body_format)
+        preview_html = self._support_preview_html(message.body, body_format)
         user_display = self._support_user_display(user)
         unread_line = (
             "\n"
@@ -397,7 +434,7 @@ class NotificationSupportMixin:
             ticket_id=ticket.ticket_id,
             user=hd.quote(user_display),
             unread=unread_line,
-            message=hd.quote(preview),
+            message=preview_html,
         )
         if send_telegram and getattr(self.settings, "LOG_SUPPORT", True):
             admin_keyboard = self._support_keyboard(ticket, user, admin=True)
@@ -421,16 +458,17 @@ class NotificationSupportMixin:
     async def notify_support_admin_reply(
         self, ticket: SupportTicket, message: SupportTicketMessage, user: User
     ) -> None:
-        preview = self._support_preview(message.body, limit=500)
+        body_format = str(getattr(message, "body_format", BODY_FORMAT_TEXT) or BODY_FORMAT_TEXT)
+        preview = self._support_preview(message.body, body_format, limit=500)
         url = self._support_ticket_url(ticket.ticket_id, admin=False)
         text = self._support_text(
             getattr(user, "language_code", None),
             "support_user_admin_reply_message",
             "💬 <b>New reply in ticket #{ticket_id}</b>\n\n{message}",
             ticket_id=ticket.ticket_id,
-            message=hd.quote(preview),
+            message=self._support_preview_html(message.body, body_format, limit=500),
         )
-        keyboard = self._support_user_keyboard(ticket, user)
+        keyboard = self._support_user_keyboard(ticket, user, message=message)
         if int(user.user_id) > 0:
             queue_manager = get_queue_manager()
             if queue_manager:

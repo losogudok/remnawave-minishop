@@ -218,6 +218,41 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
     TARIFF_WORKER_LOCK_TTL_SECONDS: int = Field(default=240)
     TARIFF_WORKER_TICK_SECONDS: int = Field(default=300)
     TARIFF_WORKER_BULK_PANEL_FETCH_THRESHOLD: int = Field(default=50)
+    TARIFF_PREMIUM_FAST_TICK_SECONDS: int = Field(
+        default=60,
+        ge=0,
+        description=(
+            "Interval of the premium squad re-check between full tariff worker ticks. "
+            "0 disables the fast lane and premium limits follow TARIFF_WORKER_TICK_SECONDS."
+        ),
+    )
+    TARIFF_PREMIUM_FAST_WATCH_PERCENT: int = Field(
+        default=80,
+        ge=0,
+        le=100,
+        description=(
+            "Premium usage percentage from which a subscription joins the fast re-check lane."
+        ),
+    )
+    TARIFF_PREMIUM_FAST_BATCH_LIMIT: int = Field(
+        default=200,
+        ge=0,
+        description=(
+            "Maximum subscriptions inspected in one premium fast tick. 0 removes the cap."
+        ),
+    )
+    TARIFF_PREMIUM_DROP_CONNECTIONS: bool = Field(
+        default=True,
+        description=(
+            "Ask the panel to tear down live connections on premium nodes once premium "
+            "access is limited. Requires CAP_NET_ADMIN on the Remnawave nodes."
+        ),
+    )
+    TARIFF_PREMIUM_DROP_CONNECTIONS_COOLDOWN_SECONDS: int = Field(
+        default=300,
+        ge=0,
+        description="Minimum delay between two connection teardowns of the same subscription.",
+    )
     BACKUP_ENABLED: bool = Field(
         default=False,
         description="Run periodic backup jobs from the worker container.",
@@ -297,7 +332,7 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
     STARS_ADMIN_ONLY_ENABLED: bool = Field(default=False)
     PAYMENT_METHODS_ORDER: str | None = Field(
         default=None,
-        description="Comma-separated list of payment methods to show (e.g., severpay,wata,freekassa,yookassa,platega,stars,cryptopay,heleket,paykilla,lava,pally,cloudpayments,stripe)",  # noqa: E501
+        description="Comma-separated list of payment methods to show (e.g., severpay,wata,freekassa,yookassa,platega,stars,cryptopay,heleket,paykilla,lava,pally,cloudpayments,stripe,tribute)",  # noqa: E501
     )
     SUBSCRIPTION_PURCHASE_DESCRIPTION_ENABLED: bool = Field(
         default=True,
@@ -356,6 +391,15 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
     SUBSCRIPTION_NOTIFY_DAYS_BEFORE: int = Field(default=3)
     SUBSCRIPTION_NOTIFY_HOURS_BEFORE: int = Field(default=3)
     SUBSCRIPTION_NOTIFICATION_WORKER_TICK_SECONDS: int = Field(default=300)
+    AUTO_RENEW_RETRY_ENABLED: bool = Field(default=False)
+    AUTO_RENEW_RETRY_DRY_RUN: bool = Field(default=True)
+    AUTO_RENEW_SCHEDULER_ENABLED: bool = Field(default=False)
+    AUTO_RENEW_MAX_FINANCIAL_ATTEMPTS: int = Field(default=2, ge=1, le=2)
+    AUTO_RENEW_MAX_TRANSPORT_REPLAYS: int = Field(default=4, ge=0, le=4)
+    AUTO_RENEW_WORKER_TICK_SECONDS: int = Field(default=60, ge=5, le=3600)
+    AUTO_RENEW_WORKER_BATCH_SIZE: int = Field(default=50, ge=1, le=500)
+    AUTO_RENEW_RETRY_GRACE_HOURS: int = Field(default=0, ge=0, le=24)
+    AUTO_RENEW_SCHEDULER_LEAD_HOURS: int = Field(default=24, ge=1, le=168)
     TORRENT_BLOCKER_NOTIFICATIONS_ENABLED: bool = Field(default=False)
     TORRENT_BLOCKER_TELEGRAM_NOTIFICATIONS_ENABLED: bool = Field(default=True)
     TORRENT_BLOCKER_EMAIL_NOTIFICATIONS_ENABLED: bool = Field(default=False)
@@ -496,6 +540,14 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
         description=(
             "Separate premium traffic limit for trial subscriptions. "
             "0 disables premium traffic enforcement for trials."
+        ),
+    )
+    TRIAL_HWID_DEVICE_LIMIT: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Hardware device limit for trial subscriptions. "
+            "Empty keeps the panel/default limit; 0 means unlimited."
         ),
     )
     TRIAL_TRAFFIC_STRATEGY: str = Field(default="NO_RESET")
@@ -704,8 +756,24 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
     MY_DEVICES_SECTION_ENABLED: bool = Field(
         default=False, description="Enable the My Devices section in the subscription menu"
     )
+    SUBSCRIPTION_REISSUE_ENABLED: bool = Field(
+        default=False,
+        description=(
+            "Allow users to reissue (revoke and regenerate) their subscription link "
+            "from the Mini App. Requires configured email auth: the new link and "
+            "connection instructions are delivered to the user's linked email."
+        ),
+    )
     USER_HWID_DEVICE_LIMIT: int | None = Field(
         default=None, description="Default hardware device limit for panel users (0 = unlimited)"
+    )
+    HWID_DEVICE_TRAFFIC_BONUS_GB: float = Field(
+        default=0.0,
+        ge=0,
+        description=(
+            "Deprecated fallback per-device monthly traffic bonus for legacy HWID purchases "
+            "that do not have a package bonus snapshot."
+        ),
     )
 
     # Inline mode thumbnail URLs

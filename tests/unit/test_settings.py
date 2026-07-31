@@ -495,6 +495,25 @@ class SettingsTests(unittest.TestCase):
 
         self.assertEqual(settings.TRIAL_TRAFFIC_STRATEGY, "WEEK")
 
+    def test_trial_hwid_device_limit_accepts_count_and_blank(self):
+        configured = Settings(
+            _env_file=None,
+            BOT_TOKEN="token",
+            POSTGRES_USER="app_user",
+            POSTGRES_PASSWORD="app_password",
+            TRIAL_HWID_DEVICE_LIMIT="2",
+        )
+        inherited = Settings(
+            _env_file=None,
+            BOT_TOKEN="token",
+            POSTGRES_USER="app_user",
+            POSTGRES_PASSWORD="app_password",
+            TRIAL_HWID_DEVICE_LIMIT="",
+        )
+
+        self.assertEqual(configured.TRIAL_HWID_DEVICE_LIMIT, 2)
+        self.assertIsNone(inherited.TRIAL_HWID_DEVICE_LIMIT)
+
     def test_traffic_strategy_legacy_aliases_are_canonicalized(self):
         settings = Settings(
             _env_file=None,

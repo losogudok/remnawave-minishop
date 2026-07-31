@@ -304,6 +304,7 @@ async def pay_yk_use_saved_handler(
         selected_method_internal_id=selected_method.method_id,
         sale_mode=sale_mode,
         hwid_quote=hwid_quote,
+        entitlement_context_snapshot=quoted_parts.entitlement_context_snapshot,
     )
     with contextlib.suppress(Exception):
         await callback.answer()

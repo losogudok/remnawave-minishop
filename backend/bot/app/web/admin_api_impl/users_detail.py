@@ -243,6 +243,7 @@ async def _filter_and_sort_users(
     sort_value: str,
     page: int,
     page_size: int,
+    valid_tariff_keys: set[str] | None = None,
 ) -> tuple[list[User], int]:
     """Return paginated users with optional search, filter and sort applied."""
 
@@ -348,6 +349,26 @@ async def _filter_and_sort_users(
         cond = and_(
             expired_subscription_exists_for_user(now),
             ~active_subscription_exists_for_user(now),
+        )
+    elif f == "unmapped_tariff":
+        unmapped_subscription = aliased(Subscription)
+        unmapped_conditions = [
+            unmapped_subscription.tariff_key.is_(None),
+            sa_func.trim(unmapped_subscription.tariff_key) == "",
+        ]
+        if valid_tariff_keys is not None:
+            unmapped_conditions.append(
+                sa_func.trim(unmapped_subscription.tariff_key).not_in(sorted(valid_tariff_keys))
+            )
+        cond = (
+            select(unmapped_subscription.subscription_id)
+            .where(
+                unmapped_subscription.user_id == User.user_id,
+                unmapped_subscription.is_active.is_(True),
+                unmapped_subscription.end_date > now,
+                or_(*unmapped_conditions),
+            )
+            .exists()
         )
     elif f == "banned":
         cond = User.is_banned.is_(True)

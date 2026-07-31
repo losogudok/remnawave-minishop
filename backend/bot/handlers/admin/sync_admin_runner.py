@@ -7,7 +7,10 @@ from sqlalchemy import or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.middlewares.i18n import JsonI18n
-from bot.services.panel_activity import panel_user_last_connected_datetime
+from bot.services.panel_activity import (
+    panel_status_means_active,
+    panel_user_last_connected_datetime,
+)
 from bot.services.panel_api_service import PanelApiService
 from config.settings import Settings
 from db.advisory_locks import acquire_subscription_background_sync_lock
@@ -594,7 +597,7 @@ async def _perform_sync_impl(
 
                         if subscription_uuid_from_panel:
                             # If the panel reports the subscription as ACTIVE, deactivate all other active subscriptions first  # noqa: E501
-                            if panel_status == "ACTIVE":
+                            if panel_status_means_active(panel_status):
                                 await session.execute(
                                     update(Subscription)
                                     .where(
@@ -622,7 +625,7 @@ async def _perform_sync_impl(
                                     "user_id": actual_user_id,
                                     "panel_user_uuid": panel_uuid,
                                     "end_date": panel_expire_at,
-                                    "is_active": panel_status == "ACTIVE",
+                                    "is_active": panel_status_means_active(panel_status),
                                     "status_from_panel": panel_status,
                                 }
                                 _include_last_connected_snapshot(
@@ -663,7 +666,7 @@ async def _perform_sync_impl(
                                     "start_date": None,
                                     "end_date": panel_expire_at,
                                     "duration_months": None,
-                                    "is_active": panel_status == "ACTIVE",
+                                    "is_active": panel_status_means_active(panel_status),
                                     "status_from_panel": panel_status,
                                     "traffic_limit_bytes": settings.user_traffic_limit_bytes,
                                     "auto_renew_enabled": False,
@@ -703,7 +706,7 @@ async def _perform_sync_impl(
                             if active_sub:
                                 update_payload = {
                                     "end_date": panel_expire_at,
-                                    "is_active": panel_status == "ACTIVE",
+                                    "is_active": panel_status_means_active(panel_status),
                                     "status_from_panel": panel_status,
                                 }
                                 _include_last_connected_snapshot(

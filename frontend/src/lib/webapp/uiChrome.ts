@@ -1,3 +1,4 @@
+import { lockPageScroll } from "./scrollLock";
 import { shellState } from "./shellState.svelte";
 
 export function createUiChrome({
@@ -7,20 +8,21 @@ export function createUiChrome({
   getCurrentLang: () => string;
   normalizeLangCode: (value: string) => string;
 }) {
-  let scrollLockApplied = false;
+  let releaseScrollLock: (() => void) | null = null;
   let languageClickGuardTimer: number | null = null;
   let languageClickGuardArmTimer: number | null = null;
 
+  // Shares the ref-counted lock with dialogs and the admin drawer, so an
+  // overlay closing here cannot unfreeze a page another overlay still holds.
   function syncBodyScrollLock(locked: boolean) {
     if (typeof document === "undefined") return;
-    if (locked && !scrollLockApplied) {
-      document.body.style.overflow = "hidden";
-      scrollLockApplied = true;
+    if (locked && !releaseScrollLock) {
+      releaseScrollLock = lockPageScroll();
       return;
     }
-    if (!locked && scrollLockApplied) {
-      document.body.style.overflow = "";
-      scrollLockApplied = false;
+    if (!locked && releaseScrollLock) {
+      releaseScrollLock();
+      releaseScrollLock = null;
     }
   }
 

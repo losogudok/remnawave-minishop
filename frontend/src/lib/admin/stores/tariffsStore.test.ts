@@ -51,6 +51,44 @@ function transientPrices(amount: number): TransientPrices {
 }
 
 describe("tariffsStore", () => {
+  it("refreshes the dry-run report after applying safe tariff bindings", async () => {
+    const appliedReport = {
+      ok: true,
+      dry_run: false,
+      scanned: 3,
+      healthy: 1,
+      candidates: 2,
+      applied: 2,
+      unresolved: 0,
+      generated_at: "2026-07-30T00:00:00Z",
+      items_truncated: false,
+      items: [],
+    };
+    const refreshedReport = {
+      ...appliedReport,
+      dry_run: true,
+      healthy: 3,
+      candidates: 0,
+      applied: 0,
+    };
+    const api = vi.fn().mockResolvedValueOnce(appliedReport).mockResolvedValueOnce(refreshedReport);
+    const { store, toasts } = makeStore(api);
+
+    await store.applyTariffReconciliation();
+
+    expect(api).toHaveBeenNthCalledWith(1, "/admin/tariffs/reconciliation", {
+      method: "POST",
+      body: JSON.stringify({ apply: true }),
+    });
+    expect(api).toHaveBeenNthCalledWith(2, "/admin/tariffs/reconciliation");
+    expect(store.tariffReconciliation).toMatchObject({
+      dry_run: true,
+      healthy: 3,
+      candidates: 0,
+    });
+    expect(toasts).toEqual(["tariff_reconciliation_applied"]);
+  });
+
   it("persists edited period price and regular traffic limit for an existing tariff", async () => {
     const originalTariff = periodTariff();
     const onTariffsSaved = vi.fn().mockResolvedValue(undefined);
@@ -191,7 +229,8 @@ describe("tariffsStore", () => {
     store.addDraftRow("hwidRows", {
       count: "2",
       price: "99",
-      stars: "",
+      stars: "50",
+      traffic_bonus_gb: "15",
       prices: transientPrices(99),
     });
     await store.saveTariffDraft();
@@ -206,9 +245,11 @@ describe("tariffsStore", () => {
         {
           count: 2,
           price: 99,
+          traffic_bonus_gb: 15,
           prices: { provider: { amount: 99 } },
         },
       ],
+      stars: [{ count: 2, price: 50, traffic_bonus_gb: 15 }],
     });
   });
 

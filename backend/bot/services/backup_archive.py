@@ -9,6 +9,7 @@ BACKUP_APP_ID = "remnawave-minishop"
 BACKUP_FILENAME_PREFIX = "minishop-"
 BACKUP_FORMAT_VERSION = 1
 BACKUP_MANIFEST_NAME = "manifest.json"
+BACKUP_TARIFFS_CONFIG_MEMBER = "database/tariffs.json"
 
 
 def backup_filename_timestamp() -> str:

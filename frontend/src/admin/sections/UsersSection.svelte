@@ -103,6 +103,10 @@
       value: "expired_subscription",
       label: at("filter_expired_subscription", {}, "With expired subscription"),
     },
+    {
+      value: "unmapped_tariff",
+      label: at("filter_unmapped_tariff", {}, "Active subscription without tariff"),
+    },
     { value: "tg_linked", label: at("filter_tg_linked", {}, "With Telegram") },
     { value: "no_tg", label: at("filter_no_tg", {}, "No Telegram") },
     { value: "email_linked", label: at("filter_email_linked", {}, "With email") },

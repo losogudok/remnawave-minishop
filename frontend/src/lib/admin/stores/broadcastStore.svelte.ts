@@ -1,4 +1,5 @@
 import { adminErrorMessage } from "../errors.js";
+import type { MessageShortcodeInfo } from "$lib/richtext/editorSchema";
 import {
   buildAdminBroadcastAudienceCountsPath,
   buildAdminBroadcastPath,
@@ -23,18 +24,57 @@ type ToastFn = (message: string) => void;
 type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
 type BroadcastCounts = Record<string, number>;
 type BroadcastResult = { queued: number; failed: number; emailQueued: number; channels: string[] };
-type BroadcastTargetOption = { value: string; label: string };
-type StoredCounts = { counts: BroadcastCounts; loadedAt: number; emailAvailable: boolean | null };
-export type BroadcastButtonKind = "url" | "promo_bot" | "promo_webapp";
+export type BroadcastTargetOption = {
+  value: string;
+  label: string;
+  disabled?: boolean;
+  locked?: boolean;
+  group?: string;
+  icon?: string;
+};
+type BroadcastAudienceDescriptor = {
+  target: string;
+  labelKey: string;
+  fallbackLabel: string;
+  order: number;
+  available: boolean;
+  groupLabelKey: string | null;
+  groupFallbackLabel: string | null;
+  icon: string | null;
+};
+type StoredCounts = {
+  counts: BroadcastCounts;
+  loadedAt: number;
+  emailAvailable: boolean | null;
+  audiences: BroadcastAudienceDescriptor[] | null;
+};
+export type BroadcastButtonKind = "url" | "promo_bot" | "promo_webapp" | "webapp_section";
 export type BroadcastButtonDraft = {
   id: number;
   kind: BroadcastButtonKind;
   label: string;
   url: string;
   promoCode: string;
+  /** Web app screen a ``webapp_section`` button opens. */
+  section: string;
+  /**
+   * Author's own caption per language code. Empty everywhere is the normal
+   * case: the button then shows the prepared caption for its kind in the
+   * recipient's own language.
+   */
+  labels?: Record<string, string>;
 };
-export type BroadcastPromoOption = { value: string; label: string };
-export type BroadcastShortcodeInfo = { name: string; cost: string; description: string };
+export type BroadcastPromoOption = { value: string; label: string; group?: string };
+/** A message addressed to one customer, composed outside the broadcast draft. */
+export type SingleUserMessage = {
+  userId: number;
+  text: string;
+  channels: string[];
+  emailSubject: string;
+  buttons: BroadcastButtonDraft[];
+};
+/** Kept as the broadcast-flavoured name of the shared composer type. */
+export type BroadcastShortcodeInfo = MessageShortcodeInfo;
 export type BroadcastPreviewResult = {
   renderedText: string;
   renderedSubject: string | null;
@@ -44,17 +84,22 @@ export type BroadcastPreviewResult = {
 };
 export type BroadcastState = {
   broadcastTarget: string;
+  broadcastTargetError: string | null;
   broadcastText: string;
+  broadcastTexts: Record<string, string>;
+  broadcastLanguage: string;
   broadcastBusy: boolean;
   broadcastResult: BroadcastResult | null;
   broadcastCounts: BroadcastCounts | null;
   broadcastCountsLoading: boolean;
   broadcastCountsLoadedAt: number;
+  broadcastAudiencesLoaded: boolean;
   broadcastTelegramEnabled: boolean;
   broadcastEmailEnabled: boolean;
   broadcastEmailAvailable: boolean;
   broadcastEmailAvailabilityKnown: boolean;
   broadcastEmailSubject: string;
+  broadcastEmailSubjects: Record<string, string>;
   broadcastButtons: BroadcastButtonDraft[];
   broadcastPromoOptions: BroadcastPromoOption[];
   broadcastPromoOptionsLoading: boolean;
@@ -82,6 +127,7 @@ export type BroadcastStore = BroadcastState & {
   loadPromoOptions: () => Promise<void>;
   loadShortcodes: () => Promise<void>;
   sendPreview: (mode: "render" | "send_telegram", userId?: number | null) => Promise<void>;
+  sendToUser: (input: SingleUserMessage) => Promise<string | null>;
   canSubmit: () => boolean;
   BROADCAST_TARGET_OPTIONS: BroadcastTargetOption[];
   MAX_BROADCAST_BUTTONS: number;
@@ -90,20 +136,39 @@ export type BroadcastStore = BroadcastState & {
 export const MAX_BROADCAST_BUTTONS = 4;
 
 function buttonDraftValid(button: BroadcastButtonDraft): boolean {
-  if (!button.label.trim() || button.label.trim().length > 64) return false;
+  // An empty caption is no longer a mistake: the button then shows the
+  // prepared caption for its kind in the recipient's own language.
+  if (button.label.trim().length > 64) return false;
+  if (Object.values(button.labels ?? {}).some((label) => label.trim().length > 64)) return false;
   if (button.kind === "url") {
     const url = button.url.trim().toLowerCase();
     return url.startsWith("https://") || url.startsWith("http://");
   }
+  if (button.kind === "webapp_section") return Boolean(button.section.trim());
   return /^[A-Za-z0-9_-]{1,58}$/.test(button.promoCode.trim());
 }
 
-function buttonsForPayload(buttons: BroadcastButtonDraft[]) {
+function localizedForPayload(values: Record<string, string> | undefined): Record<string, string> {
+  const payload: Record<string, string> = {};
+  for (const [language, text] of Object.entries(values ?? {})) {
+    const body = String(text ?? "").trim();
+    // An empty tab means "not written yet"; sending it would deliver an empty
+    // caption to exactly the customers who read that language.
+    if (body) payload[language.toLowerCase()] = body;
+  }
+  return payload;
+}
+
+/** Drafted buttons as the message contract expects them, shared with support. */
+export function buttonsForPayload(buttons: BroadcastButtonDraft[]) {
   return buttons.map((button) => ({
     kind: button.kind,
     label: button.label.trim(),
+    labels: localizedForPayload(button.labels),
     url: button.kind === "url" ? button.url.trim() : "",
-    promo_code: button.kind === "url" ? "" : button.promoCode.trim(),
+    promo_code:
+      button.kind === "url" || button.kind === "webapp_section" ? "" : button.promoCode.trim(),
+    section: button.kind === "webapp_section" ? button.section.trim() : "",
   }));
 }
 
@@ -119,6 +184,17 @@ function promoUsable(promo: PromoListItem): boolean {
   const current = Number(promo.current_activations);
   if (Number.isFinite(max) && max > 0 && Number.isFinite(current) && current >= max) return false;
   return true;
+}
+
+/**
+ * A code minted for one named customer.
+ *
+ * Ownership is explicit: only ``user_id`` marks a code as personal. A code
+ * that merely allows a single activation is still an ordinary shared code and
+ * stays in the shared group.
+ */
+function promoIsPersonal(promo: PromoListItem): boolean {
+  return Boolean(promo.user_id);
 }
 
 function promoOptionLabel(promo: PromoListItem): string {
@@ -145,6 +221,35 @@ function asBroadcastCounts(value: unknown): BroadcastCounts | null {
   );
 }
 
+function asBroadcastAudiences(value: unknown): BroadcastAudienceDescriptor[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value
+    .map((item) => {
+      const raw = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+      return {
+        target: String(raw.target || "")
+          .trim()
+          .toLowerCase(),
+        labelKey: String(raw.label_key || "").trim(),
+        fallbackLabel: String(raw.fallback_label || "").trim(),
+        order: Number.isFinite(Number(raw.order)) ? Number(raw.order) : 100,
+        available: raw.available !== false,
+        groupLabelKey: String(raw.group_label_key || "").trim() || null,
+        groupFallbackLabel: String(raw.group_fallback_label || "").trim() || null,
+        icon: String(raw.icon || "").trim() || null,
+      };
+    })
+    .filter((item) => {
+      if (!item.target || !item.labelKey || !item.fallbackLabel || seen.has(item.target)) {
+        return false;
+      }
+      seen.add(item.target);
+      return true;
+    })
+    .sort((left, right) => left.order - right.order || left.target.localeCompare(right.target));
+}
+
 export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions): BroadcastStore {
   const COUNTS_CACHE_TTL_MS = 30_000;
   const COUNTS_DISPLAY_CACHE_TTL_MS = 5 * 60_000;
@@ -153,21 +258,102 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
   let promoOptionsPromise: Promise<void> | null = null;
   let shortcodesPromise: Promise<void> | null = null;
   let buttonIdCounter = 0;
+  const subscriptionGroup = () =>
+    at("broadcast_audience_group_subscription", {}, "Subscription status");
+  const rolesGroup = () => at("broadcast_audience_group_roles", {}, "Roles");
+
+  const CORE_BROADCAST_TARGET_OPTIONS: BroadcastTargetOption[] = [
+    {
+      value: "all",
+      label: at("broadcast_target_all", {}, "All active"),
+      group: subscriptionGroup(),
+      icon: "users",
+    },
+    {
+      value: "active",
+      label: at("broadcast_target_active", {}, "With subscription"),
+      group: subscriptionGroup(),
+      icon: "shield-check",
+    },
+    {
+      value: "inactive",
+      label: at("broadcast_target_inactive", {}, "No subscription"),
+      group: subscriptionGroup(),
+      icon: "user",
+    },
+    {
+      value: "expired",
+      label: at("broadcast_target_expired", {}, "Expired subscription"),
+      group: subscriptionGroup(),
+      icon: "calendar-days",
+    },
+    {
+      value: "active_never_connected",
+      label: at(
+        "broadcast_target_active_never_connected",
+        {},
+        "With subscription, no VPN connections"
+      ),
+      group: subscriptionGroup(),
+      icon: "shield",
+    },
+    {
+      value: "never",
+      label: at("broadcast_target_never", {}, "No subscription, no history"),
+      group: subscriptionGroup(),
+      icon: "moon",
+    },
+    {
+      value: "admins",
+      label: at("broadcast_target_admins", {}, "Administrators (broadcast test)"),
+      group: rolesGroup(),
+      icon: "crown",
+    },
+  ];
+
+  function targetOptions(audiences: BroadcastAudienceDescriptor[]): BroadcastTargetOption[] {
+    const reserved = new Set(CORE_BROADCAST_TARGET_OPTIONS.map((option) => option.value));
+    return [
+      ...CORE_BROADCAST_TARGET_OPTIONS,
+      ...audiences
+        .filter((audience) => !reserved.has(audience.target))
+        .map((audience) => {
+          const group =
+            audience.groupLabelKey && audience.groupFallbackLabel
+              ? at(audience.groupLabelKey, {}, audience.groupFallbackLabel)
+              : undefined;
+          return {
+            value: audience.target,
+            label: at(audience.labelKey, {}, audience.fallbackLabel),
+            ...(group ? { group } : {}),
+            ...(audience.icon ? { icon: audience.icon } : {}),
+            ...(!audience.available ? { disabled: true, locked: true } : {}),
+          };
+        }),
+    ];
+  }
+
   const cachedCounts = readStoredCounts();
 
   const state = $state<BroadcastStore>({
     broadcastTarget: "all",
+    broadcastTargetError: null,
     broadcastText: "",
+    broadcastTexts: {},
+    broadcastLanguage: "",
     broadcastBusy: false,
     broadcastResult: null,
     broadcastCounts: cachedCounts?.counts || null,
     broadcastCountsLoading: false,
     broadcastCountsLoadedAt: cachedCounts?.loadedAt || 0,
+    broadcastAudiencesLoaded:
+      cachedCounts?.audiences !== null && cachedCounts?.audiences !== undefined,
     broadcastTelegramEnabled: true,
     broadcastEmailEnabled: false,
     broadcastEmailAvailable: cachedCounts?.emailAvailable ?? false,
     broadcastEmailAvailabilityKnown: typeof cachedCounts?.emailAvailable === "boolean",
     broadcastEmailSubject: "",
+    broadcastEmailSubjects: {},
     broadcastButtons: [],
     broadcastPromoOptions: [],
     broadcastPromoOptionsLoading: false,
@@ -188,8 +374,9 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
     loadPromoOptions,
     loadShortcodes,
     sendPreview,
+    sendToUser,
     canSubmit,
-    BROADCAST_TARGET_OPTIONS: [],
+    BROADCAST_TARGET_OPTIONS: targetOptions(cachedCounts?.audiences || []),
     MAX_BROADCAST_BUTTONS,
   });
 
@@ -199,33 +386,10 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
     Object.assign(state, next);
   }
 
-  const BROADCAST_TARGET_OPTIONS: BroadcastTargetOption[] = [
-    { value: "all", label: at("broadcast_target_all", {}, "All active") },
-    { value: "active", label: at("broadcast_target_active", {}, "With subscription") },
-    { value: "inactive", label: at("broadcast_target_inactive", {}, "No subscription") },
-    { value: "expired", label: at("broadcast_target_expired", {}, "Expired subscription") },
-    {
-      value: "active_never_connected",
-      label: at(
-        "broadcast_target_active_never_connected",
-        {},
-        "With subscription, no VPN connections"
-      ),
-    },
-    {
-      value: "never",
-      label: at("broadcast_target_never", {}, "No subscription, no history"),
-    },
-    {
-      value: "admins",
-      label: at("broadcast_target_admins", {}, "Administrators (broadcast test)"),
-    },
-  ];
-  state.BROADCAST_TARGET_OPTIONS = BROADCAST_TARGET_OPTIONS;
-
   function countsAreFresh(stateSnapshot: BroadcastState): boolean {
     return Boolean(
       stateSnapshot.broadcastCounts &&
+      stateSnapshot.broadcastAudiencesLoaded &&
       stateSnapshot.broadcastEmailAvailabilityKnown &&
       Date.now() - Number(stateSnapshot.broadcastCountsLoadedAt || 0) < COUNTS_CACHE_TTL_MS
     );
@@ -241,8 +405,11 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
       const counts = asBroadcastCounts(payload?.counts);
       const rawEmailAvailable = payload?.emailAvailable;
       const emailAvailable = typeof rawEmailAvailable === "boolean" ? rawEmailAvailable : null;
+      const audiences = Array.isArray(payload?.audiences)
+        ? asBroadcastAudiences(payload.audiences)
+        : null;
       if (!counts || Date.now() - loadedAt > COUNTS_DISPLAY_CACHE_TTL_MS) return null;
-      return { counts, loadedAt, emailAvailable };
+      return { counts, loadedAt, emailAvailable, audiences };
     } catch {
       return null;
     }
@@ -251,13 +418,14 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
   function writeStoredCounts(
     counts: BroadcastCounts,
     loadedAt: number,
-    emailAvailable: boolean
+    emailAvailable: boolean,
+    audiences: BroadcastAudienceDescriptor[]
   ): void {
     try {
       if (typeof window === "undefined" || !window.sessionStorage) return;
       window.sessionStorage.setItem(
         COUNTS_STORAGE_KEY,
-        JSON.stringify(snapshotForPayload({ counts, loadedAt, emailAvailable }))
+        JSON.stringify(snapshotForPayload({ counts, loadedAt, emailAvailable, audiences }))
       );
     } catch {
       // Ignore storage quota/privacy errors; in-memory counts still work.
@@ -282,12 +450,21 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
           const payload = unwrap(res);
           const emailAvailable = Boolean(payload.email_enabled);
           const counts = asBroadcastCounts(payload.counts);
+          const audiences = asBroadcastAudiences(payload.audiences);
+          const options = targetOptions(audiences);
           if (!counts) {
             updateState((s) => ({
               ...s,
               broadcastEmailAvailable: emailAvailable,
               broadcastEmailAvailabilityKnown: true,
               broadcastEmailEnabled: s.broadcastEmailEnabled && emailAvailable,
+              broadcastAudiencesLoaded: true,
+              BROADCAST_TARGET_OPTIONS: options,
+              broadcastTarget: options.some(
+                (option) => option.value === s.broadcastTarget && !option.disabled
+              )
+                ? s.broadcastTarget
+                : "all",
             }));
             return;
           }
@@ -296,11 +473,18 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
             ...s,
             broadcastCounts: counts,
             broadcastCountsLoadedAt: loadedAt,
+            broadcastAudiencesLoaded: true,
             broadcastEmailAvailable: emailAvailable,
             broadcastEmailAvailabilityKnown: true,
             broadcastEmailEnabled: s.broadcastEmailEnabled && emailAvailable,
+            BROADCAST_TARGET_OPTIONS: options,
+            broadcastTarget: options.some(
+              (option) => option.value === s.broadcastTarget && !option.disabled
+            )
+              ? s.broadcastTarget
+              : "all",
           }));
-          writeStoredCounts(counts, loadedAt, emailAvailable);
+          writeStoredCounts(counts, loadedAt, emailAvailable, audiences);
         }
       } catch {
         // Counts are advisory; ignore failures and keep existing/plain labels.
@@ -327,27 +511,67 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
 
   function canSubmit(): boolean {
     if (state.broadcastBusy) return false;
-    if (!state.broadcastText.trim()) return false;
+    // One written language is enough to send: requiring all of them would
+    // block a shop that serves one.
+    if (
+      !state.broadcastText.trim() &&
+      !Object.keys(localizedForPayload(state.broadcastTexts)).length
+    )
+      return false;
     if (!channelsForPayload(state).length) return false;
     return state.broadcastButtons.every(buttonDraftValid);
   }
 
+  /** Sends to one addressed customer, leaving the broadcast draft untouched.
+   *
+   * Returns ``null`` on success, or a ready-to-display error message. The
+   * audience of one travels the same delivery path a broadcast does, so
+   * channels, buttons and shortcodes behave identically.
+   */
+  async function sendToUser(input: SingleUserMessage): Promise<string | null> {
+    const failure = at("user_message_failed", {}, "Message was not sent");
+    try {
+      const res = await api(buildAdminBroadcastPath(), {
+        method: "POST",
+        body: JSON.stringify({
+          target: `user:${Math.trunc(input.userId)}`,
+          text: input.text.trim(),
+          channels: input.channels,
+          email_subject: input.emailSubject.trim(),
+          buttons: buttonsForPayload(input.buttons),
+        } satisfies PostPayload<"/api/admin/broadcast">),
+      });
+      if (res?.ok) {
+        unwrap(res);
+        return null;
+      }
+      return adminErrorMessage(res, at, failure);
+    } catch {
+      return failure;
+    }
+  }
+
   async function runBroadcast(): Promise<void> {
-    const { target, text, emailSubject, buttons, channels } = snapshotForPayload({
-      target: state.broadcastTarget,
-      text: state.broadcastText,
-      emailSubject: state.broadcastEmailSubject,
-      buttons: state.broadcastButtons,
-      channels: channelsForPayload(state),
-    });
+    const { target, text, texts, emailSubject, emailSubjects, buttons, channels } =
+      snapshotForPayload({
+        target: state.broadcastTarget,
+        text: state.broadcastText,
+        texts: state.broadcastTexts,
+        emailSubject: state.broadcastEmailSubject,
+        emailSubjects: state.broadcastEmailSubjects,
+        buttons: state.broadcastButtons,
+        channels: channelsForPayload(state),
+      });
     updateState((s) => ({ ...s, broadcastBusy: true, broadcastResult: null }));
 
     try {
       const body = {
         target,
         text,
+        texts: localizedForPayload(texts),
         channels,
         email_subject: emailSubject.trim(),
+        email_subjects: localizedForPayload(emailSubjects),
         buttons: buttonsForPayload(buttons),
       } satisfies PostPayload<"/api/admin/broadcast">;
       const res = await api(buildAdminBroadcastPath(), {
@@ -359,6 +583,8 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
         updateState((s) => ({
           ...s,
           broadcastText: "",
+          broadcastTexts: {},
+          broadcastLanguage: "",
           broadcastButtons: [],
           broadcastEmailSubject: "",
           broadcastResult: {
@@ -423,8 +649,9 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
     userId: number | null = null
   ): Promise<void> {
     if (state.broadcastPreviewBusy) return;
-    const text = state.broadcastText.trim();
-    if (!text) {
+    const written = localizedForPayload(state.broadcastTexts);
+    const text = state.broadcastText.trim() || written[state.broadcastLanguage] || "";
+    if (!text && !Object.keys(written).length) {
       onToast(at("broadcast_preview_empty", {}, "Enter text to preview"));
       return;
     }
@@ -433,7 +660,9 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
       const buttons = snapshotForPayload(state.broadcastButtons);
       const body = {
         text,
+        texts: localizedForPayload(state.broadcastTexts),
         email_subject: state.broadcastEmailSubject.trim(),
+        email_subjects: localizedForPayload(state.broadcastEmailSubjects),
         user_id: userId,
         mode,
         buttons: buttonsForPayload(buttons),
@@ -475,7 +704,7 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
       ...s,
       broadcastButtons: [
         ...s.broadcastButtons,
-        { id: buttonIdCounter, kind: "url", label: "", url: "", promoCode: "" },
+        { id: buttonIdCounter, kind: "url", label: "", url: "", promoCode: "", section: "" },
       ],
     }));
   }
@@ -528,10 +757,22 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
         const res = await api(buildAdminPromosPath(params));
         if (isPromosListResponse(res)) {
           const promos = res.promos || [];
-          const options = promos
+          const sharedGroup = at("broadcast_promo_group_shared", {}, "Shared codes");
+          const personalGroup = at("broadcast_promo_group_personal", {}, "Personal codes");
+          const usable = promos
             .filter(promoUsable)
-            .map((promo) => ({ value: String(promo.code || ""), label: promoOptionLabel(promo) }))
+            .map((promo) => ({
+              value: String(promo.code || ""),
+              label: promoOptionLabel(promo),
+              group: promoIsPersonal(promo) ? personalGroup : sharedGroup,
+            }))
             .filter((option) => option.value);
+          // Shared codes lead the list; single-use ones sit apart so nobody
+          // attaches a personal code to a whole audience by accident.
+          const options = [
+            ...usable.filter((option) => option.group === sharedGroup),
+            ...usable.filter((option) => option.group === personalGroup),
+          ];
           updateState((s) => ({
             ...s,
             broadcastPromoOptions: options,

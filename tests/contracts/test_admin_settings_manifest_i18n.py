@@ -107,6 +107,7 @@ ADMIN_TARIFF_SETTINGS_PAGE_KEYS = {
     "admin_tariffs_trial_days",
     "admin_tariffs_trial_traffic",
     "admin_tariffs_trial_premium_traffic",
+    "admin_tariffs_trial_devices",
     "admin_tariffs_trial_strategy",
     "admin_tariffs_trial_squads",
     "admin_tariffs_trial_squads_hint",
@@ -159,6 +160,8 @@ ADMIN_VISIBLE_RU_KEYS = {
     "admin_settings_badge_secret",
     "admin_settings_badge_dirty",
     "admin_settings_icon_current",
+    "admin_settings_source_database_override",
+    "admin_settings_source_environment",
     "admin_settings_icon_default_value",
     "admin_settings_icon_empty",
     "admin_settings_icon_picker_title",
@@ -664,6 +667,11 @@ def test_legacy_tariff_settings_are_separated_from_payment_settings():
     assert manifest["TRIAL_PREMIUM_TRAFFIC_LIMIT_GB"]["type"] == "float"
     assert manifest["TRIAL_PREMIUM_TRAFFIC_LIMIT_GB"]["optional"] is True
     assert manifest["TRIAL_PREMIUM_TRAFFIC_LIMIT_GB"]["min"] == 0
+    assert manifest["TRIAL_HWID_DEVICE_LIMIT"]["section"] == "pricing"
+    assert manifest["TRIAL_HWID_DEVICE_LIMIT"]["subsection"] == "trial"
+    assert manifest["TRIAL_HWID_DEVICE_LIMIT"]["type"] == "int"
+    assert manifest["TRIAL_HWID_DEVICE_LIMIT"]["optional"] is True
+    assert manifest["TRIAL_HWID_DEVICE_LIMIT"]["min"] == 0
     assert manifest["TRIAL_PREMIUM_SQUAD_UUIDS"]["section"] == "pricing"
     assert manifest["TRIAL_PREMIUM_SQUAD_UUIDS"]["subsection"] == "trial"
     assert manifest["REFERRAL_WELCOME_BONUS_DAYS"]["section"] == "pricing"

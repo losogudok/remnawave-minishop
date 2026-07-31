@@ -105,7 +105,15 @@ async function startServer() {
       sendFile(res, target);
       return;
     }
-    // SPA fallback: the mock app does client-side routing under /demo/runtime/.
+    // SPA fallback: the mock app does client-side routing under /demo/runtime/,
+    // and those routes carry no file extension. An asset request that misses is
+    // a broken build, so it 404s instead of being answered with the app shell —
+    // HTML served as a module fails somewhere far away from the actual cause.
+    if (target && path.extname(target)) {
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end(`not found: ${req.url}`);
+      return;
+    }
     sendFile(res, appShell);
   });
 

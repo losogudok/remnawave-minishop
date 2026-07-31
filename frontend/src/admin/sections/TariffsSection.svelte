@@ -68,6 +68,10 @@
     tariffsState.providerCurrencySupport || []
   );
   const panelSquadsLoading = $derived(Boolean(tariffsState.panelSquadsLoading));
+  const tariffReconciliation = $derived(tariffsState.tariffReconciliation);
+  const tariffReconciliationLoading = $derived(Boolean(tariffsState.tariffReconciliationLoading));
+  const tariffReconciliationApplying = $derived(Boolean(tariffsState.tariffReconciliationApplying));
+  const tariffReconciliationItems = $derived(tariffReconciliation?.items || []);
   const settingsSections: SettingsSection[] = $derived(settingsStore.settingsSections || []);
   const settingsDirty: SettingsDirtyState = $derived(settingsStore.settingsDirty || {});
   const settingsSaving = $derived(Boolean(settingsStore.settingsSaving));
@@ -392,6 +396,128 @@
               </article>
             {/snippet}
           </Sortable>
+        {/if}
+      </div>
+    </article>
+
+    <article class="admin-card admin-tariff-reconciliation-card">
+      <header class="admin-card-head admin-tariff-panel-head">
+        <div>
+          <h3>{at("tariff_reconciliation_title", {}, "Subscription tariff bindings")}</h3>
+          <small>
+            {at(
+              "tariff_reconciliation_subtitle",
+              {},
+              "Preview and safely repair active subscriptions that are missing a canonical tariff."
+            )}
+          </small>
+        </div>
+        <div class="admin-editor-section-actions">
+          <AdminButton
+            size="sm"
+            onclick={tariffsStore.loadTariffReconciliation}
+            disabled={tariffReconciliationLoading || tariffReconciliationApplying}
+          >
+            <RefreshCw size={13} />
+            {at("btn_refresh", {}, "Refresh")}
+          </AdminButton>
+          <AdminButton
+            size="sm"
+            variant="primary"
+            onclick={tariffsStore.applyTariffReconciliation}
+            disabled={tariffReconciliationLoading ||
+              tariffReconciliationApplying ||
+              !tariffReconciliation?.candidates}
+          >
+            <Save size={13} />
+            {tariffReconciliationApplying
+              ? at("tariff_reconciliation_applying", {}, "Applying…")
+              : at("tariff_reconciliation_apply", {}, "Apply safe matches")}
+          </AdminButton>
+        </div>
+      </header>
+      <div class="admin-card-body">
+        {#if tariffReconciliationLoading && !tariffReconciliation}
+          <AdminEmptyState>{at("loading", {}, "Loading…")}</AdminEmptyState>
+        {:else if tariffReconciliation}
+          <div class="admin-provider-summary">
+            <AdminBadge variant="success">
+              {at(
+                "tariff_reconciliation_healthy",
+                { count: tariffReconciliation.healthy },
+                "Healthy: {count}"
+              )}
+            </AdminBadge>
+            <AdminBadge variant={tariffReconciliation.candidates ? "warning" : "muted"}>
+              {at(
+                "tariff_reconciliation_candidates",
+                { count: tariffReconciliation.candidates },
+                "Safe matches: {count}"
+              )}
+            </AdminBadge>
+            <AdminBadge variant={tariffReconciliation.unresolved ? "danger" : "muted"}>
+              {at(
+                "tariff_reconciliation_unresolved",
+                { count: tariffReconciliation.unresolved },
+                "Needs review: {count}"
+              )}
+            </AdminBadge>
+          </div>
+          {#if tariffReconciliationItems.length}
+            <div class="admin-provider-currency-grid">
+              {#each tariffReconciliationItems.slice(0, 20) as item (item.subscription_id)}
+                <div class="admin-provider-currency">
+                  <div class="admin-provider-currency-main">
+                    <strong>
+                      {at(
+                        "tariff_reconciliation_user",
+                        { user_id: item.user_id },
+                        "User #{user_id}"
+                      )}
+                    </strong>
+                    <small>
+                      {item.current_tariff_key || at("user_tariff_none", {}, "No tariff")}
+                      →
+                      {item.proposed_tariff_key ||
+                        at("tariff_reconciliation_manual", {}, "manual review")}
+                    </small>
+                    <code>{item.reason}</code>
+                  </div>
+                  <AdminBadge variant={item.status === "unresolved" ? "danger" : "warning"}>
+                    {item.status === "unresolved"
+                      ? at("tariff_reconciliation_manual", {}, "Manual review")
+                      : at("tariff_reconciliation_safe", {}, "Safe")}
+                  </AdminBadge>
+                </div>
+              {/each}
+            </div>
+            {#if tariffReconciliation.items_truncated}
+              <p class="admin-muted">
+                <TriangleAlert size={14} />
+                {at(
+                  "tariff_reconciliation_truncated",
+                  {},
+                  "Only the first reconciliation items are shown."
+                )}
+              </p>
+            {/if}
+          {:else}
+            <AdminEmptyState>
+              {at(
+                "tariff_reconciliation_empty",
+                {},
+                "All active subscriptions have canonical tariff bindings."
+              )}
+            </AdminEmptyState>
+          {/if}
+        {:else}
+          <AdminEmptyState>
+            {at(
+              "tariff_reconciliation_unavailable",
+              {},
+              "Tariff binding diagnostics are unavailable."
+            )}
+          </AdminEmptyState>
         {/if}
       </div>
     </article>

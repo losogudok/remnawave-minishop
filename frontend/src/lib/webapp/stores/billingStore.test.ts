@@ -92,7 +92,7 @@ describe("billingStore", () => {
   });
 
   it("applies checkout code quote and includes it in payment creation", async () => {
-    const { store, billing } = makeBillingStore({
+    const { store, deps, billing } = makeBillingStore({
       billing: {
         postPayment: vi.fn().mockResolvedValue({
           ok: true,
@@ -136,7 +136,7 @@ describe("billingStore", () => {
     expect(store).toMatchObject({
       checkoutPromoInput: "SAVE10",
       checkoutPromoAppliedCode: "SAVE10",
-      checkoutPromoPriceText: "90.00",
+      checkoutPromoPriceText: "90 ₽",
       checkoutPromoStatus: "-10%",
       checkoutPromoDiscountPercent: 10,
       checkoutPromoAppliesTo: "subscription",
@@ -149,9 +149,159 @@ describe("billingStore", () => {
         renewHwidDevices: false,
       }
     );
+    expect(deps.loadData).toHaveBeenCalledWith({ fresh: true, preserveView: true });
 
     store.clearCheckoutPromo();
     expect(store.checkoutPromoAppliedCode).toBe("");
+  });
+
+  it("automatically applies a suggested personal code and lets the user remove it", async () => {
+    const { store, billing } = makeBillingStore({
+      billing: {
+        quotePromo: vi.fn().mockResolvedValue({
+          ok: true,
+          valid: true,
+          code: "PERSONAL20",
+          effect_summary: "-20%",
+          discount_percent: 20,
+          applies_to: "subscription",
+          effective_amount: 80,
+        }),
+      },
+    });
+
+    store.openPaymentModal(
+      true,
+      false,
+      [{ key: "pro", is_default: true }] as unknown as Parameters<typeof store.openPaymentModal>[2],
+      { active: false },
+      [{ id: "plan-1", tariff_key: "pro" }],
+      "card",
+      {
+        selectDefaultTariff: true,
+        preferCheckout: true,
+        suggestedPromoCode: "PERSONAL20",
+      }
+    );
+
+    await vi.waitFor(() => expect(store.checkoutPromoAppliedCode).toBe("PERSONAL20"));
+    expect(billing.quotePromo).toHaveBeenCalledOnce();
+    expect(store.checkoutPromoStatus).toBe("-20%");
+
+    store.clearCheckoutPromo();
+    expect(store).toMatchObject({
+      checkoutPromoInput: "",
+      checkoutPromoAppliedCode: "",
+      checkoutPromoAutoApply: false,
+    });
+    expect(billing.quotePromo).toHaveBeenCalledOnce();
+  });
+
+  it("keeps fiat pricing for bonus-day promos when Stars are also configured", async () => {
+    const { store } = makeBillingStore({
+      billing: {
+        quotePromo: vi.fn().mockResolvedValue({
+          ok: true,
+          valid: true,
+          code: "BONUS7",
+          effect_summary: "+7 days",
+          discount_percent: 0,
+          applies_to: "subscription",
+          effective_amount: 299,
+          effective_stars: 150,
+          currency: "RUB",
+        }),
+      },
+    });
+
+    store.openPaymentModal(
+      false,
+      false,
+      [],
+      { active: false },
+      [{ id: "plan-1", price: 299, stars_price: 150, currency: "RUB" }],
+      "yookassa"
+    );
+    store.update((state) => ({
+      ...state,
+      selectedPlan: { id: "plan-1", price: 299, stars_price: 150, currency: "RUB" },
+    }));
+    store.setCheckoutPromoInput("BONUS7");
+
+    await store.applyCheckoutPromo();
+
+    expect(store.checkoutPromoPriceText).toBe("299 ₽");
+    expect(store.checkoutPromoStatus).toBe("+7 days");
+  });
+
+  it("does not call Telegram openInvoice outside a Mini App", async () => {
+    const openInvoice = vi.fn();
+    const { store, deps } = makeBillingStore({
+      billing: {
+        postPayment: vi.fn().mockResolvedValue({
+          ok: true,
+          action: "open_invoice",
+          payment_id: "stars-1",
+          payment_url: "https://t.me/$invoice",
+        }),
+      },
+      tg: { openInvoice },
+      telegramSdk: { hasLaunchParams: vi.fn(() => false) },
+    });
+
+    store.openPaymentModal(
+      false,
+      false,
+      [],
+      { active: false },
+      [{ id: "plan-1", price: 299, stars_price: 150, currency: "RUB" }],
+      "stars"
+    );
+    store.update((state) => ({
+      ...state,
+      selectedPlan: { id: "plan-1", price: 299, stars_price: 150, currency: "RUB" },
+    }));
+
+    await store.createPayment();
+
+    expect(openInvoice).not.toHaveBeenCalled();
+    expect(deps.showToast).toHaveBeenCalledWith("wa_payment_stars_telegram_required");
+  });
+
+  it("resumes the stored discounted payment link and starts status polling", async () => {
+    vi.useFakeTimers();
+    const { store, deps, billing } = makeBillingStore({
+      billing: {
+        fetchPaymentStatus: vi.fn().mockResolvedValue({
+          ok: true,
+          paid: true,
+          status: "succeeded",
+        }),
+      },
+    });
+    store.openPaymentModal(
+      false,
+      false,
+      [],
+      { active: false },
+      [{ id: "plan-1", price: 900, currency: "RUB" }],
+      "yookassa"
+    );
+
+    await store.resumePendingPayment({
+      payment_id: 17,
+      payment_url: "https://pay.example/17",
+      provider: "yookassa",
+      sale_mode: "subscription@pro",
+    } as Parameters<typeof store.resumePendingPayment>[0]);
+
+    expect(deps.openExternalLink).toHaveBeenCalledWith("https://pay.example/17");
+    expect(deps.showToast).toHaveBeenCalledWith("wa_pending_payment_opened");
+    expect(store.paymentModalOpen).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(billing.fetchPaymentStatus).toHaveBeenCalledWith(17);
+    vi.useRealTimers();
   });
 
   it("applies no-payment tariff changes and refreshes data", async () => {

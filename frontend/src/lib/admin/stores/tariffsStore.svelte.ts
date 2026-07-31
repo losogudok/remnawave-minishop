@@ -1,10 +1,13 @@
 import { adminErrorMessage } from "../errors.js";
 import {
   buildAdminPanelInternalSquadsPath,
+  buildAdminTariffReconciliationPath,
   buildAdminTariffsPath,
+  buildAdminTariffsTributeCatalogPath,
   unwrap,
   type ApiClient,
 } from "../../webapp/publicApi";
+import { normalizeTributeCatalog, type TributeCatalog } from "../tributeCatalog";
 import type { components } from "../../api/openapi.generated";
 import {
   emptyTariffDraft,
@@ -28,6 +31,7 @@ export type PanelSquad = {
   name: string;
 };
 export type ProviderCurrencySupport = components["schemas"]["ProviderCurrencySupportOut"];
+export type TariffReconciliation = components["schemas"]["AdminTariffReconciliationOut"];
 type TariffDraftRow = Record<string, unknown>;
 export type TariffDraft = ReturnType<typeof emptyTariffDraft> & Record<string, unknown>;
 export type DraftSquadField = "squadUuids" | "premiumSquadUuids";
@@ -50,6 +54,12 @@ export type TariffsState = {
   selectedBaseSquad: string;
   selectedPremiumSquad: string;
   tariffEditorTab: TariffEditorTab;
+  tributeCatalog: TributeCatalog | null;
+  tributeCatalogLoading: boolean;
+  tributeCatalogError: string;
+  tariffReconciliation: TariffReconciliation | null;
+  tariffReconciliationLoading: boolean;
+  tariffReconciliationApplying: boolean;
 };
 type TariffsStoreOptions = {
   api: AdminApi;
@@ -61,6 +71,9 @@ export type TariffsStore = TariffsState & {
   updateState: (updates: Partial<TariffsState>) => void;
   loadTariffs: () => Promise<void>;
   loadPanelSquads: () => Promise<void>;
+  loadTributeCatalog: () => Promise<void>;
+  loadTariffReconciliation: () => Promise<void>;
+  applyTariffReconciliation: () => Promise<void>;
   squadLabel: (uuid: string) => string;
   addSquadToDraft: (field: DraftSquadField, uuid: string) => void;
   removeSquadFromDraft: (field: DraftSquadField, uuid: string) => void;
@@ -140,9 +153,18 @@ export function createTariffsStore({
     selectedBaseSquad: "",
     selectedPremiumSquad: "",
     tariffEditorTab: "general",
+    tributeCatalog: null,
+    tributeCatalogLoading: false,
+    tributeCatalogError: "",
+    tariffReconciliation: null,
+    tariffReconciliationLoading: false,
+    tariffReconciliationApplying: false,
     updateState,
     loadTariffs,
     loadPanelSquads,
+    loadTributeCatalog,
+    loadTariffReconciliation,
+    applyTariffReconciliation,
     squadLabel,
     addSquadToDraft,
     removeSquadFromDraft,
@@ -178,6 +200,7 @@ export function createTariffsStore({
     updateStore((s) => ({ ...s, tariffsLoading: true }));
     try {
       void loadPanelSquads();
+      void loadTariffReconciliation();
       const data = await api(buildAdminTariffsPath());
       if (isOkResponse(data)) {
         const result = unwrap(data);
@@ -212,6 +235,103 @@ export function createTariffsStore({
       updateStore((s) => ({ ...s, panelSquads: [] }));
     } finally {
       updateStore((s) => ({ ...s, panelSquadsLoading: false }));
+    }
+  }
+
+  async function loadTariffReconciliation(): Promise<void> {
+    if (state.tariffReconciliationLoading) return;
+    updateStore((s) => ({ ...s, tariffReconciliationLoading: true }));
+    try {
+      const data = await api(buildAdminTariffReconciliationPath());
+      if (isOkResponse(data)) {
+        const result = unwrap(data);
+        updateStore((s) => ({
+          ...s,
+          tariffReconciliation: result as TariffReconciliation,
+        }));
+      } else {
+        updateStore((s) => ({ ...s, tariffReconciliation: null }));
+      }
+    } catch (_error) {
+      void _error;
+      updateStore((s) => ({ ...s, tariffReconciliation: null }));
+    } finally {
+      updateStore((s) => ({ ...s, tariffReconciliationLoading: false }));
+    }
+  }
+
+  async function applyTariffReconciliation(): Promise<void> {
+    if (state.tariffReconciliationApplying) return;
+    updateStore((s) => ({ ...s, tariffReconciliationApplying: true }));
+    try {
+      const data = await api(buildAdminTariffReconciliationPath(), {
+        method: "POST",
+        body: JSON.stringify({ apply: true }),
+      });
+      if (isOkResponse(data)) {
+        const result = unwrap(data);
+        const appliedCount = Number(result.applied || 0);
+        updateStore((s) => ({
+          ...s,
+          tariffReconciliation: result as TariffReconciliation,
+        }));
+        await loadTariffReconciliation();
+        flash(
+          at(
+            "tariff_reconciliation_applied",
+            { count: appliedCount },
+            "Safe tariff bindings applied: {count}"
+          )
+        );
+      } else {
+        flash(
+          adminErrorMessage(
+            data,
+            at,
+            at("tariff_reconciliation_apply_failed", {}, "Failed to reconcile subscriptions")
+          )
+        );
+      }
+    } finally {
+      updateStore((s) => ({ ...s, tariffReconciliationApplying: false }));
+    }
+  }
+
+  /**
+   * Read the Tribute Creator catalog on demand.
+   *
+   * It stays an explicit action: the lookup leaves the deployment for Tribute's
+   * API, so it runs when an admin asks for it, not on every editor open.
+   */
+  async function loadTributeCatalog(): Promise<void> {
+    if (state.tributeCatalogLoading) return;
+
+    updateStore((s) => ({ ...s, tributeCatalogLoading: true, tributeCatalogError: "" }));
+    try {
+      const data = await api(buildAdminTariffsTributeCatalogPath());
+      if (isOkResponse(data)) {
+        const result = unwrap(data);
+        updateStore((s) => ({ ...s, tributeCatalog: normalizeTributeCatalog(result) }));
+      } else {
+        const message = adminErrorMessage(
+          data,
+          at,
+          at("tariff_tribute_catalog_failed", {}, "Failed to load the Tribute catalog")
+        );
+        updateStore((s) => ({ ...s, tributeCatalog: null, tributeCatalogError: message }));
+      }
+    } catch (error) {
+      updateStore((s) => ({
+        ...s,
+        tributeCatalog: null,
+        tributeCatalogError: adminErrorMessage(
+          error,
+          at,
+          at("tariff_tribute_catalog_failed", {}, "Failed to load the Tribute catalog")
+        ),
+      }));
+    } finally {
+      updateStore((s) => ({ ...s, tributeCatalogLoading: false }));
     }
   }
 
@@ -267,6 +387,7 @@ export function createTariffsStore({
           tariffDeleteTarget: null,
         }));
         if (onTariffsSaved) await onTariffsSaved(normalizeCatalog(result.catalog));
+        await loadTariffReconciliation();
         flash(successText || at("tariffs_saved", {}, "Tariffs saved"));
       } else {
         flash(adminErrorMessage(res, at, at("tariffs_save_failed", {}, "Failed to save tariffs")));

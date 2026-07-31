@@ -1,7 +1,9 @@
 import asyncio
 import json
+import logging
 import tempfile
 import unittest
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 from bot.services.panel_api_service import PanelApiService
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.services.tariff_worker import TariffTrafficWorker
+from bot.services.tariff_worker_shared import canonical_subscriptions_per_panel_user
 from config.settings import Settings
 
 
@@ -594,8 +597,14 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
             session = SimpleNamespace(execute=AsyncMock(return_value=result))
 
             with patch(
-                "bot.services.tariff_worker_regular.tariff_dal.sum_active_hwid_devices",
-                new=AsyncMock(return_value=0),
+                "bot.services.tariff_worker_regular.tariff_dal.get_hwid_device_entitlement_summary",
+                new=AsyncMock(
+                    return_value={
+                        "active_devices": 0,
+                        "traffic_bonus_bytes": 0,
+                        "legacy_active_devices": 0,
+                    }
+                ),
             ):
                 await worker.traffic_period_tick(session)
 
@@ -1974,3 +1983,388 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(sub.is_active)
         self.assertFalse(sub.skip_notifications)
         self.assertEqual(sub.status_from_panel, "ACTIVE")
+
+    def test_duplicate_active_subscriptions_sync_only_the_newest(self):
+        older = SimpleNamespace(
+            subscription_id=1,
+            panel_user_uuid="panel-1",
+            end_date=datetime(2026, 7, 1, tzinfo=UTC),
+        )
+        newer = SimpleNamespace(
+            subscription_id=2,
+            panel_user_uuid="panel-1",
+            end_date=datetime(2026, 8, 1, tzinfo=UTC),
+        )
+        other = SimpleNamespace(
+            subscription_id=3,
+            panel_user_uuid="panel-2",
+            end_date=datetime(2026, 8, 1, tzinfo=UTC),
+        )
+
+        with self.assertLogs("bot.services.tariff_worker_shared", level="WARNING") as logs:
+            kept = canonical_subscriptions_per_panel_user(
+                [older, newer, other],
+                logger=logging.getLogger("bot.services.tariff_worker_shared"),
+            )
+
+        self.assertEqual([sub.subscription_id for sub in kept], [2, 3])
+        self.assertIn("panel-1", " ".join(logs.output))
+
+    async def test_panel_limit_patch_backs_off_when_the_value_never_sticks(self):
+        worker = TariffTrafficWorker(
+            settings=SimpleNamespace(REDIS_URL=None),
+            session_factory=SimpleNamespace(),
+            panel_service=SimpleNamespace(),
+            subscription_service=SimpleNamespace(),
+        )
+
+        allowed = [
+            await worker._panel_limit_patch_allowed(
+                "panel-1",
+                "hwid:4|traffic:-",
+                subscription_id=7,
+                observed="hwidDeviceLimit=2 trafficLimitBytes=None",
+            )
+            for _ in range(5)
+        ]
+
+        # Three attempts, then the worker stops rewriting the same value.
+        self.assertEqual(allowed, [True, True, True, False, False])
+
+    async def test_panel_limit_patch_resumes_after_the_desired_value_changes(self):
+        worker = TariffTrafficWorker(
+            settings=SimpleNamespace(REDIS_URL=None),
+            session_factory=SimpleNamespace(),
+            panel_service=SimpleNamespace(),
+            subscription_service=SimpleNamespace(),
+        )
+        for _ in range(4):
+            await worker._panel_limit_patch_allowed(
+                "panel-1",
+                "hwid:4|traffic:-",
+                subscription_id=7,
+                observed="hwidDeviceLimit=2 trafficLimitBytes=None",
+            )
+
+        self.assertTrue(
+            await worker._panel_limit_patch_allowed(
+                "panel-1",
+                "hwid:6|traffic:-",
+                subscription_id=7,
+                observed="hwidDeviceLimit=2 trafficLimitBytes=None",
+            )
+        )
+
+    async def test_premium_fast_tick_syncs_only_subscriptions_with_premium_squads(self):
+        premium_tariff = _PremiumTariff()
+        regular_tariff = _PeriodTariff()
+        settings = SimpleNamespace(
+            TARIFF_PREMIUM_FAST_WATCH_PERCENT=80,
+            TARIFF_PREMIUM_FAST_BATCH_LIMIT=200,
+            tariffs_config=SimpleNamespace(
+                require=lambda key: premium_tariff if key == "standard" else regular_tariff
+            ),
+        )
+        panel_service = AsyncMock(spec=PanelApiService)
+        panel_service.get_user_by_uuid = AsyncMock(
+            side_effect=[
+                {"uuid": "panel-premium", "username": "tg_1"},
+                {"uuid": "panel-regular", "username": "tg_2"},
+            ]
+        )
+        worker = TariffTrafficWorker(
+            settings=settings,
+            session_factory=SimpleNamespace(),
+            panel_service=panel_service,
+            subscription_service=SimpleNamespace(),
+        )
+        worker._trial_premium_tariff = lambda: None
+        worker._sync_premium_squad_limit = AsyncMock()
+        premium_sub = SimpleNamespace(
+            subscription_id=1,
+            tariff_key="standard",
+            panel_user_uuid="panel-premium",
+        )
+        regular_sub = SimpleNamespace(
+            subscription_id=2,
+            tariff_key="basic",
+            panel_user_uuid="panel-regular",
+        )
+        session = AsyncMock()
+        session.execute = AsyncMock(
+            return_value=SimpleNamespace(scalars=lambda: iter([premium_sub, regular_sub]))
+        )
+
+        await worker.premium_fast_tick(session)
+
+        worker._sync_premium_squad_limit.assert_awaited_once()
+        synced_sub = worker._sync_premium_squad_limit.await_args.args[1]
+        self.assertIs(synced_sub, premium_sub)
+        self.assertEqual(
+            worker._sync_premium_squad_limit.await_args.kwargs["panel_view"],
+            "full_fetch",
+        )
+        self.assertEqual(
+            worker._sync_premium_squad_limit.await_args.kwargs["panel_username"],
+            "tg_1",
+        )
+        # Only the watched subscription is fetched from the panel.
+        self.assertEqual(panel_service.get_user_by_uuid.await_count, 1)
+
+    def test_premium_fast_candidates_query_watches_limited_and_near_limit_subscriptions(self):
+        worker = TariffTrafficWorker(
+            settings=SimpleNamespace(
+                TARIFF_PREMIUM_FAST_WATCH_PERCENT=80,
+                TARIFF_PREMIUM_FAST_BATCH_LIMIT=25,
+            ),
+            session_factory=SimpleNamespace(),
+            panel_service=SimpleNamespace(),
+            subscription_service=SimpleNamespace(),
+        )
+        worker._trial_premium_tariff = lambda: None
+
+        sql = str(
+            worker._premium_fast_candidates_query(datetime(2026, 6, 1, tzinfo=UTC)).compile(
+                compile_kwargs={"literal_binds": True}
+            )
+        )
+
+        self.assertIn("subscriptions.premium_is_limited IS true", sql)
+        self.assertIn("subscriptions.premium_unlimited_override IS false", sql)
+        self.assertIn("80 *", sql)
+        self.assertIn("LIMIT 25", sql)
+
+    def test_premium_fast_tick_is_disabled_when_interval_is_not_shorter(self):
+        def worker_for(fast_seconds, tick_seconds=300):
+            return TariffTrafficWorker(
+                settings=SimpleNamespace(
+                    TARIFF_PREMIUM_FAST_TICK_SECONDS=fast_seconds,
+                    TARIFF_WORKER_TICK_SECONDS=tick_seconds,
+                ),
+                session_factory=SimpleNamespace(),
+                panel_service=SimpleNamespace(),
+                subscription_service=SimpleNamespace(),
+            )
+
+        self.assertEqual(worker_for(60).premium_fast_tick_seconds(), 60)
+        self.assertEqual(worker_for(0).premium_fast_tick_seconds(), 0)
+        self.assertEqual(worker_for(300).premium_fast_tick_seconds(), 0)
+        self.assertEqual(worker_for(600).premium_fast_tick_seconds(), 0)
+
+    async def test_run_interleaves_premium_fast_ticks_between_full_ticks(self):
+        worker = TariffTrafficWorker(
+            settings=SimpleNamespace(
+                tariffs_config=SimpleNamespace(),
+                TARIFF_WORKER_TICK_SECONDS=2,
+                TARIFF_PREMIUM_FAST_TICK_SECONDS=1,
+                TARIFF_WORKER_LOCK_TTL_SECONDS=10,
+            ),
+            session_factory=SimpleNamespace(),
+            panel_service=SimpleNamespace(),
+            subscription_service=SimpleNamespace(),
+        )
+        ticks: list[str] = []
+
+        async def _record_tick(tick_name, _tick):
+            ticks.append(tick_name)
+            if len(ticks) >= 3:
+                worker.stop()
+
+        @asynccontextmanager
+        async def _lock(*_args, **_kwargs):
+            yield True
+
+        worker._run_db_tick_with_retry = _record_tick
+        with patch("bot.services.tariff_worker_core.redis_lock", new=_lock):
+            await worker.run()
+
+        self.assertEqual(ticks, ["traffic_period", "legacy_throttle_recovery", "premium_fast"])
+
+    def _premium_enforcement_worker(self, *, drop_enabled=True, cooldown=0):
+        settings = SimpleNamespace(
+            DEFAULT_LANGUAGE="en",
+            SUBSCRIPTION_MINI_APP_URL="",
+            email_auth_configured=False,
+            tariff_traffic_warning_levels=[85],
+            USER_TRAFFIC_STRATEGY="MONTH",
+            TARIFF_PREMIUM_DROP_CONNECTIONS=drop_enabled,
+            TARIFF_PREMIUM_DROP_CONNECTIONS_COOLDOWN_SECONDS=cooldown,
+        )
+        panel_service = AsyncMock(spec=PanelApiService)
+        panel_service.get_internal_squad_accessible_nodes = AsyncMock(
+            return_value=[{"uuid": "node-1", "name": "Premium A"}]
+        )
+        panel_service.update_user_details_on_panel = AsyncMock(return_value={"response": {}})
+        panel_service.drop_user_connections = AsyncMock(return_value=True)
+        subscription_service = SubscriptionService(settings, panel_service)
+        subscription_service.premium_access_for_tariff = AsyncMock(
+            return_value={"node_labels": ["Premium A"], "squad_labels": []}
+        )
+        worker = TariffTrafficWorker(
+            settings=settings,
+            session_factory=SimpleNamespace(),
+            panel_service=panel_service,
+            subscription_service=subscription_service,
+        )
+        worker._user_lang = AsyncMock(return_value="en")
+        worker._maybe_warn_premium_squad_limit = AsyncMock()
+        worker._maybe_send_premium_reset_notice = AsyncMock()
+        return worker, panel_service
+
+    @staticmethod
+    def _premium_enforcement_subscription(*, used_gb, limited):
+        return SimpleNamespace(
+            subscription_id=41,
+            user_id=123,
+            panel_user_uuid="panel-uuid",
+            premium_baseline_bytes=25 * (1024**3),
+            premium_topup_balance_bytes=0,
+            premium_topup_used_bytes=0,
+            premium_used_bytes=used_gb * (1024**3),
+            premium_is_limited=limited,
+            premium_period_start_at=datetime(2026, 6, 1, tzinfo=UTC),
+            premium_unlimited_override=False,
+            premium_bonus_bytes=0,
+        )
+
+    async def _run_premium_sync(self, worker, sub, *, node_usage_gb):
+        worker.panel_service.get_node_users_bandwidth_stats = AsyncMock(
+            return_value={
+                "topUsers": [{"username": "tg_123", "total": int(node_usage_gb * (1024**3))}]
+            }
+        )
+        worker._premium_node_usage_tick_cache = {}
+        with patch(
+            "bot.services.tariff_worker_premium.tariff_dal.sum_traffic_topups",
+            new=AsyncMock(return_value=None),
+        ):
+            await worker._sync_premium_squad_limit(
+                AsyncMock(),
+                sub,
+                _PremiumTariff(),
+                datetime(2026, 6, 15, tzinfo=UTC),
+                panel_username="tg_123",
+                panel_user_dict={
+                    "activeInternalSquads": [{"uuid": "squad-1"}, {"uuid": "premium-squad"}]
+                },
+            )
+
+    async def test_premium_limit_drops_live_connections_on_premium_nodes(self):
+        worker, panel_service = self._premium_enforcement_worker()
+        sub = self._premium_enforcement_subscription(used_gb=10, limited=False)
+
+        await self._run_premium_sync(worker, sub, node_usage_gb=30)
+
+        self.assertTrue(sub.premium_is_limited)
+        panel_service.drop_user_connections.assert_awaited_once_with("panel-uuid", ["node-1"])
+
+    async def test_premium_limit_does_not_drop_connections_when_disabled(self):
+        worker, panel_service = self._premium_enforcement_worker(drop_enabled=False)
+        sub = self._premium_enforcement_subscription(used_gb=10, limited=False)
+
+        await self._run_premium_sync(worker, sub, node_usage_gb=30)
+
+        self.assertTrue(sub.premium_is_limited)
+        panel_service.drop_user_connections.assert_not_awaited()
+
+    async def test_premium_traffic_after_limit_warns_and_drops_again(self):
+        worker, panel_service = self._premium_enforcement_worker()
+        sub = self._premium_enforcement_subscription(used_gb=10, limited=False)
+
+        # First pass limits the subscription and records the per-node baseline.
+        await self._run_premium_sync(worker, sub, node_usage_gb=30)
+        panel_service.drop_user_connections.reset_mock()
+
+        # The client keeps spending on the premium node despite being limited.
+        with (
+            patch(
+                "bot.services.tariff_worker_premium_enforcement.cache_get_json",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "bot.services.tariff_worker_premium_enforcement.cache_set_json",
+                new=AsyncMock(),
+            ) as cache_set,
+            self.assertLogs(
+                "bot.services.tariff_worker_premium_enforcement", level="WARNING"
+            ) as logs,
+        ):
+            worker.settings.REDIS_URL = "redis://localhost:6379/0"
+            worker.settings.REDIS_KEY_PREFIX = "test"
+            await self._run_premium_sync(worker, sub, node_usage_gb=35)
+
+        panel_service.drop_user_connections.assert_awaited_once_with("panel-uuid", ["node-1"])
+        self.assertTrue(any("CAP_NET_ADMIN" in line for line in logs.output))
+        recorded = cache_set.await_args.args[2]
+        self.assertEqual(recorded["node-1"]["name"], "Premium A")
+        self.assertEqual(recorded["node-1"]["subscriptions"], [41])
+
+    async def test_premium_leak_watch_is_dropped_when_access_is_restored(self):
+        worker, _panel_service = self._premium_enforcement_worker()
+        sub = self._premium_enforcement_subscription(used_gb=10, limited=False)
+
+        await self._run_premium_sync(worker, sub, node_usage_gb=30)
+        self.assertIn(41, worker._premium_leak_usage)
+
+        # A top-up lifted the limit: the per-node baseline must not linger.
+        sub.premium_topup_balance_bytes = 50 * (1024**3)
+        await self._run_premium_sync(worker, sub, node_usage_gb=30)
+
+        self.assertFalse(sub.premium_is_limited)
+        self.assertNotIn(41, worker._premium_leak_usage)
+
+    async def test_premium_usage_keeps_stored_total_when_node_stats_are_unavailable(self):
+        settings = SimpleNamespace(
+            DEFAULT_LANGUAGE="en",
+            SUBSCRIPTION_MINI_APP_URL="",
+            email_auth_configured=False,
+            tariff_traffic_warning_levels=[85],
+            USER_TRAFFIC_STRATEGY="MONTH",
+        )
+        panel_service = AsyncMock(spec=PanelApiService)
+        panel_service.get_internal_squad_accessible_nodes = AsyncMock(
+            return_value=[{"uuid": "node-1"}]
+        )
+        # The panel failed to answer the bandwidth stats request for this node.
+        panel_service.get_node_users_bandwidth_stats = AsyncMock(return_value=None)
+        panel_service.update_user_details_on_panel = AsyncMock(return_value={"response": {}})
+        subscription_service = SubscriptionService(settings, panel_service)
+        worker = TariffTrafficWorker(
+            settings=settings,
+            session_factory=SimpleNamespace(),
+            panel_service=panel_service,
+            subscription_service=subscription_service,
+        )
+        worker._maybe_warn_premium_squad_limit = AsyncMock()
+        worker._maybe_send_premium_reset_notice = AsyncMock()
+        sub = SimpleNamespace(
+            subscription_id=31,
+            user_id=123,
+            panel_user_uuid="panel-uuid",
+            premium_baseline_bytes=25 * (1024**3),
+            premium_topup_balance_bytes=0,
+            premium_topup_used_bytes=0,
+            premium_used_bytes=30 * (1024**3),
+            premium_is_limited=True,
+            premium_period_start_at=datetime(2026, 6, 1, tzinfo=UTC),
+            premium_unlimited_override=False,
+            premium_bonus_bytes=0,
+        )
+
+        with patch(
+            "bot.services.tariff_worker_premium.tariff_dal.sum_traffic_topups",
+            new=AsyncMock(return_value=None),
+        ):
+            await worker._sync_premium_squad_limit(
+                AsyncMock(),
+                sub,
+                _PremiumTariff(),
+                datetime(2026, 6, 15, tzinfo=UTC),
+                panel_username="tg_123",
+                panel_user_dict={"activeInternalSquads": [{"uuid": "squad-1"}]},
+            )
+
+        # Missing stats must not look like "the user spent nothing" and restore access.
+        self.assertTrue(sub.premium_is_limited)
+        self.assertEqual(int(sub.premium_used_bytes), 30 * (1024**3))
+        panel_service.update_user_details_on_panel.assert_not_awaited()

@@ -62,8 +62,13 @@ from .sync import (
     admin_sync_route,
 )
 from .tariffs import (
+    admin_tariff_reconciliation_apply_route,
+    admin_tariff_reconciliation_get_route,
     admin_tariffs_get_route,
     admin_tariffs_save_route,
+)
+from .tariffs_tribute import (
+    admin_tariffs_tribute_catalog_route,
 )
 from .themes import (
     admin_appearance_favicon_upload_route,
@@ -90,6 +95,7 @@ from .users import (
     admin_user_reset_trial_route,
     admin_user_squad_overrides_refresh_route,
     admin_user_squad_overrides_route,
+    admin_user_subscription_reissue_route,
     admin_user_tariff_route,
     admin_user_telegram_profile_link_route,
     admin_user_traffic_grant_route,
@@ -118,6 +124,10 @@ def setup_admin_routes(app: web.Application) -> None:
         admin_user_telegram_profile_link_route,
     )
     router.add_post("/api/admin/users/{user_id:-?\\d+}/reset-trial", admin_user_reset_trial_route)
+    router.add_post(
+        "/api/admin/users/{user_id:-?\\d+}/subscription-reissue",
+        admin_user_subscription_reissue_route,
+    )
     router.add_patch(
         "/api/admin/users/{user_id:-?\\d+}/squad-overrides",
         admin_user_squad_overrides_route,
@@ -194,6 +204,15 @@ def setup_admin_routes(app: web.Application) -> None:
 
     router.add_get("/api/admin/tariffs", admin_tariffs_get_route)
     router.add_put("/api/admin/tariffs", admin_tariffs_save_route)
+    router.add_get(
+        "/api/admin/tariffs/reconciliation",
+        admin_tariff_reconciliation_get_route,
+    )
+    router.add_post(
+        "/api/admin/tariffs/reconciliation",
+        admin_tariff_reconciliation_apply_route,
+    )
+    router.add_get("/api/admin/tariffs/tribute/catalog", admin_tariffs_tribute_catalog_route)
     router.add_get("/api/admin/themes", admin_themes_get_route)
     router.add_put("/api/admin/themes", admin_themes_save_route)
     router.add_post("/api/admin/appearance/logo", admin_appearance_logo_upload_route)

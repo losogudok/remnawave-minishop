@@ -31,6 +31,7 @@ from .assets import (
     i18n_route,
     index_route,
     js_asset_route,
+    js_chunk_asset_route,
     provider_logo_asset_route,
     robots_txt_route,
     theme_asset_route,
@@ -86,6 +87,9 @@ from .payloads import (
 from .payloads import (
     WebAppPaymentCreatePayload as WebAppPaymentCreatePayload,
 )
+from .subscription_reissue import (
+    subscription_reissue_route,
+)
 from .support import (
     support_create_ticket_route,
     support_ticket_detail_route,
@@ -107,6 +111,9 @@ def setup_subscription_webapp_routes(app: web.Application) -> None:
     app.router.add_get("/", index_route)
     app.router.add_get("/login/password", index_route)
     app.router.add_get("/home", index_route)
+    # Checkout has no screen of its own; the app renders home and opens plan
+    # selection, so the path only has to reach the SPA.
+    app.router.add_get("/plans", index_route)
     app.router.add_get("/install", index_route)
     app.router.add_get("/trial", index_route)
     app.router.add_get("/open-app", app_deeplink_route)
@@ -160,14 +167,23 @@ def setup_subscription_webapp_routes(app: web.Application) -> None:
         r"/provider-logos/{filename:[A-Za-z0-9_-]+\.png}",
         provider_logo_asset_route,
     )
+    # Order matters: the ``.min.<hash>`` entries are registered before the chunk
+    # patterns, which would otherwise swallow them as a chunk called "min".
+    # ``chunk_name`` allows dots because a chunk inherits them from its entry
+    # module — a store written in ``*.svelte.ts`` produces
+    # ``subscription_webapp_admin.<store>.svelte.<hash>.js``.
     app.router.add_get("/subscription_webapp.min.{asset_hash}.js", js_asset_route)
     app.router.add_get("/subscription_webapp.js", js_asset_route)
     app.router.add_get(
-        r"/subscription_webapp_admin.{chunk_name:[A-Za-z0-9_-]+}.{asset_hash:[A-Za-z0-9_-]+}.js",
-        admin_js_chunk_asset_route,
+        r"/subscription_webapp.{chunk_name:[A-Za-z0-9_.-]+}.{asset_hash:[A-Za-z0-9_-]+}.js",
+        js_chunk_asset_route,
     )
     app.router.add_get("/subscription_webapp_admin.min.{asset_hash}.js", admin_js_asset_route)
     app.router.add_get("/subscription_webapp_admin.js", admin_js_asset_route)
+    app.router.add_get(
+        r"/subscription_webapp_admin.{chunk_name:[A-Za-z0-9_.-]+}.{asset_hash:[A-Za-z0-9_-]+}.js",
+        admin_js_chunk_asset_route,
+    )
     app.router.add_post("/api/auth/telegram/nonce", telegram_oauth_nonce_route)
     app.router.add_post("/api/auth/token", auth_token_route)
     app.router.add_post("/api/auth/email/request", email_auth_request_route)
@@ -201,6 +217,7 @@ def setup_subscription_webapp_routes(app: web.Application) -> None:
     app.router.add_post("/api/plans/viewed", plans_viewed_route)
     app.router.add_post("/api/trial/activate", activate_trial_route)
     app.router.add_post("/api/subscription/auto-renew", subscription_auto_renew_route)
+    app.router.add_post("/api/subscription/reissue", subscription_reissue_route)
     app.router.add_post("/api/subscription/quote-promo", quote_promo_route)
     app.router.add_get("/api/devices", devices_route)
     app.router.add_post("/api/devices/disconnect", disconnect_device_route)

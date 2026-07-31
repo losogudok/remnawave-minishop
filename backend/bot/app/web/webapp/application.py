@@ -13,6 +13,7 @@ from bot.app.controllers.dispatcher_context import (
 from bot.app.web.admin_api_impl.auth import (
     admin_auth_middleware,
 )
+from bot.app.web.cache_headers import api_no_store_middleware
 from bot.app.web.context import (
     EMAIL_AUTH_SERVICE,
     get_app_i18n,
@@ -50,6 +51,7 @@ def create_subscription_webapp_application(
     app = web.Application(
         middlewares=[
             observability_error_middleware,
+            api_no_store_middleware,
             _security_headers_middleware,
             _webapp_edge_token_middleware,
             _csrf_protection_middleware,

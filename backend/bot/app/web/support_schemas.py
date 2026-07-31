@@ -5,9 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 
 from bot.app.web.http_contracts import HttpBodyModel, HttpResponseModel
+from bot.services.support_message_body import normalize_body_format
+from bot.services.support_message_buttons import support_buttons_payload
 
 
 class SupportTypingIn(HttpBodyModel):
@@ -103,12 +105,27 @@ class AdminSupportTicketOut(SupportTicketOut):
     user: AdminSupportUserOut | EmptyObjectOut
 
 
+class SupportMessageButtonOut(HttpResponseModel):
+    """A button the admin attached, already resolved to the link it opens."""
+
+    label: str
+    url: str
+    kind: str
+    promo_code: str = ""
+    section: str = ""
+
+
 class SupportMessageOut(HttpResponseModel):
     message_id: int
     ticket_id: int
     author_role: str
     author_user_id: int | None = None
     body: str
+    #: ``text`` for a plain body, ``html`` for the Telegram-subset markup the
+    #: rich composer writes. Clients render the whitelist themselves rather
+    #: than trusting the string.
+    body_format: str = "text"
+    buttons: list[SupportMessageButtonOut] = Field(default_factory=list)
     is_internal_note: bool
     created_at: datetime | None = None
     read_by_user_at: datetime | None = None
@@ -124,6 +141,11 @@ class SupportMessageOut(HttpResponseModel):
                 int(message.author_user_id) if message.author_user_id is not None else None
             ),
             body=str(message.body),
+            body_format=normalize_body_format(message.__dict__.get("body_format")),
+            buttons=[
+                SupportMessageButtonOut(**button)
+                for button in support_buttons_payload(message.__dict__.get("buttons"))
+            ],
             is_internal_note=bool(message.is_internal_note),
             created_at=message.created_at,
             read_by_user_at=message.read_by_user_at,

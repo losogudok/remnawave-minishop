@@ -3,10 +3,13 @@
 import unittest
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 from bot.handlers.user.subscription import core as subscription_core
-from bot.payment_providers.shared import RecurringChargeResult
+from bot.payment_providers.shared import (
+    RecurringChargeResult,
+    parse_entitlement_context_snapshot,
+)
 from bot.services.subscription_service_impl.renewal import RenewalMixin
 
 
@@ -94,11 +97,19 @@ class ChargeRenewalShortCircuitTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_skips_for_non_recurring_provider(self):
         mixin = _make_mixin(service=None)
-        ok = await mixin.charge_subscription_renewal(
-            session=None,
-            sub=_FakeSub(auto_renew_enabled=True, provider="freekassa"),
-        )
+        emit_failure = AsyncMock()
+        with patch(
+            "bot.services.subscription_service_impl.renewal._emit_auto_renew_failure",
+            emit_failure,
+        ):
+            ok = await mixin.charge_subscription_renewal(
+                session=None,
+                sub=_FakeSub(auto_renew_enabled=True, provider="freekassa"),
+            )
         self.assertTrue(ok)
+        # Unsupported providers are intentionally skipped. They must not turn
+        # into a failure event that could target a broad recovery broadcast.
+        emit_failure.assert_not_awaited()
 
 
 class ChargeRenewalFailureTests(unittest.IsolatedAsyncioTestCase):
@@ -179,9 +190,16 @@ class ChargeRenewalFailureTests(unittest.IsolatedAsyncioTestCase):
     async def test_returns_false_when_provider_charge_fails(self):
         service = _FakeRecurringService(result=RecurringChargeResult.failed("declined"))
         mixin = _make_mixin(service=service)
-        with patch(
-            "db.dal.user_billing_dal.get_user_default_payment_method",
-            _stub_default_pm,
+        emit_failure = AsyncMock()
+        with (
+            patch(
+                "db.dal.user_billing_dal.get_user_default_payment_method",
+                _stub_default_pm,
+            ),
+            patch(
+                "bot.services.subscription_service_impl.renewal._emit_auto_renew_failure",
+                emit_failure,
+            ),
         ):
             ok = await mixin.charge_subscription_renewal(
                 session=None,
@@ -194,6 +212,15 @@ class ChargeRenewalFailureTests(unittest.IsolatedAsyncioTestCase):
                 ),
             )
         self.assertFalse(ok)
+        emit_failure.assert_awaited_once_with(
+            sub=ANY,
+            provider="yookassa",
+            reason_code="provider_rejected",
+            renewal_cycle_end=None,
+            retryable=False,
+            payment_db_id=None,
+            provider_payment_id=None,
+        )
 
 
 class ChargeRenewalHappyPathTests(unittest.IsolatedAsyncioTestCase):
@@ -231,6 +258,9 @@ class ChargeRenewalHappyPathTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(context.metadata["user_id"], "77")
         self.assertEqual(context.metadata["auto_renew_for_subscription_id"], "555")
         self.assertEqual(context.metadata["subscription_months"], "1")
+        snapshot = parse_entitlement_context_snapshot(context.entitlement_context_snapshot)
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot.active_subscription_id, 555)
         self.assertTrue(context.idempotence_key.startswith("yk-auto-"))
         self.assertLessEqual(len(context.idempotence_key), 64)
 
@@ -335,6 +365,8 @@ class ChargeRenewalHappyPathTests(unittest.IsolatedAsyncioTestCase):
         valid_until = datetime(2099, 3, 1, tzinfo=UTC)
         mixin.quote_hwid_device_renewal_for_subscription = AsyncMock(
             return_value={
+                "subscription_id": 555,
+                "tariff_key": "standard",
                 "device_count": 2,
                 "price": 50.0,
                 "full_price": 50.0,
@@ -367,6 +399,9 @@ class ChargeRenewalHappyPathTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(context.amount, 449.0)
         self.assertEqual(context.sale_mode, "subscription@standard")
         self.assertEqual(context.hwid_quote["device_count"], 2)
+        snapshot = parse_entitlement_context_snapshot(context.entitlement_context_snapshot)
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot.active_subscription_id, 555)
         meta = context.metadata
         self.assertEqual(meta["sale_mode"], "subscription@standard")
         self.assertEqual(meta["hwid_devices"], "2")

@@ -39,6 +39,7 @@
     userTelegramProfileLinkKind = () => "",
     openTelegramProfileLink = () => false,
     onClose = () => usersStore.closeUser(),
+    routePrefix = "",
   }: {
     at: TranslateFn;
     fmtDate: DateFormatter;
@@ -56,6 +57,7 @@
     userTelegramProfileLinkKind?: (user: AdminUser) => string;
     openTelegramProfileLink?: (url: string) => boolean;
     onClose?: () => void;
+    routePrefix?: string;
   } = $props();
 
   let avatarPreviewOpen = $state(false);
@@ -249,11 +251,10 @@
   const openedUser = $derived(usersState.openedUser);
   const openedUserDetail = $derived(usersState.openedUserDetail);
   const userDetailLoading = $derived(usersState.userDetailLoading);
-  const userMessageDraft = $derived(usersState.userMessageDraft);
   const userActionBusy = $derived(usersState.userActionBusy);
   const userDeleteOpen = $derived(usersState.userDeleteOpen);
+  const userSubscriptionReissueOpen = $derived(usersState.userSubscriptionReissueOpen);
   const userBanConfirmOpen = $derived(usersState.userBanConfirmOpen);
-  const userMessageConfirmOpen = $derived(usersState.userMessageConfirmOpen);
   const userTariffHwidConfirmOpen = $derived(usersState.userTariffHwidConfirmOpen);
   const userReferralsOpen = $derived(usersState.userReferralsOpen);
   const userReferralsLoading = $derived(usersState.userReferralsLoading);
@@ -522,6 +523,7 @@
   {openedUser}
   {openedUserDetail}
   {userDetailLoading}
+  {routePrefix}
   {onClose}
   {openedUserAvatarUrl}
   {openAvatarPreview}
@@ -554,7 +556,6 @@
   {userLogsLoading}
   {userLogsLoaded}
   {userActionBusy}
-  {userMessageDraft}
   {extendTariffItems}
   {extendTariffsLoading}
   {userExtendDaysValid}
@@ -612,12 +613,11 @@
   {avatarPreviewOpen}
   {avatarPreviewUrl}
   {avatarPreviewName}
-  {userMessageConfirmOpen}
-  {userMessageDraft}
   {userBanConfirmOpen}
   {userTariffHwidConfirmOpen}
   {tariffHwidCurrentLabel}
   {tariffHwidTargetLabel}
   {userDeleteOpen}
+  {userSubscriptionReissueOpen}
   {userActionBusy}
 />

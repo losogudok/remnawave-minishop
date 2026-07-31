@@ -17,18 +17,21 @@ from bot.app.web.webapp.payloads import (
     WebAppTariffChangePayload,
 )
 from bot.services.behavior_events import emit_plans_viewed
+from bot.services.device_topup_availability import resolve_device_topup_availability
 from bot.services.subscription_service_impl.core import SubscriptionService
+from bot.services.subscription_service_impl.tariff_change_quote import (
+    build_tariff_change_quote_snapshot,
+)
 from bot.utils.locale_defaults import tariff_premium_title
 from config.settings import Settings
 from config.tariffs_config import (
-    default_currency_key_for_settings,
     default_payment_currency_code_for_settings,
     payment_currency_code,
 )
 from db.dal import subscription_dal, user_dal
 
 from .billing_common import _billing_datetime_text, _billing_iso_datetime
-from .billing_payments import _create_subscription_payment
+from .billing_payments import _active_tribute_recurrence, _create_subscription_payment
 from .common import (
     _coerce_int_or_none,
 )
@@ -164,6 +167,12 @@ async def tariff_change_options_route(request: web.Request) -> web.Response:
             return _json_error(
                 400, "subscription_required", "Active tariff subscription is required"
             )
+        if _active_tribute_recurrence(sub):
+            return _json_error(
+                409,
+                "tribute_recurring_conflict",
+                "Cancel the active Tribute subscription before changing the tariff",
+            )
         lang = db_user.language_code or settings.DEFAULT_LANGUAGE
         current = config.require(sub.tariff_key)
         targets = []
@@ -211,6 +220,17 @@ async def tariff_change_route(request: web.Request) -> web.Response:
         db_user = await user_dal.get_user_by_id(session, user_id)
         if not db_user or db_user.is_banned:
             return _json_error(403, "access_denied", "Access denied")
+        sub = await subscription_dal.get_active_subscription_by_user_id(
+            session,
+            user_id,
+            db_user.panel_user_uuid,
+        )
+        if _active_tribute_recurrence(sub):
+            return _json_error(
+                409,
+                "tribute_recurring_conflict",
+                "Cancel the active Tribute subscription before changing the tariff",
+            )
         result = await subscription_service.switch_tariff_without_payment(
             session,
             user_id,
@@ -250,6 +270,12 @@ async def tariff_change_payment_route(request: web.Request) -> web.Response:
             return _json_error(
                 400, "subscription_required", "Active tariff subscription is required"
             )
+        if _active_tribute_recurrence(sub):
+            return _json_error(
+                409,
+                "tribute_recurring_conflict",
+                "Cancel the active Tribute subscription before changing the tariff",
+            )
         target = config.require(tariff_key)
         options = await subscription_service.calculate_tariff_switch_options_with_hwid(
             session, sub, target
@@ -259,6 +285,14 @@ async def tariff_change_payment_route(request: web.Request) -> web.Response:
             return _json_error(
                 400, "payment_not_required", "Payment is not required for this tariff change"
             )
+        source = config.require(str(sub.tariff_key or ""))
+        quote_snapshot = build_tariff_change_quote_snapshot(
+            source_tariff_key=source.key,
+            target_tariff_key=target.key,
+            required_amount=price,
+            currency=default_currency_code,
+            convertible_hwid_purchase_ids=options.get("convertible_hwid_purchase_ids") or (),
+        )
         return await _create_subscription_payment(
             request=request,
             session=session,
@@ -270,6 +304,7 @@ async def tariff_change_payment_route(request: web.Request) -> web.Response:
             currency=default_currency_code,
             lang=db_user.language_code or settings.DEFAULT_LANGUAGE,
             sale_mode=f"tariff_upgrade@{target.key}",
+            tariff_change_quote_snapshot=quote_snapshot,
         )
 
 
@@ -291,28 +326,29 @@ async def device_topup_options_route(request: web.Request) -> web.Response:
         sub = await subscription_dal.get_active_subscription_by_user_id(
             session, user_id, db_user.panel_user_uuid
         )
-        if not sub or not sub.tariff_key:
-            return _json_error(
-                400, "subscription_required", "Active tariff subscription is required"
-            )
-        tariff = config.require(sub.tariff_key)
-        if tariff.billing_model != "period":
-            return _json_error(400, "device_topup_unavailable", "Device top-up is not available")
         lang = db_user.language_code or settings.DEFAULT_LANGUAGE
         active = await subscription_service.get_active_subscription_details(session, user_id)
+        availability = resolve_device_topup_availability(
+            settings,
+            subscription_active=bool(sub and active),
+            tariff_key=sub.tariff_key if sub else None,
+            max_devices=active.get("max_devices") if active else None,
+        )
+        tariff = availability.tariff
+        if not availability.allowed or tariff is None:
+            return _json_error(
+                400,
+                availability.error_code,
+                "Device top-up is not available",
+            )
         extra_hwid_valid_until = active.get("extra_hwid_devices_valid_until") if active else None
         extra_hwid_valid_until_text = (
             active.get("extra_hwid_devices_valid_until_text") if active else None
         ) or _billing_datetime_text(extra_hwid_valid_until)
-        packages = tariff.hwid_device_packages
-        default_currency = default_currency_key_for_settings(settings)
+        default_currency = availability.default_currency
         default_currency_code = payment_currency_code(default_currency)
-        if packages and hasattr(packages, "for_currency"):
-            default_packages = packages.for_currency(default_currency)
-        else:
-            default_packages = getattr(packages, default_currency, []) if packages else []
-        currency_counts = {int(package.count) for package in default_packages}
-        stars_counts = {int(package.count) for package in (packages.stars if packages else [])}
+        currency_counts = set(availability.default_currency_counts)
+        stars_counts = set(availability.stars_counts)
         plans = []
         for count in sorted(currency_counts | stars_counts):
             currency_quote = (
@@ -363,6 +399,7 @@ async def device_topup_options_route(request: web.Request) -> web.Response:
                 "valid_until": _billing_iso_datetime(valid_until),
                 "valid_until_text": _billing_datetime_text(valid_until),
                 "proration_ratio": float(quote.get("proration_ratio") or 0),
+                "traffic_bonus_gb": float(quote.get("traffic_bonus_gb") or 0),
             }
             if stars_quote and int(stars_quote.get("price") or 0) > 0:
                 plan["stars_price"] = int(stars_quote["price"])

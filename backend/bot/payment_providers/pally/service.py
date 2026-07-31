@@ -786,4 +786,5 @@ _DESCRIPTOR: LinkPaymentDescriptor[PallyService] = LinkPaymentDescriptor(
     extract_url=_payment_page_url,
     extract_provider_id=_bill_id_value,
     callback_before_create=safe_callback_answer,
+    checkout_ttl_seconds=lambda service, _request: service.ttl_seconds,
 )

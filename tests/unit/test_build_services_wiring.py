@@ -187,6 +187,7 @@ class BuildServicesWiringTests(unittest.TestCase):
             "cloudpayments_service",
             "overpay_service",
             "stripe_service",
+            "tribute_service",
             "qa_service",
         }
         self.assertEqual(set(services), expected_keys)

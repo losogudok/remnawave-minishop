@@ -40,6 +40,7 @@ LINKFLOW_BESPOKE = {
     "qa": "local signed webhook fixture for full-stack QA, not a real hosted provider",
     "stars": "Telegram Stars in-app invoice; no external payment link or webhook",
     "stripe": "card PaymentIntent / saved-card recurring, not a hosted-link redirect",
+    "tribute": "hybrid dynamic Shop Orders + Creator links with webhook-owned recurrence",
     "yookassa": "HWID variants + saved-card autopayments",
 }
 
@@ -59,7 +60,7 @@ LINKFLOW_BESPOKE = {
 # map honest: changing a service's base class, or adding/removing a webhook route,
 # fails CI until this inventory is updated to match.
 WEBHOOK_PROFILES = {
-    "base-template": {"cryptopay", "qa"},
+    "base-template": {"cryptopay", "qa", "tribute"},
     "service-route": {
         "cloudpayments",
         "freekassa",

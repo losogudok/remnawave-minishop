@@ -63,7 +63,7 @@ class DockerWebappAssetTests(unittest.TestCase):
         nginx_conf = NGINX_CONF_PATH.read_text(encoding="utf-8")
 
         self.assertIn(
-            r"^/subscription_webapp_admin\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.js$",
+            r"^/subscription_webapp(_admin)?\.[A-Za-z0-9_.-]+\.[A-Za-z0-9_-]+\.js$",
             nginx_conf,
         )
 

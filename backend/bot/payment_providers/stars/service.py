@@ -95,6 +95,7 @@ class StarsService:
         description: str,
         sale_mode: str = "subscription",
         hwid_quote: dict[str, Any] | None = None,
+        entitlement_context_snapshot: str | None = None,
     ) -> int | None:
         amounts = payment_record_amounts(
             months=months,
@@ -121,6 +122,10 @@ class StarsService:
             else None,
             "hwid_proration_ratio": hwid_quote.get("proration_ratio") if hwid_quote else None,
             "hwid_full_price": hwid_quote.get("full_price") if hwid_quote else None,
+            "hwid_traffic_bonus_bytes": hwid_quote.get("traffic_bonus_bytes")
+            if hwid_quote
+            else None,
+            "entitlement_context_snapshot": entitlement_context_snapshot,
         }
         try:
             db_payment_record = await payment_dal.create_payment_record(
@@ -301,6 +306,7 @@ async def pay_stars_callback_handler(
         description=payment_description,
         sale_mode=parts.sale_mode,
         hwid_quote=hwid_quote,
+        entitlement_context_snapshot=parts.entitlement_context_snapshot,
     )
 
     if payment_db_id:

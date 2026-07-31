@@ -12,6 +12,9 @@
  * reported via {@link parseTelegramHtml} so the editor can warn.
  */
 
+import { escapeHtml, unescapeHtml } from "./escape.js";
+import { linkifyToHtml } from "./linkify.js";
+
 export type MarkType = "bold" | "italic" | "underline" | "strike" | "code" | "link";
 
 export type Mark = { type: MarkType; attrs?: { href?: string } };
@@ -54,20 +57,6 @@ const INLINE_TAG_TO_MARK: Record<string, MarkType> = {
   code: "code",
   a: "link",
 };
-
-export function escapeHtml(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function unescapeHtml(value: string): string {
-  return value
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&");
-}
 
 function marksKey(marks: Mark[] | undefined): string {
   if (!marks || !marks.length) return "";
@@ -358,6 +347,81 @@ export function previewHtmlFromWire(html: string, samples: Record<string, string
       return `<p>${renderInline(block.content) || "<br>"}</p>`;
     })
     .join("");
+}
+
+/**
+ * Render a stored message body as display HTML for a chat bubble.
+ *
+ * `format` is what the API says the body is: `"html"` re-renders from the
+ * parsed structure (so only whitelisted tags can ever reach the DOM), while
+ * anything else is treated as literal text — which is what every message
+ * written before the rich composer is. Bare URLs become links in both cases,
+ * because a support conversation is mostly people pasting them.
+ */
+export function messageDisplayHtml(body: string, format: string): string {
+  const source = String(body ?? "");
+  if (format !== "html") {
+    return source
+      .split(/\n{2,}/)
+      .map((block) => `<p>${block.split("\n").map(linkifyToHtml).join("<br>") || "<br>"}</p>`)
+      .join("");
+  }
+  const doc = telegramHtmlToDoc(source);
+  const renderInline = (nodes: InlineNode[] | undefined): string => {
+    if (!nodes) return "";
+    return nodes
+      .map((node) => {
+        if (node.type === "hardBreak") return "<br>";
+        // A shortcode token that survived into a stored body was never
+        // substituted, so it is literal text to the reader.
+        if (node.type === "shortcode") return escapeHtml(`{${node.attrs.name}}`);
+        const authored = node.marks?.some((mark) => mark.type === "link");
+        const text = authored ? escapeHtml(node.text) : linkifyToHtml(node.text);
+        return wrapMarks(text, node.marks);
+      })
+      .join("");
+  };
+  return doc.content
+    .map((block) => {
+      if (block.type === "codeBlock") {
+        const text = (block.content || []).map((n) => n.text).join("");
+        return `<pre>${escapeHtml(text)}</pre>`;
+      }
+      if (block.type === "blockquote") {
+        return `<blockquote>${(block.content || [])
+          .map((p) => renderInline(p.content))
+          .join("<br>")}</blockquote>`;
+      }
+      return `<p>${renderInline(block.content) || "<br>"}</p>`;
+    })
+    .join("");
+}
+
+/**
+ * Characters a reader actually sees, so a length counter measures the message
+ * rather than the markup around it — the same thing the backend limits.
+ */
+export function wireTextLength(wire: string, format = "html"): number {
+  const source = String(wire ?? "");
+  if (format !== "html") return source.length;
+  let total = 0;
+  const countInline = (nodes: InlineNode[] | undefined): void => {
+    for (const node of nodes || []) {
+      if (node.type === "text") total += node.text.length;
+      else if (node.type === "shortcode") total += node.attrs.name.length + 2;
+      else total += 1;
+    }
+  };
+  for (const block of telegramHtmlToDoc(source).content) {
+    if (block.type === "codeBlock") {
+      total += (block.content || []).map((n) => n.text).join("").length;
+    } else if (block.type === "blockquote") {
+      for (const paragraph of block.content || []) countInline(paragraph.content);
+    } else {
+      countInline(block.content);
+    }
+  }
+  return total;
 }
 
 export function unknownShortcodeTokens(html: string, known: Iterable<string>): string[] {

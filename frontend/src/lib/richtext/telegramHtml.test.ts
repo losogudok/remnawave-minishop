@@ -4,9 +4,11 @@ import {
   type Doc,
   docToTelegramHtml,
   parseTelegramHtml,
+  messageDisplayHtml,
   previewHtmlFromWire,
   telegramHtmlToDoc,
   unknownShortcodeTokens,
+  wireTextLength,
 } from "./telegramHtml";
 
 const roundtrip = (html: string): string => docToTelegramHtml(telegramHtmlToDoc(html));
@@ -124,5 +126,45 @@ describe("unknownShortcodeTokens", () => {
     expect(unknownShortcodeTokens("{first_name} {frist_name}", ["first_name"])).toEqual([
       "frist_name",
     ]);
+  });
+});
+
+describe("messageDisplayHtml", () => {
+  it("keeps a legacy plain-text body literal and links what it contains", () => {
+    const html = messageDisplayHtml("<b>not bold</b>\nsee https://x.dev", "text");
+    expect(html).toContain("&lt;b&gt;not bold&lt;/b&gt;");
+    expect(html).toContain('href="https://x.dev"');
+  });
+
+  it("splits a plain-text body into paragraphs on a blank line", () => {
+    expect(messageDisplayHtml("one\n\ntwo", "text")).toBe("<p>one</p><p>two</p>");
+  });
+
+  it("renders only whitelisted markup from a rich body", () => {
+    const html = messageDisplayHtml('<b>hi</b> <a href="https://x.dev">x</a>', "html");
+    expect(html).toBe('<p><b>hi</b> <a href="https://x.dev">x</a></p>');
+  });
+
+  it("cannot emit a tag the parser does not know", () => {
+    const html = messageDisplayHtml("<img src=x onerror=alert(1)>", "html");
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+  });
+
+  it("does not nest a detected link inside an authored one", () => {
+    const html = messageDisplayHtml('<a href="https://a.dev">https://b.dev</a>', "html");
+    expect(html.match(/<a /g)).toHaveLength(1);
+  });
+
+  it("shows an unsubstituted token as the characters it is", () => {
+    expect(messageDisplayHtml("Hi {first_name}", "html")).toBe("<p>Hi {first_name}</p>");
+  });
+});
+
+describe("wireTextLength", () => {
+  it("counts what a reader sees, not the markup", () => {
+    expect(wireTextLength("<b>abcd</b>", "html")).toBe(4);
+    expect(wireTextLength('<a href="https://very.long/url">ok</a>', "html")).toBe(2);
+    expect(wireTextLength("<b>abcd</b>", "text")).toBe("<b>abcd</b>".length);
   });
 });

@@ -74,13 +74,12 @@ describe("usersStore", () => {
     const store = makeStore(api);
 
     await store.openUser({ user_id: 9 }, { skipPush: true });
-    store.updateState({ userMessageDraft: "hello", userReferralsOpen: true });
+    store.updateState({ userReferralsOpen: true });
     store.closeUser({ skipPush: true });
 
     expect(store).toMatchObject({
       openedUser: null,
       openedUserDetail: null,
-      userMessageDraft: "",
       userReferralsOpen: false,
       userLogsLoaded: false,
     });

@@ -10,6 +10,7 @@ function makeActions(overrides: TestOverrides = {}) {
     plans: [{ id: "basic" }],
     singleTariffMode: false,
     subscription: { active: false } as Record<string, unknown>,
+    suggestedPromoCode: "PERSONAL20",
     tariffCatalog: [{ key: "standard" }],
     tariffMode: true,
     ...overrides.state,
@@ -31,6 +32,7 @@ function makeActions(overrides: TestOverrides = {}) {
     plans: () => state.plans,
     singleTariffMode: () => state.singleTariffMode,
     subscription: () => state.subscription,
+    suggestedPromoCode: () => state.suggestedPromoCode,
     tariffCatalog: () => state.tariffCatalog,
     tariffMode: () => state.tariffMode,
     ...overrides.deps,
@@ -47,6 +49,10 @@ function makeActions(overrides: TestOverrides = {}) {
 describe("defaultPaymentMethod", () => {
   it("uses the first payment method id", () => {
     expect(defaultPaymentMethod([{ id: "stars" }, { id: "card" }])).toBe("stars");
+  });
+
+  it("skips payment methods disabled for the current context", () => {
+    expect(defaultPaymentMethod([{ id: "stars", disabled: true }, { id: "card" }])).toBe("card");
   });
 
   it("falls back to an empty method id", () => {
@@ -69,7 +75,8 @@ describe("createBillingModalActions", () => {
       state.tariffCatalog,
       state.subscription,
       state.plans,
-      "card"
+      "card",
+      { suggestedPromoCode: "PERSONAL20" }
     );
   });
 

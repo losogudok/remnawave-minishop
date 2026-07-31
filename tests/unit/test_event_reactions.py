@@ -549,12 +549,14 @@ class CoreEventReactionsTests(IsolatedAsyncioTestCase):
     async def test_payment_canceled_event_notifies_user_and_email(self):
         bot = SimpleNamespace(send_message=AsyncMock())
         email = AsyncMock()
+        invalidate = AsyncMock()
         ctx = _context(bot=bot)
         user = SimpleNamespace(language_code="ru", email="alice@example.test")
 
         with (
             patch.object(event_reactions.user_dal, "get_user_by_id", AsyncMock(return_value=user)),
             patch.object(event_reactions, "send_user_notification_email", email),
+            patch.object(event_reactions, "invalidate_webapp_user_caches", invalidate),
         ):
             register_core_reactions(ctx)
             await events.emit(
@@ -563,6 +565,7 @@ class CoreEventReactionsTests(IsolatedAsyncioTestCase):
             )
 
         bot.send_message.assert_awaited_once_with(42, "payment_failed")
+        invalidate.assert_awaited_once_with(ctx.settings, 42, include_devices=False)
         email.assert_awaited_once_with(
             settings=ctx.settings,
             i18n=ctx.i18n,
@@ -634,6 +637,48 @@ class CoreEventReactionsTests(IsolatedAsyncioTestCase):
             "payment-failure-notification",
             redis.set.await_args_list[0].args[0],
         )
+
+    async def test_payment_canceled_event_releases_claim_when_telegram_delivery_fails(self):
+        bot = SimpleNamespace(
+            send_message=AsyncMock(side_effect=[RuntimeError("telegram unavailable"), None])
+        )
+        email = AsyncMock()
+        ctx = _context(bot=bot)
+        user = SimpleNamespace(language_code="en", email="alice@example.test")
+        payment = SimpleNamespace(payment_id=13, user_id=42, status="failed")
+        payload = {
+            "user_id": 42,
+            "payment_db_id": 13,
+            "message_key": "payment_failed",
+        }
+        redis = SimpleNamespace(
+            set=AsyncMock(side_effect=[True, True]),
+            delete=AsyncMock(return_value=1),
+        )
+
+        with (
+            patch.object(event_reactions, "get_redis", AsyncMock(return_value=redis)),
+            patch.object(event_reactions.user_dal, "get_user_by_id", AsyncMock(return_value=user)),
+            patch.object(
+                event_reactions.payment_dal,
+                "get_payment_by_db_id",
+                AsyncMock(return_value=payment),
+            ),
+            patch.object(event_reactions, "send_user_notification_email", email),
+            patch.object(
+                event_reactions,
+                "_mark_payment_failure_notification_sent",
+                AsyncMock(),
+            ) as mark_sent,
+        ):
+            register_core_reactions(ctx)
+            await events.emit(events.PAYMENT_CANCELED, payload)
+            await events.emit(events.PAYMENT_CANCELED, payload)
+
+        self.assertEqual(bot.send_message.await_count, 2)
+        redis.delete.assert_awaited_once()
+        self.assertEqual(email.await_count, 2)
+        mark_sent.assert_awaited_once_with(ctx, 13)
 
     async def test_payment_canceled_event_includes_attempt_details(self):
         templates = {

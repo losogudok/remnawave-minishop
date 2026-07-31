@@ -415,6 +415,13 @@
       },
       "AdminBroadcastAudienceCountsOut": {
         "properties": {
+          "audiences": {
+            "items": {
+              "$ref": "#/components/schemas/AdminBroadcastAudienceOut"
+            },
+            "title": "Audiences",
+            "type": "array"
+          },
           "counts": {
             "additionalProperties": {
               "anyOf": [
@@ -441,6 +448,75 @@
         "title": "AdminBroadcastAudienceCountsOut",
         "type": "object"
       },
+      "AdminBroadcastAudienceOut": {
+        "properties": {
+          "available": {
+            "default": true,
+            "title": "Available",
+            "type": "boolean"
+          },
+          "fallback_label": {
+            "title": "Fallback Label",
+            "type": "string"
+          },
+          "group_fallback_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group Fallback Label"
+          },
+          "group_label_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group Label Key"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Icon"
+          },
+          "label_key": {
+            "title": "Label Key",
+            "type": "string"
+          },
+          "order": {
+            "default": 100,
+            "title": "Order",
+            "type": "integer"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "label_key",
+          "fallback_label"
+        ],
+        "title": "AdminBroadcastAudienceOut",
+        "type": "object"
+      },
       "AdminBroadcastBody": {
         "properties": {
           "buttons": {
@@ -461,6 +537,13 @@
             "default": "",
             "title": "Email Subject"
           },
+          "email_subjects": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Email Subjects",
+            "type": "object"
+          },
           "target": {
             "default": "all",
             "title": "Target"
@@ -468,13 +551,20 @@
           "text": {
             "default": "",
             "title": "Text"
+          },
+          "texts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Texts",
+            "type": "object"
           }
         },
         "title": "AdminBroadcastBody",
         "type": "object"
       },
       "AdminBroadcastButtonBody": {
-        "description": "One inline button attached to a broadcast.\n\n``kind`` selects how the button URL is produced:\n- ``url`` — explicit ``url`` field;\n- ``promo_bot`` — deep link into the bot applying ``promo_code``;\n- ``promo_webapp`` — link into the Mini App checkout with ``promo_code``.",
+        "description": "One inline button attached to a broadcast.\n\n``kind`` selects how the button URL is produced:\n- ``url`` — explicit ``url`` field;\n- ``promo_bot`` — deep link into the bot applying ``promo_code``;\n- ``promo_webapp`` — link into the Mini App checkout with ``promo_code``;\n- ``webapp_section`` — link that opens the Mini App screen named by\n  ``section`` (invite, support, devices, …).",
         "properties": {
           "kind": {
             "default": "url",
@@ -486,9 +576,21 @@
             "title": "Label",
             "type": "string"
           },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "object"
+          },
           "promo_code": {
             "default": "",
             "title": "Promo Code",
+            "type": "string"
+          },
+          "section": {
+            "default": "",
+            "title": "Section",
             "type": "string"
           },
           "url": {
@@ -513,6 +615,13 @@
             "default": "",
             "title": "Email Subject"
           },
+          "email_subjects": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Email Subjects",
+            "type": "object"
+          },
           "mode": {
             "default": "render",
             "title": "Mode",
@@ -521,6 +630,13 @@
           "text": {
             "default": "",
             "title": "Text"
+          },
+          "texts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Texts",
+            "type": "object"
           },
           "user_id": {
             "anyOf": [
@@ -1307,6 +1423,18 @@
             "default": null,
             "title": "Value"
           },
+          "value_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Value Source"
+          },
           "webhook_base_url_configured": {
             "anyOf": [
               {
@@ -1735,6 +1863,42 @@
             "title": "Subscription Id",
             "type": "integer"
           },
+          "tariff_binding_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tariff Binding Note"
+          },
+          "tariff_binding_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tariff Binding Source"
+          },
+          "tariff_bound_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tariff Bound At"
+          },
           "tariff_key": {
             "anyOf": [
               {
@@ -1875,6 +2039,18 @@
           "body": {
             "title": "Body",
             "type": "string"
+          },
+          "body_format": {
+            "default": "text",
+            "title": "Body Format",
+            "type": "string"
+          },
+          "buttons": {
+            "items": {
+              "$ref": "#/components/schemas/SupportMessageButtonOut"
+            },
+            "title": "Buttons",
+            "type": "array"
           },
           "created_at": {
             "anyOf": [
@@ -2490,6 +2666,143 @@
         "title": "AdminSyncResultOut",
         "type": "object"
       },
+      "AdminTariffReconciliationApplyBody": {
+        "properties": {
+          "apply": {
+            "default": true,
+            "title": "Apply",
+            "type": "boolean"
+          }
+        },
+        "title": "AdminTariffReconciliationApplyBody",
+        "type": "object"
+      },
+      "AdminTariffReconciliationItemOut": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "current_tariff_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Current Tariff Key"
+          },
+          "proposed_tariff_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Proposed Tariff Key"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subscription_id": {
+            "title": "Subscription Id",
+            "type": "integer"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "subscription_id",
+          "user_id",
+          "status",
+          "reason",
+          "applied"
+        ],
+        "title": "AdminTariffReconciliationItemOut",
+        "type": "object"
+      },
+      "AdminTariffReconciliationOut": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "integer"
+          },
+          "candidates": {
+            "title": "Candidates",
+            "type": "integer"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "healthy": {
+            "title": "Healthy",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminTariffReconciliationItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "items_truncated": {
+            "title": "Items Truncated",
+            "type": "boolean"
+          },
+          "scanned": {
+            "title": "Scanned",
+            "type": "integer"
+          },
+          "unresolved": {
+            "title": "Unresolved",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dry_run",
+          "scanned",
+          "healthy",
+          "candidates",
+          "applied",
+          "unresolved",
+          "generated_at",
+          "items_truncated",
+          "items"
+        ],
+        "title": "AdminTariffReconciliationOut",
+        "type": "object"
+      },
       "AdminTariffsCatalogOut": {
         "properties": {
           "default_currency": {
@@ -2655,10 +2968,27 @@
       "AdminTicketReplyPayload": {
         "properties": {
           "body": {
-            "maxLength": 4000,
+            "maxLength": 32000,
             "minLength": 1,
             "title": "Body",
             "type": "string"
+          },
+          "body_format": {
+            "default": "text",
+            "enum": [
+              "text",
+              "html"
+            ],
+            "title": "Body Format",
+            "type": "string"
+          },
+          "buttons": {
+            "items": {
+              "$ref": "#/components/schemas/AdminBroadcastButtonBody"
+            },
+            "maxItems": 4,
+            "title": "Buttons",
+            "type": "array"
           },
           "is_internal_note": {
             "default": false,
@@ -2873,6 +3203,121 @@
           }
         },
         "title": "AdminTranslationsPatchBody",
+        "type": "object"
+      },
+      "AdminTributeProductOut": {
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Link"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "number"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_id",
+          "name",
+          "type",
+          "status",
+          "price",
+          "currency"
+        ],
+        "title": "AdminTributeProductOut",
+        "type": "object"
+      },
+      "AdminTributeSubscriptionOut": {
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/AdminTributeSubscriptionPeriodOut"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "subscription_id": {
+            "title": "Subscription Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "subscription_id",
+          "name",
+          "currency"
+        ],
+        "title": "AdminTributeSubscriptionOut",
+        "type": "object"
+      },
+      "AdminTributeSubscriptionPeriodOut": {
+        "properties": {
+          "months": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Months"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "period_id": {
+            "title": "Period Id",
+            "type": "integer"
+          },
+          "price": {
+            "title": "Price",
+            "type": "number"
+          }
+        },
+        "required": [
+          "period_id",
+          "period",
+          "price"
+        ],
+        "title": "AdminTributeSubscriptionPeriodOut",
         "type": "object"
       },
       "AdminUserBanBody": {
@@ -3456,9 +3901,18 @@
       "CreateTicketPayload": {
         "properties": {
           "body": {
-            "maxLength": 4000,
+            "maxLength": 32000,
             "minLength": 1,
             "title": "Body",
+            "type": "string"
+          },
+          "body_format": {
+            "default": "text",
+            "enum": [
+              "text",
+              "html"
+            ],
+            "title": "Body Format",
             "type": "string"
           },
           "category": {
@@ -3529,6 +3983,11 @@
             },
             "title": "Prices",
             "type": "object"
+          },
+          "traffic_bonus_gb": {
+            "default": 0.0,
+            "title": "Traffic Bonus Gb",
+            "type": "number"
           }
         },
         "required": [
@@ -4675,6 +5134,42 @@
             "default": null,
             "title": "Traffic Multiplier"
           },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Id"
+          },
+          "user_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Name"
+          },
+          "user_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Username"
+          },
           "valid_until": {
             "anyOf": [
               {
@@ -5181,6 +5676,40 @@
         "title": "SupportCountsOut",
         "type": "object"
       },
+      "SupportMessageButtonOut": {
+        "description": "A button the admin attached, already resolved to the link it opens.",
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "promo_code": {
+            "default": "",
+            "title": "Promo Code",
+            "type": "string"
+          },
+          "section": {
+            "default": "",
+            "title": "Section",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "url",
+          "kind"
+        ],
+        "title": "SupportMessageButtonOut",
+        "type": "object"
+      },
       "SupportMessageOut": {
         "properties": {
           "author_role": {
@@ -5202,6 +5731,18 @@
           "body": {
             "title": "Body",
             "type": "string"
+          },
+          "body_format": {
+            "default": "text",
+            "title": "Body Format",
+            "type": "string"
+          },
+          "buttons": {
+            "items": {
+              "$ref": "#/components/schemas/SupportMessageButtonOut"
+            },
+            "title": "Buttons",
+            "type": "array"
           },
           "created_at": {
             "anyOf": [
@@ -5660,6 +6201,17 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/PackageSet"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "tribute": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TributeTariffConfig"
               },
               {
                 "type": "null"
@@ -6436,9 +6988,18 @@
       "TicketReplyPayload": {
         "properties": {
           "body": {
-            "maxLength": 4000,
+            "maxLength": 32000,
             "minLength": 1,
             "title": "Body",
+            "type": "string"
+          },
+          "body_format": {
+            "default": "text",
+            "enum": [
+              "text",
+              "html"
+            ],
+            "title": "Body Format",
             "type": "string"
           }
         },
@@ -6464,6 +7025,94 @@
           "price"
         ],
         "title": "TrafficPackage",
+        "type": "object"
+      },
+      "TributeProductConfig": {
+        "properties": {
+          "link": {
+            "title": "Link",
+            "type": "string"
+          },
+          "product_id": {
+            "exclusiveMinimum": 0,
+            "title": "Product Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "product_id",
+          "link"
+        ],
+        "title": "TributeProductConfig",
+        "type": "object"
+      },
+      "TributeTariffConfig": {
+        "description": "Creator-side mapping for one tariff.\n\nA period may be sold by its own Tribute subscription, with its own share\nlink and subscription id, because Tribute publishes one subscription per\noffer rather than one per tariff. ``period_links`` and\n``period_subscription_ids`` carry those overrides; the tariff-level\n``link``/``subscription_id`` pair stays as the default for periods that do\nnot declare their own, which is what a single-subscription tariff uses.",
+        "properties": {
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Link"
+          },
+          "period_ids": {
+            "additionalProperties": {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            "title": "Period Ids",
+            "type": "object"
+          },
+          "period_links": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Period Links",
+            "type": "object"
+          },
+          "period_subscription_ids": {
+            "additionalProperties": {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            "title": "Period Subscription Ids",
+            "type": "object"
+          },
+          "premium_traffic_products": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TributeProductConfig"
+            },
+            "title": "Premium Traffic Products",
+            "type": "object"
+          },
+          "subscription_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subscription Id"
+          },
+          "traffic_products": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TributeProductConfig"
+            },
+            "title": "Traffic Products",
+            "type": "object"
+          }
+        },
+        "title": "TributeTariffConfig",
         "type": "object"
       },
       "WebAppAutoRenewPayload": {
@@ -7049,6 +7698,12 @@
           "code"
         ],
         "title": "WebAppSetPasswordPayload",
+        "type": "object"
+      },
+      "WebAppSubscriptionReissuePayload": {
+        "description": "Empty body for the subscription reissue action (extra keys ignored).",
+        "properties": {},
+        "title": "WebAppSubscriptionReissuePayload",
         "type": "object"
       },
       "WebAppTariffChangePayload": {
@@ -9178,6 +9833,10 @@
                       "const": true,
                       "type": "boolean"
                     },
+                    "owned_total": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
                     "page": {
                       "minimum": 0,
                       "type": "integer"
@@ -9203,7 +9862,8 @@
                     "promos",
                     "page",
                     "page_size",
-                    "total"
+                    "total",
+                    "owned_total"
                   ],
                   "type": "object"
                 }
@@ -9526,6 +10186,12 @@
                     "applied": {
                       "type": "integer"
                     },
+                    "not_applied": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
                     "ok": {
                       "const": true,
                       "type": "boolean"
@@ -9537,7 +10203,8 @@
                   "required": [
                     "ok",
                     "applied",
-                    "reverted"
+                    "reverted",
+                    "not_applied"
                   ],
                   "type": "object"
                 }
@@ -10147,6 +10814,159 @@
           }
         ],
         "summary": "Admin Tariffs Save",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/tariffs/reconciliation": {
+      "get": {
+        "operationId": "get_admin_tariff_reconciliation_get_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ok": {
+                          "const": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AdminTariffReconciliationOut"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Tariff Reconciliation Get",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "post_admin_tariff_reconciliation_apply_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminTariffReconciliationApplyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ok": {
+                          "const": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AdminTariffReconciliationOut"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Tariff Reconciliation Apply",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/tariffs/tribute/catalog": {
+      "get": {
+        "operationId": "get_admin_tariffs_tribute_catalog_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "products": {
+                      "items": {
+                        "$ref": "#/components/schemas/AdminTributeProductOut"
+                      },
+                      "type": "array"
+                    },
+                    "subscriptions": {
+                      "items": {
+                        "$ref": "#/components/schemas/AdminTributeSubscriptionOut"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "subscriptions",
+                    "products"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Tariffs Tribute Catalog",
         "tags": [
           "admin"
         ]
@@ -11405,6 +12225,59 @@
         ]
       }
     },
+    "/api/admin/users/{user_id}/subscription-reissue": {
+      "post": {
+        "operationId": "post_admin_user_subscription_reissue_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "email_sent": {
+                      "type": "boolean"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "email_sent"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin User Subscription Reissue",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/admin/users/{user_id}/tariff": {
       "post": {
         "operationId": "post_admin_user_tariff_route",
@@ -12481,6 +13354,12 @@
                       "items": {
                         "additionalProperties": false,
                         "properties": {
+                          "available_payment_method_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "billing_model": {
                             "type": "string"
                           },
@@ -12493,6 +13372,12 @@
                           "device_count": {
                             "type": "integer"
                           },
+                          "externally_managed_price_method_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "hwid_device_limit": {
                             "type": [
                               "integer",
@@ -12503,6 +13388,12 @@
                             "items": {
                               "additionalProperties": false,
                               "properties": {
+                                "available_payment_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
                                 "billing_model": {
                                   "type": "string"
                                 },
@@ -12511,6 +13402,12 @@
                                 },
                                 "device_count": {
                                   "type": "integer"
+                                },
+                                "externally_managed_price_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "id": {
                                   "type": "string"
@@ -12576,6 +13473,9 @@
                               },
                               "stars_price": {
                                 "type": "integer"
+                              },
+                              "traffic_bonus_gb": {
+                                "type": "number"
                               },
                               "valid_from": {
                                 "type": [
@@ -12648,6 +13548,9 @@
                           },
                           "title": {
                             "type": "string"
+                          },
+                          "traffic_bonus_gb": {
+                            "type": "number"
                           },
                           "traffic_gb": {
                             "type": "number"
@@ -12848,16 +13751,129 @@
                           },
                           "name": {
                             "type": "string"
+                          },
+                          "price_managed_externally": {
+                            "type": "boolean"
+                          },
+                          "shop_limit_currency": {
+                            "type": "string"
+                          },
+                          "shop_max_amount": {
+                            "type": "number"
+                          },
+                          "shop_min_amount": {
+                            "type": "number"
                           }
                         },
                         "type": "object"
                       },
                       "type": "array"
                     },
+                    "pending_payment": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "amount": {
+                              "type": "number"
+                            },
+                            "base_amount": {
+                              "type": "number"
+                            },
+                            "created_at": {
+                              "type": "string"
+                            },
+                            "currency": {
+                              "type": "string"
+                            },
+                            "discount_amount": {
+                              "type": "number"
+                            },
+                            "discount_percent": {
+                              "type": "number"
+                            },
+                            "months": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "payment_id": {
+                              "type": "integer"
+                            },
+                            "payment_url": {
+                              "type": "string"
+                            },
+                            "promo_code": {
+                              "type": "string"
+                            },
+                            "promo_effect_summary": {
+                              "type": "string"
+                            },
+                            "provider": {
+                              "type": "string"
+                            },
+                            "purchased_gb": {
+                              "type": [
+                                "number",
+                                "null"
+                              ]
+                            },
+                            "purchased_hwid_devices": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ]
+                            },
+                            "sale_mode": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "tariff_key": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "payment_id",
+                            "payment_url",
+                            "provider",
+                            "status",
+                            "amount",
+                            "base_amount",
+                            "currency",
+                            "discount_amount",
+                            "discount_percent",
+                            "months",
+                            "purchased_gb",
+                            "purchased_hwid_devices",
+                            "sale_mode",
+                            "tariff_key",
+                            "promo_code",
+                            "promo_effect_summary",
+                            "created_at"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "plans": {
                       "items": {
                         "additionalProperties": false,
                         "properties": {
+                          "available_payment_method_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "billing_model": {
                             "type": "string"
                           },
@@ -12870,6 +13886,12 @@
                           "device_count": {
                             "type": "integer"
                           },
+                          "externally_managed_price_method_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "hwid_device_limit": {
                             "type": [
                               "integer",
@@ -12880,6 +13902,12 @@
                             "items": {
                               "additionalProperties": false,
                               "properties": {
+                                "available_payment_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
                                 "billing_model": {
                                   "type": "string"
                                 },
@@ -12888,6 +13916,12 @@
                                 },
                                 "device_count": {
                                   "type": "integer"
+                                },
+                                "externally_managed_price_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "id": {
                                   "type": "string"
@@ -12953,6 +13987,9 @@
                               },
                               "stars_price": {
                                 "type": "integer"
+                              },
+                              "traffic_bonus_gb": {
+                                "type": "number"
                               },
                               "valid_from": {
                                 "type": [
@@ -13025,6 +14062,9 @@
                           },
                           "title": {
                             "type": "string"
+                          },
+                          "traffic_bonus_gb": {
+                            "type": "number"
                           },
                           "traffic_gb": {
                             "type": "number"
@@ -13179,6 +14219,9 @@
                         "subscription_purchase_description": {
                           "type": "string"
                         },
+                        "subscription_reissue_enabled": {
+                          "type": "boolean"
+                        },
                         "support_ticket_max_body_length": {
                           "type": "integer"
                         },
@@ -13293,8 +14336,20 @@
                         "days_left": {
                           "type": "integer"
                         },
+                        "device_topup_available_currencies": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
                         "device_topup_renewal_available": {
                           "type": "boolean"
+                        },
+                        "device_topup_unavailable_reason": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
                         "end_date": {
                           "type": [
@@ -13527,6 +14582,12 @@
                       },
                       "type": "object"
                     },
+                    "suggested_promo_code": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "support_unread_count": {
                       "type": "integer"
                     },
@@ -13633,6 +14694,8 @@
                     "subscription",
                     "referral",
                     "plans",
+                    "pending_payment",
+                    "suggested_promo_code",
                     "payment_methods",
                     "themes_catalog",
                     "support_unread_count",
@@ -14363,6 +15426,59 @@
         ]
       }
     },
+    "/api/subscription/reissue": {
+      "post": {
+        "operationId": "post_subscription_reissue_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebAppSubscriptionReissuePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "email_sent": {
+                      "type": "boolean"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "email_sent"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "UserSession": []
+          },
+          {
+            "UserBearer": []
+          }
+        ],
+        "summary": "Subscription Reissue",
+        "tags": [
+          "subscription"
+        ]
+      }
+    },
     "/api/support/tickets": {
       "get": {
         "operationId": "get_support_tickets_route",
@@ -14849,6 +15965,12 @@
                             "items": {
                               "additionalProperties": false,
                               "properties": {
+                                "available_payment_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
                                 "converted_gb": {
                                   "type": "number"
                                 },
@@ -14866,6 +15988,12 @@
                                 },
                                 "days_after": {
                                   "type": "integer"
+                                },
+                                "externally_managed_price_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "kind": {
                                   "type": "string"
@@ -15069,6 +16197,12 @@
                       "items": {
                         "additionalProperties": false,
                         "properties": {
+                          "available_payment_method_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "billing_model": {
                             "type": "string"
                           },
@@ -15081,6 +16215,12 @@
                           "device_count": {
                             "type": "integer"
                           },
+                          "externally_managed_price_method_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "hwid_device_limit": {
                             "type": [
                               "integer",
@@ -15091,6 +16231,12 @@
                             "items": {
                               "additionalProperties": false,
                               "properties": {
+                                "available_payment_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
                                 "billing_model": {
                                   "type": "string"
                                 },
@@ -15099,6 +16245,12 @@
                                 },
                                 "device_count": {
                                   "type": "integer"
+                                },
+                                "externally_managed_price_method_ids": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
                                 },
                                 "id": {
                                   "type": "string"
@@ -15164,6 +16316,9 @@
                               },
                               "stars_price": {
                                 "type": "integer"
+                              },
+                              "traffic_bonus_gb": {
+                                "type": "number"
                               },
                               "valid_from": {
                                 "type": [
@@ -15236,6 +16391,9 @@
                           },
                           "title": {
                             "type": "string"
+                          },
+                          "traffic_bonus_gb": {
+                            "type": "number"
                           },
                           "traffic_gb": {
                             "type": "number"

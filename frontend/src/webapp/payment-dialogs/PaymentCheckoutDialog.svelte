@@ -1,11 +1,25 @@
 <script lang="ts">
-  import { ArrowLeft, ArrowRight, CheckCircle2, LockKeyhole } from "$components/ui/icons.js";
+  import {
+    ArrowLeft,
+    ArrowRight,
+    CheckCircle2,
+    ExternalLink,
+    History,
+    LockKeyhole,
+    Tag,
+  } from "$components/ui/icons.js";
 
   import Button from "$components/ui/button.svelte";
   import Checkbox from "$components/ui/checkbox.svelte";
   import Dialog from "$components/ui/dialog.svelte";
   import { EmptyCard, PaymentMethodGrid } from "$components/patterns/webapp/index.js";
   import CheckoutPromoRow from "../CheckoutPromoRow.svelte";
+  import {
+    checkoutPromoAffectsQuotedPlan,
+    checkoutPromoBlockVisible,
+    selectPaymentMethodWithPromoReset,
+  } from "$lib/webapp/checkoutPromoPolicy.js";
+  import { formatCompactNumber } from "$lib/webapp/formatters.js";
   import {
     planKey as planKeyFn,
     planDisplayTitle as planDisplayTitleFn,
@@ -19,6 +33,7 @@
   } from "$lib/webapp/tariffs.js";
   import type {
     PaymentMethodView,
+    PendingPaymentView,
     PlanView,
     SubscriptionView,
     TariffView,
@@ -31,6 +46,7 @@
     createPayment = () => {},
     hasMultipleTariffs = false,
     methods = [],
+    pendingPayment = null,
     payBusy = false,
     paymentModalOpen = $bindable(false),
     paymentStep = $bindable("tariff"),
@@ -61,6 +77,7 @@
     backToTariffList = () => {},
     clearCheckoutPromo = () => {},
     continueWithSelectedTariff = () => {},
+    resumePendingPayment = () => {},
     selectTariff = () => {},
     t = (key) => key,
     termUnitLabel = () => "",
@@ -68,6 +85,7 @@
     createPayment?: VoidAction;
     hasMultipleTariffs?: boolean;
     methods?: PaymentMethodView[];
+    pendingPayment?: PendingPaymentView | null;
     payBusy?: boolean;
     paymentModalOpen?: boolean;
     paymentStep?: string;
@@ -98,6 +116,7 @@
     backToTariffList?: VoidAction;
     clearCheckoutPromo?: VoidAction;
     continueWithSelectedTariff?: VoidAction;
+    resumePendingPayment?: (payment: PendingPaymentView) => void;
     selectTariff?: (tariff: TariffView) => void;
     t?: Translate;
     termUnitLabel?: TermUnitLabel;
@@ -106,10 +125,73 @@
   function priceLabel(plan: PlanView | null) {
     return priceLabelFn(plan, selectedMethod);
   }
+  function pendingPaymentPrice(value: unknown) {
+    const amount = Number(value || 0);
+    const provider = String(pendingPayment?.provider || "");
+    return priceLabelFn(
+      {
+        price: amount,
+        stars_price: provider.toLowerCase().includes("stars") ? amount : undefined,
+        currency: String(pendingPayment?.currency || ""),
+      },
+      provider
+    );
+  }
+  function pendingPaymentTerm() {
+    const months = Number(pendingPayment?.months || 0);
+    if (months > 0) return termUnitLabel(months, "month");
+    const trafficGb = Number(pendingPayment?.purchased_gb || 0);
+    if (trafficGb > 0) {
+      return t("wa_pending_payment_traffic", { gb: formatCompactNumber(trafficGb) });
+    }
+    const devices = Number(pendingPayment?.purchased_hwid_devices || 0);
+    if (devices > 0) return t("wa_pending_payment_devices", { count: devices });
+    return t("wa_pending_payment_purchase");
+  }
+  function pendingPaymentDiscount() {
+    const summary = String(pendingPayment?.promo_effect_summary || "").trim();
+    if (summary) return summary;
+    const percent = Number(pendingPayment?.discount_percent || 0);
+    if (percent > 0) {
+      return t("wa_pending_payment_discount_percent", {
+        percent: formatCompactNumber(percent),
+      });
+    }
+    return t("wa_pending_payment_discount_applied");
+  }
   function methodUsesStars() {
     return String(selectedMethod || "")
       .toLowerCase()
       .includes("stars");
+  }
+  function providerManagesPrice() {
+    const normalizedMethod = String(selectedMethod || "").toLowerCase();
+    if (
+      selectedPlan?.externally_managed_price_method_ids?.some(
+        (methodId) => String(methodId).toLowerCase() === normalizedMethod
+      )
+    ) {
+      return true;
+    }
+    return Boolean(
+      methods.find((method) => String(method.id || "").toLowerCase() === normalizedMethod)
+        ?.price_managed_externally
+    );
+  }
+  function tributeShopSubscriptionSelected(methodId = selectedMethod) {
+    return (
+      String(methodId || "").toLowerCase() === "tribute" &&
+      !providerManagesPrice() &&
+      isSubscriptionPlan(selectedPlan)
+    );
+  }
+  function selectPaymentMethod(methodId: string) {
+    selectPaymentMethodWithPromoReset(
+      methodId,
+      selectedPlan,
+      (nextMethod) => (selectedMethod = nextMethod),
+      clearCheckoutPromo
+    );
   }
   function hwidRenewalFor(plan: PlanView | null) {
     return plan?.hwid_renewal?.available ? plan.hwid_renewal : null;
@@ -120,7 +202,15 @@
   }
   function hwidRenewalAvailableForMethod(plan: PlanView | null) {
     const renewal = hwidRenewalFor(plan);
-    if (!subscription?.active || !isSubscriptionPlan(plan) || !renewal) return false;
+    if (
+      providerManagesPrice() ||
+      tributeShopSubscriptionSelected() ||
+      !subscription?.active ||
+      !isSubscriptionPlan(plan) ||
+      !renewal
+    ) {
+      return false;
+    }
     if (methodUsesStars()) return Number(renewal.stars_price || 0) > 0;
     return Number(renewal.price || 0) > 0;
   }
@@ -141,6 +231,7 @@
     return priceLabelFn(planWithSelectedHwidRenewal(plan), selectedMethod);
   }
   function checkoutPaymentPriceLabel(plan: PlanView | null) {
+    if (providerManagesPrice()) return t("wa_price_managed_by_provider");
     const promoPrice = checkoutPromoPriceParts(planWithSelectedHwidRenewal(plan));
     if (promoPrice) return promoPrice.discounted;
     if (checkoutPromoAppliedCode && checkoutPromoPriceText) return checkoutPromoPriceText;
@@ -182,9 +273,9 @@
     return true;
   }
   function checkoutPromoAffectsPlan(plan: PlanView | null) {
-    return (
-      checkoutPromoDiscount() > 0 &&
-      checkoutPromoScopeMatches(plan) &&
+    return checkoutPromoAffectsQuotedPlan(
+      checkoutPromoDiscount(),
+      checkoutPromoScopeMatches(plan),
       checkoutPromoThresholdMatches(plan)
     );
   }
@@ -245,6 +336,12 @@
   function hwidRenewalCount(plan: PlanView | null = selectedPlan) {
     return Number(hwidRenewalFor(plan)?.device_count || subscription?.extra_hwid_devices || 0);
   }
+  function hwidRenewalBonusLabel(plan: PlanView | null = selectedPlan) {
+    const renewal = hwidRenewalFor(plan);
+    const bonusGb = Number(renewal?.traffic_bonus_gb || 0);
+    if (!(bonusGb > 0)) return "";
+    return t("wa_hwid_devices_traffic_bonus", { gb: formatCompactNumber(bonusGb) });
+  }
   function hwidRenewalHint(plan: PlanView | null = selectedPlan) {
     const renewal = hwidRenewalFor(plan);
     if (renewal?.valid_from_text && renewal?.valid_until_text) {
@@ -278,7 +375,10 @@
   }
 
   function checkoutPromoBlock() {
-    return Boolean(checkoutPromoAppliedCode || checkoutPromoStatus || selectedPlan);
+    return checkoutPromoBlockVisible(
+      providerManagesPrice(),
+      Boolean(checkoutPromoAppliedCode || checkoutPromoStatus || selectedPlan)
+    );
   }
 
   function paymentTitle() {
@@ -322,6 +422,48 @@
   class="payment-dialog-card webapp-payment-dialog"
 >
   <div class="payment-dialog-body">
+    {#if pendingPayment}
+      <section class="pending-payment-card">
+        <div class="pending-payment-heading">
+          <span class="pending-payment-icon"><History size={18} /></span>
+          <span>
+            <strong>{t("wa_pending_payment_title")}</strong>
+            <small>
+              {t("wa_pending_payment_description", {
+                promo: pendingPayment.promo_code || "",
+              })}
+            </small>
+          </span>
+        </div>
+        <div class="pending-payment-facts">
+          <span>
+            <small>{t("wa_pending_payment_term")}</small>
+            <strong>{pendingPaymentTerm()}</strong>
+          </span>
+          <span>
+            <small>{t("wa_pending_payment_amount")}</small>
+            <strong class="pending-payment-price">
+              {#if Number(pendingPayment.base_amount || 0) > Number(pendingPayment.amount || 0)}
+                <s>{pendingPaymentPrice(pendingPayment.base_amount)}</s>
+              {/if}
+              {pendingPaymentPrice(pendingPayment.amount)}
+            </strong>
+          </span>
+          <span>
+            <small><Tag size={12} /> {t("wa_pending_payment_discount")}</small>
+            <strong>{pendingPaymentDiscount()}</strong>
+          </span>
+        </div>
+        <Button
+          class="wide pending-payment-action"
+          onclick={() => resumePendingPayment(pendingPayment)}
+          disabled={payBusy}
+        >
+          {t("wa_pending_payment_continue")}
+          <ExternalLink size={16} />
+        </Button>
+      </section>
+    {/if}
     {#if tariffMode && !singleTariffMode && paymentStep === "tariff"}
       {#if tariffCatalog.length}
         <div class="option-list tariff-list">
@@ -391,6 +533,9 @@
                 })}
               </strong>
               <small>{hwidRenewalHint()}</small>
+              {#if hwidRenewalBonusLabel()}
+                <small class="hwid-traffic-bonus">{hwidRenewalBonusLabel()}</small>
+              {/if}
               {#if showHwidDesyncNotice()}
                 <small class="hwid-renewal-warning">
                   {t("wa_hwid_devices_desync_notice", {
@@ -443,7 +588,7 @@
             methods={paymentMethods}
             {selectedMethod}
             {t}
-            onSelect={(id) => (selectedMethod = id)}
+            onSelect={selectPaymentMethod}
           />
         {:else}
           <EmptyCard>{t("wa_payment_methods_not_configured")}</EmptyCard>
@@ -498,6 +643,9 @@
               })}
             </strong>
             <small>{hwidRenewalHint()}</small>
+            {#if hwidRenewalBonusLabel()}
+              <small class="hwid-traffic-bonus">{hwidRenewalBonusLabel()}</small>
+            {/if}
             {#if showHwidDesyncNotice()}
               <small class="hwid-renewal-warning">
                 {t("wa_hwid_devices_desync_notice", {
@@ -553,7 +701,7 @@
           methods={paymentMethods}
           {selectedMethod}
           {t}
-          onSelect={(id) => (selectedMethod = id)}
+          onSelect={selectPaymentMethod}
         />
       {:else}
         <EmptyCard>{t("wa_payment_methods_not_configured")}</EmptyCard>

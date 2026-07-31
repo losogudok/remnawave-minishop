@@ -196,6 +196,70 @@ class HandleWebhookQueueingTests(unittest.IsolatedAsyncioTestCase):
             "user.expiration:99:expiration:72",
         )
 
+    async def test_repeatable_events_dedupe_on_payload_not_on_user(self):
+        """Every panel PATCH emits user.modified, so the key must follow content.
+
+        With a plain ``event:user`` key the first modification would swallow every
+        later one for the whole dedupe window (24h) and spam the "duplicate" log.
+        """
+        service = _make_service()
+
+        first = service._webhook_event_id(
+            "user.modified",
+            {"telegramId": 99, "uuid": "abc", "updatedAt": "2026-05-31T12:00:00.000Z"},
+        )
+        second = service._webhook_event_id(
+            "user.modified",
+            {"telegramId": 99, "uuid": "abc", "updatedAt": "2026-05-31T12:01:00.000Z"},
+        )
+        redelivery = service._webhook_event_id(
+            "user.modified",
+            {"telegramId": 99, "uuid": "abc", "updatedAt": "2026-05-31T12:00:00.000Z"},
+        )
+
+        self.assertTrue(first.startswith("user.modified:99:"))
+        self.assertNotEqual(first, second)
+        self.assertEqual(first, redelivery)
+
+    async def test_notification_events_keep_one_event_per_user_and_window(self):
+        service = _make_service()
+
+        self.assertEqual(
+            service._webhook_event_id(
+                "user.expired",
+                {"telegramId": 99, "uuid": "abc", "updatedAt": "2026-05-31T12:00:00.000Z"},
+            ),
+            "user.expired:99",
+        )
+        self.assertEqual(
+            service._webhook_event_id(
+                "user.expires_in_24_hours",
+                {"telegramId": 99, "uuid": "abc", "updatedAt": "2026-05-31T12:05:00.000Z"},
+            ),
+            "user.expires_in_24_hours:99",
+        )
+
+    async def test_payload_snapshot_lists_mutable_panel_fields_only(self):
+        service = _make_service()
+
+        snapshot = service._payload_state_snapshot(
+            {
+                "uuid": "panel-user-1",
+                "email": "client@example.com",
+                "status": "ACTIVE",
+                "expireAt": "2026-08-01T00:00:00.000Z",
+                "trafficLimitBytes": 0,
+                "hwidDeviceLimit": 4,
+                "activeInternalSquads": [{"uuid": "squad-b"}, {"uuid": "squad-a"}],
+                "updatedAt": "2026-07-24T20:30:58.000Z",
+            }
+        )
+
+        self.assertIn("hwidDeviceLimit=4", snapshot)
+        self.assertIn("activeInternalSquads=squad-a,squad-b", snapshot)
+        self.assertIn("updatedAt=2026-07-24T20:30:58.000Z", snapshot)
+        self.assertNotIn("client@example.com", snapshot)
+
     async def test_falls_back_to_background_task_when_redis_unavailable(self):
         service = _make_service()
         background_seen: list[Any] = []
@@ -464,7 +528,9 @@ class HandleEventLoggingTests(unittest.IsolatedAsyncioTestCase):
     async def test_unsupported_event_is_logged_as_ignored(self):
         service = _make_service()
 
-        with self.assertLogs(level="INFO") as logs:
+        # Debug level on purpose: the panel emits user.modified on every write,
+        # so an INFO line per event would flood the log during a panel sync.
+        with self.assertLogs(level="DEBUG") as logs:
             await service.handle_event(
                 "user.modified",
                 {"uuid": "panel-user-1", "email": "client@example.com"},

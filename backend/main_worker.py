@@ -26,6 +26,7 @@ from bot.infra.webhook_queue import (
     webhook_queue_depth,
 )
 from bot.middlewares.i18n import JsonI18n
+from bot.payment_providers.wata.service import WataService
 from bot.payment_providers.yookassa import (
     YOOKASSA_EVENT_PAYMENT_CANCELED,
     YOOKASSA_EVENT_PAYMENT_SUCCEEDED,
@@ -43,16 +44,29 @@ from bot.plugins import (
     collect_worker_tasks,
     run_setup,
 )
+from bot.services.auto_renew_retry_worker import AutoRenewRetryWorker
 from bot.services.backup_worker import BackupWorker
 from bot.services.event_reactions import register_core_reactions
 from bot.services.message_log_notifier import configure_message_log_notifier
+from bot.services.payment_reconciliation_worker import PaymentReconciliationWorker
+from bot.services.settings_override_service import refresh_overrides_from_db
 from bot.services.subscription_notification_worker import SubscriptionNotificationWorker
 from bot.services.tariff_worker import TariffTrafficWorker
+from bot.services.torrent_blocker_webhook import TORRENT_BLOCKER_EVENT
+from bot.services.wata_reconciliation_worker import WataReconciliationWorker
 from bot.services.yookassa_reconciliation_worker import YooKassaReconciliationWorker
 from bot.utils.message_queue import init_queue_manager
 from config.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
+
+TORRENT_BLOCKER_RUNTIME_SETTING_KEYS = {
+    "TORRENT_BLOCKER_EMAIL_NOTIFICATIONS_ENABLED",
+    "TORRENT_BLOCKER_NOTIFICATIONS_ENABLED",
+    "TORRENT_BLOCKER_NOTIFICATION_COOLDOWN_SECONDS",
+    "TORRENT_BLOCKER_NOTIFICATION_INCLUDE_IP",
+    "TORRENT_BLOCKER_TELEGRAM_NOTIFICATIONS_ENABLED",
+}
 
 
 async def _build_worker_context(settings: Settings) -> PluginContext:
@@ -112,16 +126,23 @@ async def _handle_panel_event(ctx: PluginContext, payload: dict[str, Any]) -> No
     meta = payload.get("meta")
     context = payload.get("context")
     service = ctx.require_panel_webhook_service()
+    event_name = str(payload.get("event") or "")
+    if event_name == TORRENT_BLOCKER_EVENT:
+        await refresh_overrides_from_db(
+            ctx.settings,
+            ctx.require_session_factory(),
+            keys=TORRENT_BLOCKER_RUNTIME_SETTING_KEYS,
+        )
     if isinstance(context, dict):
         await service.handle_event(
-            str(payload.get("event") or ""),
+            event_name,
             payload.get("user") or {},
             meta=meta if isinstance(meta, dict) else None,
             context=context,
         )
     else:
         await service.handle_event(
-            str(payload.get("event") or ""),
+            event_name,
             payload.get("user") or {},
             meta=meta if isinstance(meta, dict) else None,
         )
@@ -362,6 +383,41 @@ async def _yookassa_reconciliation_task(ctx: PluginContext) -> None:
     ).run()
 
 
+async def _auto_renew_retry_task(ctx: PluginContext) -> None:
+    yookassa_service = ctx.get_service("yookassa_service", YooKassaService)
+    if yookassa_service is None:
+        logger.info("Auto-renew retry worker disabled: service is unavailable")
+        return
+    await AutoRenewRetryWorker(
+        ctx.settings,
+        ctx.require_session_factory(),
+        yookassa_service,
+        ctx.require_subscription_service(),
+    ).run()
+
+
+async def _wata_reconciliation_task(ctx: PluginContext) -> None:
+    wata_service = ctx.get_service("wata_service", WataService)
+    if wata_service is None:
+        logger.info("Wata reconciliation worker disabled: service is unavailable")
+        return
+    await WataReconciliationWorker(
+        ctx.settings,
+        ctx.require_session_factory(),
+        wata_service,
+    ).run()
+
+
+async def _payment_reconciliation_task(ctx: PluginContext) -> None:
+    await PaymentReconciliationWorker(
+        ctx.settings,
+        ctx.require_session_factory(),
+        ctx.services,
+        ctx.require_bot(),
+        ctx.require_i18n(),
+    ).run()
+
+
 def _backup_worker_task(ctx: PluginContext) -> Coroutine[Any, Any, None]:
     return BackupWorker(
         ctx.settings,
@@ -384,6 +440,21 @@ def _core_worker_tasks() -> list[WorkerTaskSpec]:
         WorkerTaskSpec(
             name="YooKassaReconciliationWorker",
             factory=_yookassa_reconciliation_task,
+        ),
+        WorkerTaskSpec(
+            name="AutoRenewRetryWorker",
+            factory=_auto_renew_retry_task,
+            enabled=lambda settings: bool(
+                settings.AUTO_RENEW_RETRY_ENABLED or settings.AUTO_RENEW_SCHEDULER_ENABLED
+            ),
+        ),
+        WorkerTaskSpec(
+            name="WataReconciliationWorker",
+            factory=_wata_reconciliation_task,
+        ),
+        WorkerTaskSpec(
+            name="PaymentReconciliationWorker",
+            factory=_payment_reconciliation_task,
         ),
         WorkerTaskSpec(name="BackupWorker", factory=_backup_worker_task),
         WorkerTaskSpec(name="PanelSyncLoop", factory=_panel_sync_loop),

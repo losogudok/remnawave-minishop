@@ -442,4 +442,5 @@ _DESCRIPTOR: LinkPaymentDescriptor[PaykillaService] = LinkPaymentDescriptor(
     webapp_currency=lambda ctx, settings, service: (
         ctx.currency or default_payment_currency_code_for_settings(settings)
     ),
+    checkout_ttl_seconds=lambda service, _request: int(service.config.LIFETIME_SECONDS),
 )

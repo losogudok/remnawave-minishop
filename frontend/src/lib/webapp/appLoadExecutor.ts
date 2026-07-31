@@ -116,11 +116,27 @@ export function createAppLoadExecutor({
     shellState.data = payload;
     resetBillingSelection(defaultPaymentMethodId(payload));
 
+    // A user can switch sections while the initial request is in flight. Resolve the
+    // route again from the live URL and shell state so completing that request does
+    // not restore the section that was active when it started.
+    const currentRoute = resolveInitialLoadRoute({
+      activeTab: shellState.activeTab,
+      adminActiveSection: shellState.adminActiveSection,
+      adminSection: options.adminSection,
+      fallbackAdminSection: initialAdminSectionFromLocation(),
+      mock: isMock(),
+      pathname: routePathnameFromLocation(),
+      preserveView: options.preserveView === true,
+      routePrefix,
+      screen: shellState.screen,
+      screenQuery: currentSearchParams().get("screen"),
+      section: options.section,
+    });
     const loadedRoute = resolveLoadedWebappRoute({
       fallbackAdminSection: initialAdminSectionFromLocation(),
       payload,
-      preservedAdminSection: initialRoute.preservedAdminSection,
-      routeSection: initialRoute.routeSection,
+      preservedAdminSection: currentRoute.preservedAdminSection,
+      routeSection: currentRoute.routeSection,
     });
     let section = loadedRoute.section;
     const initialAdminSection = loadedRoute.initialAdminSection;

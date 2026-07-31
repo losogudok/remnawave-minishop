@@ -23,8 +23,8 @@ class YooKassaConfig(ProviderEnvConfig):
     RETURN_URL: str | None = None
     DEFAULT_RECEIPT_EMAIL: str | None = None
     VAT_CODE: int = Field(default=1)
-    PAYMENT_MODE: str = Field(default="full_prepayment")
-    PAYMENT_SUBJECT: str = Field(default="service")
+    PAYMENT_MODE: str | None = None
+    PAYMENT_SUBJECT: str | None = None
     AUTOPAYMENTS_ENABLED: bool = Field(default=False)
     AUTOPAYMENTS_REQUIRE_CARD_BINDING: bool = Field(default=True)
 
@@ -35,17 +35,28 @@ class YooKassaConfig(ProviderEnvConfig):
             return None
         return v
 
+    @field_validator("PAYMENT_MODE", "PAYMENT_SUBJECT", mode="before")
+    @classmethod
+    def _normalize_optional_receipt_field(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return v.strip() or None
+        return v
+
     @property
     def autopayments_active(self) -> bool:
         return bool(self.ENABLED and self.AUTOPAYMENTS_ENABLED)
 
     @property
     def yk_receipt_payment_mode(self) -> str:
-        return "service" if self.AUTOPAYMENTS_ENABLED else "full_prepayment"
+        if self.PAYMENT_MODE:
+            return self.PAYMENT_MODE
+        return "full_payment" if self.AUTOPAYMENTS_ENABLED else "full_prepayment"
 
     @property
     def yk_receipt_payment_subject(self) -> str:
-        return "full_payment" if self.AUTOPAYMENTS_ENABLED else "payment"
+        if self.PAYMENT_SUBJECT:
+            return self.PAYMENT_SUBJECT
+        return "service" if self.AUTOPAYMENTS_ENABLED else "payment"
 
     @property
     def webhook_path(self) -> str:

@@ -5,6 +5,7 @@ from aiohttp import web
 from pydantic import ValidationError
 
 from bot.app.web.context import (
+    get_session_factory,
     get_settings,
 )
 from bot.app.web.request_parsing import parse_body_or_400
@@ -13,9 +14,17 @@ from bot.app.web.route_contracts import (
     ok_envelope_for,
     register_contract,
 )
-from bot.app.web.webapp.cache_helpers import refresh_webapp_runtime_after_settings_change
+from bot.app.web.webapp.cache_helpers import (
+    invalidate_all_webapp_user_payloads,
+    refresh_webapp_runtime_after_settings_change,
+)
 from config.settings import Settings
 from config.tariffs_config import TariffsConfig, default_payment_currency_code_for_settings
+from db.dal import message_log_dal
+from db.tariff_reconciliation import (
+    TariffReconciliationReport,
+    reconcile_subscription_tariffs,
+)
 
 from .auth import (
     _require_admin_user_id,
@@ -32,14 +41,38 @@ from .schemas import (
     ProviderCurrencySupportOut,
     TariffsSaveBody,
 )
+from .tariff_reconciliation_schemas import (
+    AdminTariffReconciliationApplyBody,
+    AdminTariffReconciliationOut,
+)
+from .users_listing import _invalidate_admin_users_list_cache
 
 logger = logging.getLogger(__name__)
 
 _TARIFFS_RESPONSE_SCHEMA = ok_envelope_for(AdminTariffsOut)
+_TARIFF_RECONCILIATION_RESPONSE_SCHEMA = ok_envelope_for(AdminTariffReconciliationOut)
 
 register_contract(
     "admin_tariffs_get_route",
     RouteContract(response_schema=_TARIFFS_RESPONSE_SCHEMA, models=(AdminTariffsOut,)),
+)
+register_contract(
+    "admin_tariff_reconciliation_get_route",
+    RouteContract(
+        response_schema=_TARIFF_RECONCILIATION_RESPONSE_SCHEMA,
+        models=(AdminTariffReconciliationOut,),
+    ),
+)
+register_contract(
+    "admin_tariff_reconciliation_apply_route",
+    RouteContract(
+        request_model=AdminTariffReconciliationApplyBody,
+        response_schema=_TARIFF_RECONCILIATION_RESPONSE_SCHEMA,
+        models=(
+            AdminTariffReconciliationApplyBody,
+            AdminTariffReconciliationOut,
+        ),
+    ),
 )
 register_contract(
     "admin_tariffs_save_route",
@@ -66,7 +99,7 @@ async def admin_tariffs_get_route(request: web.Request) -> web.Response:
 
 
 async def admin_tariffs_save_route(request: web.Request) -> web.Response:
-    _require_admin_user_id(request)
+    actor_id = _require_admin_user_id(request)
     settings: Settings = get_settings(request)
     body = await parse_body_or_400(request, TariffsSaveBody)
     catalog = body.catalog_payload()
@@ -85,9 +118,84 @@ async def admin_tariffs_save_route(request: web.Request) -> web.Response:
         logger.exception("Failed to write tariffs config to %s", path)
         return _error(500, "write_failed", str(exc))
 
+    try:
+        await _run_tariff_reconciliation(
+            request,
+            config,
+            apply=True,
+            actor_id=actor_id,
+        )
+    except Exception as exc:
+        logger.exception("Tariff catalog saved but reconciliation failed")
+        return _error(
+            500,
+            "tariffs_saved_reconciliation_failed",
+            f"Tariffs were saved, but subscription reconciliation failed: {exc}",
+        )
+
     await refresh_webapp_runtime_after_settings_change(request, updates={}, deletes=[])
 
     return _ok(_tariffs_response_payload(settings, request.app, path=path, config=config))
+
+
+async def admin_tariff_reconciliation_get_route(request: web.Request) -> web.Response:
+    _require_admin_user_id(request)
+    settings: Settings = get_settings(request)
+    config = settings.tariffs_config
+    if config is None:
+        return _error(404, "tariffs_not_configured")
+    report = await _run_tariff_reconciliation(request, config, apply=False)
+    return _ok(AdminTariffReconciliationOut.from_report(report).model_dump(mode="json"))
+
+
+async def admin_tariff_reconciliation_apply_route(
+    request: web.Request,
+) -> web.Response:
+    actor_id = _require_admin_user_id(request)
+    settings: Settings = get_settings(request)
+    config = settings.tariffs_config
+    if config is None:
+        return _error(404, "tariffs_not_configured")
+    body = await parse_body_or_400(request, AdminTariffReconciliationApplyBody)
+    report = await _run_tariff_reconciliation(
+        request,
+        config,
+        apply=bool(body.apply),
+        actor_id=actor_id if body.apply else None,
+    )
+    return _ok(AdminTariffReconciliationOut.from_report(report).model_dump(mode="json"))
+
+
+async def _run_tariff_reconciliation(
+    request: web.Request,
+    config: TariffsConfig,
+    *,
+    apply: bool,
+    actor_id: int | None = None,
+) -> TariffReconciliationReport:
+    settings: Settings = get_settings(request)
+    async_session_factory = get_session_factory(request)
+    async with async_session_factory() as session:
+        report = await reconcile_subscription_tariffs(session, config, apply=apply)
+        if apply:
+            if actor_id is not None:
+                await message_log_dal.create_message_log_no_commit(
+                    session,
+                    {
+                        "user_id": actor_id,
+                        "event_type": "admin_tariff_reconciliation_webapp",
+                        "content": (
+                            f"scanned={report.scanned} candidates={report.candidates} "
+                            f"applied={report.applied} unresolved={report.unresolved}"
+                        ),
+                        "is_admin_event": True,
+                    },
+                )
+            await session.commit()
+    if apply:
+        await _invalidate_admin_users_list_cache(settings)
+        await invalidate_all_webapp_user_payloads(settings, include_devices=True)
+    return report
 
 
 def _tariffs_response_payload(

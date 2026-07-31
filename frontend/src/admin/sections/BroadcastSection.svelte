@@ -1,21 +1,52 @@
 <script lang="ts">
-  import { getBroadcastStore } from "$lib/admin/context";
-  import { Checkbox, Input, Sortable } from "$components/ui/index.js";
-  import { Plus, Send, Trash2 } from "$components/ui/icons.js";
+  import { getBroadcastStore, getTranslationsStore } from "$lib/admin/context";
+  import { Checkbox, Input } from "$components/ui/index.js";
+  import { Send } from "$components/ui/icons.js";
   import { onMount } from "svelte";
   import { Label } from "$components/ui/primitives.js";
   import { AdminButton, AdminSelect } from "$components/patterns/admin/index.js";
-  import BroadcastEditor from "$lib/admin/components/BroadcastEditor.svelte";
-  import { previewHtmlFromWire } from "$lib/admin/telegramHtml";
-  import type {
-    BroadcastButtonDraft,
-    BroadcastButtonKind,
-  } from "$lib/admin/stores/broadcastStore.svelte";
+  import MessageButtonsEditor from "$lib/admin/components/MessageButtonsEditor.svelte";
+  import MessageComposer from "$lib/admin/components/MessageComposer.svelte";
+  import MessageLocaleTabs from "$lib/admin/components/MessageLocaleTabs.svelte";
+  import { previewHtmlFromWire } from "$lib/richtext/telegramHtml";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
 
   let { at }: { at: TranslateFn } = $props();
   const broadcastStore = getBroadcastStore();
+  const translationsStore = getTranslationsStore();
+
+  // The tab set is whatever the deployment has, so adding a language on the
+  // translations screen adds a tab here without touching this file. The
+  // request fires once and its guard is deliberately non-reactive: reading the
+  // store's own state here would re-run on every mutation the load causes.
+  let languagesRequested = false;
+  $effect(() => {
+    if (languagesRequested) return;
+    languagesRequested = true;
+    void translationsStore.loadTranslations();
+  });
+  const languages = $derived(translationsStore.translationLanguages ?? []);
+  const activeLanguage = $derived(broadcastStore.broadcastLanguage || languages[0]?.code || "");
+  const localizedTexts = $derived(broadcastStore.broadcastTexts ?? {});
+  const activeText = $derived(
+    activeLanguage ? (localizedTexts[activeLanguage] ?? "") : broadcastStore.broadcastText
+  );
+  const writtenLanguages = $derived(
+    Object.entries(localizedTexts)
+      .filter(([, value]) => String(value ?? "").trim())
+      .map(([code]) => code)
+  );
+
+  function setText(next: string): void {
+    if (!activeLanguage) {
+      broadcastStore.updateField({ broadcastText: next });
+      return;
+    }
+    broadcastStore.updateField({
+      broadcastTexts: { ...localizedTexts, [activeLanguage]: next },
+    });
+  }
 
   // Sample values for the client-side live preview only; the server preview
   // uses real recipient data.
@@ -44,12 +75,11 @@
   const previewBusy = $derived(Boolean(broadcastStore.broadcastPreviewBusy));
   const previewResult = $derived(broadcastStore.broadcastPreviewResult);
   const clientPreviewHtml = $derived(
-    broadcastStore.broadcastText.trim()
-      ? previewHtmlFromWire(broadcastStore.broadcastText, PREVIEW_SAMPLES)
-      : ""
+    activeText.trim() ? previewHtmlFromWire(activeText, PREVIEW_SAMPLES) : ""
   );
 
   const broadcastTarget = $derived(broadcastStore.broadcastTarget);
+  const broadcastTargetError = $derived(broadcastStore.broadcastTargetError);
   const broadcastText = $derived(broadcastStore.broadcastText);
   const broadcastBusy = $derived(broadcastStore.broadcastBusy);
   const broadcastResult = $derived(broadcastStore.broadcastResult);
@@ -65,29 +95,35 @@
   const promoOptions = $derived(broadcastStore.broadcastPromoOptions);
   const promoOptionsLoading = $derived(Boolean(broadcastStore.broadcastPromoOptionsLoading));
   const promoOptionsLoaded = $derived(Boolean(broadcastStore.broadcastPromoOptionsLoaded));
-  const hasPromoButtons = $derived(broadcastButtons.some((button) => button.kind !== "url"));
   const submitEnabled = $derived(broadcastStore.canSubmit());
   const handleTargetChange = (value: string) => {
-    broadcastStore.updateField({ broadcastTarget: value });
+    broadcastStore.updateField({ broadcastTarget: value, broadcastTargetError: null });
+    writeTargetToRoute(value);
   };
 
-  const BROADCAST_TARGET_OPTIONS = broadcastStore.BROADCAST_TARGET_OPTIONS;
+  function routeTarget(): string {
+    if (typeof window === "undefined") return "";
+    return String(new URLSearchParams(window.location.search).get("broadcast_target") || "")
+      .trim()
+      .toLowerCase();
+  }
 
-  const buttonKindOptions = $derived([
-    { value: "url", label: at("broadcast_button_kind_url", {}, "Link") },
-    {
-      value: "promo_bot",
-      label: at("broadcast_button_kind_promo_bot", {}, "Promo code — in bot"),
-    },
-    {
-      value: "promo_webapp",
-      label: at("broadcast_button_kind_promo_webapp", {}, "Promo code — in web app"),
-    },
-  ]);
+  function writeTargetToRoute(target: string | null): void {
+    if (typeof window === "undefined" || window.location.protocol === "file:") return;
+    const query = new URLSearchParams(window.location.search);
+    if (target) query.set("broadcast_target", target);
+    else query.delete("broadcast_target");
+    const search = query.toString();
+    const nextUrl = `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (nextUrl !== currentUrl) window.history.replaceState(window.history.state, "", nextUrl);
+  }
+
+  const broadcastTargetOptions = $derived(broadcastStore.BROADCAST_TARGET_OPTIONS);
 
   // Append the resolved audience size to each option once counts are loaded.
   const targetOptions = $derived(
-    BROADCAST_TARGET_OPTIONS.map((option) => {
+    broadcastTargetOptions.map((option) => {
       const count = broadcastCounts?.[option.value];
       if (count != null) return { ...option, label: `${option.label} (${count})` };
       if (broadcastCountsLoading) return { ...option, label: `${option.label} (...)` };
@@ -96,7 +132,24 @@
   );
 
   onMount(() => {
-    broadcastStore.loadCounts();
+    const requestedTarget = routeTarget();
+    if (requestedTarget) {
+      // Set before discovery completes so a plugin audience is retained when
+      // the counts response supplies the dynamic target catalog.
+      broadcastStore.updateField({ broadcastTarget: requestedTarget, broadcastTargetError: null });
+    }
+    void broadcastStore.loadCounts().then(() => {
+      if (!requestedTarget) return;
+      const available = broadcastStore.BROADCAST_TARGET_OPTIONS.some(
+        (option) => option.value === requestedTarget && !option.disabled
+      );
+      if (available) return;
+      broadcastStore.updateField({
+        broadcastTarget: "all",
+        broadcastTargetError: "broadcast_target_unavailable",
+      });
+      writeTargetToRoute(null);
+    });
     if (broadcastStore.broadcastButtons.some((button) => button.kind !== "url")) {
       broadcastStore.loadPromoOptions();
     }
@@ -118,6 +171,11 @@
           ariaLabel={at("broadcast_label_audience", {}, "Audience")}
           onValueChange={handleTargetChange}
         />
+        {#if broadcastTargetError}
+          <small class="admin-field-error">
+            {at("broadcast_target_unavailable", {}, "The requested audience is unavailable")}
+          </small>
+        {/if}
       </Label.Root>
       <div class="admin-field-label">
         <span>{at("broadcast_channels_label", {}, "Delivery channels")}</span>
@@ -172,9 +230,16 @@
       <div class="admin-field-label">
         <span>{at("broadcast_label_text", {}, "Message Text")}</span>
         <small>{at("broadcast_hint_text", {}, "Telegram HTML formatting supported")}</small>
-        <BroadcastEditor
-          value={broadcastText}
-          onInput={(next) => broadcastStore.updateField({ broadcastText: next })}
+        <MessageLocaleTabs
+          {languages}
+          active={activeLanguage}
+          written={writtenLanguages}
+          {at}
+          onSelect={(code) => broadcastStore.updateField({ broadcastLanguage: code })}
+        />
+        <MessageComposer
+          value={activeText}
+          onInput={setText}
           shortcodes={broadcastStore.broadcastShortcodes}
           onRequestShortcodes={broadcastStore.loadShortcodes}
           {at}
@@ -189,7 +254,7 @@
             <AdminButton
               size="sm"
               variant="ghost"
-              disabled={previewBusy || !broadcastText.trim()}
+              disabled={previewBusy || !activeText.trim()}
               onclick={() => broadcastStore.sendPreview("render")}
             >
               {at("broadcast_preview_render", {}, "Refresh with data")}
@@ -197,7 +262,7 @@
             <AdminButton
               size="sm"
               variant="ghost"
-              disabled={previewBusy || !broadcastText.trim()}
+              disabled={previewBusy || !activeText.trim()}
               onclick={() => broadcastStore.sendPreview("send_telegram")}
             >
               {at("broadcast_preview_send", {}, "Send to my Telegram")}
@@ -233,82 +298,20 @@
             "Up to 4 buttons: inline buttons in Telegram, link buttons in email. Promo codes activate in one tap."
           )}</small
         >
-        <div class="admin-row-editor">
-          <Sortable
-            items={broadcastButtons}
-            class="admin-row-editor-line admin-row-editor-broadcast"
-            getKey={(button: BroadcastButtonDraft) => button.id}
-            handleLabel={at("broadcast_button_reorder", {}, "Drag to reorder buttons")}
-            onReorder={broadcastStore.moveButton}
-          >
-            {#snippet children(button: BroadcastButtonDraft, index: number)}
-              <AdminSelect
-                value={button.kind}
-                items={buttonKindOptions}
-                ariaLabel={at("broadcast_buttons_label", {}, "Buttons")}
-                onValueChange={(value) =>
-                  broadcastStore.updateButton(index, { kind: value as BroadcastButtonKind })}
-              />
-              <Input
-                class="input"
-                value={button.label}
-                maxlength={64}
-                placeholder={at("broadcast_button_label_placeholder", {}, "Button label")}
-                oninput={(e) =>
-                  broadcastStore.updateButton(index, {
-                    label: (e.currentTarget as HTMLInputElement).value,
-                  })}
-              />
-              {#if button.kind === "url"}
-                <Input
-                  class="input"
-                  value={button.url}
-                  placeholder={at("broadcast_button_url_placeholder", {}, "https://…")}
-                  oninput={(e) =>
-                    broadcastStore.updateButton(index, {
-                      url: (e.currentTarget as HTMLInputElement).value,
-                    })}
-                />
-              {:else}
-                <AdminSelect
-                  value={button.promoCode}
-                  items={promoOptions}
-                  placeholder={promoOptionsLoading
-                    ? at("broadcast_button_promo_loading", {}, "Loading codes...")
-                    : at("broadcast_button_promo_select", {}, "Select a code")}
-                  ariaLabel={at("broadcast_button_promo_select", {}, "Select a code")}
-                  onValueChange={(value) =>
-                    broadcastStore.updateButton(index, { promoCode: value })}
-                />
-              {/if}
-              <AdminButton
-                size="sm"
-                variant="danger"
-                aria-label={at("broadcast_button_remove", {}, "Remove button")}
-                onclick={() => broadcastStore.removeButton(index)}
-              >
-                <Trash2 size={13} />
-              </AdminButton>
-            {/snippet}
-          </Sortable>
-        </div>
-        {#if hasPromoButtons && promoOptionsLoaded && !promoOptions.length}
-          <small class="admin-muted"
-            >{at(
-              "broadcast_no_promos_hint",
-              {},
-              "No active codes — create one in the Promo codes section first"
-            )}</small
-          >
-        {/if}
-        {#if broadcastButtons.length < broadcastStore.MAX_BROADCAST_BUTTONS}
-          <div>
-            <AdminButton variant="ghost" onclick={broadcastStore.addButton}>
-              <Plus size={14} />
-              {at("broadcast_button_add", {}, "Add button")}
-            </AdminButton>
-          </div>
-        {/if}
+        <MessageButtonsEditor
+          language={activeLanguage}
+          buttons={broadcastButtons}
+          {at}
+          max={broadcastStore.MAX_BROADCAST_BUTTONS}
+          {promoOptions}
+          {promoOptionsLoading}
+          {promoOptionsLoaded}
+          onAdd={broadcastStore.addButton}
+          onRemove={broadcastStore.removeButton}
+          onUpdate={broadcastStore.updateButton}
+          onReorder={broadcastStore.moveButton}
+          onRequestPromoOptions={broadcastStore.loadPromoOptions}
+        />
       </div>
       <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
         <AdminButton

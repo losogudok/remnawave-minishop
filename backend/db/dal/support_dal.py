@@ -37,6 +37,7 @@ async def create_ticket(
     category: str,
     priority: str,
     first_message_body: str,
+    first_message_format: str = "text",
 ) -> SupportTicket:
     now = datetime.now(UTC)
     ticket = SupportTicket(
@@ -59,6 +60,7 @@ async def create_ticket(
         author_role="user",
         author_user_id=user_id,
         body=first_message_body,
+        body_format=first_message_format,
         is_internal_note=False,
         created_at=now,
     )
@@ -75,6 +77,8 @@ async def add_message(
     author_user_id: int | None,
     body: str,
     is_internal_note: bool = False,
+    body_format: str = "text",
+    buttons: str | None = None,
 ) -> SupportTicketMessage | None:
     stmt = select(SupportTicket).where(SupportTicket.ticket_id == ticket_id).with_for_update()
     result = await session.execute(stmt)
@@ -88,6 +92,8 @@ async def add_message(
         author_role=author_role,
         author_user_id=author_user_id,
         body=body,
+        body_format=body_format,
+        buttons=buttons,
         is_internal_note=bool(is_internal_note),
         created_at=now,
     )

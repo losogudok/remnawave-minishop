@@ -9,6 +9,8 @@ from bot.app.web.context import (
     get_support_service,
 )
 from bot.app.web.support_schemas import SupportMessageOut, SupportTicketOut, SupportTypingIn
+from bot.services.broadcast_personalization import telegram_html_error
+from bot.services.support_message_body import SupportBodyError
 from bot.services.support_presence import is_support_typing, set_support_typing
 from bot.services.support_service import TicketForbidden, TicketNotFound, TicketRateLimited
 from db.dal import support_dal, user_dal
@@ -63,9 +65,28 @@ async def support_tickets_route(request: web.Request) -> web.Response:
     )
 
 
+def _invalid_body_response(body: str, body_format: str) -> web.Response | None:
+    """Reject markup Telegram would refuse before it reaches the ticket.
+
+    Customer markup is sanitized on the way in either way; failing loudly here
+    means a client bug surfaces as an error instead of as silently stripped
+    formatting.
+    """
+
+    if body_format != "html":
+        return None
+    html_error = telegram_html_error(body)
+    if html_error:
+        return _json_error(400, "invalid_telegram_html", html_error)
+    return None
+
+
 async def support_create_ticket_route(request: web.Request) -> web.Response:
     user_id = _require_user_id(request)
     payload = await _parse_model_payload(request, CreateTicketPayload)
+    invalid = _invalid_body_response(payload.body, payload.body_format)
+    if invalid is not None:
+        return invalid
     service = get_support_service(request)
     try:
         ticket = await service.create_ticket(
@@ -74,7 +95,10 @@ async def support_create_ticket_route(request: web.Request) -> web.Response:
             payload.category,
             payload.priority,
             payload.body,
+            body_format=payload.body_format,
         )
+    except SupportBodyError:
+        return _json_error(400, "empty_text", "Message is empty")
     except TicketForbidden:
         return _json_error(403, "ticket_forbidden", "Support ticket action is forbidden")
     except TicketRateLimited:
@@ -105,9 +129,19 @@ async def support_ticket_reply_route(request: web.Request) -> web.Response:
     user_id = _require_user_id(request)
     ticket_id = int(request.match_info["id"])
     payload = await _parse_model_payload(request, TicketReplyPayload)
+    invalid = _invalid_body_response(payload.body, payload.body_format)
+    if invalid is not None:
+        return invalid
     service = get_support_service(request)
     try:
-        ticket, message = await service.reply_as_user(user_id, ticket_id, payload.body)
+        ticket, message = await service.reply_as_user(
+            user_id,
+            ticket_id,
+            payload.body,
+            body_format=payload.body_format,
+        )
+    except SupportBodyError:
+        return _json_error(400, "empty_text", "Message is empty")
     except TicketForbidden:
         return _json_error(403, "ticket_forbidden", "Support ticket action is forbidden")
     except TicketNotFound:

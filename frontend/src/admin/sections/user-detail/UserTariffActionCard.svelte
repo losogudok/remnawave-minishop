@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getUsersStore } from "$lib/admin/context";
+  import { getTariffsStore, getUsersStore } from "$lib/admin/context";
   import {
     AdminBadge,
     AdminButton,
@@ -31,6 +31,34 @@
   } = $props();
 
   const usersStore = getUsersStore();
+  const tariffsStore = getTariffsStore();
+  const selectedTariff = $derived(
+    (tariffsStore.tariffsCatalog?.tariffs || []).find(
+      (tariff) => String(tariff?.key || "") === userTariffActionKey
+    ) || null
+  );
+  const selectedTariffBaseSquads = $derived(
+    new Set((selectedTariff?.squad_uuids || []).map((uuid) => String(uuid))).size
+  );
+  const selectedTariffPremiumSquads = $derived(
+    new Set((selectedTariff?.premium_squad_uuids || []).map((uuid) => String(uuid))).size
+  );
+
+  function trafficPreviewLabel(): string {
+    const monthlyGb = Number(selectedTariff?.monthly_gb || 0);
+    if (monthlyGb <= 0) return at("tariff_traffic_unlimited", {}, "Unlimited");
+    return at("user_tariff_preview_traffic_gb", { count: monthlyGb }, `${monthlyGb} GB / month`);
+  }
+
+  function hwidPreviewLabel(): string {
+    const raw = selectedTariff?.hwid_device_limit;
+    if (raw === null || raw === undefined) {
+      return at("user_hwid_limit_default", {}, "Tariff / default");
+    }
+    const limit = Number(raw);
+    if (limit === 0) return at("user_hwid_limit_unlimited", {}, "Unlimited");
+    return at("user_hwid_limit_count", { count: limit }, `${limit}`);
+  }
 
   function saveTariff() {
     if (tariffHwidLimitChangeAvailable) {
@@ -92,6 +120,28 @@
     </div>
     {#if tariffActionDirty}
       <div class="admin-override-status-lines">
+        {#if selectedTariff}
+          <strong>{at("user_tariff_preview_title", {}, "Result after tariff change")}</strong>
+          <div class="admin-provider-summary">
+            <AdminBadge variant="muted">
+              {at("user_tariff_preview_traffic", {}, "Main traffic")}: {trafficPreviewLabel()}
+            </AdminBadge>
+            <AdminBadge variant="muted">
+              {at("user_tariff_preview_squads", {}, "Squads")}:
+              {selectedTariffBaseSquads} + {selectedTariffPremiumSquads}
+            </AdminBadge>
+            <AdminBadge variant="muted">
+              {at("user_tariff_preview_hwid", {}, "HWID limit")}: {hwidPreviewLabel()}
+            </AdminBadge>
+          </div>
+          <span class="admin-muted">
+            {at(
+              "user_tariff_preview_hint",
+              {},
+              "Tariff squads and limits are synced to Remnawave; manual squad additions remain."
+            )}
+          </span>
+        {/if}
         <span class="admin-unsaved-hint">
           {at("user_action_unsaved_hint", {}, "Unsaved changes in this card")}
         </span>

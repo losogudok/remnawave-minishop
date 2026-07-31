@@ -13,6 +13,7 @@ export const DEV_MOCK: PreviewMock = {
     trialEnabled: true,
     trialDurationDays: 3,
     trialTrafficLimitGb: 5,
+    trialHwidDeviceLimit: 1,
     trialTrafficStrategy: "NO_RESET",
     trialWithoutTelegramEnabled: true,
     trialSquadUuids: "2f2f6e0a-1f2d-4e80-a33b-0ebf3a409012",

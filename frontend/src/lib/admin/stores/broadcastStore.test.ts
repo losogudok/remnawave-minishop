@@ -73,6 +73,61 @@ describe("broadcastStore", () => {
     expect(payload.channels).toEqual(["email"]);
   });
 
+  it("adds server-discovered audience options with localized labels", async () => {
+    const api = vi.fn().mockResolvedValue({
+      ok: true,
+      counts: { all: 2, "segment:priority": 1 },
+      audiences: [
+        {
+          target: "segment:priority",
+          label_key: "broadcast_target_priority",
+          fallback_label: "Priority users",
+          order: 10,
+        },
+      ],
+      email_enabled: false,
+    });
+    const store = makeStore(api);
+
+    await store.loadCounts();
+
+    expect(store.BROADCAST_TARGET_OPTIONS).toContainEqual({
+      value: "segment:priority",
+      label: "Priority users",
+    });
+    expect(store.broadcastCounts?.["segment:priority"]).toBe(1);
+  });
+
+  it("keeps unavailable extension audiences visible as locked grouped options", async () => {
+    const api = vi.fn().mockResolvedValue({
+      ok: true,
+      counts: { all: 2 },
+      audiences: [
+        {
+          target: "segment:licensed",
+          label_key: "broadcast_target_licensed",
+          fallback_label: "Licensed audience",
+          group_label_key: "broadcast_audience_group_extensions",
+          group_fallback_label: "Extensions",
+          available: false,
+          order: 10,
+        },
+      ],
+      email_enabled: false,
+    });
+    const store = makeStore(api);
+
+    await store.loadCounts();
+
+    expect(store.BROADCAST_TARGET_OPTIONS).toContainEqual({
+      value: "segment:licensed",
+      label: "Licensed audience",
+      group: "Extensions",
+      disabled: true,
+      locked: true,
+    });
+  });
+
   it("sends broadcast buttons with Telegram preview requests", async () => {
     const api = vi.fn().mockResolvedValue({
       ok: true,
@@ -92,7 +147,37 @@ describe("broadcastStore", () => {
     const payload = JSON.parse(api.mock.calls[0][1].body);
     expect(api.mock.calls[0][0]).toBe("/admin/broadcast/preview");
     expect(payload.buttons).toEqual([
-      { kind: "url", label: "Open", url: "https://example.com", promo_code: "" },
+      {
+        kind: "url",
+        label: "Open",
+        labels: {},
+        url: "https://example.com",
+        promo_code: "",
+        section: "",
+      },
+    ]);
+  });
+
+  it("keeps codes owned by a customer in their own dropdown group, below the shared ones", async () => {
+    const api = vi.fn().mockResolvedValue({
+      ok: true,
+      promos: [
+        { code: "SOLO", is_active: true, max_activations: 1, current_activations: 0, user_id: 42 },
+        { code: "SALE10", is_active: true, max_activations: 100, current_activations: 5 },
+        // One allowed activation without an owner is an ordinary shared code.
+        { code: "ONCE", is_active: true, max_activations: 1, current_activations: 0 },
+        { code: "SPENT", is_active: true, max_activations: 1, current_activations: 1 },
+        { code: "OFF", is_active: false, max_activations: 50, current_activations: 0 },
+      ],
+    });
+    const store = makeStore(api);
+
+    await store.loadPromoOptions();
+
+    expect(store.broadcastPromoOptions).toEqual([
+      { value: "SALE10", label: "SALE10 · 5/100", group: "Shared codes" },
+      { value: "ONCE", label: "ONCE · 0/1", group: "Shared codes" },
+      { value: "SOLO", label: "SOLO · 0/1", group: "Personal codes" },
     ]);
   });
 });
