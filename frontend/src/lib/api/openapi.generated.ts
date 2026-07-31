@@ -1849,6 +1849,11 @@ export interface components {
        */
       confirm: unknown;
       /**
+       * Confirmation
+       * @default
+       */
+      confirmation: unknown;
+      /**
        * Restore Compose
        * @default false
        */
@@ -1883,8 +1888,15 @@ export interface components {
       compose_target_dir: string | null;
       /** Database Migrations Applied */
       database_migrations_applied?: string[];
+      /**
+       * Database Pre Restore Archive
+       * @default null
+       */
+      database_pre_restore_archive: string | null;
       /** Database Restored */
       database_restored: boolean;
+      /** Database Sequences Normalized */
+      database_sequences_normalized?: string[];
       /** Started At */
       started_at: string;
       /** Warnings */

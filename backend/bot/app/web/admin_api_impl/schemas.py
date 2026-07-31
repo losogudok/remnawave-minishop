@@ -299,6 +299,7 @@ class AdminBackupRestoreBody(HttpBodyModel):
     restore_database: Any = False
     restore_compose: Any = False
     confirm: Any = False
+    confirmation: Any = ""
 
 
 class AdminBroadcastButtonBody(HttpBodyModel):

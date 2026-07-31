@@ -9,7 +9,7 @@
     AdminTable,
     AdminTableSkeleton,
   } from "$components/patterns/admin/index.js";
-  import { Checkbox, FileInput, RadioGroup, RadioGroupItem } from "$components/ui/index.js";
+  import { Checkbox, FileInput, Input, RadioGroup, RadioGroupItem } from "$components/ui/index.js";
   import {
     CheckCircle2,
     Database,
@@ -38,8 +38,9 @@
   const backupsStore = getBackupsStore();
 
   let selectedName = $state("");
-  let restoreDatabase = $state(true);
+  let restoreDatabase = $state(false);
   let restoreCompose = $state(false);
+  let restoreConfirmation = $state("");
   let fileInput = $state<HTMLInputElement | null>(null);
 
   const archives = $derived((backupsStore.archives || []) as BackupArchive[]);
@@ -83,15 +84,14 @@
     if (restoreDatabase && !selectedArchive.has_database) restoreDatabase = false;
     if (restoreCompose && !selectedArchive.has_compose) restoreCompose = false;
   });
-  $effect(() => {
-    if (!selectedArchive || restoreDatabase || restoreCompose) return;
-    if (selectedArchive.has_database) restoreDatabase = true;
-    else if (selectedArchive.has_compose) restoreCompose = true;
-  });
+  const restoreConfirmationMatches = $derived(
+    Boolean(selectedName && restoreConfirmation.trim() === selectedName)
+  );
   const canRestore = $derived(
     Boolean(
       selectedArchive &&
       (restoreDatabase || restoreCompose) &&
+      restoreConfirmationMatches &&
       !backupsRestoring &&
       !backupsCreating
     )
@@ -120,15 +120,9 @@
     return archive?.created_at_local || archive?.created_at || archive?.modified_at || "";
   }
 
-  function selectedComponentsText(): string {
-    const parts = [];
-    if (restoreDatabase) parts.push(at("backups_target_database", {}, "Database"));
-    if (restoreCompose) parts.push(at("backups_target_compose", {}, "compose folder"));
-    return parts.join(" + ");
-  }
-
   function selectArchive(name: string): void {
     selectedName = name;
+    restoreConfirmation = "";
   }
 
   function focusArchivePage(name: string): void {
@@ -162,19 +156,16 @@
 
   async function restoreSelected(): Promise<void> {
     if (!canRestore) return;
-    const confirmText = at(
-      "backups_restore_confirm",
-      { name: selectedName, components: selectedComponentsText() },
-      "Start restore from {name}: {components}?"
-    );
-    if (typeof window !== "undefined" && !window.confirm(confirmText)) return;
-
     const ok = await backupsStore.restoreArchive({
       archiveName: selectedName,
       restoreDatabase,
       restoreCompose,
+      confirmation: restoreConfirmation.trim(),
     });
-    if (ok) await backupsStore.loadArchives();
+    if (ok) {
+      restoreConfirmation = "";
+      await backupsStore.loadArchives();
+    }
   }
 
   onMount(() => {
@@ -248,6 +239,23 @@
         <Server size={16} />
         <span>{at("backups_target_compose", {}, "compose folder")}</span>
       </label>
+      <label class="backups-confirmation">
+        <span>
+          {at(
+            "backups_restore_confirmation_label",
+            { name: selectedName },
+            "Type the archive name to confirm: {name}"
+          )}
+        </span>
+        <Input
+          value={restoreConfirmation}
+          disabled={!selectedArchive || backupsRestoring}
+          autocomplete="off"
+          placeholder={at("backups_restore_confirmation_placeholder", {}, "Archive name")}
+          oninput={(event) =>
+            (restoreConfirmation = (event.currentTarget as HTMLInputElement).value)}
+        />
+      </label>
       <AdminButton variant="danger" onclick={restoreSelected} disabled={!canRestore}>
         <RefreshCw size={14} />
         {backupsRestoring
@@ -261,6 +269,15 @@
           "backups_pre_restore_snapshot",
           { path: lastRestore.compose_pre_restore_archive },
           "Current compose folder was saved before replacement: {path}"
+        )}
+      </div>
+    {/if}
+    {#if lastRestore?.database_pre_restore_archive}
+      <div class="backups-restore-note">
+        {at(
+          "backups_pre_restore_database_snapshot",
+          { path: lastRestore.database_pre_restore_archive },
+          "Current database was backed up before replacement: {path}"
         )}
       </div>
     {/if}
@@ -412,7 +429,7 @@
 
   .backups-restore-body {
     display: grid;
-    grid-template-columns: repeat(2, minmax(160px, 1fr)) auto;
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
     gap: 10px;
     align-items: center;
   }
@@ -432,6 +449,19 @@
 
   .backups-check.is-disabled {
     opacity: 0.55;
+  }
+
+  .backups-confirmation {
+    display: grid;
+    grid-column: 1 / -1;
+    gap: 6px;
+    color: var(--admin-muted);
+    font-size: 12px;
+  }
+
+  :global(.backups-restore-body .admin-btn) {
+    grid-column: 1 / -1;
+    justify-self: end;
   }
 
   .backups-restore-note {
