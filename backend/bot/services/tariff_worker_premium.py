@@ -145,6 +145,10 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
                 sub.premium_is_limited = False
             return
 
+        tariff_has_premium_limit = bool(
+            int(getattr(tariff, "premium_monthly_bytes", 0) or 0) > 0
+            or getattr(tariff, "premium_topup_packages", None)
+        )
         premium_panel_user_dict = (
             panel_user_dict
             if str(getattr(tariff, "billing_model", "") or "").lower() == "period"
@@ -190,33 +194,35 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
         premium_limit = (
             premium_baseline + premium_topup_balance + premium_topup_used + premium_bonus
         )
-        if premium_limit <= 0 and not premium_unlimited_override:
-            return
-
-        node_uuids = await self._premium_node_uuids_for_tariff(tariff)
-        if not node_uuids:
-            logger.warning("Premium squads for tariff %s have no accessible nodes", tariff.key)
-            return
-
         start_date = premium_period_start.date().isoformat()
         end_date = now.date().isoformat()
-        premium_used = await self._premium_usage_for_user(
-            sub.panel_user_uuid,
-            node_uuids,
-            start_date,
-            end_date,
-            panel_username=panel_username,
-        )
-        if premium_used is None:
-            return
-        premium_used = self._premium_usage_with_partial_stats_floor(
-            sub,
-            premium_used,
-            node_uuids,
-            start_date,
-            end_date,
-            same_period=same_period,
-        )
+        unmetered_premium_access = not tariff_has_premium_limit
+        if unmetered_premium_access:
+            node_uuids: list[str] = []
+            premium_used = max(0, int(getattr(sub, "premium_used_bytes", 0) or 0))
+        else:
+            node_uuids = await self._premium_node_uuids_for_tariff(tariff)
+            if not node_uuids:
+                logger.warning("Premium squads for tariff %s have no accessible nodes", tariff.key)
+                return
+
+            fresh_premium_used = await self._premium_usage_for_user(
+                sub.panel_user_uuid,
+                node_uuids,
+                start_date,
+                end_date,
+                panel_username=panel_username,
+            )
+            if fresh_premium_used is None:
+                return
+            premium_used = self._premium_usage_with_partial_stats_floor(
+                sub,
+                fresh_premium_used,
+                node_uuids,
+                start_date,
+                end_date,
+                same_period=same_period,
+            )
 
         panel_next_reset_at = self._panel_next_traffic_reset_at(
             premium_panel_user_dict,
@@ -224,7 +230,7 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
             fallback_strategy=effective_strategy,
         )
 
-        if not premium_unlimited_override:
+        if not premium_unlimited_override and not unmetered_premium_access:
             # Consume paid top-up balance only for overflow beyond baseline+bonus.
             # Admin-granted bonus is "spent" against usage first along with baseline,
             # so the user's paid top-up survives longer.
@@ -239,7 +245,11 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
                     premium_baseline + premium_topup_balance + premium_topup_used + premium_bonus
                 )
 
-        should_limit = False if premium_unlimited_override else premium_used >= premium_limit
+        should_limit = (
+            False
+            if premium_unlimited_override or unmetered_premium_access
+            else premium_used >= premium_limit
+        )
         access_state_changed = bool(sub.premium_is_limited) != should_limit
         managed_squads = self.subscription_service._panel_squads_for_tariff(
             tariff,
@@ -338,7 +348,11 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
         sub.premium_used_bytes = int(premium_used)
         sub.premium_is_limited = bool(should_limit)
         sub.premium_period_start_at = premium_period_start
-        if not premium_unlimited_override and not is_trial_premium_tariff:
+        if (
+            not premium_unlimited_override
+            and not unmetered_premium_access
+            and not is_trial_premium_tariff
+        ):
             await self._maybe_warn_premium_squad_limit(
                 session,
                 sub,
@@ -349,7 +363,11 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
                 next_reset_at=panel_next_reset_at,
             )
         if not panel_needs_update:
-            if not premium_unlimited_override and not is_trial_premium_tariff:
+            if (
+                not premium_unlimited_override
+                and not unmetered_premium_access
+                and not is_trial_premium_tariff
+            ):
                 await self._maybe_send_premium_reset_notice(
                     session,
                     sub,
@@ -388,7 +406,11 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
         )
         if updated_panel_user and not updated_panel_user.get("error"):
             self._remember_premium_squad_match(squad_match_cache_key)
-            if not premium_unlimited_override and not is_trial_premium_tariff:
+            if (
+                not premium_unlimited_override
+                and not unmetered_premium_access
+                and not is_trial_premium_tariff
+            ):
                 await self._maybe_send_premium_reset_notice(
                     session,
                     sub,

@@ -728,6 +728,60 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
             payload = panel_service.update_user_details_on_panel.await_args.args[1]
             self.assertEqual(payload["activeInternalSquads"], ["squad-1"])
 
+    async def test_unmetered_premium_squad_is_added_to_existing_subscription(self):
+        payload = _tariffs_config_payload()
+        payload["tariffs"][0]["premium_squad_uuids"] = ["premium-squad"]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "tariffs.json"
+            config_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            settings = Settings(
+                _env_file=None,
+                BOT_TOKEN="token",
+                POSTGRES_USER="app_user",
+                POSTGRES_PASSWORD="app_password",
+                TARIFFS_CONFIG_PATH=str(config_path),
+            )
+            panel_service = AsyncMock(spec=PanelApiService)
+            panel_service.update_user_details_on_panel = AsyncMock(return_value={"response": {}})
+            subscription_service = SubscriptionService(settings, panel_service)
+            worker = TariffTrafficWorker(
+                settings=settings,
+                session_factory=SimpleNamespace(),
+                panel_service=panel_service,
+                subscription_service=subscription_service,
+            )
+            sub = SimpleNamespace(
+                subscription_id=1,
+                user_id=123,
+                panel_user_uuid="panel-uuid",
+                premium_baseline_bytes=0,
+                premium_topup_balance_bytes=0,
+                premium_topup_used_bytes=0,
+                premium_used_bytes=0,
+                premium_is_limited=False,
+            )
+            tariff = settings.tariffs_config.require("standard")
+
+            await worker._sync_premium_squad_limit(
+                AsyncMock(),
+                sub,
+                tariff,
+                datetime.now(UTC),
+                panel_user_dict={"activeInternalSquads": [{"uuid": "squad-1"}]},
+                panel_view="full_fetch",
+            )
+
+            panel_service.update_user_details_on_panel.assert_awaited_once()
+            panel_payload = panel_service.update_user_details_on_panel.await_args.args[1]
+            self.assertEqual(
+                panel_payload["activeInternalSquads"],
+                ["squad-1", "premium-squad"],
+            )
+            panel_service.get_internal_squad_accessible_nodes.assert_not_awaited()
+            panel_service.get_node_users_bandwidth_stats.assert_not_awaited()
+            self.assertFalse(sub.premium_is_limited)
+
     async def test_trial_premium_limit_uses_trial_premium_traffic_limit(self):
         payload = _tariffs_config_payload()
         payload["tariffs"][0]["premium_squad_uuids"] = ["premium-squad"]
