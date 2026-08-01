@@ -11,11 +11,11 @@
 make dev
 ```
 
-`make dev` применяет latest-пресет `2.8.1`, валидирует compose-конфиг и поднимает стенд.
+`make dev` применяет latest-пресет `3.0.0`, валидирует compose-конфиг и поднимает стенд.
 Для другого пресета используйте `$env:DEV_PRESET = "2.8.0"; make dev`. Эквивалентные npm-команды:
 
 ```powershell
-npm run dev:stand:use:2.8.1
+npm run dev:stand:use:3.0.0
 npm run dev:stand:config
 npm run dev:stand:up
 ```
@@ -31,9 +31,9 @@ npm run dev:stand:up
 
 ## Версии
 
-Пинованные версии latest-пресета, проверенные 2026-07-16:
+Пинованные версии latest-пресета, проверенные 2026-08-01:
 
-- Remnawave Panel `v2.8.1` (`remnawave/backend:2.8.1`)
+- Remnawave Panel `v3.0.0` (`remnawave/backend:3.0.0`)
 - Remnawave Node `v2.8.0` (`remnawave/node:2.8.0`)
 - Remnawave Subscription Page `7.2.6`
   (`remnawave/subscription-page:7.2.6`)
@@ -46,7 +46,7 @@ npm run dev:stand:up
 Чтобы вручную проверить другую связку Remnawave, поменяйте в `.env.remnawave-dev`:
 
 ```env
-REMNAWAVE_DEV_VERSION=2.8.1
+REMNAWAVE_DEV_VERSION=3.0.0
 REMNAWAVE_NODE_VERSION=2.8.0
 REMNAWAVE_SUBSCRIPTION_PAGE_VERSION=7.2.6
 ```
@@ -63,8 +63,9 @@ Full-stack QA проверяет, что env example и lock-файл не ра�
 - `stand.env` - теги Panel, Node, Subscription Page и version-specific volumes.
 - `versions.lock.json` - machine-readable lock для тестов и ревью.
 
-Сейчас поддерживаются три пресета:
+Сейчас поддерживаются четыре пресета:
 
+- `3.0.0`: Panel `3.0.0`, Node `2.8.0`, Subscription Page `7.2.6`.
 - `2.8.1`: Panel `2.8.1`, Node `2.8.0`, Subscription Page `7.2.6`.
 - `2.8.0`: Panel `2.8.0`, Node `2.8.0`, Subscription Page `7.2.6`.
 - `2.7.4`: Panel `2.7.4`, Node `2.7.0`, Subscription Page `7.2.4`.
@@ -73,7 +74,7 @@ Full-stack QA проверяет, что env example и lock-файл не ра�
 
 ```powershell
 npm run dev:stand:down
-npm run dev:stand:use:2.8.0
+npm run dev:stand:use:2.8.1
 npm run dev:stand:config
 npm run dev:stand:up
 ```
@@ -82,12 +83,12 @@ npm run dev:stand:up
 
 ```powershell
 npm run dev:stand:down
-npm run dev:stand:use:2.8.1
+npm run dev:stand:use:3.0.0
 npm run dev:stand:config
 npm run dev:stand:up
 ```
 
-Пресеты используют разные Docker volumes (`*-274`, `*-280`, `*-281`), чтобы миграции разных
+Пресеты используют разные Docker volumes (`*-274`, `*-280`, `*-281`, `*-300`), чтобы миграции разных
 версий панели не портили соседние базы. Одновременно эти стенды не запускаются: у compose остаются
 фиксированные container names и локальные порты. Если когда-нибудь понадобится параллельный запуск,
 тогда нужно будет параметризовать еще project name, container names и ports, но сейчас это лишний
@@ -130,7 +131,10 @@ PANEL_DRY_RUN_VALIDATE_REMOTE=True
 Детерминированный `REMNAWAVE_DEV_API_TOKEN` из example сидируется SQL-файлом
 `deploy/dev/seed-remnawave.sql`. Не меняйте
 `REMNAWAVE_DEV_APP_SECRET`, если не заменяете этот токен. Overlay передаёт его панели как
-`APP_SECRET` и как legacy `JWT_AUTH_SECRET`, чтобы те же пресеты работали с Panel 2.8.1 и 2.8.0.
+`APP_SECRET` и как legacy `JWT_AUTH_SECRET`, чтобы тот же overlay работал с Panel 3.0.0,
+2.8.1 и 2.8.0. Удалённые в 3.0 переменные `JWT_AUTH_SECRET`,
+`JWT_API_TOKENS_SECRET` и `IS_DOCS_ENABLED` оставлены только для старых пресетов;
+Panel 3.0 их игнорирует.
 
 Для автоматизированной QA в example включены только dev/test-safe хуки:
 
@@ -213,6 +217,10 @@ Remnawave Panel.
 - `deploy/dev/seed-minishop.sql` - пользователи, подписки и платежи Mini Shop.
 - `deploy/dev/seed-remnawave.sql` - API token, пользователи Remnawave и
   привязка к `Default-Squad`.
+
+Remnawave 3.0 удалил `users.uuid` и переименовал внутренний `t_id` в `id`.
+Seed определяет схему во время выполнения: для 2.8.1 использует UUID/`t_id`, а
+для 3.0.0 — username/`id`. HWID и traffic seed используют тот же совместимый путь.
 
 Тестовые пользователи:
 

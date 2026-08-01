@@ -185,6 +185,33 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("parse_error", result["details"])
         self.assertNotIn("data_text", result)
 
+    async def test_successful_empty_204_response_is_not_a_protocol_error(self):
+        service = self._make_service()
+
+        class EmptyResponse:
+            status = 204
+            headers: ClassVar[dict[str, str]] = {}
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc_val, exc_tb):
+                return None
+
+            async def text(self):
+                return ""
+
+        service._get_session = AsyncMock(
+            return_value=SimpleNamespace(request=lambda *_args, **_kwargs: EmptyResponse())
+        )
+
+        result = await service._request_once("DELETE", "/users/42")
+
+        self.assertEqual(
+            result,
+            {"status": "success", "status_code": 204, "response": None},
+        )
+
     async def test_get_internal_squads_uses_stale_cache_after_refresh_failure(self):
         service = self._make_service()
         stale_squads = [{"uuid": "squad-1", "name": "Squad 1"}]
@@ -226,6 +253,20 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertTrue(service._request.await_args.kwargs["log_full_response"])
+
+    async def test_update_v3_user_sends_numeric_id_selector(self):
+        service = self._make_service()
+        service._request = AsyncMock(return_value={"response": {"id": 42}})
+
+        result = await service.update_user_details_on_panel("42", {"description": "profile"})
+
+        self.assertEqual(result, {"id": 42, "uuid": "42"})
+        service._request.assert_awaited_once_with(
+            "PATCH",
+            "/users",
+            json={"description": "profile", "id": 42},
+            log_full_response=False,
+        )
 
     async def test_create_panel_user_omits_empty_description(self):
         service = self._make_service()
@@ -599,6 +640,76 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_get_all_panel_users_normalizes_v3_numeric_ids(self):
+        service = self._make_service()
+        service._request = AsyncMock(
+            return_value={"response": {"users": [{"id": 42, "username": "tg_42"}]}}
+        )
+
+        users = await service.get_all_panel_users()
+
+        self.assertEqual(users, [{"id": 42, "uuid": "42", "username": "tg_42"}])
+
+    async def test_v3_filter_uses_stream_and_caches_metadata(self):
+        service = self._make_service()
+
+        async def fake_request(method, endpoint, **kwargs):
+            if endpoint == "/system/metadata":
+                return {"response": {"version": "3.0.0"}}
+            if endpoint == "/users/stream":
+                return {
+                    "response": {
+                        "users": [
+                            {
+                                "id": 42,
+                                "telegramId": 99,
+                                "email": "user@example.test",
+                            }
+                        ]
+                    }
+                }
+            return {"error": True, "status_code": 404}
+
+        service._request = AsyncMock(side_effect=fake_request)
+
+        first = await service.get_users_by_filter(telegram_id=99)
+        second = await service.get_users_by_filter(email="user@example.test")
+
+        expected = [
+            {
+                "id": 42,
+                "uuid": "42",
+                "telegramId": 99,
+                "email": "user@example.test",
+            }
+        ]
+        self.assertEqual(first, expected)
+        self.assertEqual(second, expected)
+        endpoints = [call.args[1] for call in service._request.await_args_list]
+        self.assertEqual(endpoints.count("/system/metadata"), 1)
+        self.assertNotIn("/users/by-telegram-id/99", endpoints)
+        self.assertNotIn("/users/by-email/user@example.test", endpoints)
+
+    async def test_filtered_stream_rechecks_results_if_old_panel_ignores_query(self):
+        service = self._make_service()
+        service._request = AsyncMock(
+            side_effect=[
+                {"response": {"version": "3.0.0"}},
+                {
+                    "response": {
+                        "users": [
+                            {"id": 41, "telegramId": 98},
+                            {"id": 42, "telegramId": 99},
+                        ]
+                    }
+                },
+            ]
+        )
+
+        users = await service.get_users_by_filter(telegram_id=99)
+
+        self.assertEqual(users, [{"id": 42, "uuid": "42", "telegramId": 99}])
+
     async def test_get_all_panel_users_falls_back_to_legacy_when_stream_is_missing(self):
         service = self._make_service()
         calls = []
@@ -702,6 +813,70 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
 
         payload = service._request.await_args.kwargs["json"]
         self.assertEqual(payload["targetNodes"], {"target": "allNodes"})
+
+    async def test_drop_v3_user_connections_uses_connections_contract(self):
+        service = self._make_service()
+        service._request = AsyncMock(
+            return_value={"status": "success", "status_code": 202, "response": None}
+        )
+
+        dropped = await service.drop_user_connections("42", ["node-1"])
+
+        self.assertTrue(dropped)
+        service._request.assert_awaited_once_with(
+            "POST",
+            "/connections/drop",
+            json={
+                "dropBy": {"by": "userIds", "userIds": [42]},
+                "targetNodes": {"target": "specificNodes", "nodeUuids": ["node-1"]},
+            },
+            log_full_response=False,
+        )
+
+    async def test_disconnect_v3_device_uses_numeric_user_id(self):
+        service = self._make_service()
+        service._request = AsyncMock(
+            return_value={"status": "success", "status_code": 204, "response": None}
+        )
+
+        disconnected = await service.disconnect_device("42", "device-1")
+
+        self.assertTrue(disconnected)
+        service._request.assert_awaited_once_with(
+            "POST",
+            "/hwid/devices/delete",
+            json={"userId": 42, "hwid": "device-1"},
+            log_full_response=False,
+        )
+
+    async def test_v3_squad_mutation_uses_targeted_bulk_contract(self):
+        service = self._make_service()
+        service._request = AsyncMock(
+            return_value={"status": "success", "status_code": 202, "response": None}
+        )
+
+        added = await service.add_users_to_internal_squad("squad-1", ["42", "43"])
+
+        self.assertTrue(added)
+        service._request.assert_awaited_once_with(
+            "POST",
+            "/internal-squads/squad-1/bulk-actions/add-many-users",
+            json={"userIds": [42, 43]},
+            log_full_response=False,
+        )
+
+    async def test_v3_squad_mutation_chunks_panel_limited_batches(self):
+        service = self._make_service()
+        service._V3_SQUAD_BULK_LIMIT = 2
+        service._request = AsyncMock(
+            return_value={"status": "success", "status_code": 202, "response": None}
+        )
+
+        added = await service.add_users_to_internal_squad("squad-1", ["42", "43", "44"])
+
+        self.assertTrue(added)
+        payloads = [call.kwargs["json"] for call in service._request.await_args_list]
+        self.assertEqual(payloads, [{"userIds": [42, 43]}, {"userIds": [44]}])
 
     async def test_drop_user_connections_tolerates_panel_without_connected_nodes(self):
         service = self._make_service()

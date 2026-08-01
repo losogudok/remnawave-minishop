@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 
 import aiohttp
 
+from bot.services.panel_api_compat import PanelApiCompatibility
 from bot.utils.ttl_cache import AsyncTTLCache
 from config.settings import Settings
 from config.settings_models import PanelSettings
@@ -26,6 +27,8 @@ _ENDPOINT_LOG_LABELS = (
     "/users/by-email",
     "/users/stream",
     "/users",
+    "/connections",
+    "/ip-control",
     "/external-squads",
     "/subscriptions/subpage-config",
     "/subscription-page-configs",
@@ -36,6 +39,7 @@ _ENDPOINT_LOG_LABELS = (
     "/system/stats/bandwidth",
     "/system/stats/nodes",
     "/system/stats",
+    "/system/metadata",
     "/bandwidth-stats/users",
     "/bandwidth-stats/nodes",
     "/internal-squads",
@@ -64,6 +68,7 @@ class PanelApiCoreMixin:
     _DEFAULT_CONNECT_TIMEOUT_SECONDS = 8.0
     _DEFAULT_SOCK_CONNECT_TIMEOUT_SECONDS = 8.0
     _DEFAULT_SOCK_READ_TIMEOUT_SECONDS = 15.0
+    _PANEL_COMPATIBILITY_TTL_SECONDS = 300.0
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -72,6 +77,9 @@ class PanelApiCoreMixin:
         self.api_key = self.panel_settings.api_key
         self.api_cookie = self.panel_settings.api_cookie
         self._session: aiohttp.ClientSession | None = None
+        self._panel_api_compatibility: PanelApiCompatibility | None = None
+        self._panel_api_compatibility_detected_at: float | None = None
+        self._panel_api_compatibility_lock = asyncio.Lock()
         self.default_client_ip = "127.0.0.1"
         # Cache slow-changing reference data fetched from the panel. Errors and
         # None responses are not cached, so transient failures self-heal.
@@ -172,6 +180,49 @@ class PanelApiCoreMixin:
     async def close(self) -> None:
         """Alias for close_session for API consistency."""
         await self.close_session()
+
+    async def get_panel_api_compatibility(
+        self, *, force_refresh: bool = False
+    ) -> PanelApiCompatibility:
+        """Detect and cache the panel generation through its stable metadata API.
+
+        ``GET /system/metadata`` exists in both Remnawave 2.8.1 and 3.0.0.
+        Failures are intentionally not cached, so a panel that is still
+        starting can be detected on a later request.
+        """
+        detected_at = self._panel_api_compatibility_detected_at
+        cached_is_fresh = bool(
+            self._panel_api_compatibility is not None
+            and detected_at is not None
+            and time.monotonic() - detected_at < self._PANEL_COMPATIBILITY_TTL_SECONDS
+        )
+        if cached_is_fresh and not force_refresh:
+            return self._panel_api_compatibility
+        async with self._panel_api_compatibility_lock:
+            detected_at = self._panel_api_compatibility_detected_at
+            cached_is_fresh = bool(
+                self._panel_api_compatibility is not None
+                and detected_at is not None
+                and time.monotonic() - detected_at < self._PANEL_COMPATIBILITY_TTL_SECONDS
+            )
+            if cached_is_fresh and not force_refresh:
+                return self._panel_api_compatibility
+            response = await self._request("GET", "/system/metadata", log_full_response=False)
+            compatibility = PanelApiCompatibility.from_metadata(response)
+            if compatibility.version is not None:
+                self._panel_api_compatibility = compatibility
+                self._panel_api_compatibility_detected_at = time.monotonic()
+                logger.info(
+                    "Detected Remnawave panel version %s (user identity mode: %s).",
+                    compatibility.version,
+                    compatibility.user_id_mode.value,
+                )
+            else:
+                logger.warning(
+                    "Could not detect Remnawave panel version; API compatibility "
+                    "will be selected from identifiers and endpoint responses."
+                )
+            return self._panel_api_compatibility or compatibility
 
     async def _prepare_headers(self) -> dict[str, str]:
         headers = {
@@ -297,6 +348,16 @@ class PanelApiCoreMixin:
                     )
 
                 if 200 <= response_status < 300:
+                    # Remnawave 3.x correctly returns an empty body for several
+                    # successful DELETE/bulk routes (204 and sometimes 202).
+                    # 2.8 normally returned JSON, so preserve JSON handling when
+                    # a body exists and synthesize only the no-content success.
+                    if not response_text.strip():
+                        return {
+                            "status": "success",
+                            "status_code": response_status,
+                            "response": None,
+                        }
                     content_type = response.headers.get("Content-Type", "").lower()
                     media_type = content_type.split(";", 1)[0].strip()
                     is_json_response = media_type == "application/json" or media_type.endswith(

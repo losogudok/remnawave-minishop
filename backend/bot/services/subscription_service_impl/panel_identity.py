@@ -29,6 +29,13 @@ class PanelUserCreateOptions:
 
 @dataclass(frozen=True, slots=True)
 class PanelUserLink:
+    """Local link to a panel user.
+
+    ``panel_user_uuid`` is a legacy field name: it stores a UUID for panel
+    2.8.x and a decimal-string user id for panel 3.x.  Keeping the name avoids
+    a disruptive local schema migration while the API boundary translates it.
+    """
+
     panel_user_uuid: str | None
     panel_subscription_uuid: str | None
     panel_short_uuid: str | None
@@ -195,6 +202,27 @@ class PanelIdentityMixin(SubscriptionServiceMixinContract):
                     "CRITICAL: Multiple panel users found for email %s. Manual intervention "
                     "needed.",
                     db_user.email,
+                )
+                return PanelUserLink(None, None, None, False, False, None)
+
+        if not panel_user_obj_from_api:
+            # The deterministic Mini Shop username survives Remnawave's 3.0
+            # UUID -> numeric id migration.  Check it before a stale local UUID
+            # so users without Telegram/email identity are relinked, not cloned.
+            panel_users_by_username = await self.panel_service.get_users_by_filter(
+                username=panel_username_on_panel_standard
+            )
+            if panel_users_by_username and len(panel_users_by_username) == 1:
+                panel_user_obj_from_api = panel_users_by_username[0]
+                logger.info(
+                    "Found panel user by deterministic username '%s': identifier %s.",
+                    panel_username_on_panel_standard,
+                    panel_user_obj_from_api.get("uuid"),
+                )
+            elif panel_users_by_username and len(panel_users_by_username) > 1:
+                logger.error(
+                    "CRITICAL: Multiple panel users found for deterministic username '%s'.",
+                    panel_username_on_panel_standard,
                 )
                 return PanelUserLink(None, None, None, False, False, None)
 

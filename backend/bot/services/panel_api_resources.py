@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bot.services.panel_api_compat import numeric_panel_user_id
 from bot.utils.ttl_cache import AsyncTTLCache
 from config.settings import Settings
 from db.dal import panel_sync_dal
@@ -173,9 +174,14 @@ class PanelApiResourcesMixin:
 
     async def disconnect_device(self, user_uuid: str, hwid: str) -> bool:
         endpoint = "/hwid/devices/delete"
-        payload = {"userUuid": user_uuid, "hwid": hwid}
+        numeric_id = numeric_panel_user_id(user_uuid)
+        payload: dict[str, Any] = {"hwid": hwid}
+        if numeric_id is not None:
+            payload["userId"] = numeric_id
+        else:
+            payload["userUuid"] = user_uuid
         response_data = await self._request("POST", endpoint, json=payload, log_full_response=False)
-        if response_data and not response_data.get("error") and "response" in response_data:
+        if response_data and not response_data.get("error"):
             await self._invalidate_devices_cache(user_uuid)
             return True
         logger.error(

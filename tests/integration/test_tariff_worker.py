@@ -536,6 +536,7 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_period_tariff_preserves_panel_reset_strategy_during_sync(self):
         with tempfile.TemporaryDirectory() as tmpdir:
+            now = datetime.now(UTC)
             config_path = Path(tmpdir) / "tariffs.json"
             config_path.write_text(json.dumps(_tariffs_config_payload()), encoding="utf-8")
 
@@ -575,7 +576,7 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
                 panel_user_uuid="panel-uuid",
                 tariff_key="standard",
                 start_date=datetime(2026, 6, 15, tzinfo=UTC),
-                end_date=datetime.now(UTC) + timedelta(days=10),
+                end_date=now + timedelta(days=10),
                 traffic_limit_bytes=500 * (1024**3),
                 traffic_used_bytes=0,
                 tier_baseline_bytes=500 * (1024**3),
@@ -611,7 +612,10 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
                 await worker.traffic_period_tick(session)
 
             panel_service.update_user_details_on_panel.assert_not_awaited()
-            self.assertEqual(sub.period_start_at, datetime(2026, 7, 1, tzinfo=UTC))
+            self.assertEqual(
+                sub.period_start_at,
+                now.replace(day=1, hour=0, minute=0, second=0, microsecond=0),
+            )
 
     async def test_limit_reached_does_not_remove_user_from_squad(self):
         with tempfile.TemporaryDirectory() as tmpdir:

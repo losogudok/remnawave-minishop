@@ -74,7 +74,7 @@ def test_remnawave_overlay_uses_latest_panel_and_compatible_secret_names() -> No
 
 def test_remnawave_dev_stand_presets_match_locks_and_use_isolated_volumes() -> None:
     preset_dirs = sorted(path for path in PRESETS_DIR.iterdir() if path.is_dir())
-    assert {"2.7.4", "2.8.0", "2.8.1"}.issubset({path.name for path in preset_dirs})
+    assert {"2.7.4", "2.8.0", "2.8.1", "3.0.0"}.issubset({path.name for path in preset_dirs})
 
     volumes_by_key: dict[str, dict[str, str]] = {key: {} for key in VOLUME_KEYS}
     for preset_dir in preset_dirs:

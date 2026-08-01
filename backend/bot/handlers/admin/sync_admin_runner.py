@@ -14,7 +14,12 @@ from bot.services.panel_activity import (
 from bot.services.panel_api_service import PanelApiService
 from config.settings import Settings
 from db.advisory_locks import acquire_subscription_background_sync_lock
-from db.dal import panel_sync_dal, subscription_dal, user_dal
+from db.dal import (
+    panel_sync_dal,
+    subscription_dal,
+    user_dal,
+    user_panel_squad_override_dal,
+)
 from db.models import Subscription, User
 
 from .sync_admin_common import (
@@ -469,7 +474,15 @@ async def _perform_sync_impl(
                         )
                         continue
                     elif existing_user.panel_user_uuid != panel_uuid:
+                        previous_panel_uuid = existing_user.panel_user_uuid
                         existing_user.panel_user_uuid = panel_uuid
+                        if previous_panel_uuid:
+                            await user_panel_squad_override_dal.merge_panel_user_uuid(
+                                session,
+                                user_id=int(existing_user.user_id),
+                                old_panel_user_uuid=previous_panel_uuid,
+                                new_panel_user_uuid=str(panel_uuid),
+                            )
                         user_was_updated = True
                         _append_unique(user_update_reasons, "panel_uuid_synced")
                         users_uuid_updated += 1
