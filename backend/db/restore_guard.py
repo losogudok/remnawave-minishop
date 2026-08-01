@@ -18,7 +18,11 @@ logger = logging.getLogger(__name__)
 # takes the exclusive form, waits for active transactions to finish, and keeps
 # new application transactions fenced until the restore and its integrity
 # checks are complete.
-DB_RESTORE_ADVISORY_LOCK_ID = 817512404897421338
+# Keep this distinct from every application-level advisory lock. In particular,
+# the subscription background sync uses ``817512404897421338`` exclusively;
+# reusing that value here would make its restore-aware transaction take the
+# shared and exclusive forms of the same lock and fence every other request.
+DB_RESTORE_ADVISORY_LOCK_ID = 817512404897421339
 
 
 class RestoreAwareSession(Session):

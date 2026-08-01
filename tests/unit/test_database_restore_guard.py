@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from config.settings import Settings
+from db.advisory_locks import SUBSCRIPTION_BACKGROUND_SYNC_LOCK_ID
 from db.restore_guard import (
     DB_RESTORE_ADVISORY_LOCK_ID,
     _acquire_restore_shared_lock,
@@ -28,6 +29,10 @@ def test_restore_aware_session_takes_shared_postgres_lock():
     connection.exec_driver_sql.assert_called_once_with(
         f"SELECT pg_advisory_xact_lock_shared({DB_RESTORE_ADVISORY_LOCK_ID})"
     )
+
+
+def test_restore_lock_does_not_collide_with_background_sync_lock():
+    assert DB_RESTORE_ADVISORY_LOCK_ID != SUBSCRIPTION_BACKGROUND_SYNC_LOCK_ID
 
 
 def test_restore_aware_session_skips_non_postgres_engines():
