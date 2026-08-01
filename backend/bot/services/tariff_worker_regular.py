@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.middlewares.i18n import JsonI18n
 from bot.services.message_audit import log_user_message_delivery
+from bot.services.panel_api_compat import PanelUserIdMode, numeric_panel_user_id
 from bot.services.panel_api_service import PanelApiService
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.utils.traffic_reset import (
@@ -341,6 +342,64 @@ class TariffWorkerRegularMixin:
             user_id = 0
         db_user = await user_dal.get_user_by_id(session, user_id) if user_id else None
         canonical_uuid = str(getattr(db_user, "panel_user_uuid", "") or "").strip()
+
+        # A same-database Remnawave 2.x -> 3.x upgrade preserves the user but
+        # replaces its API UUID with a numeric id.  Before the first full admin
+        # sync, bulk-prefetched 3.x users therefore cannot match old local UUIDs.
+        # Treating that mismatch as an authoritative deletion would deactivate
+        # every active subscription.  Relink through the stable local identity
+        # (Telegram/email/deterministic username) and keep the subscription
+        # active if the panel is temporarily unavailable.
+        current_is_legacy = bool(current_uuid and numeric_panel_user_id(current_uuid) is None)
+        prefetched_refs = tuple((panel_users_by_uuid or {}).keys())
+        prefetch_is_numeric = bool(prefetched_refs) and all(
+            numeric_panel_user_id(value) is not None for value in prefetched_refs
+        )
+        numeric_generation = prefetch_is_numeric
+        if current_is_legacy and not numeric_generation:
+            try:
+                compatibility = await self.panel_service.get_panel_api_compatibility()
+            except Exception:
+                logger.exception(
+                    "TariffTrafficWorker: failed to detect panel generation while checking "
+                    "a stale user reference"
+                )
+            else:
+                numeric_generation = compatibility.user_id_mode is PanelUserIdMode.NUMERIC_ID
+        if current_is_legacy and numeric_generation:
+            relink = (
+                getattr(
+                    self.subscription_service,
+                    "_get_or_create_panel_user_link",
+                    None,
+                )
+                if db_user is not None
+                else None
+            )
+            if callable(relink):
+                try:
+                    link = await relink(session, user_id, db_user)
+                except Exception:
+                    logger.exception(
+                        "TariffTrafficWorker: failed to relink stale Remnawave user identity "
+                        "for subscription %s",
+                        sub.subscription_id,
+                    )
+                else:
+                    relinked_uuid = str(getattr(link, "panel_user_uuid", "") or "").strip()
+                    relinked_user = getattr(link, "panel_user", None)
+                    if numeric_panel_user_id(relinked_uuid) is not None and isinstance(
+                        relinked_user, dict
+                    ):
+                        sub.panel_user_uuid = relinked_uuid
+                        logger.warning(
+                            "TariffTrafficWorker: relinked subscription %s from a legacy "
+                            "Remnawave UUID to numeric user id %s.",
+                            sub.subscription_id,
+                            relinked_uuid,
+                        )
+                        return relinked_user
+            confirmed_missing = False
 
         if canonical_uuid and canonical_uuid != current_uuid:
             panel_user = None

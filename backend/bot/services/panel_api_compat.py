@@ -112,6 +112,32 @@ def numeric_panel_user_id(value: object) -> int | None:
     return parsed if parsed > 0 else None
 
 
+def compatible_panel_user_reference(
+    value: object,
+    compatibility: PanelApiCompatibility,
+) -> str | None:
+    """Return a user reference that is safe for the detected API generation.
+
+    A decimal string is unambiguously a 3.x user id and a non-decimal string
+    is the legacy 2.x UUID-shaped reference.  When metadata is unavailable we
+    preserve that identifier-derived best effort.  Once the panel generation
+    is known, however, sending the wrong shape only creates validation-error
+    storms and can make callers mistake an upgrade mismatch for a deleted
+    user, so incompatible references fail locally.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    raw_reference = str(value).strip()
+    if not raw_reference:
+        return None
+    numeric_id = numeric_panel_user_id(raw_reference)
+    if compatibility.user_id_mode is PanelUserIdMode.NUMERIC_ID:
+        return str(numeric_id) if numeric_id is not None else None
+    if compatibility.user_id_mode is PanelUserIdMode.UUID:
+        return raw_reference if numeric_id is None else None
+    return str(numeric_id) if numeric_id is not None else raw_reference
+
+
 def normalize_panel_user(value: object) -> dict[str, Any] | None:
     """Return a copy with Mini Shop's historical ``uuid`` identity contract."""
     if not isinstance(value, dict):

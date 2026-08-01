@@ -186,6 +186,14 @@ class PanelDryRunApiService(PanelApiService):
         """Dry-run validates writes locally and must never probe the panel first."""
         return True
 
+    async def get_panel_api_compatibility(
+        self,
+        *,
+        force_refresh: bool = False,
+    ) -> PanelApiCompatibility:
+        """Keep dry-run identity routing offline and infer it from the user reference."""
+        return self._panel_api_compatibility or PanelApiCompatibility.unknown()
+
     @staticmethod
     def _normalize_endpoint(endpoint: str) -> str:
         return f"/{str(endpoint or '').lstrip('/')}"

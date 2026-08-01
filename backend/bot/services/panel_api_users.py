@@ -98,6 +98,13 @@ class PanelApiUsersMixin:
             *,
             compatibility: PanelApiCompatibility | None = None,
         ) -> bool: ...
+        async def resolve_panel_user_reference(
+            self,
+            value: object,
+            operation: PanelApiOperation,
+            *,
+            compatibility: PanelApiCompatibility | None = None,
+        ) -> str | None: ...
 
     def _resolve_all_users_page_size(self, page_size: int | None = None) -> int:
         raw_value = (
@@ -415,7 +422,25 @@ class PanelApiUsersMixin:
         mutate local state need this richer result to avoid treating an outage
         as a deleted panel user.
         """
-        endpoint = f"/users/{user_uuid}"
+        compatibility = await self.get_panel_api_compatibility()
+        user_reference = await self.resolve_panel_user_reference(
+            user_uuid,
+            PanelApiOperation.USER_GET,
+            compatibility=compatibility,
+        )
+        if user_reference is None:
+            return {
+                "ok": False,
+                "user": None,
+                "not_found": False,
+                "failure_reason": (
+                    "classification=incompatible_user_reference "
+                    f"generation={compatibility.generation.value} "
+                    "action=panel_sync_required"
+                ),
+                "response": None,
+            }
+        endpoint = f"/users/{user_reference}"
         full_response = await self._request(
             "GET",
             endpoint,
@@ -700,18 +725,29 @@ class PanelApiUsersMixin:
     async def update_user_details_on_panel(
         self, user_uuid: str, update_payload: dict[str, Any], log_response: bool = False
     ) -> dict[str, Any] | None:
-        if not await self.panel_mutation_allowed(PanelApiOperation.USER_UPDATE):
+        compatibility = await self.get_panel_api_compatibility()
+        if not await self.panel_mutation_allowed(
+            PanelApiOperation.USER_UPDATE,
+            compatibility=compatibility,
+        ):
+            return None
+        user_reference = await self.resolve_panel_user_reference(
+            user_uuid,
+            PanelApiOperation.USER_UPDATE,
+            compatibility=compatibility,
+        )
+        if user_reference is None:
             return None
         # The service argument and local DB field keep their historical name,
         # but contain a decimal user id after a Remnawave 3.x sync.
         payload = dict(update_payload)
-        numeric_id = numeric_panel_user_id(user_uuid)
+        numeric_id = numeric_panel_user_id(user_reference)
         if numeric_id is not None:
             payload.pop("uuid", None)
             payload["id"] = numeric_id
         else:
             payload.pop("id", None)
-            payload["uuid"] = user_uuid
+            payload["uuid"] = user_reference
         if "trafficLimitStrategy" in payload:
             payload["trafficLimitStrategy"] = normalize_traffic_limit_strategy(
                 payload.get("trafficLimitStrategy")
@@ -751,10 +787,21 @@ class PanelApiUsersMixin:
     async def update_user_status_on_panel(
         self, user_uuid: str, enable: bool, log_response: bool = False
     ) -> bool:
-        if not await self.panel_mutation_allowed(PanelApiOperation.USER_STATUS):
+        compatibility = await self.get_panel_api_compatibility()
+        if not await self.panel_mutation_allowed(
+            PanelApiOperation.USER_STATUS,
+            compatibility=compatibility,
+        ):
+            return False
+        user_reference = await self.resolve_panel_user_reference(
+            user_uuid,
+            PanelApiOperation.USER_STATUS,
+            compatibility=compatibility,
+        )
+        if user_reference is None:
             return False
         action = "enable" if enable else "disable"
-        endpoint = f"/users/{user_uuid}/actions/{action}"
+        endpoint = f"/users/{user_reference}/actions/{action}"
         response_data = await self._request(
             "POST",
             endpoint,
@@ -818,9 +865,6 @@ class PanelApiUsersMixin:
             PanelApiCapability.CONNECTIONS_DROP,
             compatibility,
         )
-        if connections_drop is True and numeric_id is None:
-            logger.error("Remnawave connections/drop requires a numeric user id.")
-            return False
         operation = (
             PanelApiOperation.USER_CONNECTIONS_DROP_V3
             if connections_drop is True or (connections_drop is None and numeric_id is not None)
@@ -828,6 +872,14 @@ class PanelApiUsersMixin:
         )
         if not await self.panel_mutation_allowed(operation, compatibility=compatibility):
             return False
+        user_reference = await self.resolve_panel_user_reference(
+            user_uuid,
+            operation,
+            compatibility=compatibility,
+        )
+        if user_reference is None:
+            return False
+        numeric_id = numeric_panel_user_id(user_reference)
         target_nodes: dict[str, Any] = (
             {"target": "specificNodes", "nodeUuids": [str(uuid) for uuid in node_uuids]}
             if node_uuids
@@ -840,7 +892,7 @@ class PanelApiUsersMixin:
             drop_by = {"by": "userIds", "userIds": [numeric_id]}
         else:
             endpoint = "/ip-control/drop-connections"
-            drop_by = {"by": "userUuids", "userUuids": [str(user_uuid)]}
+            drop_by = {"by": "userUuids", "userUuids": [user_reference]}
         payload = {"dropBy": drop_by, "targetNodes": target_nodes}
         response_data = await self._request(
             "POST",
@@ -902,9 +954,20 @@ class PanelApiUsersMixin:
 
     async def delete_user_from_panel(self, user_uuid: str, log_response: bool = False) -> bool:
         """Delete a user from the panel. Treat not-found as already deleted."""
-        if not await self.panel_mutation_allowed(PanelApiOperation.USER_DELETE):
+        compatibility = await self.get_panel_api_compatibility()
+        if not await self.panel_mutation_allowed(
+            PanelApiOperation.USER_DELETE,
+            compatibility=compatibility,
+        ):
             return False
-        endpoint = f"/users/{user_uuid}"
+        user_reference = await self.resolve_panel_user_reference(
+            user_uuid,
+            PanelApiOperation.USER_DELETE,
+            compatibility=compatibility,
+        )
+        if user_reference is None:
+            return False
+        endpoint = f"/users/{user_reference}"
         response_data = await self._request(
             "DELETE",
             endpoint,
@@ -951,9 +1014,20 @@ class PanelApiUsersMixin:
         it). Returns the updated panel user (including the new
         ``subscriptionUrl``) or ``None`` on failure.
         """
-        if not await self.panel_mutation_allowed(PanelApiOperation.USER_REVOKE):
+        compatibility = await self.get_panel_api_compatibility()
+        if not await self.panel_mutation_allowed(
+            PanelApiOperation.USER_REVOKE,
+            compatibility=compatibility,
+        ):
             return None
-        endpoint = f"/users/{user_uuid}/actions/revoke"
+        user_reference = await self.resolve_panel_user_reference(
+            user_uuid,
+            PanelApiOperation.USER_REVOKE,
+            compatibility=compatibility,
+        )
+        if user_reference is None:
+            return None
+        endpoint = f"/users/{user_reference}/actions/revoke"
         full_response = await self._request(
             "POST",
             endpoint,

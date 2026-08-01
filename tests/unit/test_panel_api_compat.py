@@ -1,6 +1,7 @@
 from bot.services.panel_api_compat import (
     PanelApiCompatibility,
     PanelUserIdMode,
+    compatible_panel_user_reference,
     normalize_panel_user,
     numeric_panel_user_id,
 )
@@ -62,3 +63,17 @@ def test_numeric_identifier_rejects_ambiguous_values() -> None:
     assert numeric_panel_user_id(True) is None
     assert numeric_panel_user_id("0") is None
     assert numeric_panel_user_id("panel-uuid") is None
+
+
+def test_user_reference_is_strict_for_known_generations_and_inferred_when_unknown() -> None:
+    legacy = PanelApiCompatibility.from_metadata({"response": {"version": "2.8.1"}})
+    current = PanelApiCompatibility.from_metadata({"response": {"version": "3.0.0"}})
+    unknown = PanelApiCompatibility.unknown()
+
+    assert compatible_panel_user_reference("panel-uuid", legacy) == "panel-uuid"
+    assert compatible_panel_user_reference("42", legacy) is None
+    assert compatible_panel_user_reference("42", current) == "42"
+    assert compatible_panel_user_reference("panel-uuid", current) is None
+    assert compatible_panel_user_reference("00042", unknown) == "42"
+    assert compatible_panel_user_reference("panel-uuid", unknown) == "panel-uuid"
+    assert compatible_panel_user_reference("", unknown) is None

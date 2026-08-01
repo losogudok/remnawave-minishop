@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bot.services.panel_api_compat import PanelApiCompatibility
 from bot.services.panel_api_service import PanelApiService
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.services.tariff_worker import TariffTrafficWorker
@@ -2143,6 +2144,59 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(sub.is_active)
         self.assertFalse(sub.skip_notifications)
         self.assertEqual(sub.status_from_panel, "ACTIVE")
+
+    async def test_stale_v2_reference_is_relinked_before_v3_bulk_miss_can_deactivate(self):
+        panel_service = AsyncMock(spec=PanelApiService)
+        panel_service.get_panel_api_compatibility = AsyncMock(
+            return_value=PanelApiCompatibility.from_metadata({"response": {"version": "3.0.0"}})
+        )
+        db_user = SimpleNamespace(panel_user_uuid="legacy-panel-uuid")
+        panel_user = {"uuid": "42", "id": 42, "username": "tg_123"}
+        subscription_service = SimpleNamespace(
+            _get_or_create_panel_user_link=AsyncMock(
+                return_value=SimpleNamespace(
+                    panel_user_uuid="42",
+                    panel_user=panel_user,
+                )
+            )
+        )
+        worker = TariffTrafficWorker(
+            settings=SimpleNamespace(),
+            session_factory=SimpleNamespace(),
+            panel_service=panel_service,
+            subscription_service=subscription_service,
+        )
+        sub = SimpleNamespace(
+            subscription_id=13,
+            user_id=123,
+            panel_user_uuid="legacy-panel-uuid",
+            is_active=True,
+            status_from_panel="ACTIVE",
+            skip_notifications=False,
+        )
+        session = AsyncMock()
+
+        with patch(
+            "bot.services.tariff_worker.user_dal.get_user_by_id",
+            new=AsyncMock(return_value=db_user),
+        ):
+            result = await worker._repair_missing_panel_user_for_subscription(
+                session,
+                sub,
+                panel_users_by_uuid={"42": panel_user},
+                semaphore=asyncio.Semaphore(1),
+                confirmed_missing=True,
+            )
+
+        self.assertEqual(result, panel_user)
+        self.assertEqual(sub.panel_user_uuid, "42")
+        self.assertTrue(sub.is_active)
+        self.assertFalse(sub.skip_notifications)
+        subscription_service._get_or_create_panel_user_link.assert_awaited_once_with(
+            session,
+            123,
+            db_user,
+        )
 
     def test_duplicate_active_subscriptions_sync_only_the_newest(self):
         older = SimpleNamespace(

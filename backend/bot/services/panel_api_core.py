@@ -7,7 +7,11 @@ from typing import Any
 
 import aiohttp
 
-from bot.services.panel_api_compat import PanelApiCompatibility
+from bot.services.panel_api_compat import (
+    PanelApiCompatibility,
+    compatible_panel_user_reference,
+    numeric_panel_user_id,
+)
 from bot.services.panel_api_contracts import (
     PanelApiCapability,
     PanelApiOperation,
@@ -61,6 +65,7 @@ class PanelApiCoreMixin:
         self._panel_api_compatibility_detected_at: float | None = None
         self._panel_api_compatibility_lock = asyncio.Lock()
         self._observed_panel_capabilities: dict[PanelApiCapability, bool] = {}
+        self._reported_incompatible_user_references: set[tuple[str, PanelApiOperation]] = set()
         self.default_client_ip = "127.0.0.1"
         # Cache slow-changing reference data fetched from the panel. Errors and
         # None responses are not cached, so transient failures self-heal.
@@ -279,6 +284,55 @@ class PanelApiCoreMixin:
                 compatibility.version,
             )
         return True
+
+    async def resolve_panel_user_reference(
+        self,
+        value: object,
+        operation: PanelApiOperation,
+        *,
+        compatibility: PanelApiCompatibility | None = None,
+    ) -> str | None:
+        """Validate a legacy UUID or numeric id against the detected panel API.
+
+        The raw identifier is deliberately never logged.  A mismatch normally
+        means the local database has not yet been relinked after a 2.x -> 3.x
+        upgrade (or after a rollback in the opposite direction).
+        """
+        compatibility = compatibility or await self.get_panel_api_compatibility()
+        resolved = compatible_panel_user_reference(value, compatibility)
+        if resolved is not None:
+            return resolved
+
+        raw_reference = str(value or "").strip()
+        if not raw_reference:
+            reason = "empty"
+        elif compatibility.user_id_mode.value == "numeric_id":
+            reason = "legacy_uuid_on_numeric_api"
+        elif numeric_panel_user_id(raw_reference) is not None:
+            reason = "numeric_id_on_uuid_api"
+        else:
+            reason = "invalid"
+        report_key = (compatibility.version or "unknown", operation)
+        if report_key not in self._reported_incompatible_user_references:
+            self._reported_incompatible_user_references.add(report_key)
+            logger.error(
+                "Blocked Panel API operation=%s because the local user reference is "
+                "incompatible with Remnawave version=%s generation=%s reason=%s. "
+                "Run panel synchronization to relink user identities.",
+                operation.value,
+                compatibility.version or "unknown",
+                compatibility.generation.value,
+                reason,
+            )
+        else:
+            logger.debug(
+                "Blocked repeated incompatible Panel API user reference operation=%s "
+                "version=%s reason=%s.",
+                operation.value,
+                compatibility.version or "unknown",
+                reason,
+            )
+        return None
 
     async def panel_compatibility_diagnostics(self) -> dict[str, Any]:
         compatibility = await self.get_panel_api_compatibility()

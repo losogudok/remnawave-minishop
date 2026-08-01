@@ -417,6 +417,35 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
             log_full_response=False,
         )
 
+    async def test_v3_stale_uuid_lookup_is_rejected_without_an_http_request(self):
+        service = self._make_service()
+        service._panel_api_compatibility = PanelApiCompatibility.from_metadata(
+            {"response": {"version": "3.0.0"}}
+        )
+        service._panel_api_compatibility_detected_at = time.monotonic()
+        service._request = AsyncMock()
+
+        result = await service.get_user_by_uuid_lookup("legacy-user-uuid")
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["not_found"])
+        self.assertIn("classification=incompatible_user_reference", result["failure_reason"])
+        self.assertIn("action=panel_sync_required", result["failure_reason"])
+        service._request.assert_not_awaited()
+
+    async def test_v2_numeric_user_mutation_is_rejected_without_an_http_request(self):
+        service = self._make_service()
+        service._panel_api_compatibility = PanelApiCompatibility.from_metadata(
+            {"response": {"version": "2.8.1"}}
+        )
+        service._panel_api_compatibility_detected_at = time.monotonic()
+        service._request = AsyncMock()
+
+        result = await service.update_user_details_on_panel("42", {"description": "profile"})
+
+        self.assertIsNone(result)
+        service._request.assert_not_awaited()
+
     async def test_get_user_by_uuid_lookup_keeps_transient_errors_separate_from_not_found(self):
         service = self._make_service()
         transient_response = {
@@ -907,6 +936,53 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
             json={"userId": 42, "hwid": "device-1"},
             log_full_response=False,
         )
+
+    async def test_v3_user_scoped_resource_routes_use_numeric_id(self):
+        service = self._make_service()
+        service._panel_api_compatibility = PanelApiCompatibility.from_metadata(
+            {"response": {"version": "3.0.0"}}
+        )
+        service._panel_api_compatibility_detected_at = time.monotonic()
+        service._request = AsyncMock(
+            side_effect=[
+                {"response": {"devices": []}},
+                {"response": {"categories": [], "series": [], "topNodes": []}},
+                {"status": "success", "status_code": 204, "response": None},
+            ]
+        )
+
+        devices = await service.get_user_devices("42")
+        bandwidth = await service.get_user_bandwidth_stats(
+            "42",
+            start="2026-07-01",
+            end="2026-08-01",
+        )
+        reset = await service.reset_user_traffic("42")
+
+        self.assertEqual(devices, [])
+        self.assertEqual(bandwidth, {"categories": [], "series": [], "topNodes": []})
+        self.assertTrue(reset)
+        self.assertEqual(
+            [(call.args[0], call.args[1]) for call in service._request.await_args_list],
+            [
+                ("GET", "/hwid/devices/42"),
+                ("GET", "/bandwidth-stats/users/42"),
+                ("POST", "/users/42/actions/reset-traffic"),
+            ],
+        )
+        self.assertEqual(
+            service._request.await_args_list[1].kwargs["params"],
+            {"start": "2026-07-01", "end": "2026-08-01", "topNodesLimit": 20},
+        )
+
+    async def test_user_bandwidth_without_a_complete_range_does_not_call_panel(self):
+        service = self._make_service()
+        service._request = AsyncMock()
+
+        result = await service.get_user_bandwidth_stats("panel-uuid", start="2026-07-01")
+
+        self.assertIsNone(result)
+        service._request.assert_not_awaited()
 
     async def test_v3_squad_mutation_uses_targeted_bulk_contract(self):
         service = self._make_service()

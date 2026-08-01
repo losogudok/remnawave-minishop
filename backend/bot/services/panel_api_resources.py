@@ -83,6 +83,13 @@ class PanelApiResourcesMixin:
             *,
             compatibility: PanelApiCompatibility | None = None,
         ) -> bool: ...
+        async def resolve_panel_user_reference(
+            self,
+            value: object,
+            operation: PanelApiOperation,
+            *,
+            compatibility: PanelApiCompatibility | None = None,
+        ) -> str | None: ...
 
     async def get_subscription_link(
         self, short_uuid_or_sub_uuid: str, client_type: str | None = None
@@ -198,7 +205,15 @@ class PanelApiResourcesMixin:
         return _panel_devices_list(cached)
 
     async def _get_user_devices_uncached(self, user_uuid: str) -> list[dict[str, Any]] | None:
-        endpoint = f"/hwid/devices/{user_uuid}"
+        compatibility = await self.get_panel_api_compatibility()
+        user_reference = await self.resolve_panel_user_reference(
+            user_uuid,
+            PanelApiOperation.HWID_DEVICES_GET,
+            compatibility=compatibility,
+        )
+        if user_reference is None:
+            return None
+        endpoint = f"/hwid/devices/{user_reference}"
         response_data = await self._request(
             "GET",
             endpoint,
@@ -225,15 +240,19 @@ class PanelApiResourcesMixin:
             compatibility,
         )
         endpoint = "/hwid/devices/delete"
-        numeric_id = numeric_panel_user_id(user_uuid)
-        payload: dict[str, Any] = {"hwid": hwid}
-        if selector_is_numeric is True and numeric_id is None:
-            logger.error("Remnawave HWID deletion requires a numeric user id.")
+        user_reference = await self.resolve_panel_user_reference(
+            user_uuid,
+            operation,
+            compatibility=compatibility,
+        )
+        if user_reference is None:
             return False
+        numeric_id = numeric_panel_user_id(user_reference)
+        payload: dict[str, Any] = {"hwid": hwid}
         if selector_is_numeric is True or (selector_is_numeric is None and numeric_id is not None):
             payload["userId"] = numeric_id
         else:
-            payload["userUuid"] = user_uuid
+            payload["userUuid"] = user_reference
         response_data = await self._request(
             "POST",
             endpoint,
@@ -387,12 +406,35 @@ class PanelApiResourcesMixin:
             return _json_dict(response_data.get("response"))
         return None
 
-    async def get_user_bandwidth_stats(self, user_uuid: str) -> dict[str, Any] | None:
-        endpoint = f"/bandwidth-stats/users/{user_uuid}"
+    async def get_user_bandwidth_stats(
+        self,
+        user_uuid: str,
+        *,
+        start: str | None = None,
+        end: str | None = None,
+        top_nodes_limit: int = 20,
+    ) -> dict[str, Any] | None:
+        if not start or not end:
+            logger.error("User bandwidth stats require both start and end dates.")
+            return None
+        compatibility = await self.get_panel_api_compatibility()
+        user_reference = await self.resolve_panel_user_reference(
+            user_uuid,
+            PanelApiOperation.USER_BANDWIDTH,
+            compatibility=compatibility,
+        )
+        if user_reference is None:
+            return None
+        endpoint = f"/bandwidth-stats/users/{user_reference}"
         response_data = await self._request(
             "GET",
             endpoint,
             operation=PanelApiOperation.USER_BANDWIDTH,
+            params={
+                "start": start,
+                "end": end,
+                "topNodesLimit": max(1, int(top_nodes_limit)),
+            },
             log_full_response=False,
         )
         if response_data and not response_data.get("error") and "response" in response_data:
@@ -574,9 +616,17 @@ class PanelApiResourcesMixin:
 
     async def reset_user_traffic(self, user_uuid: str) -> bool:
         operation = PanelApiOperation.USER_RESET_TRAFFIC
-        if not await self.panel_mutation_allowed(operation):
+        compatibility = await self.get_panel_api_compatibility()
+        if not await self.panel_mutation_allowed(operation, compatibility=compatibility):
             return False
-        endpoint = f"/users/{user_uuid}/actions/reset-traffic"
+        user_reference = await self.resolve_panel_user_reference(
+            user_uuid,
+            operation,
+            compatibility=compatibility,
+        )
+        if user_reference is None:
+            return False
+        endpoint = f"/users/{user_reference}/actions/reset-traffic"
         response_data = await self._request(
             "POST",
             endpoint,

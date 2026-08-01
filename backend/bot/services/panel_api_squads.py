@@ -63,6 +63,13 @@ class PanelApiSquadMutationMixin:
             *,
             compatibility: PanelApiCompatibility | None = None,
         ) -> bool: ...
+        async def resolve_panel_user_reference(
+            self,
+            value: object,
+            operation: PanelApiOperation,
+            *,
+            compatibility: PanelApiCompatibility | None = None,
+        ) -> str | None: ...
 
     @staticmethod
     def _user_internal_squad_uuids(user: dict[str, Any]) -> list[str]:
@@ -108,10 +115,18 @@ class PanelApiSquadMutationMixin:
             PanelApiCapability.TARGETED_SQUAD_BULK,
             compatibility,
         )
-        numeric_ids = [numeric_panel_user_id(value) for value in user_uuids]
-        if targeted_bulk is True and not all(value is not None for value in numeric_ids):
-            logger.error("Remnawave targeted squad bulk requires numeric user ids.")
+        resolved_user_refs = [
+            await self.resolve_panel_user_reference(
+                value,
+                operation,
+                compatibility=compatibility,
+            )
+            for value in user_uuids
+        ]
+        if any(value is None for value in resolved_user_refs):
             return False
+        user_references = [value for value in resolved_user_refs if value is not None]
+        numeric_ids = [numeric_panel_user_id(value) for value in user_references]
         if targeted_bulk is True or (
             targeted_bulk is None and all(value is not None for value in numeric_ids)
         ):
@@ -129,7 +144,7 @@ class PanelApiSquadMutationMixin:
             results = await asyncio.gather(
                 *(
                     self._update_legacy_user_squad_membership(squad_uuid, user_uuid, add=True)
-                    for user_uuid in user_uuids
+                    for user_uuid in user_references
                 )
             )
             if all(results):
@@ -168,10 +183,18 @@ class PanelApiSquadMutationMixin:
             PanelApiCapability.TARGETED_SQUAD_BULK,
             compatibility,
         )
-        numeric_ids = [numeric_panel_user_id(value) for value in user_uuids]
-        if targeted_bulk is True and not all(value is not None for value in numeric_ids):
-            logger.error("Remnawave targeted squad bulk requires numeric user ids.")
+        resolved_user_refs = [
+            await self.resolve_panel_user_reference(
+                value,
+                operation,
+                compatibility=compatibility,
+            )
+            for value in user_uuids
+        ]
+        if any(value is None for value in resolved_user_refs):
             return False
+        user_references = [value for value in resolved_user_refs if value is not None]
+        numeric_ids = [numeric_panel_user_id(value) for value in user_references]
         if targeted_bulk is True or (
             targeted_bulk is None and all(value is not None for value in numeric_ids)
         ):
@@ -186,7 +209,7 @@ class PanelApiSquadMutationMixin:
             results = await asyncio.gather(
                 *(
                     self._update_legacy_user_squad_membership(squad_uuid, user_uuid, add=False)
-                    for user_uuid in user_uuids
+                    for user_uuid in user_references
                 )
             )
             if all(results):
