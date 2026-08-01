@@ -2,7 +2,8 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from bot.services.panel_api_compat import numeric_panel_user_id
+from bot.services.panel_api_compat import PanelApiCompatibility, numeric_panel_user_id
+from bot.services.panel_api_contracts import PanelApiCapability, PanelApiOperation
 from bot.utils.happ_crypto import create_happ_crypt4_link
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,13 @@ class PanelApiSquadMutationMixin:
     if TYPE_CHECKING:
 
         async def _request(
-            self, method: str, endpoint: str, log_full_response: bool = False, **kwargs: Any
+            self,
+            method: str,
+            endpoint: str,
+            log_full_response: bool = False,
+            *,
+            operation: PanelApiOperation | None = None,
+            **kwargs: Any,
         ) -> dict[str, Any] | None: ...
         async def _invalidate_squad_caches(self) -> None: ...
         async def _invalidate_user_cache(self, user_uuid: str | None) -> None: ...
@@ -37,6 +44,25 @@ class PanelApiSquadMutationMixin:
             update_payload: dict[str, Any],
             log_response: bool = False,
         ) -> dict[str, Any] | None: ...
+        async def get_panel_api_compatibility(
+            self, *, force_refresh: bool = False
+        ) -> PanelApiCompatibility: ...
+        def panel_capability_state(
+            self,
+            capability: PanelApiCapability,
+            compatibility: PanelApiCompatibility,
+        ) -> bool | None: ...
+        def remember_panel_capability(
+            self,
+            capability: PanelApiCapability,
+            supported: bool,
+        ) -> None: ...
+        async def panel_mutation_allowed(
+            self,
+            operation: PanelApiOperation,
+            *,
+            compatibility: PanelApiCompatibility | None = None,
+        ) -> bool: ...
 
     @staticmethod
     def _user_internal_squad_uuids(user: dict[str, Any]) -> list[str]:
@@ -76,8 +102,21 @@ class PanelApiSquadMutationMixin:
     async def add_users_to_internal_squad(self, squad_uuid: str, user_uuids: list[str]) -> bool:
         if not user_uuids:
             return True
+        operation = PanelApiOperation.INTERNAL_SQUAD_ADD_USERS
+        compatibility = await self.get_panel_api_compatibility()
+        targeted_bulk = self.panel_capability_state(
+            PanelApiCapability.TARGETED_SQUAD_BULK,
+            compatibility,
+        )
         numeric_ids = [numeric_panel_user_id(value) for value in user_uuids]
-        if all(value is not None for value in numeric_ids):
+        if targeted_bulk is True and not all(value is not None for value in numeric_ids):
+            logger.error("Remnawave targeted squad bulk requires numeric user ids.")
+            return False
+        if targeted_bulk is True or (
+            targeted_bulk is None and all(value is not None for value in numeric_ids)
+        ):
+            if not await self.panel_mutation_allowed(operation, compatibility=compatibility):
+                return False
             endpoint = f"/internal-squads/{squad_uuid}/bulk-actions/add-many-users"
             resolved_ids = list(dict.fromkeys(value for value in numeric_ids if value is not None))
         elif any(value is not None for value in numeric_ids):
@@ -102,6 +141,7 @@ class PanelApiSquadMutationMixin:
             response_data = await self._request(
                 "POST",
                 endpoint,
+                operation=operation,
                 json={"userIds": resolved_ids[offset : offset + self._V3_SQUAD_BULK_LIMIT]},
                 log_full_response=False,
             )
@@ -110,6 +150,7 @@ class PanelApiSquadMutationMixin:
                     "Failed to add users to squad %s. Response: %s", squad_uuid, response_data
                 )
                 return False
+            self.remember_panel_capability(PanelApiCapability.TARGETED_SQUAD_BULK, True)
         await self._invalidate_squad_caches()
         for user_uuid in user_uuids:
             await self._invalidate_user_cache(user_uuid)
@@ -121,8 +162,21 @@ class PanelApiSquadMutationMixin:
     ) -> bool:
         if not user_uuids:
             return True
+        operation = PanelApiOperation.INTERNAL_SQUAD_REMOVE_USERS
+        compatibility = await self.get_panel_api_compatibility()
+        targeted_bulk = self.panel_capability_state(
+            PanelApiCapability.TARGETED_SQUAD_BULK,
+            compatibility,
+        )
         numeric_ids = [numeric_panel_user_id(value) for value in user_uuids]
-        if all(value is not None for value in numeric_ids):
+        if targeted_bulk is True and not all(value is not None for value in numeric_ids):
+            logger.error("Remnawave targeted squad bulk requires numeric user ids.")
+            return False
+        if targeted_bulk is True or (
+            targeted_bulk is None and all(value is not None for value in numeric_ids)
+        ):
+            if not await self.panel_mutation_allowed(operation, compatibility=compatibility):
+                return False
             endpoint = f"/internal-squads/{squad_uuid}/bulk-actions/remove-many-users"
             resolved_ids = list(dict.fromkeys(value for value in numeric_ids if value is not None))
         elif any(value is not None for value in numeric_ids):
@@ -144,6 +198,7 @@ class PanelApiSquadMutationMixin:
             response_data = await self._request(
                 "DELETE",
                 endpoint,
+                operation=operation,
                 json={"userIds": resolved_ids[offset : offset + self._V3_SQUAD_BULK_LIMIT]},
                 log_full_response=False,
             )
@@ -154,6 +209,7 @@ class PanelApiSquadMutationMixin:
                     response_data,
                 )
                 return False
+            self.remember_panel_capability(PanelApiCapability.TARGETED_SQUAD_BULK, True)
         await self._invalidate_squad_caches()
         for user_uuid in user_uuids:
             await self._invalidate_user_cache(user_uuid)
@@ -179,6 +235,7 @@ class PanelApiSquadMutationMixin:
             response_data = await self._request(
                 "GET",
                 "/nodes",
+                operation=PanelApiOperation.NODES_LIST,
                 params={"size": page_size, "start": start},
                 log_full_response=False,
             )
@@ -217,7 +274,12 @@ class PanelApiSquadMutationMixin:
 
     async def get_nodes_statistics(self) -> dict[str, Any] | None:
         """Get nodes statistics"""
-        response_data = await self._request("GET", "/system/stats/nodes", log_full_response=False)
+        response_data = await self._request(
+            "GET",
+            "/system/stats/nodes",
+            operation=PanelApiOperation.NODE_STATS,
+            log_full_response=False,
+        )
         if response_data and not response_data.get("error") and "response" in response_data:
             return _json_dict(response_data.get("response"))
         return None

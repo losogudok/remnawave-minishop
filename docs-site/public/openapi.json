@@ -778,6 +778,17 @@
             "format": "date-time",
             "title": "Checked At",
             "type": "string"
+          },
+          "panel_compatibility": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdminPanelCompatibilityOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -837,6 +848,52 @@
           "admin_ids"
         ],
         "title": "AdminMeOut",
+        "type": "object"
+      },
+      "AdminPanelCompatibilityOut": {
+        "properties": {
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "string"
+          },
+          "observed_capabilities": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Observed Capabilities",
+            "type": "object"
+          },
+          "support_status": {
+            "title": "Support Status",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
+          }
+        },
+        "required": [
+          "generation",
+          "support_status",
+          "capabilities",
+          "observed_capabilities"
+        ],
+        "title": "AdminPanelCompatibilityOut",
         "type": "object"
       },
       "AdminPanelExternalSquadOverrideOut": {

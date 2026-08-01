@@ -300,15 +300,26 @@ def test_admin_settings_save_roundtrip(client: httpx.Client) -> None:
 
 
 def test_remnawave_versions_are_pinned_and_healthy(client: httpx.Client) -> None:
-    lock_path = REPO_ROOT / "deploy" / "dev" / "remnawave-versions.lock.json"
-    env_example = (REPO_ROOT / "deploy" / "dev" / "remnawave-dev.env.example").read_text(
-        encoding="utf-8"
-    )
+    preset = os.getenv("QA_REMNAWAVE_PRESET", "3.0.0")
+    lock_path = REPO_ROOT / "deploy" / "dev" / "remnawave-stands" / preset / "versions.lock.json"
+    selected_env = (REPO_ROOT / ".env.remnawave-dev").read_text(encoding="utf-8")
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    support = json.loads(
+        (REPO_ROOT / "backend" / "bot" / "services" / "remnawave_support.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    certified = {
+        version
+        for generation in support["generations"]
+        for version in generation["certified_versions"]
+    }
 
-    assert f"REMNAWAVE_DEV_VERSION={lock['remnawave_panel']}" in env_example
-    assert f"REMNAWAVE_NODE_VERSION={lock['remnawave_node']}" in env_example
-    assert f"REMNAWAVE_SUBSCRIPTION_PAGE_VERSION={lock['subscription_page']}" in env_example
+    assert preset in certified
+    assert lock["remnawave_panel"] == preset
+    assert f"REMNAWAVE_DEV_VERSION={lock['remnawave_panel']}" in selected_env
+    assert f"REMNAWAVE_NODE_VERSION={lock['remnawave_node']}" in selected_env
+    assert f"REMNAWAVE_SUBSCRIPTION_PAGE_VERSION={lock['subscription_page']}" in selected_env
 
     frontend = httpx.get(FRONTEND_URL, timeout=10.0)
     assert frontend.status_code < 500, frontend.text[:500]

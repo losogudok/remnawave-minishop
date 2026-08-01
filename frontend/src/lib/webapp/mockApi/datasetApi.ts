@@ -175,6 +175,13 @@ export function demoApiResponse(
         },
       ],
       checked_at: new Date().toISOString(),
+      panel_compatibility: {
+        version: "3.0.0",
+        generation: "rw3-numeric-user-id",
+        support_status: "current",
+        capabilities: ["numeric-user-ids", "user-stream"],
+        observed_capabilities: {},
+      },
     };
   }
 

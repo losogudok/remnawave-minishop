@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import jwt
@@ -97,3 +99,51 @@ def test_remnawave_dev_stand_presets_match_locks_and_use_isolated_volumes() -> N
                 f"{volumes_by_key[key].get(volume)} and {preset_dir.name}"
             )
             volumes_by_key[key][volume] = preset_dir.name
+
+
+def test_upgrade_target_preserves_the_source_database_volume(tmp_path: Path) -> None:
+    env_path = tmp_path / "upgrade.env"
+    env_path.write_text(
+        "\n".join(
+            (
+                "REMNAWAVE_STAND_PRESET=2.8.1",
+                "REMNAWAVE_DEV_VERSION=2.8.1",
+                "REMNAWAVE_DEV_DB_VOLUME=source-panel-db-281",
+                "DEV_MINISHOP_DB_VOLUME=source-minishop-db-281",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    process_env = dict(os.environ)
+    process_env["REMNAWAVE_UPGRADE_ENV_PATH"] = str(env_path)
+
+    subprocess.run(
+        [
+            "node",
+            str(REPO_ROOT / "scripts" / "prepare_remnawave_upgrade_target.mjs"),
+            "2.8.1",
+            "3.0.0",
+        ],
+        check=True,
+        cwd=REPO_ROOT,
+        env=process_env,
+        capture_output=True,
+        text=True,
+    )
+
+    upgraded = _read_env(env_path)
+    assert upgraded["REMNAWAVE_STAND_PRESET"] == "upgrade-2.8.1-to-3.0.0"
+    assert upgraded["REMNAWAVE_DEV_VERSION"] == "3.0.0"
+    assert upgraded["REMNAWAVE_DEV_DB_VOLUME"] == "source-panel-db-281"
+    assert upgraded["DEV_MINISHOP_DB_VOLUME"] == "source-minishop-db-281"
+    assert upgraded["REMNAWAVE_UPGRADE_FROM"] == "2.8.1"
+    assert upgraded["REMNAWAVE_UPGRADE_TO"] == "3.0.0"
+
+
+def test_dev_seed_matches_current_non_nullable_and_unique_contracts() -> None:
+    seed = (DEV_DIR / "seed-minishop.sql").read_text(encoding="utf-8")
+
+    assert "auto_renew_consent_version" in seed
+    assert "is_auto_renew" in seed
+    assert "ON CONFLICT (provider, provider_payment_id)" in seed

@@ -327,6 +327,37 @@ class PanelAlertsTests(unittest.IsolatedAsyncioTestCase):
         panel_service = SimpleNamespace(get_system_stats=AsyncMock(return_value={"cpu": 1}))
         self.assertEqual(await health.panel_alerts(panel_service, _settings()), [])
 
+    async def test_current_panel_version_produces_no_alerts(self):
+        panel_service = SimpleNamespace(
+            get_system_stats=AsyncMock(return_value={"cpu": 1}),
+            panel_compatibility_diagnostics=AsyncMock(
+                return_value={
+                    "version": "3.0.0",
+                    "generation": "rw3-numeric-user-id",
+                    "support_status": "current",
+                }
+            ),
+        )
+        self.assertEqual(await health.panel_alerts(panel_service, _settings()), [])
+
+    async def test_future_major_is_allowed_but_reported_as_unverified(self):
+        panel_service = SimpleNamespace(
+            get_system_stats=AsyncMock(return_value={"cpu": 1}),
+            panel_compatibility_diagnostics=AsyncMock(
+                return_value={
+                    "version": "4.0.0",
+                    "generation": "unknown",
+                    "support_status": "unverified",
+                }
+            ),
+        )
+
+        alerts = await health.panel_alerts(panel_service, _settings())
+
+        self.assertEqual(_alert_ids(alerts), ["panel_api_version_unverified"])
+        self.assertEqual(alerts[0].severity, health.SEVERITY_WARNING)
+        self.assertEqual(alerts[0].params["version"], "4.0.0")
+
 
 class PremiumEnforcementAlertsTests(unittest.IsolatedAsyncioTestCase):
     @staticmethod

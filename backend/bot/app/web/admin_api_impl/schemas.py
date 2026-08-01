@@ -760,9 +760,18 @@ class AdminStatsOut(HttpResponseModel):
     queue: dict[str, Any] | None = None
 
 
+class AdminPanelCompatibilityOut(HttpResponseModel):
+    version: str | None = None
+    generation: str
+    support_status: str
+    capabilities: list[str]
+    observed_capabilities: dict[str, bool]
+
+
 class AdminHealthOut(HttpResponseModel):
     alerts: list[dict[str, Any]]
     checked_at: datetime
+    panel_compatibility: AdminPanelCompatibilityOut | None = None
 
 
 class AdStatsOut(HttpResponseModel):

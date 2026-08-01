@@ -4,6 +4,7 @@ from bot.services.panel_api_compat import (
     normalize_panel_user,
     numeric_panel_user_id,
 )
+from bot.services.panel_api_contracts import PanelApiCapability, PanelApiGeneration
 
 
 def test_metadata_selects_user_identity_contract() -> None:
@@ -14,6 +15,11 @@ def test_metadata_selects_user_identity_contract() -> None:
     assert legacy.version == "2.8.1"
     assert current.user_id_mode is PanelUserIdMode.NUMERIC_ID
     assert current.version == "v3.0.0"
+    assert legacy.generation is PanelApiGeneration.RW2_UUID
+    assert legacy.support_status == "maintenance"
+    assert current.generation is PanelApiGeneration.RW3_NUMERIC
+    assert current.support_status == "current"
+    assert current.supports(PanelApiCapability.USER_STREAM_FILTERS) is True
 
 
 def test_unknown_metadata_does_not_guess_a_generation() -> None:
@@ -21,6 +27,18 @@ def test_unknown_metadata_does_not_guess_a_generation() -> None:
 
     assert compatibility.user_id_mode is PanelUserIdMode.UNKNOWN
     assert compatibility.version is None
+
+
+def test_future_major_is_unverified_and_best_effort_compatible() -> None:
+    compatibility = PanelApiCompatibility.from_metadata({"response": {"version": "4.0.0"}})
+
+    assert compatibility.version == "4.0.0"
+    assert compatibility.generation is PanelApiGeneration.UNKNOWN
+    assert compatibility.user_id_mode is PanelUserIdMode.UNKNOWN
+    assert compatibility.support_status == "unverified"
+    assert compatibility.unreviewed_generation is True
+    assert compatibility.explicitly_unsupported is False
+    assert compatibility.supports(PanelApiCapability.USER_STREAM) is None
 
 
 def test_v3_user_gets_a_legacy_uuid_alias_without_losing_id() -> None:

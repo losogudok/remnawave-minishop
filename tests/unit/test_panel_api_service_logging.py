@@ -8,19 +8,28 @@ from unittest.mock import AsyncMock, patch
 
 import aiohttp
 
+from bot.services.panel_api_compat import PanelApiCompatibility
+from bot.services.panel_api_contracts import PanelApiOperation
 from bot.services.panel_api_service import PanelApiService, _endpoint_log_label
 from tests.support.settings_stub import settings_stub
 
 
 class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
-    def _make_service(self) -> PanelApiService:
-        return PanelApiService(
+    def _make_service(self, *, detect_version: bool = False) -> PanelApiService:
+        service = PanelApiService(
             settings_stub(
                 PANEL_API_URL="https://panel.example.test/api",
                 PANEL_API_KEY="panel-key",
                 USER_HWID_DEVICE_LIMIT=None,
             )
         )
+        if not detect_version:
+            # Most unit tests mock the transport itself. A fresh unknown result
+            # preserves endpoint-fallback behavior without turning the version
+            # probe into an unrelated extra mock call.
+            service._panel_api_compatibility = PanelApiCompatibility.unknown()
+            service._panel_api_compatibility_detected_at = time.monotonic()
+        return service
 
     async def test_client_timeout_uses_panel_settings(self):
         service = PanelApiService(
@@ -237,6 +246,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service._request.assert_awaited_once_with(
             "PATCH",
             "/users",
+            operation=PanelApiOperation.USER_UPDATE,
             json={"description": "profile", "uuid": "user-uuid"},
             log_full_response=False,
         )
@@ -264,8 +274,45 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service._request.assert_awaited_once_with(
             "PATCH",
             "/users",
+            operation=PanelApiOperation.USER_UPDATE,
             json={"description": "profile", "id": 42},
             log_full_response=False,
+        )
+
+    async def test_future_major_allows_best_effort_mutations(self):
+        service = self._make_service()
+        service._panel_api_compatibility = PanelApiCompatibility.from_metadata(
+            {"response": {"version": "4.0.0"}}
+        )
+        service._panel_api_compatibility_detected_at = time.monotonic()
+        service._request = AsyncMock(return_value={"response": {"id": 42}})
+
+        result = await service.update_user_details_on_panel("42", {"description": "profile"})
+
+        self.assertEqual(result, {"id": 42, "uuid": "42"})
+        service._request.assert_awaited_once_with(
+            "PATCH",
+            "/users",
+            operation=PanelApiOperation.USER_UPDATE,
+            json={"description": "profile", "id": 42},
+            log_full_response=False,
+        )
+
+    async def test_empty_update_success_reloads_user_for_legacy_return_contract(self):
+        service = self._make_service()
+        service._request = AsyncMock(
+            side_effect=[
+                {"status": "success", "status_code": 204, "response": None},
+                {"response": {"id": 42, "description": "updated"}},
+            ]
+        )
+
+        result = await service.update_user_details_on_panel("42", {"description": "updated"})
+
+        self.assertEqual(result, {"id": 42, "uuid": "42", "description": "updated"})
+        self.assertEqual(
+            [call.kwargs["operation"] for call in service._request.await_args_list],
+            [PanelApiOperation.USER_UPDATE, PanelApiOperation.USER_GET],
         )
 
     async def test_create_panel_user_omits_empty_description(self):
@@ -366,6 +413,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service._request.assert_awaited_once_with(
             "GET",
             "/users/user-uuid",
+            operation=PanelApiOperation.USER_GET,
             log_full_response=False,
         )
 
@@ -427,6 +475,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service._request.assert_awaited_once_with(
             "DELETE",
             "/users/missing-user",
+            operation=PanelApiOperation.USER_DELETE,
             log_full_response=False,
         )
         invalidate_user.assert_awaited_once_with("missing-user")
@@ -490,6 +539,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service._request.assert_awaited_once_with(
             "GET",
             "/hwid/devices/stats",
+            operation=PanelApiOperation.HWID_STATS,
             log_full_response=False,
         )
 
@@ -504,6 +554,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service._request.assert_awaited_once_with(
             "GET",
             "/hwid/devices/top-users",
+            operation=PanelApiOperation.HWID_TOP_USERS,
             params={"start": 5, "size": 20},
             log_full_response=False,
         )
@@ -518,6 +569,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service._request.assert_awaited_once_with(
             "POST",
             "/nodes/node-uuid/actions/restart",
+            operation=PanelApiOperation.NODE_RESTART,
             json={"forceRestart": True},
             log_full_response=False,
         )
@@ -532,6 +584,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service._request.assert_awaited_once_with(
             "POST",
             "/nodes/actions/restart-all",
+            operation=PanelApiOperation.NODES_RESTART_ALL,
             json={"forceRestart": False},
             log_full_response=False,
         )
@@ -550,6 +603,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service._request.assert_awaited_once_with(
             "GET",
             "/subscriptions/subpage-config/short-uuid",
+            operation=PanelApiOperation.SUBSCRIPTION_CONFIG_RESOLVED,
             json={"requestHeaders": {"user-agent": "Mozilla/5.0"}},
             log_full_response=False,
         )
@@ -565,6 +619,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service._request.assert_awaited_once_with(
             "GET",
             "/subscription-page-configs",
+            operation=PanelApiOperation.SUBSCRIPTION_PAGE_CONFIG_LIST,
             log_full_response=False,
         )
 
@@ -579,6 +634,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service._request.assert_awaited_once_with(
             "GET",
             "/subscription-page-configs/default",
+            operation=PanelApiOperation.SUBSCRIPTION_PAGE_CONFIG_GET,
             log_full_response=False,
         )
 
@@ -651,7 +707,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(users, [{"id": 42, "uuid": "42", "username": "tg_42"}])
 
     async def test_v3_filter_uses_stream_and_caches_metadata(self):
-        service = self._make_service()
+        service = self._make_service(detect_version=True)
 
         async def fake_request(method, endpoint, **kwargs):
             if endpoint == "/system/metadata":
@@ -691,7 +747,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("/users/by-email/user@example.test", endpoints)
 
     async def test_filtered_stream_rechecks_results_if_old_panel_ignores_query(self):
-        service = self._make_service()
+        service = self._make_service(detect_version=True)
         service._request = AsyncMock(
             side_effect=[
                 {"response": {"version": "3.0.0"}},
@@ -795,6 +851,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service._request.assert_awaited_once_with(
             "POST",
             "/ip-control/drop-connections",
+            operation=PanelApiOperation.USER_CONNECTIONS_DROP_V2,
             json={
                 "dropBy": {"by": "userUuids", "userUuids": ["user-uuid"]},
                 "targetNodes": {
@@ -826,6 +883,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service._request.assert_awaited_once_with(
             "POST",
             "/connections/drop",
+            operation=PanelApiOperation.USER_CONNECTIONS_DROP_V3,
             json={
                 "dropBy": {"by": "userIds", "userIds": [42]},
                 "targetNodes": {"target": "specificNodes", "nodeUuids": ["node-1"]},
@@ -845,6 +903,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service._request.assert_awaited_once_with(
             "POST",
             "/hwid/devices/delete",
+            operation=PanelApiOperation.HWID_DEVICE_DELETE,
             json={"userId": 42, "hwid": "device-1"},
             log_full_response=False,
         )
@@ -861,6 +920,7 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service._request.assert_awaited_once_with(
             "POST",
             "/internal-squads/squad-1/bulk-actions/add-many-users",
+            operation=PanelApiOperation.INTERNAL_SQUAD_ADD_USERS,
             json={"userIds": [42, 43]},
             log_full_response=False,
         )

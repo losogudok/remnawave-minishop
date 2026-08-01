@@ -1,55 +1,35 @@
 import asyncio
-import contextlib
 import json
 import logging
 import time
 from types import TracebackType
 from typing import Any
-from urllib.parse import urlencode
 
 import aiohttp
 
 from bot.services.panel_api_compat import PanelApiCompatibility
+from bot.services.panel_api_contracts import (
+    PanelApiCapability,
+    PanelApiOperation,
+    endpoint_log_labels,
+    operation_contract,
+)
 from bot.utils.ttl_cache import AsyncTTLCache
 from config.settings import Settings
 from config.settings_models import PanelSettings
 
 logger = logging.getLogger(__name__)
 
-# Static endpoint prefixes used as log/metric labels instead of the raw request
-# path. Endpoints embed user identifiers (telegram id, username, email, uuids),
-# so logging the path verbatim would leak private data into log files; the
-# label keeps only the constant prefix. Longest prefixes first so e.g.
-
-_ENDPOINT_LOG_LABELS = (
-    "/users/by-telegram-id",
-    "/users/by-username",
-    "/users/by-email",
-    "/users/stream",
-    "/users",
-    "/connections",
-    "/ip-control",
-    "/external-squads",
-    "/subscriptions/subpage-config",
-    "/subscription-page-configs",
-    "/hwid/devices/delete",
-    "/hwid/devices/stats",
-    "/hwid/devices/top-users",
-    "/hwid/devices",
-    "/system/stats/bandwidth",
-    "/system/stats/nodes",
-    "/system/stats",
-    "/system/metadata",
-    "/bandwidth-stats/users",
-    "/bandwidth-stats/nodes",
-    "/internal-squads",
-    "/hosts",
-    "/nodes",
-)
+_ENDPOINT_LOG_LABELS = endpoint_log_labels()
 
 
-def _endpoint_log_label(endpoint: str) -> str:
+def _endpoint_log_label(
+    endpoint: str,
+    operation: PanelApiOperation | None = None,
+) -> str:
     """Map a request endpoint to a constant, identifier-free label for logs."""
+    if operation is not None:
+        return operation_contract(operation).log_label
     path = "/" + endpoint.split("?", 1)[0].strip("/")
     for label in _ENDPOINT_LOG_LABELS:
         if path == label or path.startswith(label + "/"):
@@ -80,6 +60,7 @@ class PanelApiCoreMixin:
         self._panel_api_compatibility: PanelApiCompatibility | None = None
         self._panel_api_compatibility_detected_at: float | None = None
         self._panel_api_compatibility_lock = asyncio.Lock()
+        self._observed_panel_capabilities: dict[PanelApiCapability, bool] = {}
         self.default_client_ip = "127.0.0.1"
         # Cache slow-changing reference data fetched from the panel. Errors and
         # None responses are not cached, so transient failures self-heal.
@@ -207,14 +188,29 @@ class PanelApiCoreMixin:
             )
             if cached_is_fresh and not force_refresh:
                 return self._panel_api_compatibility
-            response = await self._request("GET", "/system/metadata", log_full_response=False)
+            response = await self._request(
+                "GET",
+                "/system/metadata",
+                operation=PanelApiOperation.SYSTEM_METADATA,
+                log_full_response=False,
+            )
             compatibility = PanelApiCompatibility.from_metadata(response)
             if compatibility.version is not None:
+                previous_version = (
+                    self._panel_api_compatibility.version
+                    if self._panel_api_compatibility is not None
+                    else None
+                )
+                if previous_version != compatibility.version:
+                    self._observed_panel_capabilities.clear()
                 self._panel_api_compatibility = compatibility
                 self._panel_api_compatibility_detected_at = time.monotonic()
                 logger.info(
-                    "Detected Remnawave panel version %s (user identity mode: %s).",
+                    "Detected Remnawave panel version %s generation=%s support=%s "
+                    "user_identity=%s.",
                     compatibility.version,
+                    compatibility.generation.value,
+                    compatibility.support_status,
                     compatibility.user_id_mode.value,
                 )
             else:
@@ -223,6 +219,84 @@ class PanelApiCoreMixin:
                     "will be selected from identifiers and endpoint responses."
                 )
             return self._panel_api_compatibility or compatibility
+
+    def panel_capability_state(
+        self,
+        capability: PanelApiCapability,
+        compatibility: PanelApiCompatibility,
+    ) -> bool | None:
+        """Return observed capability state before the version-derived default."""
+        if capability in self._observed_panel_capabilities:
+            return self._observed_panel_capabilities[capability]
+        return compatibility.supports(capability)
+
+    def remember_panel_capability(
+        self,
+        capability: PanelApiCapability,
+        supported: bool,
+    ) -> None:
+        """Cache a route observation for the current panel version."""
+        previous = self._observed_panel_capabilities.get(capability)
+        self._observed_panel_capabilities[capability] = supported
+        if previous != supported:
+            logger.info(
+                "Observed Remnawave capability %s=%s.",
+                capability.value,
+                supported,
+            )
+
+    async def panel_mutation_allowed(
+        self,
+        operation: PanelApiOperation,
+        *,
+        compatibility: PanelApiCompatibility | None = None,
+    ) -> bool:
+        """Probe compatibility before writes and reject only explicitly blocked releases.
+
+        An unavailable metadata endpoint remains best-effort compatible so a
+        temporary panel startup/auth problem does not disable writes. Future
+        majors are also allowed in best-effort mode because a major bump does not
+        necessarily change these API contracts; health diagnostics still mark
+        them unverified until the live matrix certifies them.
+        """
+        contract = operation_contract(operation)
+        if not contract.mutation:
+            return True
+        compatibility = compatibility or await self.get_panel_api_compatibility()
+        if compatibility.explicitly_unsupported:
+            logger.error(
+                "Blocked Remnawave mutation operation=%s version=%s: this exact "
+                "release is listed as incompatible by the support manifest.",
+                operation.value,
+                compatibility.version,
+            )
+            return False
+        if compatibility.unreviewed_generation:
+            logger.warning(
+                "Using unverified Remnawave generation in best-effort mode "
+                "operation=%s version=%s.",
+                operation.value,
+                compatibility.version,
+            )
+        return True
+
+    async def panel_compatibility_diagnostics(self) -> dict[str, Any]:
+        compatibility = await self.get_panel_api_compatibility()
+        capabilities = sorted(capability.value for capability in compatibility.capabilities)
+        observed = {
+            capability.value: supported
+            for capability, supported in sorted(
+                self._observed_panel_capabilities.items(),
+                key=lambda item: item[0].value,
+            )
+        }
+        return {
+            "version": compatibility.version,
+            "generation": compatibility.generation.value,
+            "support_status": compatibility.support_status,
+            "capabilities": capabilities,
+            "observed_capabilities": observed,
+        }
 
     async def _prepare_headers(self) -> dict[str, str]:
         headers = {
@@ -247,20 +321,40 @@ class PanelApiCoreMixin:
         return isinstance(code, int) and 500 <= code < 600
 
     async def _request(
-        self, method: str, endpoint: str, log_full_response: bool = False, **kwargs: Any
+        self,
+        method: str,
+        endpoint: str,
+        log_full_response: bool = False,
+        *,
+        operation: PanelApiOperation | None = None,
+        **kwargs: Any,
     ) -> dict[str, Any] | None:
+        method_upper = method.upper()
+        if operation is not None:
+            contract = operation_contract(operation)
+            if method_upper != contract.method:
+                raise ValueError(
+                    f"Panel operation {operation.value} requires {contract.method}, "
+                    f"got {method_upper}."
+                )
         # Retry safe (idempotent) methods once on transient failures to absorb
         # network blips and short panel restarts without surfacing errors.
-        max_attempts = 2 if method.upper() in self._SAFE_METHODS else 1
+        max_attempts = 2 if method_upper in self._SAFE_METHODS else 1
         result: dict[str, Any] | None = None
         for attempt in range(max_attempts):
-            result = await self._request_once(method, endpoint, log_full_response, **kwargs)
+            result = await self._request_once(
+                method,
+                endpoint,
+                log_full_response,
+                operation=operation,
+                **kwargs,
+            )
             if attempt + 1 < max_attempts and self._is_transient_error(result):
                 logger.warning(
                     "Retrying transient Panel API request method=%s endpoint=%s "
                     "attempt=%s/%s status_code=%s",
                     method.upper(),
-                    _endpoint_log_label(endpoint),
+                    _endpoint_log_label(endpoint, operation),
                     attempt + 1,
                     max_attempts,
                     result.get("status_code") if isinstance(result, dict) else None,
@@ -271,7 +365,13 @@ class PanelApiCoreMixin:
         return result
 
     async def _request_once(
-        self, method: str, endpoint: str, log_full_response: bool = False, **kwargs: Any
+        self,
+        method: str,
+        endpoint: str,
+        log_full_response: bool = False,
+        *,
+        operation: PanelApiOperation | None = None,
+        **kwargs: Any,
     ) -> dict[str, Any] | None:
         if not self.base_url:
             logger.error("Panel API URL (PANEL_API_URL) not configured in settings.")
@@ -281,18 +381,15 @@ class PanelApiCoreMixin:
         headers = await self._prepare_headers()
 
         url_for_request = f"{self.base_url.rstrip('/')}/{endpoint.lstrip('/')}"
-        endpoint_label = _endpoint_log_label(endpoint)
-
-        current_params = kwargs.get("params")
-        url_with_params_for_log = url_for_request
-        if current_params:
-            with contextlib.suppress(Exception):
-                url_with_params_for_log += "?" + urlencode(current_params)
+        endpoint_label = _endpoint_log_label(endpoint, operation)
 
         json_payload_for_log = (
             kwargs.get("json") if method.upper() in ["POST", "PATCH", "PUT"] else None
         )
-        log_prefix = f"Panel API Req: {method.upper()} {url_with_params_for_log}"
+        # Never log the raw URL: path/query values can contain Telegram ids,
+        # usernames, emails, user ids, or UUIDs. The operation registry label is
+        # deliberately identifier-free.
+        log_prefix = f"Panel API Req: {method.upper()} {endpoint_label}"
         if json_payload_for_log:
             try:
                 payload_str = json.dumps(json_payload_for_log)
@@ -348,6 +445,15 @@ class PanelApiCoreMixin:
                     )
 
                 if 200 <= response_status < 300:
+                    if operation is not None:
+                        contract = operation_contract(operation)
+                        if response_status not in contract.success_statuses:
+                            logger.warning(
+                                "Remnawave operation=%s returned undocumented success status=%s; "
+                                "accepted as 2xx but the API registry needs review.",
+                                operation.value,
+                                response_status,
+                            )
                     # Remnawave 3.x correctly returns an empty body for several
                     # successful DELETE/bulk routes (204 and sometimes 202).
                     # 2.8 normally returned JSON, so preserve JSON handling when

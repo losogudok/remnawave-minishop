@@ -81,6 +81,10 @@ ALL_MESSAGE_KEYS = (
     "telegram_webhook_pending",
     "panel_api_not_configured",
     "panel_api_unreachable",
+    "panel_api_version_unknown",
+    "panel_api_version_unverified",
+    "panel_api_version_historical",
+    "panel_api_version_unsupported",
     "premium_squad_enforcement_leak",
     "panel_limit_drift",
 )
@@ -454,7 +458,36 @@ async def panel_alerts(panel_service: Any, settings: Any) -> list[ConfigAlert]:
                 params={"url": str(panel_settings.api_url or "")},
             )
         ]
-    return []
+    diagnostics_method = getattr(panel_service, "panel_compatibility_diagnostics", None)
+    if not callable(diagnostics_method):
+        return []
+    try:
+        diagnostics = await asyncio.wait_for(
+            diagnostics_method(), timeout=NETWORK_CHECK_TIMEOUT_SECONDS
+        )
+    except Exception as exc:
+        logger.debug("Panel compatibility diagnostics failed: %s", exc)
+        diagnostics = None
+    if not isinstance(diagnostics, dict):
+        return []
+    support_status = str(diagnostics.get("support_status") or "unknown")
+    if support_status in {"current", "maintenance"}:
+        return []
+    severity = SEVERITY_ERROR if support_status == "unsupported" else SEVERITY_WARNING
+    message_key = f"panel_api_version_{support_status}"
+    if message_key not in ALL_MESSAGE_KEYS:
+        message_key = "panel_api_version_unknown"
+    return [
+        ConfigAlert(
+            id=message_key,
+            severity=severity,
+            sections=(SECTION_SETTINGS, SECTION_USERS, SECTION_TARIFFS),
+            params={
+                "version": str(diagnostics.get("version") or "unknown"),
+                "generation": str(diagnostics.get("generation") or "unknown"),
+            },
+        )
+    ]
 
 
 async def premium_enforcement_alerts(settings: Any) -> list[ConfigAlert]:

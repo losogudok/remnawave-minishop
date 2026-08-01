@@ -12,6 +12,8 @@ from config.traffic_strategy import (
     canonical_traffic_limit_strategy,
 )
 
+from .panel_api_compat import PanelApiCompatibility
+from .panel_api_contracts import PanelApiOperation
 from .panel_api_service import PanelApiService
 
 logger = logging.getLogger(__name__)
@@ -126,7 +128,13 @@ class PanelDryRunApiService(PanelApiService):
         )
 
     async def _request(
-        self, method: str, endpoint: str, log_full_response: bool = False, **kwargs: Any
+        self,
+        method: str,
+        endpoint: str,
+        log_full_response: bool = False,
+        *,
+        operation: PanelApiOperation | None = None,
+        **kwargs: Any,
     ) -> dict[str, Any] | None:
         method_upper = method.upper()
         normalized_endpoint = self._normalize_endpoint(endpoint)
@@ -135,6 +143,7 @@ class PanelDryRunApiService(PanelApiService):
                 method_upper,
                 endpoint,
                 log_full_response=log_full_response,
+                operation=operation,
                 **kwargs,
             )
             return result if isinstance(result, dict) else None
@@ -167,6 +176,15 @@ class PanelDryRunApiService(PanelApiService):
         )
         self._log_dry_run("OK", method_upper, normalized_endpoint, kwargs.get("json"))
         return {"response": response, "dryRun": True}
+
+    async def panel_mutation_allowed(
+        self,
+        operation: PanelApiOperation,
+        *,
+        compatibility: PanelApiCompatibility | None = None,
+    ) -> bool:
+        """Dry-run validates writes locally and must never probe the panel first."""
+        return True
 
     @staticmethod
     def _normalize_endpoint(endpoint: str) -> str:

@@ -1,4 +1,4 @@
-"""Compatibility helpers for Remnawave 2.8 and 3.x user identities.
+"""Compatibility helpers for certified Remnawave API generations.
 
 Remnawave 3.0 removed ``uuid`` from user objects and made the numeric ``id``
 the only user identifier accepted by user-scoped API routes and payloads.
@@ -17,6 +17,13 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from bot.services.panel_api_contracts import (
+    GENERATION_CAPABILITIES,
+    PanelApiCapability,
+    PanelApiGeneration,
+    panel_version_support_status,
+)
+
 
 class PanelUserIdMode(Enum):
     UUID = "uuid"
@@ -27,11 +34,41 @@ class PanelUserIdMode(Enum):
 @dataclass(frozen=True, slots=True)
 class PanelApiCompatibility:
     version: str | None
-    user_id_mode: PanelUserIdMode
+    generation: PanelApiGeneration
+    capabilities: frozenset[PanelApiCapability]
 
     @classmethod
     def unknown(cls) -> "PanelApiCompatibility":
-        return cls(version=None, user_id_mode=PanelUserIdMode.UNKNOWN)
+        return cls(
+            version=None,
+            generation=PanelApiGeneration.UNKNOWN,
+            capabilities=GENERATION_CAPABILITIES[PanelApiGeneration.UNKNOWN],
+        )
+
+    @property
+    def user_id_mode(self) -> PanelUserIdMode:
+        if self.generation is PanelApiGeneration.RW2_UUID:
+            return PanelUserIdMode.UUID
+        if PanelApiCapability.NUMERIC_USER_IDS in self.capabilities:
+            return PanelUserIdMode.NUMERIC_ID
+        return PanelUserIdMode.UNKNOWN
+
+    @property
+    def support_status(self) -> str:
+        return panel_version_support_status(self.version, self.generation)
+
+    @property
+    def explicitly_unsupported(self) -> bool:
+        return self.support_status == "unsupported"
+
+    @property
+    def unreviewed_generation(self) -> bool:
+        return self.version is not None and self.generation is PanelApiGeneration.UNKNOWN
+
+    def supports(self, capability: PanelApiCapability) -> bool | None:
+        if self.generation is PanelApiGeneration.UNKNOWN:
+            return None
+        return capability in self.capabilities
 
     @classmethod
     def from_metadata(cls, payload: object) -> "PanelApiCompatibility":
@@ -46,9 +83,19 @@ class PanelApiCompatibility:
         if not match:
             return cls.unknown()
         major = int(match.group(1))
+        if major == 2:
+            generation = PanelApiGeneration.RW2_UUID
+        elif major == 3:
+            generation = PanelApiGeneration.RW3_NUMERIC
+        else:
+            # Future majors must be reviewed explicitly. Assuming that every
+            # major after 3 keeps numeric identifiers would make destructive
+            # calls unsafe when Remnawave changes its API again.
+            generation = PanelApiGeneration.UNKNOWN
         return cls(
             version=version,
-            user_id_mode=(PanelUserIdMode.NUMERIC_ID if major >= 3 else PanelUserIdMode.UUID),
+            generation=generation,
+            capabilities=GENERATION_CAPABILITIES[generation],
         )
 
 

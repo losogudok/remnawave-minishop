@@ -63,7 +63,17 @@ Full-stack QA проверяет, что env example и lock-файл не ра�
 - `stand.env` - теги Panel, Node, Subscription Page и version-specific volumes.
 - `versions.lock.json` - machine-readable lock для тестов и ревью.
 
-Сейчас поддерживаются четыре пресета:
+Пресет не равен заявлению о поддержке. Сертифицированная матрица Core сейчас включает:
+
+- **current**: `3.0.0` (поколение API с numeric user id);
+- **maintenance**: `2.8.1` (поколение API с UUID user id).
+
+`2.8.0` и `2.7.4` сохранены как исторические пресеты для ручной диагностики, но не входят в
+регулярную матрицу CI. Политика поддержки, список используемых API-вызовов и чек-лист новой
+версии генерируются в
+[каталог совместимости Remnawave API](../architecture/remnawave-api-compatibility.md).
+
+Доступны четыре пресета:
 
 - `3.0.0`: Panel `3.0.0`, Node `2.8.0`, Subscription Page `7.2.6`.
 - `2.8.1`: Panel `2.8.1`, Node `2.8.0`, Subscription Page `7.2.6`.
@@ -291,5 +301,10 @@ CI workflow `.github/workflows/fullstack-qa.yml` запускает этот с�
 - `pull_request` в `main` и `dev`;
 - `push` в `main` и `dev`;
 - ручной `workflow_dispatch`.
+
+Каждый push/PR проверяет current и maintenance пресеты (`3.0.0`, `2.8.1`) отдельными job.
+По расписанию и вручную дополнительно выполняется same-database upgrade `2.8.1 → 3.0.0`:
+панель обновляется на существующем volume, затем Core синхронизирует сидированных пользователей и
+проверяет, что локальные UUID-алиасы заменились на decimal numeric ids без потери подписок.
 
 При падении workflow прикладывает Docker Compose logs как artifact.

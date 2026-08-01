@@ -2118,6 +2118,8 @@ export interface components {
        * Format: date-time
        */
       checked_at: string;
+      /** @default null */
+      panel_compatibility: components["schemas"]["AdminPanelCompatibilityOut"] | null;
     };
     /** AdminLogsListOut */
     AdminLogsListOut: {
@@ -2136,6 +2138,24 @@ export interface components {
       admin_ids: number[];
       /** User Id */
       user_id: number;
+    };
+    /** AdminPanelCompatibilityOut */
+    AdminPanelCompatibilityOut: {
+      /** Capabilities */
+      capabilities: string[];
+      /** Generation */
+      generation: string;
+      /** Observed Capabilities */
+      observed_capabilities: {
+        [key: string]: boolean;
+      };
+      /** Support Status */
+      support_status: string;
+      /**
+       * Version
+       * @default null
+       */
+      version: string | null;
     };
     /** AdminPanelExternalSquadOverrideOut */
     AdminPanelExternalSquadOverrideOut: {
