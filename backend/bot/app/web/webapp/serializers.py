@@ -554,7 +554,11 @@ def _serialize_subscription(
         )
 
     provider = str(getattr(local_sub, "provider", "") or "").strip().lower()
-    local_status = str(getattr(local_sub, "status_from_panel", "") or "").strip().upper()
+    local_status = (
+        str(getattr(local_sub, "status_from_panel", "") or active.get("status_from_panel") or "")
+        .strip()
+        .upper()
+    )
     is_trial = provider == "trial" or local_status == "TRIAL"
     can_topup_regular_traffic = False
     can_topup_premium_traffic = False
@@ -566,13 +570,9 @@ def _serialize_subscription(
         subscription_active=True,
         tariff_key=active.get("tariff_key"),
         max_devices=active.get("max_devices"),
+        subscription_is_trial=is_trial,
     )
     can_topup_devices = device_topup_availability.allowed
-    device_topup_unavailable_reason = (
-        None
-        if is_trial and not str(active.get("tariff_key") or "").strip()
-        else device_topup_availability.reason
-    )
     if settings.tariffs_config and active.get("tariff_key"):
         try:
             tariff = settings.tariffs_config.require(str(active.get("tariff_key")))
@@ -689,7 +689,7 @@ def _serialize_subscription(
         "can_topup_premium_traffic": can_topup_premium_traffic,
         "can_topup_devices": can_topup_devices,
         "device_topup_unavailable_reason": (
-            device_topup_unavailable_reason.value if device_topup_unavailable_reason else None
+            device_topup_availability.reason.value if device_topup_availability.reason else None
         ),
         "device_topup_available_currencies": list(device_topup_availability.available_currencies),
         "topup_always_available": topup_always_available,

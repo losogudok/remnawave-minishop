@@ -412,6 +412,7 @@
         {subscriptionReissueBusy}
         {openSubscriptionReissueDialog}
         {openDeviceTopupModal}
+        {openPaymentModal}
         {t}
       />
     {:else}
