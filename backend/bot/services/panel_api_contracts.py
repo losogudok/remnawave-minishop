@@ -34,10 +34,18 @@ class PanelApiCapability(StrEnum):
     CONNECTIONS_DROP = "connections-drop"
     HWID_USER_ID_SELECTOR = "hwid-user-id-selector"
     EMPTY_SUCCESS_BODY = "empty-success-body"
+    MULTI_NODE_USAGE = "multi-node-usage"
+    MULTI_NODE_TOP_USERS = "multi-node-top-users"
+    BULK_SQUAD_UPDATE = "bulk-squad-update"
 
 
 GENERATION_CAPABILITIES: dict[PanelApiGeneration, frozenset[PanelApiCapability]] = {
-    PanelApiGeneration.RW2_UUID: frozenset(),
+    PanelApiGeneration.RW2_UUID: frozenset(
+        {
+            PanelApiCapability.MULTI_NODE_TOP_USERS,
+            PanelApiCapability.BULK_SQUAD_UPDATE,
+        }
+    ),
     PanelApiGeneration.RW3_NUMERIC: frozenset(PanelApiCapability),
     PanelApiGeneration.UNKNOWN: frozenset(),
 }
@@ -53,6 +61,7 @@ class PanelApiOperation(StrEnum):
     USER_LOOKUP_EMAIL = "users.lookup.email"
     USER_CREATE = "users.create"
     USER_UPDATE = "users.update"
+    USERS_BULK_UPDATE_SQUADS = "users.bulk-update-squads"
     USER_STATUS = "users.status"
     USER_CONNECTIONS_DROP_V2 = "users.connections.drop-v2"
     USER_CONNECTIONS_DROP_V3 = "users.connections.drop-v3"
@@ -76,6 +85,8 @@ class PanelApiOperation(StrEnum):
     NODE_BANDWIDTH = "bandwidth.nodes"
     USER_BANDWIDTH = "bandwidth.users"
     NODE_USER_BANDWIDTH = "bandwidth.node-users"
+    NODES_USER_BANDWIDTH = "bandwidth.nodes-users"
+    NODES_USER_USAGE = "bandwidth.nodes-usage"
     INTERNAL_SQUADS_LIST = "internal-squads.list"
     INTERNAL_SQUAD_GET = "internal-squads.get"
     INTERNAL_SQUAD_NODES = "internal-squads.nodes"
@@ -238,6 +249,22 @@ PANEL_API_OPERATION_CONTRACTS: tuple[PanelApiOperationContract, ...] = (
         empty_success_body=True,
         identity_sensitive=True,
         compatibility_note="Selector field is uuid in 2.8.1 and integer id in 3.x.",
+        coverage=WRITE_COVERAGE,
+    ),
+    _contract(
+        PanelApiOperation.USERS_BULK_UPDATE_SQUADS,
+        "POST",
+        "/users/bulk/update-squads",
+        "/users",
+        success_statuses=(200, 202, 204),
+        mutation=True,
+        empty_success_body=True,
+        identity_sensitive=True,
+        compatibility_note=(
+            "Exact-state squad update, chunked at 500 users. 2.8.1 selects UUIDs with "
+            "uuids and returns affectedRows; 3.x selects numeric userIds and returns 204. "
+            "An empty target state uses per-user PATCH because 3.0.0 returns A088/500."
+        ),
         coverage=WRITE_COVERAGE,
     ),
     _contract(
@@ -430,6 +457,27 @@ PANEL_API_OPERATION_CONTRACTS: tuple[PanelApiOperationContract, ...] = (
         "GET",
         "/bandwidth-stats/nodes/{nodeUuid}/users",
         "/bandwidth-stats/nodes",
+    ),
+    _contract(
+        PanelApiOperation.NODES_USER_BANDWIDTH,
+        "POST",
+        "/bandwidth-stats/nodes/users",
+        "/bandwidth-stats/nodes",
+        compatibility_note=(
+            "2.8.1-compatible aggregate top-users request for a set of nodes; "
+            "Core detects topUsersLimit saturation before treating missing users as zero."
+        ),
+    ),
+    _contract(
+        PanelApiOperation.NODES_USER_USAGE,
+        "POST",
+        "/bandwidth-stats/nodes/usage",
+        "/bandwidth-stats/nodes",
+        generations=RW3_ONLY,
+        compatibility_note=(
+            "3.x returns numeric user ids and per-node totals for all requested nodes. "
+            "Usage snapshots are refreshed no faster than the upstream aggregation cadence."
+        ),
     ),
     _contract(
         PanelApiOperation.INTERNAL_SQUADS_LIST,

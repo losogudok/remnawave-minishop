@@ -14,9 +14,12 @@
     "support_status": "current",
     "identity_alias": "42",
     "capabilities": [
+      "bulk-squad-update",
       "connections-drop",
       "empty-success-body",
       "hwid-user-id-selector",
+      "multi-node-top-users",
+      "multi-node-usage",
       "numeric-user-ids",
       "targeted-squad-bulk",
       "user-stream",

@@ -15,6 +15,7 @@ from bot.middlewares.i18n import JsonI18n
 from bot.services.message_audit import log_user_message_delivery
 from bot.services.panel_api_compat import PanelUserIdMode, numeric_panel_user_id
 from bot.services.panel_api_service import PanelApiService
+from bot.services.panel_user_snapshot import should_use_full_panel_user_scan
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.utils.traffic_reset import (
     panel_traffic_limit_strategy,
@@ -61,6 +62,9 @@ class TariffWorkerRegularMixin:
         tuple[str, str, str],
         dict[str, dict[Any, int]] | None,
     ]
+    _premium_usage_batch_tick_cache: dict[Any, Any]
+    _premium_usage_completion_tick: dict[Any, bool]
+    _premium_usage_user_limit_hint: int
     _panel_limit_patches: dict[str, PanelLimitPatchState]
 
     if TYPE_CHECKING:
@@ -79,6 +83,8 @@ class TariffWorkerRegularMixin:
             panel_user_dict: dict | None = None,
             panel_view: str = "unknown",
         ) -> None: ...
+        def _begin_premium_panel_batch(self) -> None: ...
+        async def _finish_premium_panel_batch(self, session: AsyncSession) -> None: ...
         async def _user_lang(self, session: AsyncSession, user_id: int) -> str: ...
         def _period_tariff_traffic_strategy(self, tariff: Any | None = None) -> str: ...
         def _usage_placeholders(self, used_bytes: int, limit_bytes: int) -> dict: ...
@@ -133,6 +139,8 @@ class TariffWorkerRegularMixin:
     async def traffic_period_tick(self, session: AsyncSession) -> None:
         now = datetime.now(UTC)
         self._premium_node_usage_tick_cache = {}
+        self._premium_usage_batch_tick_cache.clear()
+        self._premium_usage_completion_tick = {}
         tracked_subscriptions_filter = Subscription.tariff_key.is_not(None)
         if self._trial_premium_tariff() is not None:
             tracked_subscriptions_filter = or_(
@@ -160,6 +168,8 @@ class TariffWorkerRegularMixin:
         )
         if not subs:
             return
+
+        self._premium_usage_user_limit_hint = len(subs)
 
         panel_users_by_uuid = await self._prefetch_panel_users_by_uuid(subs)
         panel_view = "list" if panel_users_by_uuid is not None else "full_fetch"
@@ -199,6 +209,7 @@ class TariffWorkerRegularMixin:
                 confirmed_missing=False,
             )
 
+        self._begin_premium_panel_batch()
         for chunk_start in range(0, len(subs), TARIFF_WORKER_BATCH_SIZE):
             chunk = subs[chunk_start : chunk_start + TARIFF_WORKER_BATCH_SIZE]
             panel_payloads = await asyncio.gather(*(_fetch_panel(s) for s in chunk))
@@ -285,6 +296,7 @@ class TariffWorkerRegularMixin:
                     panel_user_dict=panel_data,
                     panel_view=panel_view,
                 )
+        await self._finish_premium_panel_batch(session)
 
     async def _prefetch_panel_users_by_uuid(
         self,
@@ -299,6 +311,20 @@ class TariffWorkerRegularMixin:
             or 0
         )
         if threshold <= 0 or len(subs) < threshold:
+            return None
+        use_full_scan, panel_total = await should_use_full_panel_user_scan(
+            self.panel_service,
+            len(subs),
+            threshold=threshold,
+            concurrency=TARIFF_WORKER_PANEL_CONCURRENCY,
+        )
+        if not use_full_scan:
+            logger.info(
+                "metric panel_bulk_user_prefetch strategy=point panel_users=%s "
+                "active_subscriptions=%s",
+                panel_total,
+                len(subs),
+            )
             return None
         try:
             panel_users = await self.panel_service.get_all_panel_users(log_responses=False)
@@ -319,7 +345,8 @@ class TariffWorkerRegularMixin:
             return None
         matched = sum(1 for sub in subs if str(sub.panel_user_uuid) in by_uuid)
         logger.info(
-            "metric panel_bulk_user_prefetch users=%s matched=%s active_subscriptions=%s",
+            "metric panel_bulk_user_prefetch strategy=stream users=%s matched=%s "
+            "active_subscriptions=%s",
             len(by_uuid),
             matched,
             len(subs),

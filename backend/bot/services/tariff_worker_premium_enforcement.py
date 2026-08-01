@@ -18,6 +18,8 @@ from bot.services.panel_api_service import PanelApiService
 from config.settings import Settings
 from db.models import Subscription
 
+from .tariff_worker_premium_batches import PremiumConnectionDropPlan
+
 logger = logging.getLogger(__name__)
 
 PREMIUM_LEAK_CACHE_PARTS = ("premium-enforcement", "leaking-nodes")
@@ -44,6 +46,7 @@ class TariffWorkerPremiumEnforcementMixin:
             panel_username: str | None = None,
         ) -> dict[str, int]: ...
         def _premium_node_label(self, node_uuid: str) -> str: ...
+        def _queue_premium_connection_drop(self, plan: PremiumConnectionDropPlan) -> bool: ...
 
     async def _sync_premium_connection_state(
         self,
@@ -121,17 +124,25 @@ class TariffWorkerPremiumEnforcementMixin:
 
         if not self._premium_drop_cooldown_passed(subscription_id):
             return
-        self._premium_drop_connections_at[subscription_id] = time.monotonic()
         logger.info(
             "Dropping premium connections for subscription %s: reason=%s nodes=%s",
             subscription_id,
             reason,
             len(targets),
         )
-        await self.panel_service.drop_user_connections(
-            str(getattr(sub, "panel_user_uuid", "") or ""),
-            targets,
+        plan = PremiumConnectionDropPlan(
+            subscription_id=subscription_id,
+            panel_user_reference=str(getattr(sub, "panel_user_uuid", "") or ""),
+            node_uuids=tuple(sorted(dict.fromkeys(targets))),
         )
+        if self._queue_premium_connection_drop(plan):
+            return
+        dropped = await self.panel_service.drop_user_connections(
+            plan.panel_user_reference,
+            list(plan.node_uuids),
+        )
+        if dropped:
+            self._premium_drop_connections_at[subscription_id] = time.monotonic()
 
     async def forget_premium_leak_watch(self, sub: Subscription) -> None:
         """Drop the per-node baseline once the subscription is not limited anymore."""

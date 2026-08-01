@@ -26,8 +26,8 @@ uses identifier/endpoint observations instead of caching a false version result.
 
 | Status | API generation | Exact versions | Preset | Capabilities | Coverage | Upstream |
 | --- | --- | --- | --- | --- | --- | --- |
-| current | rw3-numeric-user-id | 3.0.0 | 3.0.0 | numeric-user-ids, user-stream, user-stream-filters, targeted-squad-bulk, connections-drop, hwid-user-id-selector, empty-success-body | fixture, live-read, live-write, upgrade | [release notes](https://f.docs.rw/t/topic/354) |
-| maintenance | rw2-uuid-user-id | 2.8.1 | 2.8.1 | — | fixture, live-read, live-write, upgrade | [release notes](https://f.docs.rw/t/topic/178) |
+| current | rw3-numeric-user-id | 3.0.0 | 3.0.0 | numeric-user-ids, user-stream, user-stream-filters, targeted-squad-bulk, connections-drop, hwid-user-id-selector, empty-success-body, multi-node-usage, multi-node-top-users, bulk-squad-update | fixture, live-read, live-write, upgrade | [release notes](https://f.docs.rw/t/topic/354) |
+| maintenance | rw2-uuid-user-id | 2.8.1 | 2.8.1 | multi-node-top-users, bulk-squad-update | fixture, live-read, live-write, upgrade | [release notes](https://f.docs.rw/t/topic/178) |
 
 Historical presets remain useful for manual investigations but are not supported or
 run in the certification matrix:
@@ -51,6 +51,7 @@ run in the certification matrix:
 | `users.lookup.email` | GET | `/users/by-email/{email}` | rw2-uuid-user-id | 200 | JSON envelope with response | 3.x uses /users/stream?email=... instead. | unit, live-read |
 | `users.create` | POST | `/users` | rw2-uuid-user-id, rw3-numeric-user-id | 200, 201 | JSON envelope with response | Core never sends a caller-provided user UUID; 3.x returns numeric id. | unit, live-write |
 | `users.update` | PATCH | `/users` | rw2-uuid-user-id, rw3-numeric-user-id | 200, 202, 204 | JSON envelope with response; an empty 2xx body is success | Selector field is uuid in 2.8.1 and integer id in 3.x. | unit, live-write |
+| `users.bulk-update-squads` | POST | `/users/bulk/update-squads` | rw2-uuid-user-id, rw3-numeric-user-id | 200, 202, 204 | JSON envelope with response; an empty 2xx body is success | Exact-state squad update, chunked at 500 users. 2.8.1 selects UUIDs with uuids and returns affectedRows; 3.x selects numeric userIds and returns 204. An empty target state uses per-user PATCH because 3.0.0 returns A088/500. | unit, live-write |
 | `users.status` | POST | `/users/{userRef}/actions/{enable\|disable}` | rw2-uuid-user-id, rw3-numeric-user-id | 200, 202, 204 | JSON envelope with response; an empty 2xx body is success | Path identity follows the UUID/numeric-id generation. | unit, live-write |
 | `users.connections.drop-v2` | POST | `/ip-control/drop-connections` | rw2-uuid-user-id | 200, 202, 204 | JSON envelope with response; an empty 2xx body is success | 2.8 payload selects userUuids. | unit, live-write |
 | `users.connections.drop-v3` | POST | `/connections/drop` | rw3-numeric-user-id | 200, 202, 204 | JSON envelope with response; an empty 2xx body is success | 3.x payload selects numeric userIds. | unit, live-write |
@@ -74,6 +75,8 @@ run in the certification matrix:
 | `bandwidth.nodes` | GET | `/bandwidth-stats/nodes` | rw2-uuid-user-id, rw3-numeric-user-id | 200 | JSON envelope with response | Stable across the certified API generations. | unit, live-read |
 | `bandwidth.users` | GET | `/bandwidth-stats/users/{userRef}` | rw2-uuid-user-id, rw3-numeric-user-id | 200 | JSON envelope with response | Path userRef is UUID in 2.8.1 and numeric id in 3.x. | unit, live-read |
 | `bandwidth.node-users` | GET | `/bandwidth-stats/nodes/{nodeUuid}/users` | rw2-uuid-user-id, rw3-numeric-user-id | 200 | JSON envelope with response | Stable across the certified API generations. | unit, live-read |
+| `bandwidth.nodes-users` | POST | `/bandwidth-stats/nodes/users` | rw2-uuid-user-id, rw3-numeric-user-id | 200 | JSON envelope with response | 2.8.1-compatible aggregate top-users request for a set of nodes; Core detects topUsersLimit saturation before treating missing users as zero. | unit, live-read |
+| `bandwidth.nodes-usage` | POST | `/bandwidth-stats/nodes/usage` | rw3-numeric-user-id | 200 | JSON envelope with response | 3.x returns numeric user ids and per-node totals for all requested nodes. Usage snapshots are refreshed no faster than the upstream aggregation cadence. | unit, live-read |
 | `internal-squads.list` | GET | `/internal-squads` | rw2-uuid-user-id, rw3-numeric-user-id | 200 | JSON envelope with response | Stable across the certified API generations. | unit, live-read |
 | `internal-squads.get` | GET | `/internal-squads/{uuid}` | rw2-uuid-user-id, rw3-numeric-user-id | 200 | JSON envelope with response | Stable across the certified API generations. | unit, live-read |
 | `internal-squads.nodes` | GET | `/internal-squads/{uuid}/{accessible-nodes\|nodes}` | rw2-uuid-user-id, rw3-numeric-user-id | 200 | JSON envelope with response | Core tries both upstream route spellings and validates response shape. | unit, live-read |
@@ -143,4 +146,4 @@ run in the certification matrix:
    it only in a
    breaking Core release, and move its presets to historical status.
 
-Manifest review date: `2026-08-01`.
+Manifest review date: `2026-08-02`.

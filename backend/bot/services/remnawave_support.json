@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_at": "2026-08-01",
+  "reviewed_at": "2026-08-02",
   "policy": {
     "supported_api_generations": 2,
     "deprecation_minimum_days": 90,
@@ -20,7 +20,10 @@
         "targeted-squad-bulk",
         "connections-drop",
         "hwid-user-id-selector",
-        "empty-success-body"
+        "empty-success-body",
+        "multi-node-usage",
+        "multi-node-top-users",
+        "bulk-squad-update"
       ],
       "coverage": ["fixture", "live-read", "live-write", "upgrade"],
       "upstream_release": "https://f.docs.rw/t/topic/354"
@@ -30,7 +33,10 @@
       "status": "maintenance",
       "certified_versions": ["2.8.1"],
       "preset": "2.8.1",
-      "capabilities": [],
+      "capabilities": [
+        "multi-node-top-users",
+        "bulk-squad-update"
+      ],
       "coverage": ["fixture", "live-read", "live-write", "upgrade"],
       "upstream_release": "https://f.docs.rw/t/topic/178"
     }

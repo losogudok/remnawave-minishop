@@ -92,6 +92,7 @@ class PanelApiUsersMixin:
             capability: PanelApiCapability,
             supported: bool,
         ) -> None: ...
+        def remember_panel_user_count(self, count: int) -> None: ...
         async def panel_mutation_allowed(
             self,
             operation: PanelApiOperation,
@@ -147,16 +148,20 @@ class PanelApiUsersMixin:
     ) -> list[dict[str, Any]] | None:
         resolved_page_size = self._resolve_all_users_page_size(page_size)
         if log_responses or self._all_users_cache.ttl_seconds <= 0:
-            return await self._get_all_panel_users_uncached(
+            users = await self._get_all_panel_users_uncached(
                 page_size=resolved_page_size, log_responses=log_responses
             )
-        cached = await self._all_users_cache.get_or_load(
-            f"page_size:{resolved_page_size}",
-            lambda: self._get_all_panel_users_uncached(
-                page_size=resolved_page_size, log_responses=False
-            ),
-        )
-        return _json_dict_list(cached)
+        else:
+            cached = await self._all_users_cache.get_or_load(
+                f"page_size:{resolved_page_size}",
+                lambda: self._get_all_panel_users_uncached(
+                    page_size=resolved_page_size, log_responses=False
+                ),
+            )
+            users = _json_dict_list(cached)
+        if users is not None:
+            self.remember_panel_user_count(len(users))
+        return users
 
     async def _get_all_panel_users_uncached(
         self, page_size: int | None = None, log_responses: bool = False
@@ -841,100 +846,6 @@ class PanelApiUsersMixin:
         logger.error(
             "Failed to %s user %s on panel. Response: %s",
             action,
-            user_uuid,
-            response_data if not log_response else "(logged above)",
-        )
-        return False
-
-    async def drop_user_connections(
-        self,
-        user_uuid: str,
-        node_uuids: list[str] | None = None,
-        log_response: bool = False,
-    ) -> bool:
-        """Tear down the live connections a user still holds on the given nodes.
-
-        Removing a user from an internal squad only stops *new* connections: an
-        already established session keeps flowing until the node drops it. The
-        panel exposes that teardown through ip-control, and the node performs it
-        only when its container has CAP_NET_ADMIN.
-        """
-        compatibility = await self.get_panel_api_compatibility()
-        numeric_id = numeric_panel_user_id(user_uuid)
-        connections_drop = self.panel_capability_state(
-            PanelApiCapability.CONNECTIONS_DROP,
-            compatibility,
-        )
-        operation = (
-            PanelApiOperation.USER_CONNECTIONS_DROP_V3
-            if connections_drop is True or (connections_drop is None and numeric_id is not None)
-            else PanelApiOperation.USER_CONNECTIONS_DROP_V2
-        )
-        if not await self.panel_mutation_allowed(operation, compatibility=compatibility):
-            return False
-        user_reference = await self.resolve_panel_user_reference(
-            user_uuid,
-            operation,
-            compatibility=compatibility,
-        )
-        if user_reference is None:
-            return False
-        numeric_id = numeric_panel_user_id(user_reference)
-        target_nodes: dict[str, Any] = (
-            {"target": "specificNodes", "nodeUuids": [str(uuid) for uuid in node_uuids]}
-            if node_uuids
-            else {"target": "allNodes"}
-        )
-        if operation is PanelApiOperation.USER_CONNECTIONS_DROP_V3:
-            if numeric_id is None:
-                return False
-            endpoint = "/connections/drop"
-            drop_by = {"by": "userIds", "userIds": [numeric_id]}
-        else:
-            endpoint = "/ip-control/drop-connections"
-            drop_by = {"by": "userUuids", "userUuids": [user_reference]}
-        payload = {"dropBy": drop_by, "targetNodes": target_nodes}
-        response_data = await self._request(
-            "POST",
-            endpoint,
-            operation=operation,
-            json=payload,
-            log_full_response=log_response,
-        )
-        if response_data and not response_data.get("error"):
-            self.remember_panel_capability(
-                PanelApiCapability.CONNECTIONS_DROP,
-                operation is PanelApiOperation.USER_CONNECTIONS_DROP_V3,
-            )
-            logger.info(
-                "Dropped panel connections for user %s on %s node(s).",
-                user_uuid,
-                len(node_uuids) if node_uuids else "all",
-            )
-            return True
-
-        error_code = self._panel_response_error_code(response_data)
-        if error_code == "A219":
-            # No connected node matched the request: nothing to tear down.
-            logger.debug(
-                "Panel has no connected nodes to drop connections for user %s.",
-                user_uuid,
-            )
-            return False
-        if self._is_missing_endpoint_response(response_data):
-            self.remember_panel_capability(
-                PanelApiCapability.CONNECTIONS_DROP,
-                operation is not PanelApiOperation.USER_CONNECTIONS_DROP_V3,
-            )
-            logger.warning(
-                "Panel does not expose %s; "
-                "live sessions of user %s stay until the node drops them.",
-                endpoint,
-                user_uuid,
-            )
-            return False
-        logger.error(
-            "Failed to drop connections for user %s on panel. Response: %s",
             user_uuid,
             response_data if not log_response else "(logged above)",
         )

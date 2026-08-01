@@ -189,6 +189,28 @@ npm run qa:fullstack
 Без `QA_FULLSTACK=1` `tests/qa` пропускаются, чтобы обычный `pytest` не
 зависел от Docker Compose.
 
+Проверка read/write-контрактов конкретного пресета, включая version probe,
+идентификаторы пользователей, exact bulk-squad и multi-node bandwidth:
+
+```powershell
+$env:QA_FULLSTACK = "1"
+$env:QA_REMNAWAVE_PRESET = "3.0.0" # или 2.8.1 после смены пресета
+python -m pytest -q tests/qa/test_remnawave_panel_contract.py
+```
+
+Детерминированный performance-regression прогон на размерах, используемых при
+сертификации Remnawave 3.0.0:
+
+```powershell
+npm run bench:bot -- --users 200,1000,10000,30000
+```
+
+Секция `premium_usage_8_nodes_distinct_periods` сравнивает фактическое число
+multi-node вызовов с оценкой старого `users × nodes`; `premium_usage_1_node`
+проверяет переиспользование одного снимка для общего расчётного периода. Полный
+перечень маршрутов, поколений, fallback-правил и live-покрытия генерируется в
+[каталоге совместимости API](../architecture/remnawave-api-compatibility.md).
+
 Остановка без удаления БД:
 
 ```powershell

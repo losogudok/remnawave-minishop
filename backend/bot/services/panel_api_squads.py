@@ -20,6 +20,7 @@ def _json_dict(value: object) -> dict[str, Any] | None:
 
 class PanelApiSquadMutationMixin:
     _V3_SQUAD_BULK_LIMIT = 1000
+    _USER_SQUAD_EXACT_BULK_LIMIT = 500
 
     if TYPE_CHECKING:
 
@@ -70,6 +71,8 @@ class PanelApiSquadMutationMixin:
             *,
             compatibility: PanelApiCompatibility | None = None,
         ) -> str | None: ...
+        @classmethod
+        def _is_missing_endpoint_response(cls, response_data: dict[str, Any] | None) -> bool: ...
 
     @staticmethod
     def _user_internal_squad_uuids(user: dict[str, Any]) -> list[str]:
@@ -105,6 +108,108 @@ class PanelApiSquadMutationMixin:
             )
             is not None
         )
+
+    async def update_users_internal_squads_exact(
+        self,
+        user_uuids: list[str],
+        active_internal_squad_uuids: list[str],
+    ) -> bool:
+        """Set one complete squad state for many users on both supported generations.
+
+        The route exists in 2.8.1 and 3.x, but its identity selector and success
+        response changed. Keeping this exact-state operation separate from the
+        3.x squad-specific 202 routes preserves manual overrides and avoids
+        ordering races between independent add/remove jobs.
+        """
+        references = list(
+            dict.fromkeys(str(value).strip() for value in user_uuids if str(value).strip())
+        )
+        if not references:
+            return True
+        compatibility = await self.get_panel_api_compatibility()
+        capability = PanelApiCapability.BULK_SQUAD_UPDATE
+        if self.panel_capability_state(capability, compatibility) is False:
+            return False
+        operation = PanelApiOperation.USERS_BULK_UPDATE_SQUADS
+        if not await self.panel_mutation_allowed(operation, compatibility=compatibility):
+            return False
+        resolved = [
+            await self.resolve_panel_user_reference(
+                value,
+                operation,
+                compatibility=compatibility,
+            )
+            for value in references
+        ]
+        if any(value is None for value in resolved):
+            return False
+        resolved_refs = [value for value in resolved if value is not None]
+        numeric_ids = [numeric_panel_user_id(value) for value in resolved_refs]
+        identities: list[str | int] = []
+        if all(value is not None for value in numeric_ids):
+            selector = "userIds"
+            identities.extend(value for value in numeric_ids if value is not None)
+        elif all(value is None for value in numeric_ids):
+            selector = "uuids"
+            identities.extend(resolved_refs)
+        else:
+            logger.error("Cannot bulk-update squads for mixed Remnawave user generations.")
+            return False
+
+        squads = list(
+            dict.fromkeys(
+                str(value).strip() for value in active_internal_squad_uuids if str(value).strip()
+            )
+        )
+        if not squads:
+            # Remnawave 3.0.0 raises A088/500 instead of clearing the final
+            # squad through this route. Callers must use per-user PATCH for an
+            # empty exact state; skipping the POST keeps fallback unambiguous.
+            return False
+        for offset in range(0, len(identities), self._USER_SQUAD_EXACT_BULK_LIMIT):
+            chunk = identities[offset : offset + self._USER_SQUAD_EXACT_BULK_LIMIT]
+            response_data = await self._request(
+                "POST",
+                "/users/bulk/update-squads",
+                operation=operation,
+                json={selector: chunk, "activeInternalSquads": squads},
+                log_full_response=False,
+            )
+            if not response_data or response_data.get("error"):
+                if self._is_missing_endpoint_response(response_data) or (
+                    isinstance(response_data, dict) and response_data.get("status_code") == 405
+                ):
+                    self.remember_panel_capability(capability, False)
+                logger.warning(
+                    "Exact Remnawave squad bulk failed for %s users; caller may use "
+                    "the per-user compatibility path.",
+                    len(chunk),
+                )
+                return False
+            response = response_data.get("response")
+            affected = response.get("affectedRows") if isinstance(response, dict) else None
+            if isinstance(affected, int) and affected < len(chunk):
+                logger.warning(
+                    "Exact Remnawave squad bulk affected %s of %s users.",
+                    affected,
+                    len(chunk),
+                )
+                return False
+
+        self.remember_panel_capability(capability, True)
+        await self._invalidate_squad_caches()
+        for reference in references:
+            await self._invalidate_user_cache(reference)
+        await self._invalidate_all_users_cache()
+        logger.info(
+            "metric panel_squad_bulk users=%s chunks=%s squads=%s selector=%s",
+            len(references),
+            (len(identities) + self._USER_SQUAD_EXACT_BULK_LIMIT - 1)
+            // self._USER_SQUAD_EXACT_BULK_LIMIT,
+            len(squads),
+            selector,
+        )
+        return True
 
     async def add_users_to_internal_squad(self, squad_uuid: str, user_uuids: list[str]) -> bool:
         if not user_uuids:

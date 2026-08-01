@@ -100,7 +100,33 @@ async def _exercise_panel_contract() -> None:
             str(item.get("uuid") if isinstance(item, dict) else item) for item in active_squads
         }
 
+        assert await service.update_users_internal_squads_exact([user_ref], [squad_uuid])
         assert await service.remove_users_from_internal_squad(squad_uuid, [user_ref])
+
+        node_lookups = await service.get_nodes_online_lookups()
+        known_nodes = list(node_lookups.get("byUuid", {}))
+        node_uuid = known_nodes[0] if known_nodes else str(uuid.uuid4())
+        if compatibility.version.lstrip("v").startswith("3."):
+            usage = await service.get_multi_node_user_usage(
+                [node_uuid],
+                start="2026-08-01",
+                end="2026-08-02",
+            )
+            assert usage is not None and isinstance(usage.get("nodes"), list)
+        else:
+            usage = await service.get_multi_node_users_bandwidth_stats(
+                [node_uuid],
+                start="2026-08-01",
+                end="2026-08-02",
+                top_users_limit=10_001,
+            )
+            if known_nodes:
+                assert usage is not None and isinstance(usage.get("topUsers"), list)
+            else:
+                # The stock stand has no node process. A missing UUID produces
+                # an upstream 500 in 2.8.1; the client must keep it transient
+                # instead of learning that the aggregate route is absent.
+                assert usage is None
     finally:
         if user_ref:
             assert await service.delete_user_from_panel(user_ref)

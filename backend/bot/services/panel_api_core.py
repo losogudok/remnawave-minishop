@@ -53,6 +53,7 @@ class PanelApiCoreMixin:
     _DEFAULT_SOCK_CONNECT_TIMEOUT_SECONDS = 8.0
     _DEFAULT_SOCK_READ_TIMEOUT_SECONDS = 15.0
     _PANEL_COMPATIBILITY_TTL_SECONDS = 300.0
+    _PANEL_USER_COUNT_HINT_TTL_SECONDS = 300.0
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -65,6 +66,8 @@ class PanelApiCoreMixin:
         self._panel_api_compatibility_detected_at: float | None = None
         self._panel_api_compatibility_lock = asyncio.Lock()
         self._observed_panel_capabilities: dict[PanelApiCapability, bool] = {}
+        self._panel_user_count_hint = 0
+        self._panel_user_count_observed_at: float | None = None
         self._reported_incompatible_user_references: set[tuple[str, PanelApiOperation]] = set()
         self.default_client_ip = "127.0.0.1"
         # Cache slow-changing reference data fetched from the panel. Errors and
@@ -250,6 +253,20 @@ class PanelApiCoreMixin:
                 supported,
             )
 
+    def remember_panel_user_count(self, count: int) -> None:
+        """Keep a cheap size hint for adaptive stream-versus-point reads."""
+        self._panel_user_count_hint = max(0, int(count))
+        self._panel_user_count_observed_at = time.monotonic()
+
+    def panel_user_count_hint(self) -> int:
+        observed_at = self._panel_user_count_observed_at
+        if (
+            observed_at is None
+            or time.monotonic() - observed_at > self._PANEL_USER_COUNT_HINT_TTL_SECONDS
+        ):
+            return 0
+        return max(0, int(self._panel_user_count_hint))
+
     async def panel_mutation_allowed(
         self,
         operation: PanelApiOperation,
@@ -391,9 +408,12 @@ class PanelApiCoreMixin:
                     f"Panel operation {operation.value} requires {contract.method}, "
                     f"got {method_upper}."
                 )
-        # Retry safe (idempotent) methods once on transient failures to absorb
-        # network blips and short panel restarts without surfacing errors.
-        max_attempts = 2 if method_upper in self._SAFE_METHODS else 1
+        # Retry safe reads once on transient failures. Some Remnawave analytics
+        # endpoints are idempotent POSTs, so method alone is not the safety
+        # boundary; the operation contract is.
+        contract = operation_contract(operation) if operation is not None else None
+        safe_operation = bool(contract and contract.idempotent and not contract.mutation)
+        max_attempts = 2 if method_upper in self._SAFE_METHODS or safe_operation else 1
         result: dict[str, Any] | None = None
         for attempt in range(max_attempts):
             result = await self._request_once(
@@ -460,8 +480,12 @@ class PanelApiCoreMixin:
                 response_status = response.status
                 response_text = await response.text()
                 logger.info(
-                    "metric panel_latency_seconds=%.3f method=%s endpoint=%s status=%s",
+                    "metric panel_request_total=1 panel_latency_seconds=%.3f "
+                    "panel_response_bytes=%s method=%s endpoint=%s status=%s",
                     time.monotonic() - started,
+                    response_length
+                    if (response_length := getattr(response, "content_length", None)) is not None
+                    else len(response_text),
                     method.upper(),
                     endpoint_label,
                     response_status,
