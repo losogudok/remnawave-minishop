@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import logging
 import secrets
@@ -70,6 +71,12 @@ from .response_helpers import json_response
 from .telegram_notifications import _probe_telegram_notifications_for_user_id
 
 logger = logging.getLogger(__name__)
+
+# The probe asks the Bot API whether the account can still receive messages. It is a side effect
+# of signing in, not a precondition for it, so it must not hold the redirect hostage when the Bot
+# API is slow — the customer is already authenticated by then, and the Mini App re-probes on its
+# own once it loads.
+TELEGRAM_NOTIFICATIONS_PROBE_TIMEOUT_SECONDS = 10.0
 
 
 def _webapp_auth_max_age_seconds(settings: Settings) -> int:
@@ -333,7 +340,16 @@ async def telegram_oauth_callback_route(request: web.Request) -> web.Response:
         )
 
     if final_user_id:
-        await _probe_telegram_notifications_for_user_id(request, int(final_user_id))
+        try:
+            await asyncio.wait_for(
+                _probe_telegram_notifications_for_user_id(request, int(final_user_id)),
+                timeout=TELEGRAM_NOTIFICATIONS_PROBE_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            logger.warning(
+                "Telegram notification probe timed out during OAuth callback for user %s",
+                final_user_id,
+            )
 
     token = create_webapp_session_token(settings, int(final_user_id))
     response = web.HTTPFound(_telegram_oauth_redirect_url(redirect_path, status="success"))
