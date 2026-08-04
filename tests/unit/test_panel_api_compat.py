@@ -10,17 +10,20 @@ from bot.services.panel_api_contracts import PanelApiCapability, PanelApiGenerat
 
 def test_metadata_selects_user_identity_contract() -> None:
     legacy = PanelApiCompatibility.from_metadata({"response": {"version": "2.8.1"}})
-    current = PanelApiCompatibility.from_metadata({"response": {"version": "v3.0.0"}})
 
     assert legacy.user_id_mode is PanelUserIdMode.UUID
     assert legacy.version == "2.8.1"
-    assert current.user_id_mode is PanelUserIdMode.NUMERIC_ID
-    assert current.version == "v3.0.0"
     assert legacy.generation is PanelApiGeneration.RW2_UUID
     assert legacy.support_status == "maintenance"
-    assert current.generation is PanelApiGeneration.RW3_NUMERIC
-    assert current.support_status == "current"
-    assert current.supports(PanelApiCapability.USER_STREAM_FILTERS) is True
+
+    for version in ("v3.0.0", "3.1.0", "3.2.0"):
+        current = PanelApiCompatibility.from_metadata({"response": {"version": version}})
+
+        assert current.user_id_mode is PanelUserIdMode.NUMERIC_ID
+        assert current.version == version
+        assert current.generation is PanelApiGeneration.RW3_NUMERIC
+        assert current.support_status == "current"
+        assert current.supports(PanelApiCapability.USER_STREAM_FILTERS) is True
 
 
 def test_unknown_metadata_does_not_guess_a_generation() -> None:

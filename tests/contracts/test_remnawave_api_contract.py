@@ -71,10 +71,15 @@ def test_support_manifest_matches_presets_and_policy() -> None:
     assert len(generations) == manifest["policy"]["supported_api_generations"] == 2
 
     certified = {version for item in generations for version in item["certified_versions"]}
-    assert certified == {"2.8.1", "3.0.0"}
+    assert certified == {"2.8.1", "3.0.0", "3.1.0", "3.2.0"}
     for item in generations:
         preset = ROOT / "deploy" / "dev" / "remnawave-stands" / item["preset"]
         assert preset.is_dir()
+        for version in item["certified_versions"]:
+            version_preset = ROOT / "deploy" / "dev" / "remnawave-stands" / version
+            fixture = ROOT / "tests" / "fixtures" / "remnawave" / version / "contract.json"
+            assert version_preset.is_dir()
+            assert fixture.is_file()
 
     for upgrade in manifest["upgrade_paths"]:
         assert upgrade["from"] in certified

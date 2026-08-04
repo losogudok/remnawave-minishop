@@ -47,6 +47,16 @@ BEGIN
     END IF;
 END $$;
 
+-- Match the public development tariff fixture so full-stack trial/payment QA
+-- exercises real panel writes instead of relying on pre-existing panel state.
+INSERT INTO internal_squads (uuid, name)
+VALUES
+    ('db786ee8-816b-4760-80aa-1fc7a3669ff2', 'MiniShop Standard'),
+    ('b6fc8b71-ffc9-4938-8378-8bc6bcfb9854', 'MiniShop Premium')
+ON CONFLICT (uuid) DO UPDATE SET
+    name = EXCLUDED.name,
+    updated_at = now();
+
 DROP TABLE IF EXISTS remnawave_dev_seed_users;
 CREATE TEMP TABLE remnawave_dev_seed_users (
     uuid uuid NOT NULL,

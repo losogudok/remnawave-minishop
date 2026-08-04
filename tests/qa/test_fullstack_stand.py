@@ -171,7 +171,7 @@ async def _fetch_payment_and_latest_subscription(
         subscription = await connection.fetchrow(
             """
             select subscription_id, user_id, provider, duration_months, is_active, tariff_key,
-                   end_date
+                   panel_user_uuid, end_date
             from subscriptions
             where user_id = $1
             order by end_date desc nulls last, subscription_id desc
@@ -182,6 +182,33 @@ async def _fetch_payment_and_latest_subscription(
         assert payment is not None
         assert subscription is not None
         return payment, subscription
+    finally:
+        await connection.close()
+
+
+async def _fetch_user_and_latest_subscription(
+    user_id: int,
+) -> tuple[Record, Record]:
+    connection = await asyncpg.connect(DB_DSN)
+    try:
+        user = await connection.fetchrow(
+            "select user_id, panel_user_uuid from users where user_id = $1",
+            user_id,
+        )
+        subscription = await connection.fetchrow(
+            """
+            select subscription_id, user_id, provider, duration_months, is_active, tariff_key,
+                   panel_user_uuid, end_date
+            from subscriptions
+            where user_id = $1
+            order by end_date desc nulls last, subscription_id desc
+            limit 1
+            """,
+            user_id,
+        )
+        assert user is not None
+        assert subscription is not None
+        return user, subscription
     finally:
         await connection.close()
 
@@ -214,8 +241,22 @@ def test_email_auth_session_and_csrf(client: httpx.Client) -> None:
     assert language["language"] == "en"
 
 
+def test_trial_activation_creates_missing_panel_user(client: httpx.Client) -> None:
+    session = login_email(client, f"qa-trial-{uuid.uuid4().hex}@example.com")
+
+    activation = _ok(client.post("/api/trial/activate", headers=session.headers()))
+
+    assert activation["activated"] is True
+    assert activation["days"] > 0
+    user, subscription = asyncio.run(_fetch_user_and_latest_subscription(session.user_id))
+    assert user["panel_user_uuid"]
+    assert subscription["panel_user_uuid"] == user["panel_user_uuid"]
+    assert subscription["provider"] == "trial"
+    assert subscription["is_active"] is True
+
+
 def test_qa_payment_webhook_activates_subscription(client: httpx.Client) -> None:
-    session = login_email(client, "runes.expired@example.com")
+    session = login_email(client, f"qa-paid-{uuid.uuid4().hex}@example.com")
 
     payment_data = _ok(
         client.post(
@@ -268,6 +309,7 @@ def test_qa_payment_webhook_activates_subscription(client: httpx.Client) -> None
     assert subscription["provider"] == "qa"
     assert subscription["duration_months"] == 1
     assert subscription["is_active"] is True
+    assert subscription["panel_user_uuid"]
 
 
 def test_admin_settings_save_roundtrip(client: httpx.Client) -> None:

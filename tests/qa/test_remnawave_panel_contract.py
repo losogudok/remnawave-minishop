@@ -69,6 +69,10 @@ async def _exercise_panel_contract() -> None:
         assert squads
         squad_uuid = str(squads[0]["uuid"])
 
+        # Remnawave 3.1+ reports an absent unique-field lookup as 404/A063.
+        # That is the expected precondition for creation, not an API failure.
+        assert await service.get_users_by_filter(username=username) == []
+
         created = await service.create_panel_user(
             username_on_panel=username,
             email=f"{username}@example.test",

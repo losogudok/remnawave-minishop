@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "reviewed_at": "2026-08-02",
+  "reviewed_at": "2026-08-04",
   "policy": {
     "supported_api_generations": 2,
     "deprecation_minimum_days": 90,
@@ -11,8 +11,8 @@
     {
       "id": "rw3-numeric-user-id",
       "status": "current",
-      "certified_versions": ["3.0.0"],
-      "preset": "3.0.0",
+      "certified_versions": ["3.2.0", "3.1.0", "3.0.0"],
+      "preset": "3.2.0",
       "capabilities": [
         "numeric-user-ids",
         "user-stream",
@@ -26,7 +26,7 @@
         "bulk-squad-update"
       ],
       "coverage": ["fixture", "live-read", "live-write", "upgrade"],
-      "upstream_release": "https://f.docs.rw/t/topic/354"
+      "upstream_release": "https://f.docs.rw/t/topic/354/13"
     },
     {
       "id": "rw2-uuid-user-id",
@@ -57,7 +57,7 @@
   "upgrade_paths": [
     {
       "from": "2.8.1",
-      "to": "3.0.0",
+      "to": "3.2.0",
       "status": "certified",
       "strategy": "same-panel-database",
       "verification": "tests/qa/test_remnawave_upgrade.py"

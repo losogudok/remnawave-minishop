@@ -217,7 +217,10 @@ PANEL_API_OPERATION_CONTRACTS: tuple[PanelApiOperationContract, ...] = (
         "GET",
         "/users/by-username/{username}",
         "/users/by-username",
-        compatibility_note="The username lookup route remains stable in 3.0.0.",
+        compatibility_note=(
+            "The username lookup route remains stable through 3.2.0; 3.1+ reports an "
+            "absent user as 404/A063."
+        ),
     ),
     _contract(
         PanelApiOperation.USER_LOOKUP_EMAIL,

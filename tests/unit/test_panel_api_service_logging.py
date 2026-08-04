@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 import aiohttp
 
 from bot.services.panel_api_compat import PanelApiCompatibility
-from bot.services.panel_api_contracts import PanelApiOperation
+from bot.services.panel_api_contracts import PanelApiCapability, PanelApiOperation
 from bot.services.panel_api_service import PanelApiService, _endpoint_log_label
 from tests.support.settings_stub import settings_stub
 
@@ -469,7 +469,10 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         service = self._make_service()
         cases = [
             {"error": True, "status_code": 404},
+            {"error": True, "status_code": 404, "errorCode": "A025"},
             {"error": True, "status_code": 400, "details": {"errorCode": "A062"}},
+            {"error": True, "status_code": 404, "details": {"errorCode": "A063"}},
+            {"error": True, "status_code": 404, "details": {"code": "user_not_found"}},
         ]
 
         for response in cases:
@@ -482,6 +485,19 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(result["not_found"])
                 self.assertIsNone(result["user"])
                 self.assertIn("classification=confirmed_not_found", result["failure_reason"])
+
+    def test_user_not_found_does_not_include_unrelated_a040_error(self):
+        service = self._make_service()
+
+        self.assertFalse(
+            service._is_user_not_found_response(
+                {
+                    "error": True,
+                    "status_code": 500,
+                    "details": {"errorCode": "A040"},
+                }
+            )
+        )
 
     async def test_delete_user_from_panel_treats_plain_404_as_already_deleted(self):
         service = self._make_service()
@@ -795,6 +811,48 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(users, [{"id": 42, "uuid": "42", "telegramId": 99}])
 
+    async def test_user_filters_treat_a063_as_a_confirmed_miss(self):
+        for filter_args in (
+            {"telegram_id": 99},
+            {"username": "tg_99"},
+            {"email": "user@example.test"},
+        ):
+            with self.subTest(filter_args=filter_args):
+                service = self._make_service()
+                service._request = AsyncMock(
+                    return_value={
+                        "error": True,
+                        "status_code": 404,
+                        "details": {"errorCode": "A063"},
+                    }
+                )
+
+                users = await service.get_users_by_filter(**filter_args)
+
+                self.assertEqual(users, [])
+
+    async def test_hot_upgrade_route_404_refreshes_metadata_before_not_found_handling(self):
+        service = self._make_service()
+        service._request = AsyncMock(
+            side_effect=[
+                {
+                    "error": True,
+                    "status_code": 404,
+                    "message": "Cannot GET /api/users/by-telegram-id/99",
+                },
+                {"response": {"version": "3.2.0"}},
+                {"response": {"users": []}},
+            ]
+        )
+
+        users = await service.get_users_by_filter(telegram_id=99)
+
+        self.assertEqual(users, [])
+        self.assertEqual(
+            [call.args[1] for call in service._request.await_args_list],
+            ["/users/by-telegram-id/99", "/system/metadata", "/users/stream"],
+        )
+
     async def test_get_all_panel_users_falls_back_to_legacy_when_stream_is_missing(self):
         service = self._make_service()
         calls = []
@@ -833,6 +891,26 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(users, [{"uuid": "legacy-user"}])
         self.assertEqual(calls, ["/users/stream", "/users"])
+
+    async def test_known_v3_stream_failure_never_calls_removed_legacy_users_route(self):
+        service = self._make_service()
+        service._panel_api_compatibility = PanelApiCompatibility.from_metadata(
+            {"response": {"version": "3.2.0"}}
+        )
+        service._panel_api_compatibility_detected_at = time.monotonic()
+        service._request = AsyncMock(return_value={"error": True, "status_code": 503})
+
+        users = await service.get_all_panel_users(page_size=100)
+
+        self.assertIsNone(users)
+        service._request.assert_awaited_once()
+        self.assertEqual(service._request.await_args.args[1], "/users/stream")
+        self.assertTrue(
+            service.panel_capability_state(
+                PanelApiCapability.USER_STREAM,
+                service._panel_api_compatibility,
+            )
+        )
 
     async def test_get_all_panel_users_falls_back_to_100_when_large_page_fails(self):
         service = self._make_service()

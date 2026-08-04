@@ -175,7 +175,7 @@ class PanelApiCoreMixin:
     ) -> PanelApiCompatibility:
         """Detect and cache the panel generation through its stable metadata API.
 
-        ``GET /system/metadata`` exists in both Remnawave 2.8.1 and 3.0.0.
+        ``GET /system/metadata`` exists in Remnawave 2.8.1 and supported 3.x releases.
         Failures are intentionally not cached, so a panel that is still
         starting can be detected on a later request.
         """
