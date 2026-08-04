@@ -22,6 +22,11 @@ from typing import Any
 
 from bot.app.web.context import get_app_bot, get_app_panel_service, get_app_settings
 from bot.infra.redis import cache_get_json, redis_key
+from bot.services.compose_data_mounts import (
+    app_data_mounts_are_aligned,
+    compose_app_data_mounts,
+    find_compose_file,
+)
 from bot.services.tariff_worker_premium_enforcement import PREMIUM_LEAK_CACHE_PARTS
 from bot.services.tariff_worker_shared import PANEL_LIMIT_DRIFT_CACHE_PARTS
 from bot.utils.request_security import ip_in_allowlist
@@ -61,6 +66,7 @@ _DATA_DIR_SECTIONS = (
 ALL_MESSAGE_KEYS = (
     "data_dir_missing",
     "data_dir_not_writable",
+    "data_mount_mismatch",
     "backups_dir_not_writable",
     "tariffs_config_invalid",
     "locale_overrides_invalid",
@@ -166,6 +172,37 @@ def data_dir_alerts(settings: Any, app_root: Path = APP_ROOT) -> list[ConfigAler
             )
         )
     return alerts
+
+
+def compose_data_mount_alerts(
+    settings: Any,
+    *,
+    compose_root: Path | None = None,
+) -> list[ConfigAlert]:
+    source_value = compose_root if compose_root is not None else settings.BACKUP_COMPOSE_SOURCE_DIR
+    if not source_value:
+        return []
+    source_dir = Path(source_value).expanduser()
+    if not source_dir.is_absolute():
+        source_dir = APP_ROOT / source_dir
+    compose_path = find_compose_file(source_dir)
+    if compose_path is None:
+        return []
+    try:
+        mounts = compose_app_data_mounts(compose_path.read_text(encoding="utf-8"))
+    except OSError:
+        return []
+    if app_data_mounts_are_aligned(mounts):
+        return []
+    summary = ", ".join(f"{service}={source or '<missing>'}" for service, source in mounts.items())
+    return [
+        ConfigAlert(
+            id="data_mount_mismatch",
+            severity=SEVERITY_ERROR,
+            sections=_DATA_DIR_SECTIONS,
+            params={"file": str(compose_path), "mounts": summary[:500]},
+        )
+    ]
 
 
 def config_file_alerts(settings: Any) -> list[ConfigAlert]:
@@ -570,6 +607,7 @@ def local_alerts(request: Any, settings: Any, app: Any) -> list[ConfigAlert]:
     alerts: list[ConfigAlert] = []
     for collect in (
         lambda: data_dir_alerts(settings),
+        lambda: compose_data_mount_alerts(settings),
         lambda: config_file_alerts(settings),
         lambda: payment_provider_alerts(settings, app),
         lambda: settings_alerts(settings),

@@ -23,6 +23,8 @@
       "Data directory ({path}) not found. Make sure the data volume is mounted into the container.",
     data_dir_not_writable:
       "No write access to {path} — backups, tariffs, logos and translations cannot be saved.",
+    data_mount_mismatch:
+      "Services use different /app/data mounts ({mounts}). Configure migrate, backend and worker to share one data source, then recreate them.",
     backups_dir_not_writable: "Backups directory {path} is not writable.",
     tariffs_config_invalid: "Tariffs file {path} cannot be read: {error}",
     locale_overrides_invalid: "Translations file {path} is corrupted: {error}",

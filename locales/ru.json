@@ -1257,6 +1257,7 @@
   "admin_health_refresh": "Проверить снова",
   "admin_health_data_dir_missing": "Каталог data ({path}) не найден. Проверьте, что том data смонтирован в контейнер.",
   "admin_health_data_dir_not_writable": "Нет прав на запись в {path} — бэкапы, тарифы, логотипы и переводы не сохранятся.",
+  "admin_health_data_mount_mismatch": "Сервисы используют разные источники /app/data ({mounts}). Настройте migrate, backend и worker на общий каталог или том данных, затем пересоздайте их.",
   "admin_health_backups_dir_not_writable": "Каталог бэкапов {path} недоступен для записи.",
   "admin_health_tariffs_config_invalid": "Файл тарифов {path} не читается: {error}",
   "admin_health_locale_overrides_invalid": "Файл переводов {path} повреждён: {error}",
