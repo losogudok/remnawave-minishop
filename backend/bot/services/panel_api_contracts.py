@@ -218,7 +218,7 @@ PANEL_API_OPERATION_CONTRACTS: tuple[PanelApiOperationContract, ...] = (
         "/users/by-username/{username}",
         "/users/by-username",
         compatibility_note=(
-            "The username lookup route remains stable through 3.2.0; 3.1+ reports an "
+            "The username lookup route remains stable through 3.2.1; 3.1+ reports an "
             "absent user as 404/A063."
         ),
     ),
@@ -644,3 +644,18 @@ def panel_version_support_status(
     if generation is PanelApiGeneration.UNKNOWN:
         return "unverified"
     return "unverified"
+
+
+def certified_panel_versions(generation: PanelApiGeneration) -> tuple[str, ...]:
+    """Return exact Core-certified releases for one detected API generation."""
+    generations = load_support_manifest().get("generations")
+    if not isinstance(generations, list):
+        return ()
+    for item in generations:
+        if not isinstance(item, dict) or item.get("id") != generation.value:
+            continue
+        certified = item.get("certified_versions")
+        if not isinstance(certified, list):
+            return ()
+        return tuple(str(value).strip() for value in certified if str(value).strip())
+    return ()

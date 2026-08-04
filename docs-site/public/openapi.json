@@ -859,6 +859,13 @@
             "title": "Capabilities",
             "type": "array"
           },
+          "certified_versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Certified Versions",
+            "type": "array"
+          },
           "generation": {
             "title": "Generation",
             "type": "string"
@@ -890,6 +897,7 @@
         "required": [
           "generation",
           "support_status",
+          "certified_versions",
           "capabilities",
           "observed_capabilities"
         ],

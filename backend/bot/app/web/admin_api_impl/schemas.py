@@ -764,6 +764,7 @@ class AdminPanelCompatibilityOut(HttpResponseModel):
     version: str | None = None
     generation: str
     support_status: str
+    certified_versions: list[str]
     capabilities: list[str]
     observed_capabilities: dict[str, bool]
 

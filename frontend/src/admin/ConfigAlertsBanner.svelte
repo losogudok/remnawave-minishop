@@ -79,7 +79,9 @@
     return at(`nav_${id}`, {}, SECTION_FALLBACK_LABELS[id] || id);
   }
 
-  const alerts = $derived(healthStore.alerts);
+  const alerts = $derived(
+    healthStore.alerts.filter((alert) => !alert.message_key.startsWith("panel_api_version_"))
+  );
   const healthLoading = $derived(healthStore.healthLoading);
   const isDashboard = $derived(section === "stats");
   const visibleAlerts: HealthAlert[] = $derived(

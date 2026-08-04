@@ -2143,6 +2143,8 @@ export interface components {
     AdminPanelCompatibilityOut: {
       /** Capabilities */
       capabilities: string[];
+      /** Certified Versions */
+      certified_versions: string[];
       /** Generation */
       generation: string;
       /** Observed Capabilities */

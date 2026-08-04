@@ -21,6 +21,7 @@ from bot.services.panel_api_contracts import (
     GENERATION_CAPABILITIES,
     PanelApiCapability,
     PanelApiGeneration,
+    certified_panel_versions,
     panel_version_support_status,
 )
 
@@ -56,6 +57,10 @@ class PanelApiCompatibility:
     @property
     def support_status(self) -> str:
         return panel_version_support_status(self.version, self.generation)
+
+    @property
+    def certified_versions(self) -> tuple[str, ...]:
+        return certified_panel_versions(self.generation)
 
     @property
     def explicitly_unsupported(self) -> bool:

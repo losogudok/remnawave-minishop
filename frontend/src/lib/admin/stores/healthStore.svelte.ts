@@ -30,6 +30,7 @@ export type PanelCompatibility = {
   version: string | null;
   generation: string;
   support_status: string;
+  certified_versions: string[];
   capabilities: string[];
   observed_capabilities: Record<string, boolean>;
 };

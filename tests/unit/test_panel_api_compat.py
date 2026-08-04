@@ -16,7 +16,7 @@ def test_metadata_selects_user_identity_contract() -> None:
     assert legacy.generation is PanelApiGeneration.RW2_UUID
     assert legacy.support_status == "maintenance"
 
-    for version in ("v3.0.0", "3.1.0", "3.2.0"):
+    for version in ("v3.0.0", "3.1.0", "3.2.0", "3.2.1"):
         current = PanelApiCompatibility.from_metadata({"response": {"version": version}})
 
         assert current.user_id_mode is PanelUserIdMode.NUMERIC_ID
@@ -24,6 +24,8 @@ def test_metadata_selects_user_identity_contract() -> None:
         assert current.generation is PanelApiGeneration.RW3_NUMERIC
         assert current.support_status == "current"
         assert current.supports(PanelApiCapability.USER_STREAM_FILTERS) is True
+
+    assert current.certified_versions == ("3.2.1", "3.2.0", "3.1.0", "3.0.0")
 
 
 def test_unknown_metadata_does_not_guess_a_generation() -> None:

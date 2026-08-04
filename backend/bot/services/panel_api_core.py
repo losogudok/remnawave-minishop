@@ -365,6 +365,7 @@ class PanelApiCoreMixin:
             "version": compatibility.version,
             "generation": compatibility.generation.value,
             "support_status": compatibility.support_status,
+            "certified_versions": list(compatibility.certified_versions),
             "capabilities": capabilities,
             "observed_capabilities": observed,
         }
