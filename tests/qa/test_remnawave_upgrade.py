@@ -65,7 +65,7 @@ async def _verify_upgrade() -> None:
     try:
         compatibility = await service.get_panel_api_compatibility(force_refresh=True)
         assert compatibility.version is not None
-        assert compatibility.version.lstrip("v").startswith("3.0.0")
+        assert compatibility.version.lstrip("v") == "3.2.0"
 
         async with sessions() as session:
             seeded_user_ids = list(
@@ -126,7 +126,7 @@ async def _verify_upgrade() -> None:
         await engine.dispose()
 
 
-def test_same_database_2_8_1_to_3_0_0_upgrade_and_sync() -> None:
+def test_same_database_2_8_1_to_3_2_0_upgrade_and_sync() -> None:
     assert os.getenv("QA_REMNAWAVE_UPGRADE_FROM") == "2.8.1"
-    assert os.getenv("QA_REMNAWAVE_PRESET") == "3.0.0"
+    assert os.getenv("QA_REMNAWAVE_PRESET") == "3.2.0"
     asyncio.run(_verify_upgrade())
