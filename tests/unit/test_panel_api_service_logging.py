@@ -4,7 +4,7 @@ import unittest
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import ClassVar
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 import aiohttp
 
@@ -565,6 +565,51 @@ class PanelApiServiceLoggingTests(unittest.IsolatedAsyncioTestCase):
         result = await service.get_user_devices("user-uuid")
 
         self.assertEqual(result, [])
+
+    async def test_revoke_subscription_clears_all_hwid_devices_first(self):
+        service = self._make_service()
+        service.get_user_devices = AsyncMock(
+            return_value=[{"hwid": "device-1"}, {"hwid": "device-2"}]
+        )
+        service.disconnect_device = AsyncMock(return_value=True)
+        service._request = AsyncMock(
+            return_value={
+                "response": {
+                    "uuid": "user-uuid",
+                    "subscriptionUrl": "https://sub.example.test/new",
+                }
+            }
+        )
+
+        result = await service.revoke_user_subscription("user-uuid")
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result["subscriptionUrl"], "https://sub.example.test/new")
+        self.assertEqual(
+            service.disconnect_device.await_args_list,
+            [
+                call("user-uuid", "device-1"),
+                call("user-uuid", "device-2"),
+            ],
+        )
+        service._request.assert_awaited_once_with(
+            "POST",
+            "/users/user-uuid/actions/revoke",
+            operation=PanelApiOperation.USER_REVOKE,
+            log_full_response=False,
+        )
+
+    async def test_revoke_subscription_aborts_when_hwid_cleanup_fails(self):
+        service = self._make_service()
+        service.get_user_devices = AsyncMock(return_value=[{"hwid": "device-1"}])
+        service.disconnect_device = AsyncMock(return_value=False)
+        service._request = AsyncMock()
+
+        result = await service.revoke_user_subscription("user-uuid")
+
+        self.assertIsNone(result)
+        service._request.assert_not_awaited()
 
     async def test_get_hwid_devices_stats_returns_by_platform_by_app(self):
         service = self._make_service()

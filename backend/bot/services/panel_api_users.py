@@ -84,6 +84,8 @@ class PanelApiUsersMixin(PanelApiResponseMixin):
         async def _invalidate_user_cache(self, user_uuid: str | None) -> None: ...
         async def _invalidate_devices_cache(self, user_uuid: str | None) -> None: ...
         async def _invalidate_all_users_cache(self) -> None: ...
+        async def get_user_devices(self, user_uuid: str) -> list[dict[str, Any]] | None: ...
+        async def disconnect_device(self, user_uuid: str, hwid: str) -> bool: ...
         async def get_panel_api_compatibility(
             self, *, force_refresh: bool = False
         ) -> PanelApiCompatibility: ...
@@ -866,10 +868,11 @@ class PanelApiUsersMixin(PanelApiResponseMixin):
     ) -> dict[str, Any] | None:
         """Revoke the user's subscription on the panel.
 
-        The panel regenerates the user's short UUID, which invalidates the
-        previous subscription URL (disconnecting every client that still uses
-        it). Returns the updated panel user (including the new
-        ``subscriptionUrl``) or ``None`` on failure.
+        Registered HWID devices are removed first, then the panel regenerates
+        the user's short UUID. This keeps the new link usable even when the
+        previous link had already filled the device limit. Returns the updated
+        panel user (including the new ``subscriptionUrl``) or ``None`` on
+        failure.
         """
         compatibility = await self.get_panel_api_compatibility()
         if not await self.panel_mutation_allowed(
@@ -884,6 +887,8 @@ class PanelApiUsersMixin(PanelApiResponseMixin):
         )
         if user_reference is None:
             return None
+        if not await self._disconnect_all_hwid_devices(user_uuid):
+            return None
         endpoint = f"/users/{user_reference}/actions/revoke"
         full_response = await self._request(
             "POST",
@@ -894,6 +899,7 @@ class PanelApiUsersMixin(PanelApiResponseMixin):
 
         if full_response and not full_response.get("error"):
             await self._invalidate_user_cache(user_uuid)
+            await self._invalidate_devices_cache(user_uuid)
             await self._invalidate_all_users_cache()
             updated = normalize_panel_user(full_response.get("response"))
             if updated is None and full_response.get("status_code") in {202, 204}:
@@ -912,3 +918,39 @@ class PanelApiUsersMixin(PanelApiResponseMixin):
             full_response if not log_response else "(logged above)",
         )
         return None
+
+    async def _disconnect_all_hwid_devices(self, user_uuid: str) -> bool:
+        await self._invalidate_devices_cache(user_uuid)
+        devices = await self.get_user_devices(user_uuid)
+        if devices is None:
+            logger.error(
+                "Cannot revoke subscription for user %s: failed to read registered devices.",
+                user_uuid,
+            )
+            return False
+
+        hwids: list[str] = []
+        seen: set[str] = set()
+        for device in devices:
+            hwid = str(device.get("hwid") or "").strip()
+            if not hwid:
+                logger.error(
+                    "Cannot revoke subscription for user %s: panel returned a device "
+                    "without an HWID.",
+                    user_uuid,
+                )
+                return False
+            if hwid not in seen:
+                seen.add(hwid)
+                hwids.append(hwid)
+
+        for hwid in hwids:
+            if not await self.disconnect_device(user_uuid, hwid):
+                logger.error(
+                    "Cannot revoke subscription for user %s: failed to clear all "
+                    "registered devices.",
+                    user_uuid,
+                )
+                return False
+
+        return True
