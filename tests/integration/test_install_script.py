@@ -5,6 +5,12 @@ from pathlib import Path
 
 import pytest
 
+from bot.services.compose_data_mounts import (
+    APP_DATA_SERVICES,
+    app_data_mounts_are_aligned,
+    compose_app_data_mounts,
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install.sh"
 
@@ -60,6 +66,16 @@ def test_shell_installer_exits_on_stdin_eof():
 def test_shell_installer_is_the_only_install_entrypoint():
     assert INSTALL_SCRIPT.exists()
     assert not (REPO_ROOT / "scripts" / "install.py").exists()
+
+
+@pytest.mark.parametrize("profile", ["angie", "caddy", "newt", "nginx", "no-proxy"])
+def test_install_wizard_profiles_share_application_data_mount(profile: str):
+    compose_path = REPO_ROOT / "deploy" / "examples" / profile / "docker-compose.yml"
+
+    mounts = compose_app_data_mounts(compose_path.read_text(encoding="utf-8"))
+
+    assert set(mounts) == set(APP_DATA_SERVICES)
+    assert app_data_mounts_are_aligned(mounts)
 
 
 def test_shell_installer_downloads_raw_files_and_runs_import_in_container():
