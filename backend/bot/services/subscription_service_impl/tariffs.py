@@ -5,7 +5,11 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.utils.traffic_reset import traffic_accounting_period_start, traffic_period_starts_match
+from bot.utils.traffic_reset import (
+    panel_traffic_limit_strategy,
+    traffic_accounting_period_start,
+    traffic_period_starts_match,
+)
 from config.tariffs_config import (
     Tariff,
     TariffsConfig,
@@ -197,7 +201,26 @@ class TariffMixin(SubscriptionServiceMixinContract):
             logger.debug("Unable to resolve tariff %r for traffic strategy", tariff_key)
             return None
 
-    def _premium_traffic_strategy_for_subscription(self, sub: Any | None) -> str:
+    def _premium_traffic_strategy_inherits_regular(
+        self,
+        sub: Any | None,
+        *,
+        tariff: Tariff | None = None,
+    ) -> bool:
+        provider = str(getattr(sub, "provider", "") or "").strip().lower()
+        status = str(getattr(sub, "status_from_panel", "") or "").strip().upper()
+        if provider == "trial" or status == "TRIAL":
+            return False
+        effective_tariff = tariff or self._tariff_for_subscription(sub)
+        return getattr(effective_tariff, "premium_traffic_limit_strategy", None) is None
+
+    def _premium_traffic_strategy_for_subscription(
+        self,
+        sub: Any | None,
+        *,
+        panel_user_data: dict[str, Any] | None = None,
+        tariff: Tariff | None = None,
+    ) -> str:
         provider = str(getattr(sub, "provider", "") or "").strip().lower()
         status = str(getattr(sub, "status_from_panel", "") or "").strip().upper()
         if provider == "trial" or status == "TRIAL":
@@ -205,7 +228,16 @@ class TariffMixin(SubscriptionServiceMixinContract):
                 getattr(self.settings, "TRIAL_TRAFFIC_STRATEGY", "NO_RESET"),
                 default="NO_RESET",
             )
-        return self._period_tariff_traffic_strategy(self._tariff_for_subscription(sub))
+
+        effective_tariff = tariff or self._tariff_for_subscription(sub)
+        configured_strategy = getattr(effective_tariff, "premium_traffic_limit_strategy", None)
+        if configured_strategy is not None:
+            return normalize_traffic_limit_strategy(configured_strategy, default="MONTH")
+        if str(getattr(effective_tariff, "billing_model", "") or "").lower() == "traffic":
+            return "NO_RESET"
+
+        regular_strategy = self._period_tariff_traffic_strategy(effective_tariff)
+        return panel_traffic_limit_strategy(panel_user_data, regular_strategy)
 
     def _premium_accounting_period_start(
         self,
@@ -213,13 +245,26 @@ class TariffMixin(SubscriptionServiceMixinContract):
         now: datetime,
         *,
         panel_user_data: dict[str, Any] | None = None,
+        tariff: Tariff | None = None,
     ) -> datetime:
+        inherit_regular = self._premium_traffic_strategy_inherits_regular(sub, tariff=tariff)
+        strategy = self._premium_traffic_strategy_for_subscription(
+            sub,
+            panel_user_data=panel_user_data if inherit_regular else None,
+            tariff=tariff,
+        )
+        previous_period_start = self._aware_utc(getattr(sub, "premium_period_start_at", None))
+        if not inherit_regular and strategy in {"DAY", "WEEK", "MONTH"}:
+            # Explicit calendar strategies must move immediately to their
+            # canonical boundary, even when an older inherited strategy left a
+            # different anchor on the subscription.
+            previous_period_start = None
         return traffic_accounting_period_start(
-            self._premium_traffic_strategy_for_subscription(sub),
+            strategy,
             now,
             subscription_start_at=self._aware_utc(getattr(sub, "start_date", None)),
-            previous_period_start_at=self._aware_utc(getattr(sub, "premium_period_start_at", None)),
-            panel_user_data=panel_user_data,
+            previous_period_start_at=previous_period_start,
+            panel_user_data=panel_user_data if inherit_regular else None,
         )
 
     def _same_premium_accounting_period(

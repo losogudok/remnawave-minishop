@@ -165,6 +165,28 @@ class TariffWorkerCoreMixin:
             default="MONTH",
         )
 
+    def _premium_traffic_strategy_for_subscription(
+        self,
+        sub: Any | None,
+        *,
+        panel_user_data: dict[str, Any] | None = None,
+        tariff: Any | None = None,
+    ) -> str:
+        strategy_getter = getattr(
+            self.subscription_service,
+            "_premium_traffic_strategy_for_subscription",
+            None,
+        )
+        if callable(strategy_getter):
+            return str(
+                strategy_getter(
+                    sub,
+                    panel_user_data=panel_user_data,
+                    tariff=tariff,
+                )
+            )
+        return self._period_tariff_traffic_strategy(None)
+
     def _usage_placeholders(self, used_bytes: int, limit_bytes: int) -> dict:
         """Formatted traffic stats for warning messages (HTML-safe quoted)."""
         used_b = max(0, int(used_bytes or 0))

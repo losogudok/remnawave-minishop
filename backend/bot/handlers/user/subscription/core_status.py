@@ -155,6 +155,7 @@ async def my_subscription_command_handler(
         strategy_upper = str(strategy).upper()
         key_map = {
             "MONTH": "traffic_period_month",
+            "MONTH_ROLLING": "traffic_period_month",
             "WEEK": "traffic_period_week",
             "DAY": "traffic_period_day",
             "NO_RESET": "traffic_period_no_reset",
@@ -247,6 +248,9 @@ async def my_subscription_command_handler(
                 )
         else:
             label_block = get_text("premium_servers_generic")
+        premium_period_label = _format_traffic_period(
+            active.get("premium_traffic_limit_strategy")
+        ) or get_text("traffic_period_unknown")
         text += "\n\n" + get_text(
             "subscription_premium_details",
             status=premium_status,
@@ -254,6 +258,7 @@ async def my_subscription_command_handler(
             remaining=f"{premium_left / 2**30:.2f} GB",
             balance=f"{premium_balance / 2**30:.2f} GB",
             servers=label_block,
+            traffic_period=premium_period_label,
         )
 
     base_markup = get_back_to_main_menu_markup(

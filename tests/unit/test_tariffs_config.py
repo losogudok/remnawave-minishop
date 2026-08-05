@@ -75,6 +75,8 @@ class TariffsConfigTests(unittest.TestCase):
         config = TariffsConfig.model_validate(_valid_config())
 
         self.assertIsNone(config.require("standard").traffic_limit_strategy)
+        self.assertIsNone(config.require("standard").premium_traffic_limit_strategy)
+        self.assertIsNone(config.require("traffic").premium_traffic_limit_strategy)
 
     def test_period_tariff_traffic_strategy_loads(self):
         data = _valid_config()
@@ -94,6 +96,23 @@ class TariffsConfigTests(unittest.TestCase):
     def test_traffic_tariff_rejects_reset_strategy(self):
         data = _valid_config()
         data["tariffs"][1]["traffic_limit_strategy"] = "WEEK"
+
+        with self.assertRaises(ValueError):
+            TariffsConfig.model_validate(data)
+
+    def test_premium_traffic_strategy_loads_for_period_and_traffic_tariffs(self):
+        data = _valid_config()
+        data["tariffs"][0]["premium_traffic_limit_strategy"] = "WEEK"
+        data["tariffs"][1]["premium_traffic_limit_strategy"] = "MONTH"
+
+        config = TariffsConfig.model_validate(data)
+
+        self.assertEqual(config.require("standard").premium_traffic_limit_strategy, "WEEK")
+        self.assertEqual(config.require("traffic").premium_traffic_limit_strategy, "MONTH")
+
+    def test_invalid_premium_traffic_strategy_rejected(self):
+        data = _valid_config()
+        data["tariffs"][0]["premium_traffic_limit_strategy"] = "YEAR"
 
         with self.assertRaises(ValueError):
             TariffsConfig.model_validate(data)

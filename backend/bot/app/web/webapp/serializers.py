@@ -663,6 +663,7 @@ def _serialize_subscription(
         "regular_unlimited_override": bool(active.get("regular_unlimited_override")),
         "premium_unlimited_override": bool(active.get("premium_unlimited_override")),
         "premium_is_limited": bool(active.get("premium_is_limited")),
+        "premium_traffic_limit_strategy": str(active.get("premium_traffic_limit_strategy") or ""),
         "premium_next_reset_at": _webapp_iso_datetime(active.get("premium_next_reset_at")),
         "premium_next_reset_text": _webapp_reset_date_text(
             active.get("premium_next_reset_at"),

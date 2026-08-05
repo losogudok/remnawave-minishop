@@ -105,11 +105,14 @@ class SubscriptionLifecycleSwitchMixin(SubscriptionServiceMixinContract):
                 now=now,
             )
         premium_period_start_at = self._premium_accounting_period_start(local_active_sub, now)
+        premium_traffic_limit_strategy = self._premium_traffic_strategy_for_subscription(
+            local_active_sub
+        )
         premium_next_reset_at = None
         if premium_limit_bytes > 0 and not premium_unlimited_override:
             premium_next_reset_at = next_traffic_reset_after(
                 premium_period_start_at,
-                self._premium_traffic_strategy_for_subscription(local_active_sub),
+                premium_traffic_limit_strategy,
                 now=now,
             )
         return {
@@ -142,6 +145,7 @@ class SubscriptionLifecycleSwitchMixin(SubscriptionServiceMixinContract):
             "premium_unlimited_override": premium_unlimited_override,
             "premium_limit_bytes": premium_limit_bytes,
             "premium_is_limited": bool(local_active_sub.premium_is_limited),
+            "premium_traffic_limit_strategy": premium_traffic_limit_strategy,
             "premium_period_start_at": premium_period_start_at,
             "premium_next_reset_at": premium_next_reset_at,
             "premium_squad_labels": premium_access.get("squad_labels") or [],

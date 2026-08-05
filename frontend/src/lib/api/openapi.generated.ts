@@ -4466,6 +4466,12 @@ export interface components {
       premium_topup_always_available: boolean;
       /** @default null */
       premium_topup_packages: components["schemas"]["PackageSet"] | null;
+      /**
+       * Premium Traffic Limit Strategy
+       * @default null
+       */
+      premium_traffic_limit_strategy:
+        ("NO_RESET" | "DAY" | "WEEK" | "MONTH" | "MONTH_ROLLING") | null;
       /** Prices */
       prices?: {
         [key: string]: {
@@ -8138,6 +8144,7 @@ export interface operations {
               premium_topup_always_available?: boolean;
               premium_topup_balance_bytes?: number | null;
               premium_topup_used_bytes?: number | null;
+              premium_traffic_limit_strategy?: string;
               premium_unlimited_override?: boolean;
               premium_used?: string;
               premium_used_bytes?: number | null;

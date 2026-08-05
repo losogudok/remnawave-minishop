@@ -30,6 +30,7 @@
     premiumTrafficPercent as premiumTrafficPercentFn,
     premiumTrafficLabel as premiumTrafficLabelFn,
     premiumNextResetLabel as premiumNextResetLabelFn,
+    premiumTrafficResetLabel as premiumTrafficResetLabelFn,
     premiumTrafficLimitVisible as premiumTrafficLimitVisibleFn,
     premiumTitle as premiumTitleFn,
     premiumServerLabels as premiumServerLabelsFn,
@@ -178,13 +179,16 @@
   function premiumNextResetLabel(sub: SubscriptionView) {
     return premiumNextResetLabelFn(sub, t);
   }
+  function premiumTrafficResetLabel(sub: SubscriptionView) {
+    return premiumTrafficResetLabelFn(sub, t);
+  }
   function premiumTitle(sub: SubscriptionView = subscription) {
     return premiumTitleFn(sub, t);
   }
   function premiumTrafficMetaLabel(sub: SubscriptionView = subscription) {
     return sub?.premium_is_limited
       ? t("wa_premium_access_limited", {}, "Premium access is temporarily limited")
-      : trafficResetLabel(sub);
+      : premiumTrafficResetLabel(sub);
   }
   function premiumServerLabels(sub: SubscriptionView) {
     return premiumServerLabelsFn(sub);

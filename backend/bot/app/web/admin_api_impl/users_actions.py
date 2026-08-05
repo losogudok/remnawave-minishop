@@ -649,7 +649,15 @@ async def admin_user_traffic_strategy_route(request: web.Request) -> web.Respons
 
         if hasattr(active, "period_start_at"):
             active.period_start_at = None
-        if hasattr(active, "premium_period_start_at"):
+        premium_inherits_regular = True
+        premium_inheritance_getter = getattr(
+            subscription_service,
+            "_premium_traffic_strategy_inherits_regular",
+            None,
+        )
+        if callable(premium_inheritance_getter):
+            premium_inherits_regular = bool(premium_inheritance_getter(active))
+        if premium_inherits_regular and hasattr(active, "premium_period_start_at"):
             active.premium_period_start_at = None
 
         await message_log_dal.create_message_log(

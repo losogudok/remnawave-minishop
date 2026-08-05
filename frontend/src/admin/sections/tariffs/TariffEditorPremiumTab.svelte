@@ -5,6 +5,7 @@
   import { AdminButton, AdminSelect } from "$components/patterns/admin/index.js";
   import { Plus, Trash2, X } from "$components/ui/icons.js";
   import { normalizeUuidList } from "$lib/admin/tariffDraft";
+  import { trafficStrategyOptions as buildTrafficStrategyOptions } from "$lib/admin/tariffSettings";
   import type { PanelSquad, TariffDraft, TariffsCatalog } from "$lib/admin/stores/tariffsStore";
   import {
     addDraftSquad,
@@ -35,6 +36,13 @@
   const panelSquads: PanelSquad[] = $derived(tariffsState.panelSquads || []);
   const tariffsCatalog: TariffsCatalog = $derived(tariffsState.tariffsCatalog);
   const panelSquadOptions: SelectOption[] = $derived(toPanelSquadOptions(panelSquads));
+  const premiumTrafficStrategyOptions: SelectOption[] = $derived([
+    {
+      value: "",
+      label: at("tariff_premium_traffic_strategy_inherit", {}, "Inherit regular traffic strategy"),
+    },
+    ...buildTrafficStrategyOptions(at),
+  ]);
   const defaultCurrencyCode = $derived(getDefaultCurrencyCode(tariffsCatalog));
   const currencyPriceColumnLabel = $derived(
     formatCurrencyPriceColumnLabel(at, defaultCurrencyCode)
@@ -142,13 +150,17 @@
       </div>
       <Label.Root class="admin-field-label">
         <span
-          >{at("tariff_label_premium_traffic_limit", {}, "Monthly premium traffic limit, GB")}</span
+          >{at(
+            "tariff_label_premium_traffic_limit",
+            {},
+            "Premium traffic limit per period, GB"
+          )}</span
         >
         <small
           >{at(
             "tariff_hint_premium_traffic_limit",
             {},
-            "How many GB through premium squads are included each month. 0 or empty means there is no separate premium limit"
+            "How many GB through premium squads are included in one premium period. 0 or empty means there is no separate premium limit"
           )}</small
         >
         <Input
@@ -162,6 +174,34 @@
         />
       </Label.Root>
     </div>
+    <div class="admin-field-label">
+      <span
+        >{at("tariff_label_premium_traffic_strategy", {}, "Premium traffic reset strategy")}</span
+      >
+      <small
+        >{at(
+          "tariff_hint_premium_traffic_strategy",
+          {},
+          "By default premium traffic follows the effective regular strategy. Choose a value to reset the premium quota independently; for example, regular traffic can use NO_RESET while premium traffic resets monthly."
+        )}</small
+      >
+      <AdminSelect
+        value={String(tariffDraft.premium_traffic_limit_strategy || "")}
+        items={premiumTrafficStrategyOptions}
+        placeholder={at(
+          "tariff_premium_traffic_strategy_inherit",
+          {},
+          "Inherit regular traffic strategy"
+        )}
+        ariaLabel={at(
+          "tariff_label_premium_traffic_strategy",
+          {},
+          "Premium traffic reset strategy"
+        )}
+        onValueChange={(value) =>
+          tariffsStore.updateDraftField("premium_traffic_limit_strategy", value)}
+      />
+    </div>
   </section>
 
   <section class="admin-editor-section">
@@ -172,7 +212,7 @@
           >{at(
             "tariff_premium_topup_subtitle",
             {},
-            "Packages that extend the monthly premium limit when the user runs out"
+            "Packages that extend the premium limit for the current period when the user runs out"
           )}</small
         >
       </div>

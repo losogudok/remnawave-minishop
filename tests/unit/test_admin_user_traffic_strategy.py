@@ -167,6 +167,51 @@ class AdminUserTrafficStrategyRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["error"], "traffic_strategy_locked")
         panel_service.update_user_details_on_panel.assert_not_awaited()
 
+    async def test_explicit_premium_strategy_keeps_its_local_period_anchor(self):
+        session = FakeSession()
+        panel_service = SimpleNamespace(
+            update_user_details_on_panel=AsyncMock(
+                return_value={"uuid": "panel-user-uuid", "trafficLimitStrategy": "WEEK"}
+            )
+        )
+        settings = settings_stub(
+            tariffs_config=FakeTariffsConfig(
+                [SimpleNamespace(key="standard", billing_model="period")]
+            )
+        )
+        active = _active_subscription()
+        premium_anchor = active.premium_period_start_at
+        request = FakeRequest({"traffic_limit_strategy": "WEEK"}, session, panel_service, settings)
+        subscription_service = SimpleNamespace(
+            _premium_traffic_strategy_inherits_regular=lambda _sub: False
+        )
+
+        with (
+            patch.object(users_actions, "_require_admin_user_id", return_value=100),
+            patch.object(
+                admin_users.subscription_dal,
+                "get_active_subscription_by_user_id",
+                AsyncMock(return_value=active),
+            ),
+            patch.object(admin_users.message_log_dal, "create_message_log", AsyncMock()),
+            patch.object(users_actions, "_invalidate_after_admin_user_mutation", AsyncMock()),
+            patch.object(
+                users_actions,
+                "_serialize_subscription",
+                return_value={"subscription_id": 1},
+            ),
+            patch.object(
+                users_actions,
+                "get_optional_subscription_service",
+                return_value=subscription_service,
+            ),
+        ):
+            response = await admin_users.admin_user_traffic_strategy_route(request)
+
+        self.assertEqual(response.status, 200)
+        self.assertIsNone(active.period_start_at)
+        self.assertEqual(active.premium_period_start_at, premium_anchor)
+
     async def test_invalid_strategy_is_rejected_before_panel_update(self):
         session = FakeSession()
         panel_service = SimpleNamespace(update_user_details_on_panel=AsyncMock())

@@ -505,6 +505,10 @@ class Tariff(BaseModel):
     hwid_device_packages: HwidDevicePackageSet | None = None
     premium_squad_uuids: list[str] = Field(default_factory=list)
     premium_monthly_gb: float | None = None
+    # None means that premium traffic follows the effective regular-traffic
+    # strategy. This includes a per-user Remnawave override for period tariffs;
+    # traffic tariffs therefore inherit their fixed NO_RESET behavior.
+    premium_traffic_limit_strategy: TrafficLimitStrategy | None = None
     premium_topup_packages: PackageSet | None = None
     # Same toggle as topup_always_available, scoped to premium-squad traffic.
     premium_topup_always_available: bool = False

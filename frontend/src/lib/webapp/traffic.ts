@@ -6,6 +6,7 @@ type SubscriptionTraffic = WebappRecord & {
   end_date_text?: string | null;
   premium_limit?: string | null;
   premium_limit_bytes?: number | string | null;
+  premium_traffic_limit_strategy?: string | null;
   premium_next_reset_text?: string | null;
   premium_node_labels?: unknown[];
   premium_squad_labels?: unknown[];
@@ -48,28 +49,32 @@ export function trafficLabel(sub: SubscriptionTraffic | null | undefined, t: Tra
   });
 }
 
-function normalizedTrafficResetStrategy(sub: SubscriptionTraffic | null | undefined): string {
-  return String(sub?.traffic_limit_strategy || "")
+function normalizedResetStrategy(value: unknown): string {
+  return String(value || "")
     .trim()
     .toUpperCase();
 }
 
 export function trafficResetScheduled(sub: SubscriptionTraffic | null | undefined): boolean {
-  const strategy = normalizedTrafficResetStrategy(sub);
+  const strategy = normalizedResetStrategy(sub?.traffic_limit_strategy);
   return Boolean(strategy && !strategy.includes("NO_RESET"));
+}
+
+function resetStrategyLabel(strategyValue: unknown, t: TranslateFn): string {
+  const strategy = normalizedResetStrategy(strategyValue);
+  if (!strategy || strategy.includes("NO_RESET")) return t("wa_traffic_reset_none");
+  if (strategy.includes("MONTH")) return t("wa_traffic_reset_monthly");
+  if (strategy.includes("WEEK")) return t("wa_traffic_reset_weekly");
+  if (strategy.includes("DAY")) return t("wa_traffic_reset_daily");
+  if (strategy.includes("YEAR")) return t("wa_traffic_reset_yearly");
+  return t("wa_traffic_reset_policy");
 }
 
 export function trafficResetLabel(
   sub: SubscriptionTraffic | null | undefined,
   t: TranslateFn
 ): string {
-  const strategy = normalizedTrafficResetStrategy(sub);
-  if (!trafficResetScheduled(sub)) return t("wa_traffic_reset_none");
-  if (strategy.includes("MONTH")) return t("wa_traffic_reset_monthly");
-  if (strategy.includes("WEEK")) return t("wa_traffic_reset_weekly");
-  if (strategy.includes("DAY")) return t("wa_traffic_reset_daily");
-  if (strategy.includes("YEAR")) return t("wa_traffic_reset_yearly");
-  return t("wa_traffic_reset_policy");
+  return resetStrategyLabel(sub?.traffic_limit_strategy, t);
 }
 
 function nextResetText(value: unknown, t: TranslateFn): string {
@@ -110,6 +115,18 @@ export function premiumNextResetLabel(
   t: TranslateFn
 ): string {
   return nextResetText(sub?.premium_next_reset_text, t);
+}
+
+export function premiumTrafficResetScheduled(sub: SubscriptionTraffic | null | undefined): boolean {
+  const strategy = normalizedResetStrategy(sub?.premium_traffic_limit_strategy);
+  return Boolean(strategy && !strategy.includes("NO_RESET"));
+}
+
+export function premiumTrafficResetLabel(
+  sub: SubscriptionTraffic | null | undefined,
+  t: TranslateFn
+): string {
+  return resetStrategyLabel(sub?.premium_traffic_limit_strategy, t);
 }
 
 export function premiumTitle(sub: SubscriptionTraffic | null | undefined, t: TranslateFn): string {

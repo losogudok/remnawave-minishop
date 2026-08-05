@@ -278,6 +278,60 @@ class SubscriptionServiceCalculationTests(unittest.TestCase):
                 "MONTH_ROLLING",
             )
 
+    def test_premium_strategy_inherits_effective_regular_strategy_by_default(self):
+        payload = _tariffs_config_payload()
+        payload["tariffs"][0]["traffic_limit_strategy"] = "WEEK"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(payload, tmpdir, USER_TRAFFIC_STRATEGY="DAY")
+            service = _make_service(settings)
+            period_sub = SimpleNamespace(
+                tariff_key="standard",
+                provider="admin",
+                status_from_panel="ACTIVE",
+            )
+            traffic_sub = SimpleNamespace(
+                tariff_key="traffic",
+                provider="admin",
+                status_from_panel="ACTIVE",
+            )
+
+            self.assertTrue(service._premium_traffic_strategy_inherits_regular(period_sub))
+            self.assertEqual(
+                service._premium_traffic_strategy_for_subscription(
+                    period_sub,
+                    panel_user_data={"trafficLimitStrategy": "DAY"},
+                ),
+                "DAY",
+            )
+            self.assertEqual(
+                service._premium_traffic_strategy_for_subscription(traffic_sub),
+                "NO_RESET",
+            )
+
+    def test_explicit_premium_strategy_is_independent_from_regular_panel_strategy(self):
+        payload = _tariffs_config_payload()
+        payload["tariffs"][0]["traffic_limit_strategy"] = "NO_RESET"
+        payload["tariffs"][0]["premium_traffic_limit_strategy"] = "MONTH"
+        payload["tariffs"][1]["premium_traffic_limit_strategy"] = "MONTH"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(payload, tmpdir, USER_TRAFFIC_STRATEGY="DAY")
+            service = _make_service(settings)
+            for tariff_key in ("standard", "traffic"):
+                sub = SimpleNamespace(
+                    tariff_key=tariff_key,
+                    provider="admin",
+                    status_from_panel="ACTIVE",
+                )
+                with self.subTest(tariff_key=tariff_key):
+                    self.assertFalse(service._premium_traffic_strategy_inherits_regular(sub))
+                    self.assertEqual(
+                        service._premium_traffic_strategy_for_subscription(
+                            sub,
+                            panel_user_data={"trafficLimitStrategy": "NO_RESET"},
+                        ),
+                        "MONTH",
+                    )
+
 
 class SubscriptionServicePremiumAccessTests(unittest.IsolatedAsyncioTestCase):
     async def test_premium_access_hides_hidden_and_disabled_hosts(self):
@@ -2996,7 +3050,7 @@ class SubscriptionServiceActiveDetailsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["traffic_next_reset_at"], datetime(2099, 1, 1, tzinfo=UTC))
         self.assertEqual(result["premium_next_reset_at"], add_months(premium_period_start, 1))
 
-    async def test_traffic_tariff_details_use_global_strategy_for_premium_next_reset(self):
+    async def test_traffic_tariff_details_inherit_no_reset_for_premium_traffic(self):
         payload = _tariffs_config_payload()
         payload["tariffs"][1]["premium_squad_uuids"] = ["premium-squad"]
         payload["tariffs"][1]["premium_monthly_gb"] = 25
@@ -3069,8 +3123,9 @@ class SubscriptionServiceActiveDetailsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["billing_model"], "traffic")
         self.assertEqual(result["traffic_limit_strategy"], "NO_RESET")
         self.assertIsNone(result["traffic_next_reset_at"])
-        self.assertEqual(result["premium_period_start_at"], period_start)
-        self.assertEqual(result["premium_next_reset_at"], add_months(period_start, 1))
+        self.assertEqual(result["premium_traffic_limit_strategy"], "NO_RESET")
+        self.assertEqual(result["premium_period_start_at"], local_sub.start_date)
+        self.assertIsNone(result["premium_next_reset_at"])
 
 
 class SubscriptionDalPayloadTests(unittest.TestCase):

@@ -6205,6 +6205,25 @@
             ],
             "default": null
           },
+          "premium_traffic_limit_strategy": {
+            "anyOf": [
+              {
+                "enum": [
+                  "NO_RESET",
+                  "DAY",
+                  "WEEK",
+                  "MONTH",
+                  "MONTH_ROLLING"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Premium Traffic Limit Strategy"
+          },
           "prices": {
             "additionalProperties": {
               "additionalProperties": {
@@ -14584,6 +14603,9 @@
                             "integer",
                             "null"
                           ]
+                        },
+                        "premium_traffic_limit_strategy": {
+                          "type": "string"
                         },
                         "premium_unlimited_override": {
                           "type": "boolean"

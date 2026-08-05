@@ -14,11 +14,7 @@ from bot.services.message_audit import log_user_message_delivery
 from bot.services.panel_api_service import PanelApiService
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.utils.date_utils import month_start
-from bot.utils.traffic_reset import (
-    panel_traffic_limit_strategy,
-    previous_traffic_reset,
-    traffic_period_starts_match,
-)
+from bot.utils.traffic_reset import previous_traffic_reset, traffic_period_starts_match
 from config.settings import Settings
 from db.dal import tariff_dal
 from db.models import Subscription
@@ -60,6 +56,13 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin, TariffWorkerPremiu
 
         async def _user_lang(self, session: AsyncSession, user_id: int) -> str: ...
         def _period_tariff_traffic_strategy(self, tariff: Any | None = None) -> str: ...
+        def _premium_traffic_strategy_for_subscription(
+            self,
+            sub: Any | None,
+            *,
+            panel_user_data: dict[str, Any] | None = None,
+            tariff: Any | None = None,
+        ) -> str: ...
         def _usage_placeholders(self, used_bytes: int, limit_bytes: int) -> dict: ...
         def _traffic_next_reset_note(
             self,
@@ -78,6 +81,13 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin, TariffWorkerPremiu
             *,
             now: datetime | None = None,
             fallback_strategy: str | None = None,
+        ) -> datetime | None: ...
+        def _next_traffic_reset_after(
+            self,
+            period_start_at: datetime | None,
+            strategy: str,
+            *,
+            now: datetime | None = None,
         ) -> datetime | None: ...
         def _traffic_topup_markup(
             self, user_lang: str, kind: str
@@ -153,7 +163,7 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin, TariffWorkerPremiu
             int(getattr(tariff, "premium_monthly_bytes", 0) or 0) > 0
             or getattr(tariff, "premium_topup_packages", None)
         )
-        premium_panel_user_dict = (
+        regular_panel_user_dict = (
             panel_user_dict
             if str(getattr(tariff, "billing_model", "") or "").lower() == "period"
             else None
@@ -161,11 +171,13 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin, TariffWorkerPremiu
         premium_period_start = self.subscription_service._premium_accounting_period_start(
             sub,
             now,
-            panel_user_data=premium_panel_user_dict,
+            panel_user_data=regular_panel_user_dict,
+            tariff=tariff,
         )
-        effective_strategy = panel_traffic_limit_strategy(
-            premium_panel_user_dict,
-            self._period_tariff_traffic_strategy(tariff),
+        effective_strategy = self._premium_traffic_strategy_for_subscription(
+            sub,
+            panel_user_data=regular_panel_user_dict,
+            tariff=tariff,
         )
         is_trial_premium_tariff = bool(getattr(tariff, "key", "") == "trial")
         previous_premium_period_start = getattr(sub, "premium_period_start_at", None)
@@ -228,10 +240,19 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin, TariffWorkerPremiu
                 same_period=same_period,
             )
 
-        panel_next_reset_at = self._panel_next_traffic_reset_at(
-            premium_panel_user_dict,
+        premium_next_reset_at = self._panel_next_traffic_reset_at(
+            regular_panel_user_dict
+            if self.subscription_service._premium_traffic_strategy_inherits_regular(
+                sub,
+                tariff=tariff,
+            )
+            else None,
             now=now,
             fallback_strategy=effective_strategy,
+        ) or self._next_traffic_reset_after(
+            premium_period_start,
+            effective_strategy,
+            now=now,
         )
 
         if not premium_unlimited_override and not unmetered_premium_access:
@@ -378,7 +399,8 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin, TariffWorkerPremiu
                 premium_used,
                 premium_limit,
                 premium_period_start,
-                next_reset_at=panel_next_reset_at,
+                next_reset_at=premium_next_reset_at,
+                traffic_strategy=effective_strategy,
             )
         if not panel_needs_update:
             if (
@@ -775,6 +797,7 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin, TariffWorkerPremiu
         period_start_at: datetime,
         *,
         next_reset_at: datetime | None = None,
+        traffic_strategy: str,
     ) -> None:
         if limit <= 0:
             return
@@ -815,7 +838,7 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin, TariffWorkerPremiu
                 reset_available_bytes=self._premium_next_period_available_bytes(sub, tariff),
                 user_lang=user_lang,
                 next_reset_at=next_reset_at,
-                traffic_strategy=self._period_tariff_traffic_strategy(tariff),
+                traffic_strategy=traffic_strategy,
             )
             text = _(
                 "traffic_warning_premium_depleted",
@@ -887,7 +910,7 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin, TariffWorkerPremiu
                 reset_available_bytes=self._premium_next_period_available_bytes(sub, tariff),
                 user_lang=user_lang,
                 next_reset_at=next_reset_at,
-                traffic_strategy=self._period_tariff_traffic_strategy(tariff),
+                traffic_strategy=traffic_strategy,
             )
             text = _(
                 "traffic_warning_premium_almost",

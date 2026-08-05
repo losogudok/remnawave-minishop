@@ -450,6 +450,7 @@ WEBAPP_SUBSCRIPTION_SCHEMA: dict[str, Any] = {
         "regular_unlimited_override": BOOLEAN_SCHEMA,
         "premium_unlimited_override": BOOLEAN_SCHEMA,
         "premium_is_limited": BOOLEAN_SCHEMA,
+        "premium_traffic_limit_strategy": STRING_SCHEMA,
         "premium_next_reset_at": NULLABLE_STRING_SCHEMA,
         "premium_next_reset_text": NULLABLE_STRING_SCHEMA,
         "premium_squad_labels": STRING_ARRAY_SCHEMA,
