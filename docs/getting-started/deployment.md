@@ -101,6 +101,7 @@ Wizard старается предлагать безопасные значен
 | `Имя Docker Compose проекта` | Префикс Docker-сети, volumes и контейнеров. | Оставьте `remnawave-minishop`. Меняйте только если на одном сервере нужно несколько независимых стеков. |
 | `Тег Docker-образа` | Версия backend/worker/frontend образов. | Для обычной установки оставьте `latest` или укажите конкретный опубликованный релизный тег. |
 | `Токен Telegram бота` | `BOT_TOKEN` из BotFather. | Вставьте токен бота, через которого пользователи будут открывать Mini App. |
+| `SOCKS5 proxy для исходящих запросов Telegram Bot API` | Необязательный `TELEGRAM_BOT_PROXY_URL` для `backend` и `worker`. | Оставьте пустым для прямого подключения либо укажите `socks5://host:port`; значение с credentials wizard показывает только в маскированном виде. |
 | `Telegram ID администраторов` | Список Telegram ID, которым доступна админка и сервисные уведомления. | Укажите свой ID; несколько ID разделяйте запятыми. |
 | `Пользователь/пароль/база PostgreSQL` | Учетные данные внутренней базы Minishop. | Пользователя и имя базы можно оставить по умолчанию; пароль wizard генерирует сам, его можно принять Enter. |
 | `Название Web App` | Название приложения в интерфейсе. | Можно оставить `remnawave-minishop` и позже поменять в настройках. |
@@ -164,6 +165,21 @@ plugin дополнительно скачивается из последнег
 Docker daemon, нет прав на Docker socket, недоступен registry или указан
 несуществующий `IMAGE_TAG`. Полный вывод последней Compose-ошибки сохраняется в
 `.installer/compose-last-error.log` внутри папки установки.
+
+### Telegram Bot API через SOCKS5
+
+Wizard принимает только `socks5://host:port` или
+`socks5://username:password@host:port`; специальные символы credentials должны быть
+percent-encoded. Значение сохраняется как `TELEGRAM_BOT_PROXY_URL` и применяется после рестарта
+к исходящим Bot API вызовам обоих процессов — `backend` и `worker`.
+
+Это не туннель для входящего webhook: Telegram по-прежнему должен достигать публичного HTTPS
+`WEBHOOK_PUBLIC_URL`/`WEBHOOK_BASE_URL`. Telegram OAuth, Panel API и платежные клиенты также идут
+своими маршрутами. В Docker не используйте `127.0.0.1` для proxy на host без отдельно настроенного
+host gateway: loopback принадлежит контейнеру. Проверяйте endpoint из обоих контейнеров.
+
+Подробные примеры, ограничения схем и rollback:
+[SOCKS5 proxy для Telegram Bot API](../configuration/env-vars.md#socks5-proxy-для-telegram-bot-api).
 
 Обычный `docker compose up -d --build` поднимает:
 

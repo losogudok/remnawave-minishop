@@ -64,6 +64,96 @@ def test_shell_installer_exits_on_stdin_eof():
     assert "Ввод завершился во время выбора пункта" in result.stderr
 
 
+def test_shell_installer_validates_telegram_socks5_proxy_urls(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    shell_body = r"""
+for value in \
+    'socks5://proxy.example.com:1080' \
+    'socks5://192.0.2.10:1080' \
+    'socks5://[2001:db8::10]:1080' \
+    'socks5://user%40example:p%3A%2F%23@proxy.example.com:1080'
+do
+    is_valid_socks5_url "$value" || exit 20
+done
+for value in \
+    'http://proxy.example.com:1080' \
+    'socks5h://proxy.example.com:1080' \
+    'SOCKS5://proxy.example.com:1080' \
+    'socks5://proxy.example.com' \
+    'socks5://proxy.example.com:0' \
+    'socks5://proxy.example.com:65536' \
+    'socks5://user@proxy.example.com:1080' \
+    'socks5://user:@proxy.example.com:1080' \
+    'socks5://user:raw/password@proxy.example.com:1080' \
+    'socks5://proxy.example.com:1080/path' \
+    'socks5://proxy.example.com:1080?' \
+    'socks5://proxy.example.com:1080#'
+do
+    if is_valid_socks5_url "$value"; then exit 21; fi
+done
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_shell_installer_masks_telegram_proxy_summary(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    proxy_url = "socks5://proxy-user:proxy-password@proxy.example.com:1080"
+    result = _run_installer_function(
+        tmp_path,
+        f"show_env_value TELEGRAM_BOT_PROXY_URL '{proxy_url}'",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "TELEGRAM_BOT_PROXY_URL=" in result.stdout
+    assert proxy_url not in result.stdout
+    assert "proxy-password" not in result.stdout
+
+
+def test_telegram_proxy_deploy_contract_is_backend_only():
+    backend_env_examples = (
+        REPO_ROOT / ".env.example",
+        REPO_ROOT / "deploy" / "dev" / "remnawave-dev.env.example",
+        REPO_ROOT / "deploy" / "examples" / "angie" / ".env.example",
+        REPO_ROOT / "deploy" / "examples" / "caddy" / ".env.example",
+        REPO_ROOT / "deploy" / "examples" / "nginx" / ".env.example",
+        REPO_ROOT / "deploy" / "examples" / "newt" / ".env.example",
+        REPO_ROOT / "deploy" / "examples" / "no-proxy" / ".env.example",
+        REPO_ROOT / "deploy" / "examples" / "split-protected-upstream" / ".env.backend.example",
+    )
+    for env_path in backend_env_examples:
+        assert "TELEGRAM_BOT_PROXY_URL" in env_path.read_text(encoding="utf-8"), env_path
+
+    frontend_env = (
+        REPO_ROOT / "deploy" / "examples" / "split-protected-upstream" / ".env.frontend.example"
+    ).read_text(encoding="utf-8")
+    assert "TELEGRAM_BOT_PROXY_URL" not in frontend_env
+
+    split_compose = (
+        REPO_ROOT
+        / "deploy"
+        / "examples"
+        / "split-protected-upstream"
+        / "backend.docker-compose.yml"
+    ).read_text(encoding="utf-8")
+    assert "TELEGRAM_BOT_PROXY_URL: ${TELEGRAM_BOT_PROXY_URL:-}" in split_compose
+
+
+def test_shell_installer_manages_only_core_telegram_proxy_key():
+    script = INSTALL_SCRIPT.read_text(encoding="utf-8")
+
+    assert "TELEGRAM_BOT_PROXY_URL_VALUE" in script
+    assert 'env_get TELEGRAM_BOT_PROXY_URL ""' in script
+    assert 'env_line TELEGRAM_BOT_PROXY_URL "$TELEGRAM_BOT_PROXY_URL_VALUE"' in script
+    assert "\nPROXY_URL_VALUE=" not in script
+
+
 def test_shell_installer_is_the_only_install_entrypoint():
     assert INSTALL_SCRIPT.exists()
     assert not (REPO_ROOT / "scripts" / "install.py").exists()

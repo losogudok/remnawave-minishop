@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+import logging
+
+from aiogram import Bot
+from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.client.session.base import TelegramType
+from aiogram.client.session.middlewares.base import BaseRequestMiddleware, NextRequestMiddlewareType
+from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramNetworkError
+from aiogram.methods import Response, TelegramMethod
+from aiohttp_socks import ProxyConnectionError, ProxyError, ProxyTimeoutError
+
+from config.settings import Settings
+from config.telegram_proxy import (
+    safe_telegram_network_error_detail,
+    safe_telegram_proxy_endpoint,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class TelegramProxyErrorMiddleware(BaseRequestMiddleware):
+    """Preserve aiogram's network-error contract for aiohttp-socks failures."""
+
+    async def __call__(
+        self,
+        make_request: NextRequestMiddlewareType[TelegramType],
+        bot: Bot,
+        method: TelegramMethod[TelegramType],
+    ) -> Response[TelegramType]:
+        try:
+            return await make_request(bot, method)
+        except (ProxyConnectionError, ProxyTimeoutError, ProxyError) as exc:
+            detail = safe_telegram_network_error_detail(exc)
+            raise TelegramNetworkError(
+                method=method,
+                message=f"{type(exc).__name__}: {detail}",
+            ) from exc
+
+
+def create_telegram_bot(settings: Settings, *, token: str | None = None) -> Bot:
+    """Create the shared Telegram Bot API client for backend and worker runtimes."""
+    default = DefaultBotProperties(parse_mode=ParseMode.HTML)
+    bot_token = settings.BOT_TOKEN if token is None else token
+    proxy_url = settings.TELEGRAM_BOT_PROXY_URL
+    if proxy_url is None:
+        return Bot(token=bot_token, default=default)
+
+    raw_proxy_url = proxy_url.get_secret_value()
+    logger.info(
+        "Telegram Bot API SOCKS5 proxy enabled: %s",
+        safe_telegram_proxy_endpoint(proxy_url),
+    )
+    session = AiohttpSession(proxy=raw_proxy_url)
+    session.middleware.register(TelegramProxyErrorMiddleware())
+    return Bot(token=bot_token, default=default, session=session)

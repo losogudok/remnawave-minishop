@@ -14,6 +14,9 @@ aiohttp==3.14.3
     # via
     #   -r backend/requirements.in
     #   aiogram
+    #   aiohttp-socks
+aiohttp-socks==0.11.0
+    # via -r backend/requirements.in
 aiosignal==1.4.0
     # via aiohttp
 annotated-types==0.7.0
@@ -99,6 +102,8 @@ python-dotenv==1.2.2
     # via
     #   -r backend/requirements.in
     #   pydantic-settings
+python-socks[asyncio]==2.8.2
+    # via aiohttp-socks
 redis==8.0.1
     # via -r backend/requirements.in
 requests==2.34.2

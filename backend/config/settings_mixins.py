@@ -13,7 +13,7 @@ from typing import (
     overload,
 )
 
-from pydantic import field_validator, model_validator
+from pydantic import SecretStr, field_validator, model_validator
 
 from config.settings_models import (
     CompatibilitySettings,
@@ -28,6 +28,7 @@ from config.settings_models import (
 )
 from config.support_links import normalize_support_link
 from config.tariffs_config import TariffsConfig, load_tariffs_config
+from config.telegram_proxy import validate_telegram_bot_proxy_url
 from config.traffic_strategy import normalize_traffic_limit_strategy
 from config.webapp_themes_config import WebappThemesConfig, resolved_webapp_themes_catalog
 
@@ -737,6 +738,11 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
 
 
 class SettingsValidationMixin:
+    @field_validator("TELEGRAM_BOT_PROXY_URL")
+    @classmethod
+    def validate_telegram_bot_proxy_setting(cls, value: SecretStr | None) -> SecretStr | None:
+        return validate_telegram_bot_proxy_url(value)
+
     @model_validator(mode="after")
     def validate_referral_link_visibility(self) -> Self:
         if not (

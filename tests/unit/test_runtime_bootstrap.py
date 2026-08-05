@@ -1,8 +1,10 @@
 import asyncio
+import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import main_worker
+from aiogram.exceptions import TelegramNetworkError
 
 from bot.app.factories import runtime as runtime_factory
 from bot.app.factories.runtime import RuntimeBootstrap, build_core_runtime
@@ -37,6 +39,47 @@ async def _noop() -> None:
 
 def teardown_function() -> None:
     reset_plugins()
+
+
+def test_worker_startup_redacts_proxy_credentials_from_telegram_errors(monkeypatch, caplog) -> None:
+    password = "worker-proxy-password"
+    proxy_url = f"socks5://proxy-user:{password}@proxy.example.com:1080"
+    plugin_context = object()
+
+    class FailingBot:
+        async def get_me(self):
+            try:
+                raise OSError(f"Cannot connect through {proxy_url}")
+            except OSError as cause:
+                raise TelegramNetworkError(
+                    method=object(),
+                    message=f"Proxy connection failed: {proxy_url}",
+                ) from cause
+
+    runtime = SimpleNamespace(bot=FailingBot())
+
+    async def fake_build_runtime_bootstrap(_settings):
+        return runtime
+
+    monkeypatch.setattr(main_worker, "build_runtime_bootstrap", fake_build_runtime_bootstrap)
+    monkeypatch.setattr(main_worker, "configure_message_log_notifier", lambda *_args: None)
+    monkeypatch.setattr(main_worker, "init_queue_manager", lambda *_args: None)
+    monkeypatch.setattr(
+        main_worker,
+        "build_core_runtime",
+        lambda *_args, **_kwargs: SimpleNamespace(plugin_context=plugin_context),
+    )
+    monkeypatch.setattr(main_worker, "run_setup", lambda *_args: None)
+    monkeypatch.setattr(main_worker, "register_core_reactions", lambda *_args: None)
+
+    with caplog.at_level(logging.WARNING):
+        result = asyncio.run(main_worker._build_worker_context(make_settings()))
+
+    assert result is plugin_context
+    assert password not in caplog.text
+    assert proxy_url not in caplog.text
+    assert "socks5://***:***@proxy.example.com:1080" in caplog.text
+    assert "Traceback" not in caplog.text
 
 
 def test_build_core_runtime_uses_shared_bootstrap_for_plugin_context(monkeypatch) -> None:

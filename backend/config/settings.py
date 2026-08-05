@@ -2,7 +2,7 @@ import logging
 import os
 import secrets
 
-from pydantic import Field, ValidationError
+from pydantic import Field, SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from config.settings_mixins import SettingsComputedMixin, SettingsValidationMixin
@@ -153,6 +153,10 @@ DEFAULT_TRUSTED_PROXIES = ",".join(
 
 class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
     BOT_TOKEN: str
+    TELEGRAM_BOT_PROXY_URL: SecretStr | None = Field(
+        default=None,
+        description="Optional SOCKS5 proxy used only for outgoing Telegram Bot API requests",
+    )
     ADMIN_IDS_STR: str = Field(
         default="", alias="ADMIN_IDS", description="Comma-separated list of admin Telegram User IDs"
     )

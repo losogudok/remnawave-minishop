@@ -7,7 +7,12 @@ from unittest.mock import patch
 
 from aiogram.exceptions import TelegramNetworkError
 
-from bot.main_bot import _run_telegram_startup_step, on_startup_configured
+from bot.main_bot import (
+    _run_telegram_startup_step,
+    _telegram_network_error_detail,
+    configure_telegram_webhook,
+    on_startup_configured,
+)
 
 
 def test_backend_startup_does_not_run_panel_sync_inline():
@@ -173,6 +178,77 @@ def test_telegram_startup_network_error_retries_until_success_without_traceback(
     assert "api.telegram.org" in caplog.text
     assert "Temporary failure in name resolution" in caplog.text
     assert "Traceback" not in caplog.text
+
+
+def test_telegram_network_error_detail_redacts_socks5_credentials():
+    password = "network-error-password"
+    proxy_url = f"socks5://proxy-user:{password}@proxy.example.com:1080"
+    try:
+        raise OSError(f"Cannot connect through {proxy_url}")
+    except OSError as cause:
+        error = TelegramNetworkError(
+            method=object(),
+            message=f"Proxy connection failed: {proxy_url}",
+        )
+        error.__cause__ = cause
+
+    detail = _telegram_network_error_detail(error)
+
+    assert password not in detail
+    assert proxy_url not in detail
+    assert "socks5://***:***@proxy.example.com:1080" in detail
+
+
+def test_webhook_configuration_uses_proxy_backed_bot_without_changing_inbound_url(
+    monkeypatch,
+):
+    proxy_session = object()
+
+    class FakeWebhookInfo:
+        def __init__(self, url: str):
+            self.url = url
+
+        def model_dump_json(self, **_kwargs) -> str:
+            return f'{{"url":"{self.url}"}}'
+
+    class FakeBot:
+        def __init__(self):
+            self.session = proxy_session
+            self.get_calls = 0
+            self.set_calls = []
+
+        async def get_webhook_info(self):
+            self.get_calls += 1
+            url = "" if self.get_calls == 1 else "https://bot.example.test/tg/webhook"
+            return FakeWebhookInfo(url)
+
+        async def set_webhook(self, **kwargs):
+            self.set_calls.append(kwargs)
+            return True
+
+    bot = FakeBot()
+    settings = SimpleNamespace(
+        WEBHOOK_BASE_URL="https://bot.example.test",
+        telegram_webhook_path="/tg/webhook",
+        WEBHOOK_SECRET_TOKEN="webhook-secret",
+        BOT_TOKEN="123456:test-token",
+    )
+    dispatcher = SimpleNamespace(resolve_used_update_types=lambda: ["message"])
+    monkeypatch.setattr("bot.main_bot.get_dispatcher_bot", lambda _dispatcher: bot)
+    monkeypatch.setattr("bot.main_bot.get_dispatcher_settings", lambda _dispatcher: settings)
+
+    asyncio.run(configure_telegram_webhook(dispatcher))
+
+    assert bot.session is proxy_session
+    assert bot.get_calls == 2
+    assert bot.set_calls == [
+        {
+            "url": "https://bot.example.test/tg/webhook",
+            "secret_token": "webhook-secret",
+            "drop_pending_updates": True,
+            "allowed_updates": ["message"],
+        }
+    ]
 
 
 def test_telegram_startup_step_returns_true_on_success():

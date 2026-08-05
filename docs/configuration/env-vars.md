@@ -13,6 +13,7 @@
 | Переменная | Где менять | Назначение |
 | --- | --- | --- |
 | `BOT_TOKEN` | Только `.env` | Токен Telegram-бота. |
+| `TELEGRAM_BOT_PROXY_URL` | Только `.env` | Необязательный SOCKS5 proxy только для исходящих запросов Telegram Bot API из `backend` и `worker`. |
 | `ADMIN_IDS` | Только `.env` | Telegram ID администраторов через запятую. Нужен для первого входа в админку. |
 | `WEBHOOK_BASE_URL` | `.env` | Публичный URL backend/webhook-домена. Используется для URL вебхуков Telegram, платежных провайдеров и Remnawave. |
 | `POSTGRES_USER` | `.env` / Compose | Пользователь PostgreSQL. |
@@ -21,6 +22,55 @@
 | `WEBAPP_ENABLED` | `.env` / админка | Включает Web App и админку. Держите `True` для первого запуска; если выключить, вернуть доступ можно только через `.env` и рестарт. |
 | `WEBAPP_SESSION_SECRET` | `.env` | Стабильный HMAC-секрет сессий Web App. Если пустой, генерируется на процесс, но сессии сбросятся после рестарта. |
 | `WEBHOOK_SECRET_TOKEN` | `.env` | Секрет вебхука Telegram. Если пустой, генерируется на процесс. |
+
+### SOCKS5 proxy для Telegram Bot API
+
+По умолчанию Telegram Bot API вызывается напрямую. Чтобы направить исходящие запросы `aiogram.Bot`
+из `backend` и `worker` через один SOCKS5 endpoint, задайте:
+
+```dotenv
+TELEGRAM_BOT_PROXY_URL=socks5://proxy.example.com:1080
+```
+
+С авторизацией:
+
+```dotenv
+TELEGRAM_BOT_PROXY_URL=socks5://username:password@proxy.example.com:1080
+```
+
+Логин и пароль задаются только парой. Специальные символы в credentials нужно кодировать через
+percent-encoding: например, `user@example.com` становится `user%40example.com`, а `p:a/ss` —
+`p%3Aa%2Fss`. Обязательны hostname и порт `1..65535`; IPv6 указывается в квадратных скобках:
+`socks5://[2001:db8::10]:1080`.
+
+Поддерживается только `socks5://`. Схемы `socks5h://`, SOCKS4, HTTP/HTTPS proxy, цепочки proxy и
+алиасы `PROXY_URL`, `ALL_PROXY`, `HTTPS_PROXY` не поддерживаются. Пустое или отсутствующее значение
+сохраняет прямой маршрут.
+
+Проксируются все исходящие Bot API методы, включая `get_me`, `get_webhook_info`, `set_webhook`,
+сообщения, файлы и worker-уведомления. Не проксируются:
+
+- входящая доставка Telegram webhook на `WEBHOOK_BASE_URL`;
+- браузерный Telegram OAuth и server-side запросы к `oauth.telegram.org`;
+- Remnawave Panel, платежные провайдеры, SMTP и другие HTTP-клиенты.
+
+Webhook-режим по-прежнему требует публичного HTTPS endpoint, доступного Telegram. Настройка
+меняет только исходящий маршрут к Bot API.
+
+Proxy должен быть достижим из обоих контейнеров — `backend` и `worker`. Адрес `127.0.0.1` внутри
+контейнера указывает на сам контейнер, а не на Docker host. Для proxy-контейнера используйте его
+Compose service name и общую сеть; для внешнего proxy — доступный из контейнеров DNS/IP.
+
+После изменения пересоздайте оба процесса:
+
+```bash
+docker compose up -d --force-recreate backend worker
+docker compose logs --tail=100 backend worker
+```
+
+Startup-лог показывает только замаскированный endpoint. Не публикуйте `.env` и полный proxy URL
+при диагностике. Для rollback удалите или очистите `TELEGRAM_BOT_PROXY_URL` и снова пересоздайте
+`backend` и `worker` — приложение вернется к прямому подключению.
 
 ## Инфраструктура и Compose
 

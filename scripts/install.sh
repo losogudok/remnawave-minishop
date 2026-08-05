@@ -84,6 +84,7 @@ PANGOLIN_ENDPOINT_VALUE=""
 NEWT_ID_VALUE=""
 NEWT_SECRET_VALUE=""
 BOT_TOKEN_VALUE=""
+TELEGRAM_BOT_PROXY_URL_VALUE=""
 ADMIN_IDS_VALUE=""
 POSTGRES_USER_VALUE=""
 POSTGRES_PASSWORD_VALUE=""
@@ -101,7 +102,7 @@ TELEGRAM_OAUTH_CLIENT_ID_VALUE=""
 TELEGRAM_OAUTH_CLIENT_SECRET_VALUE=""
 TELEGRAM_OAUTH_REQUEST_ACCESS_VALUE=""
 
-KNOWN_ENV_KEYS="DEPLOYMENT_PROFILE COMPOSE_PROJECT_NAME IMAGE_TAG WEBHOOK_HOST MINIAPP_HOST WEBHOOK_PUBLIC_URL MINIAPP_PUBLIC_URL FRONTEND_BACKEND_MODE INSTALL_NODE_ROLE WEBAPP_API_BASE_URL WEBAPP_BACKEND_UPSTREAM WEBAPP_BACKEND_UPSTREAM_HOST MINISHOP_EDGE_TOKEN MINISHOP_EDGE_TOKEN_HEADER HTTP_BIND HTTPS_BIND WEB_SERVER_BIND WEBAPP_SERVER_BIND FRONTEND_BIND RATHOLE_IMAGE RATHOLE_CONTROL_BIND RATHOLE_CONTROL_REMOTE RATHOLE_SERVICE_TOKEN RATHOLE_SERVICE_PORT PANGOLIN_ENDPOINT NEWT_ID NEWT_SECRET BOT_TOKEN ADMIN_IDS POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB WEBAPP_ENABLED WEBAPP_TITLE WEBAPP_SESSION_SECRET WEBHOOK_SECRET_TOKEN TRUSTED_PROXIES PANEL_API_URL PANEL_API_KEY PANEL_API_COOKIE PANEL_WEBHOOK_SECRET TELEGRAM_OAUTH_CLIENT_ID TELEGRAM_OAUTH_CLIENT_SECRET TELEGRAM_OAUTH_REQUEST_ACCESS"
+KNOWN_ENV_KEYS="DEPLOYMENT_PROFILE COMPOSE_PROJECT_NAME IMAGE_TAG WEBHOOK_HOST MINIAPP_HOST WEBHOOK_PUBLIC_URL MINIAPP_PUBLIC_URL FRONTEND_BACKEND_MODE INSTALL_NODE_ROLE WEBAPP_API_BASE_URL WEBAPP_BACKEND_UPSTREAM WEBAPP_BACKEND_UPSTREAM_HOST MINISHOP_EDGE_TOKEN MINISHOP_EDGE_TOKEN_HEADER HTTP_BIND HTTPS_BIND WEB_SERVER_BIND WEBAPP_SERVER_BIND FRONTEND_BIND RATHOLE_IMAGE RATHOLE_CONTROL_BIND RATHOLE_CONTROL_REMOTE RATHOLE_SERVICE_TOKEN RATHOLE_SERVICE_PORT PANGOLIN_ENDPOINT NEWT_ID NEWT_SECRET BOT_TOKEN TELEGRAM_BOT_PROXY_URL ADMIN_IDS POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB WEBAPP_ENABLED WEBAPP_TITLE WEBAPP_SESSION_SECRET WEBHOOK_SECRET_TOKEN TRUSTED_PROXIES PANEL_API_URL PANEL_API_KEY PANEL_API_COOKIE PANEL_WEBHOOK_SECRET TELEGRAM_OAUTH_CLIENT_ID TELEGRAM_OAUTH_CLIENT_SECRET TELEGRAM_OAUTH_REQUEST_ACCESS"
 
 color() {
     printf '%s%s%s' "$2" "$1" "$RESET"
@@ -190,7 +191,7 @@ mask_secret() {
 
 is_secret_key() {
     case "$1" in
-        BOT_TOKEN|POSTGRES_PASSWORD|WEBAPP_SESSION_SECRET|WEBHOOK_SECRET_TOKEN|PANEL_API_KEY|PANEL_API_COOKIE|PANEL_WEBHOOK_SECRET|TELEGRAM_OAUTH_CLIENT_SECRET|NEWT_SECRET|MINISHOP_EDGE_TOKEN|RATHOLE_SERVICE_TOKEN)
+        BOT_TOKEN|TELEGRAM_BOT_PROXY_URL|POSTGRES_PASSWORD|WEBAPP_SESSION_SECRET|WEBHOOK_SECRET_TOKEN|PANEL_API_KEY|PANEL_API_COOKIE|PANEL_WEBHOOK_SECRET|TELEGRAM_OAUTH_CLIENT_SECRET|NEWT_SECRET|MINISHOP_EDGE_TOKEN|RATHOLE_SERVICE_TOKEN)
             return 0
             ;;
         *)
@@ -259,6 +260,74 @@ is_bind_address() {
     esac
 }
 
+is_valid_proxy_credential_part() {
+    value="$1"
+    [ -n "$value" ] && printf '%s' "$value" | grep -Eq '^([A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})+$'
+}
+
+is_valid_socks5_url() {
+    value="$1"
+    case "$value" in
+        socks5://*)
+            authority=${value#socks5://}
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    case "$authority" in
+        ""|*[[:space:]]*|*/*|*\?*|*\#*)
+            return 1
+            ;;
+    esac
+
+    endpoint="$authority"
+    case "$authority" in
+        *@*)
+            userinfo=${authority%@*}
+            endpoint=${authority##*@}
+            case "$userinfo" in
+                *@*|""|:*)
+                    return 1
+                    ;;
+            esac
+            case "$userinfo" in
+                *:*)
+                    username=${userinfo%%:*}
+                    password=${userinfo#*:}
+                    ;;
+                *)
+                    return 1
+                    ;;
+            esac
+            is_valid_proxy_credential_part "$username" || return 1
+            is_valid_proxy_credential_part "$password" || return 1
+            ;;
+    esac
+
+    case "$endpoint" in
+        \[*\]:*)
+            host=${endpoint%%]:*}
+            host=${host#\[}
+            port=${endpoint##*:}
+            [ -n "$host" ] && is_ipv6_literal "$host" && is_port_number "$port"
+            ;;
+        *:*)
+            host=${endpoint%:*}
+            port=${endpoint##*:}
+            case "$host" in
+                ""|*:*)
+                    return 1
+                    ;;
+            esac
+            printf '%s' "$host" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$' && is_port_number "$port"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 print_validation_hint() {
     validator="$1"
     value="${2:-}"
@@ -275,6 +344,9 @@ print_validation_hint() {
                 warn "Похоже, указан только IP без порта. Docker Compose прочитает это неверно; добавьте порт, например $value:80."
             fi
             warn "Если не уверены, оставьте значение по умолчанию. 0.0.0.0 означает слушать все сетевые интерфейсы сервера."
+            ;;
+        socks5)
+            warn "Используйте socks5://host:port или socks5://user:password@host:port. Спецсимволы credentials кодируйте через percent-encoding."
             ;;
     esac
 }
@@ -294,6 +366,9 @@ validate_value() {
             ;;
         bind)
             is_bind_address "$value"
+            ;;
+        socks5)
+            is_valid_socks5_url "$value"
             ;;
         *)
             return 0
@@ -1381,6 +1456,13 @@ prompt_common_env() {
     fi
     prompt_value "Токен Telegram бота" "$detected_bot_token" 1 1 "" "$detected_bot_token_prefilled"
     BOT_TOKEN_VALUE="$PROMPT_VALUE"
+    existing_telegram_proxy_url=$(env_get TELEGRAM_BOT_PROXY_URL "")
+    existing_telegram_proxy_url_prefilled=0
+    if [ -n "$existing_telegram_proxy_url" ]; then
+        existing_telegram_proxy_url_prefilled=1
+    fi
+    prompt_value "SOCKS5 proxy для исходящих запросов Telegram Bot API (пусто = напрямую)" "$existing_telegram_proxy_url" 0 1 "socks5" "$existing_telegram_proxy_url_prefilled"
+    TELEGRAM_BOT_PROXY_URL_VALUE="$PROMPT_VALUE"
     detected_admin_ids=$(env_get ADMIN_IDS "")
     detected_admin_ids_prefilled=0
     if [ -n "$detected_admin_ids" ]; then
@@ -1576,6 +1658,7 @@ display_env_summary() {
     show_env_value RATHOLE_SERVICE_PORT "$RATHOLE_SERVICE_PORT_VALUE"
     [ "$INSTALL_NODE_ROLE_VALUE" = "frontend-node" ] && return 0
     show_env_value BOT_TOKEN "$BOT_TOKEN_VALUE"
+    show_env_value TELEGRAM_BOT_PROXY_URL "$TELEGRAM_BOT_PROXY_URL_VALUE"
     show_env_value ADMIN_IDS "$ADMIN_IDS_VALUE"
     show_env_value POSTGRES_USER "$POSTGRES_USER_VALUE"
     show_env_value POSTGRES_PASSWORD "$POSTGRES_PASSWORD_VALUE"
@@ -1655,6 +1738,7 @@ render_env_file() {
 
     printf '\n# Telegram\n' >> "$output"
     env_line BOT_TOKEN "$BOT_TOKEN_VALUE" "$output"
+    env_line TELEGRAM_BOT_PROXY_URL "$TELEGRAM_BOT_PROXY_URL_VALUE" "$output"
     env_line ADMIN_IDS "$ADMIN_IDS_VALUE" "$output"
 
     printf '\n# PostgreSQL\n' >> "$output"
