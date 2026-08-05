@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bot.infra.redis import close_redis
 from bot.services.panel_api_compat import PanelApiCompatibility
 from bot.services.panel_api_service import PanelApiService
 from bot.services.subscription_service_impl.core import SubscriptionService
@@ -86,6 +87,11 @@ class _PremiumTariff:
 
 
 class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncTearDown(self) -> None:
+        # Settings inherit the CI Redis URL. Close the shared client before
+        # IsolatedAsyncioTestCase tears down the event loop that owns its pool.
+        await close_redis()
+
     def test_topup_webapp_button_labels_do_not_mention_mini_app(self):
         class I18n:
             def gettext(self, _lang, key, **_kwargs):

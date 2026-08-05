@@ -1,4 +1,5 @@
 import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -195,24 +196,31 @@ def test_shell_installer_rejects_legacy_compose_v1(tmp_path: Path):
     if not shutil.which("sh"):
         pytest.skip("sh is not available on this platform")
 
-    shell_body = r"""
-docker() {
+    legacy_compose = tmp_path / "docker-compose"
+    legacy_compose.write_text(
+        """#!/bin/sh
+if [ "$1" = "version" ] && [ "${2:-}" = "--short" ]; then
+    printf '1.29.2\n'
+    exit 0
+fi
+if [ "$1" = "version" ]; then
+    printf 'docker-compose version 1.29.2\n'
+    exit 0
+fi
+exit 1
+""",
+        encoding="utf-8",
+    )
+    legacy_compose.chmod(0o755)
+
+    shell_body = f"""
+PATH={shlex.quote(str(tmp_path))}:$PATH
+docker() {{
     if [ "$1" = "compose" ]; then return 1; fi
     if [ "$1" = "version" ]; then printf '26.1.4\n'; return 0; fi
     if [ "$1" = "info" ]; then return 0; fi
     return 1
-}
-docker-compose() {
-    if [ "$1" = "version" ] && [ "${2:-}" = "--short" ]; then
-        printf '1.29.2\n'
-        return 0
-    fi
-    if [ "$1" = "version" ]; then
-        printf 'docker-compose version 1.29.2\n'
-        return 0
-    fi
-    return 1
-}
+}}
 if detect_compose_command; then exit 20; fi
 [ -z "$COMPOSE_VERSION_VALUE" ] || exit 21
 """
