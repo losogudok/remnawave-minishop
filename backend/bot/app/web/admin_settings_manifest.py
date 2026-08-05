@@ -136,7 +136,7 @@ _PROVIDER_OPTION_LABEL_KEYS: dict[str, str] = {
     "API key": "admin_settings_provider_opt_api_key_label",
     "Payment URL": "admin_settings_provider_opt_payment_url_label",
     "Payment method ID": "admin_settings_provider_opt_payment_method_id_label",
-    "Server IP": "admin_settings_provider_opt_server_ip_label",
+    "Backend egress IP": "admin_settings_provider_opt_server_ip_label",
     "Trusted IPs": "admin_settings_provider_opt_trusted_ips_label",
     "Base URL": "admin_settings_provider_opt_base_url_label",
     "Secret": "admin_settings_provider_opt_secret_label",
@@ -248,9 +248,10 @@ _PROVIDER_OPTION_DESCRIPTION_KEYS: dict[str, str] = {
     "See https://merchant.freekassa.net/settings/currencies": (
         "admin_settings_provider_opt_payment_method_id_description"
     ),
-    "Public IP address reported to FreeKassa.": (
-        "admin_settings_provider_opt_server_ip_description"
-    ),
+    (
+        "Stable public egress IP of the backend used as the buyer IP fallback "
+        "for FreeKassa API orders."
+    ): ("admin_settings_provider_opt_server_ip_description"),
     "Comma-separated IP addresses accepted for FreeKassa webhooks.": (
         "admin_settings_provider_opt_trusted_ips_description"
     ),

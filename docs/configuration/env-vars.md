@@ -446,9 +446,17 @@ PAYMENT_TRIBUTE_TELEGRAM_EMOJI
 | `FREEKASSA_MERCHANT_ID` | ID магазина. |
 | `FREEKASSA_API_KEY` | API-ключ. |
 | `FREEKASSA_SECOND_SECRET` | Секрет уведомлений. |
-| `FREEKASSA_PAYMENT_IP` | Публичный IP сервера для запроса оплаты. |
+| `FREEKASSA_PAYMENT_IP` | Стабильный публичный исходящий IPv4 `backend`, передаваемый как резервный IP плательщика при создании заказа. |
 | `FREEKASSA_PAYMENT_METHOD_ID` | ID метода оплаты. |
 | `FREEKASSA_TRUSTED_IPS` | Список доверенных IP webhook-источников. |
+
+FreeKassa требует поле `ip` в API создания заказа, но Telegram не сообщает боту IP пользователя. Поэтому текущая интеграция использует исходящий адрес `backend`. Получите его из работающего контейнера:
+
+```bash
+docker compose exec backend sh -lc 'curl -4fsS https://api.ipify.org; echo'
+```
+
+Не подставляйте внутренний Docker/Kubernetes IP, адрес reverse proxy или значения из `FREEKASSA_TRUSTED_IPS`. Если трафик выходит через NAT, VPN либо отдельный шлюз, нужен адрес, который показывает команда выше. Подробная последовательность настройки приведена в разделе [Платежи → FreeKassa](../features/payments.md#freekassa).
 
 ### Platega
 

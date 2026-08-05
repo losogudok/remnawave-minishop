@@ -168,6 +168,19 @@ class FreeKassaService(HttpClientMixin):
 
     @property
     def configured(self) -> bool:
+        return bool(self.api_configured and self.server_ip and self.payment_method_id)
+
+    @property
+    def api_configured(self) -> bool:
+        """Return whether authenticated FreeKassa API calls can run.
+
+        Checkout has two additional FreeKassa requirements: a payment-method
+        identifier and the payer-IP fallback.  Webhooks and order lookups must
+        remain available when either checkout-only value is missing so already
+        created payments can still be reconciled; webhook signatures continue
+        to be validated independently with ``SECOND_SECRET``.
+        """
+
         return bool(provider_runtime_enabled(self.config) and self.shop_id and self.api_key)
 
     @property
@@ -203,7 +216,7 @@ class FreeKassaService(HttpClientMixin):
         payment_method_id: int | None = None,
         extra_params: dict[str, Any] | None = None,
     ) -> tuple[bool, dict[str, Any]]:
-        if not self.configured:
+        if not self.api_configured:
             logger.error("FreeKassaService is not configured. Cannot create order.")
             return False, {"message": "service_not_configured"}
 
@@ -265,7 +278,7 @@ class FreeKassaService(HttpClientMixin):
         payment_id: int,
         order_status: int | None = None,
     ) -> tuple[bool, dict[str, Any]]:
-        if not self.configured:
+        if not self.api_configured:
             return False, {"message": "service_not_configured"}
         shop_id = self.shop_id
         if shop_id is None:
@@ -420,7 +433,7 @@ class FreeKassaService(HttpClientMixin):
         return constant_time_compare(expected_signature, provided_signature)
 
     async def webhook_route(self, request: web.Request) -> web.Response:
-        if not self.configured:
+        if not self.api_configured:
             return web.Response(status=503, text="freekassa_disabled")
 
         try:
@@ -744,8 +757,11 @@ _CONFIG_MANIFEST = (
     ProviderManifestField(
         "FREEKASSA_PAYMENT_IP",
         "string",
-        "Server IP",
-        description="Public IP address reported to FreeKassa.",
+        "Backend egress IP",
+        description=(
+            "Stable public egress IP of the backend used as the buyer IP fallback "
+            "for FreeKassa API orders."
+        ),
         subsection="FreeKassa",
         attr="PAYMENT_IP",
     ),
@@ -859,6 +875,6 @@ _DESCRIPTOR: LinkPaymentDescriptor[FreeKassaService] = LinkPaymentDescriptor(
     callback_currency=_callback_currency,
     callback_lead_text=_callback_lead_text,
     callback_reuse_answer=True,
-    webapp_available=lambda service: bool(service.configured and service.payment_method_id),
+    webapp_available=lambda service: bool(service.configured),
     webapp_currency=_webapp_currency,
 )

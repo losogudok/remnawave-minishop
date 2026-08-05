@@ -50,7 +50,7 @@ def _run(coro):
 
 
 def test_freekassa_webhook_disabled_returns_503():
-    service = SimpleNamespace(configured=False)
+    service = SimpleNamespace(api_configured=False)
     response = _run(FreeKassaService.webhook_route(service, _FakeRequest()))
     assert response.status == 503
     assert response.text == "freekassa_disabled"
@@ -82,7 +82,7 @@ def test_paykilla_webhook_disabled_returns_503():
 
 def test_freekassa_webhook_rejects_unauthorized_ip():
     service = SimpleNamespace(
-        configured=True,
+        api_configured=True,
         settings=SimpleNamespace(trusted_proxies=[]),
         config=SimpleNamespace(trusted_ips_list=["1.2.3.4"]),
     )

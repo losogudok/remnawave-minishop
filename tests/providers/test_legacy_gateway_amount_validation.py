@@ -57,7 +57,7 @@ def test_freekassa_rejects_mismatched_amount_before_claim(monkeypatch):
     monkeypatch.setattr(freekassa_service.payment_dal, "claim_payment_finalization", claim_mock)
 
     service = SimpleNamespace(
-        configured=True,
+        api_configured=True,
         config=SimpleNamespace(trusted_ips_list=["127.0.0.1"]),
         settings=SimpleNamespace(trusted_proxies=[]),
         shop_id="merchant",
@@ -98,7 +98,7 @@ def test_freekassa_requires_provider_order_currency_before_claim(monkeypatch):
     monkeypatch.setattr(freekassa_service.payment_dal, "claim_payment_finalization", claim_mock)
 
     service = SimpleNamespace(
-        configured=True,
+        api_configured=True,
         config=SimpleNamespace(trusted_ips_list=["127.0.0.1"]),
         settings=SimpleNamespace(trusted_proxies=[]),
         shop_id="merchant",
