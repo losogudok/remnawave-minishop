@@ -394,7 +394,7 @@
 
   :global(.admin-logs-error-state svg) {
     flex-shrink: 0;
-    color: var(--admin-warning);
+    color: var(--warning);
   }
 
   @media (max-width: 560px) {
