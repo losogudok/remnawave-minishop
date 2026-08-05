@@ -40,21 +40,17 @@ def _fake_claims(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
 
 class TelegramOauthJwksTests(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        self.constructed: list[dict[str, Any]] = []
-        self.get_signing_key = lambda _token: _FakeSigningKey()
-        constructed = self.constructed
-        test_case = self
-
-        class FakeJWKClient:
-            def __init__(self, uri: str, **kwargs: Any) -> None:
-                constructed.append({"uri": uri, **kwargs})
-
-            def get_signing_key_from_jwt(self, token: str) -> _FakeSigningKey:
-                return test_case.get_signing_key(token)
+        self.settings = settings_stub()
+        self.fetch_jwks = AsyncMock(return_value={"keys": [{"kid": "current"}]})
 
         for patcher in (
-            patch.object(webapp_auth, "_telegram_jwks_client", None),
-            patch.object(jwt, "PyJWKClient", FakeJWKClient),
+            patch.object(webapp_auth, "_telegram_jwks_cache", None),
+            patch.object(webapp_auth, "_fetch_telegram_oauth_jwks", self.fetch_jwks),
+            patch.object(
+                webapp_auth,
+                "_select_telegram_oauth_signing_key",
+                return_value=_FakeSigningKey(),
+            ),
             patch.object(jwt, "decode", _fake_claims),
         ):
             patcher.start()
@@ -63,6 +59,7 @@ class TelegramOauthJwksTests(IsolatedAsyncioTestCase):
     async def _validate(self) -> dict[str, Any] | None:
         claims: dict[str, Any] | None = await webapp_auth.validate_telegram_oauth_id_token(
             "header.payload.signature",
+            settings=self.settings,
             client_id=CLIENT_ID,
             expected_nonce=NONCE,
             max_age_seconds=300,
@@ -77,39 +74,53 @@ class TelegramOauthJwksTests(IsolatedAsyncioTestCase):
         self.assertEqual(first, second)
         assert first is not None
         self.assertEqual(first["id"], 4242)
-        self.assertEqual(
-            len(self.constructed),
-            1,
-            "a new JWKS client per login refetches the key set on every login",
-        )
+        self.fetch_jwks.assert_awaited_once_with(self.settings)
 
-    async def test_jwks_client_is_built_with_a_cache_and_a_timeout(self) -> None:
+    async def test_jwks_cache_is_scoped_to_the_selected_transport_route(self) -> None:
         await self._validate()
 
-        self.assertEqual(self.constructed[0]["uri"], webapp_auth.TELEGRAM_OAUTH_JWKS_URL)
-        self.assertIs(self.constructed[0]["cache_jwk_set"], True)
-        self.assertEqual(
-            self.constructed[0]["lifespan"],
-            webapp_auth.TELEGRAM_OAUTH_JWKS_LIFESPAN_SECONDS,
+        proxy_settings = settings_stub(
+            TELEGRAM_BOT_PROXY_URL=SimpleNamespace(
+                get_secret_value=lambda: "socks5://proxy.example.test:1080"
+            ),
+            TELEGRAM_OAUTH_USE_BOT_PROXY=True,
         )
-        self.assertEqual(
-            self.constructed[0]["timeout"],
-            webapp_auth.TELEGRAM_OAUTH_JWKS_TIMEOUT_SECONDS,
+        await webapp_auth.validate_telegram_oauth_id_token(
+            "header.payload.signature",
+            settings=proxy_settings,
+            client_id=CLIENT_ID,
+            expected_nonce=NONCE,
+            max_age_seconds=300,
         )
+
+        self.assertEqual(self.fetch_jwks.await_count, 2)
 
     async def test_a_stalled_key_fetch_gives_up_instead_of_hanging_the_login(self) -> None:
-        def stalled(_token: str) -> _FakeSigningKey:
-            time.sleep(0.5)
-            return _FakeSigningKey()
+        async def stalled(_settings: Any) -> dict[str, Any]:
+            await asyncio.sleep(0.5)
+            return {"keys": []}
 
-        self.get_signing_key = stalled
-        with patch.object(webapp_auth, "TELEGRAM_OAUTH_VALIDATION_TIMEOUT_SECONDS", 0.05):
+        with (
+            patch.object(webapp_auth, "_fetch_telegram_oauth_jwks", stalled),
+            patch.object(webapp_auth, "TELEGRAM_OAUTH_VALIDATION_TIMEOUT_SECONDS", 0.05),
+        ):
             started = time.monotonic()
             result = await self._validate()
             elapsed = time.monotonic() - started
 
         self.assertIsNone(result)
         self.assertLess(elapsed, 0.4, "the login waited for the stalled key fetch")
+
+    async def test_missing_key_forces_one_refresh_for_telegram_key_rotation(self) -> None:
+        with patch.object(
+            webapp_auth,
+            "_select_telegram_oauth_signing_key",
+            side_effect=[None, _FakeSigningKey()],
+        ):
+            result = await self._validate()
+
+        self.assertIsNotNone(result)
+        self.assertEqual(self.fetch_jwks.await_count, 2)
 
 
 class _Session:

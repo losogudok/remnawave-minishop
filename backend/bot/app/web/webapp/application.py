@@ -38,6 +38,7 @@ from .guides import warm_subscription_guides_config
 from .routes import (
     setup_subscription_webapp_routes,
 )
+from .telegram_oauth_transport import close_telegram_oauth_http_session
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,7 @@ def create_subscription_webapp_application(
             warmup_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await warmup_task
+        await close_telegram_oauth_http_session()
         await _close_shared_http_session()
 
     app.on_startup.append(_startup)

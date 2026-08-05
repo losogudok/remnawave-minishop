@@ -13,7 +13,8 @@
 | Переменная | Где менять | Назначение |
 | --- | --- | --- |
 | `BOT_TOKEN` | Только `.env` | Токен Telegram-бота. |
-| `TELEGRAM_BOT_PROXY_URL` | Только `.env` | Необязательный SOCKS5 proxy только для исходящих запросов Telegram Bot API из `backend` и `worker`. |
+| `TELEGRAM_BOT_PROXY_URL` | Только `.env` | Необязательный SOCKS5 proxy для исходящих запросов Telegram Bot API из `backend` и `worker`; может также использоваться server-side частью OAuth. |
+| `TELEGRAM_OAUTH_USE_BOT_PROXY` | Только `.env` | Если `True`, server-side запросы Telegram OAuth к token endpoint и JWKS используют `TELEGRAM_BOT_PROXY_URL`. По умолчанию `False`. |
 | `ADMIN_IDS` | Только `.env` | Telegram ID администраторов через запятую. Нужен для первого входа в админку. |
 | `WEBHOOK_BASE_URL` | `.env` | Публичный URL backend/webhook-домена. Используется для URL вебхуков Telegram, платежных провайдеров и Remnawave. |
 | `POSTGRES_USER` | `.env` / Compose | Пользователь PostgreSQL. |
@@ -25,8 +26,9 @@
 
 ### SOCKS5 proxy для Telegram Bot API
 
-По умолчанию Telegram Bot API вызывается напрямую. Чтобы направить исходящие запросы `aiogram.Bot`
-из `backend` и `worker` через один SOCKS5 endpoint, задайте:
+По умолчанию Telegram Bot API и server-side часть Telegram OAuth вызываются напрямую. Чтобы
+направить исходящие запросы `aiogram.Bot` из `backend` и `worker` через один SOCKS5 endpoint,
+задайте:
 
 ```dotenv
 TELEGRAM_BOT_PROXY_URL=socks5://proxy.example.com:1080
@@ -48,14 +50,27 @@ percent-encoding: например, `user@example.com` становится `use
 сохраняет прямой маршрут.
 
 Проксируются все исходящие Bot API методы, включая `get_me`, `get_webhook_info`, `set_webhook`,
-сообщения, файлы и worker-уведомления. Не проксируются:
+сообщения, файлы и worker-уведомления. Чтобы тот же маршрут использовали два server-side запроса
+Telegram OAuth, включите отдельный opt-in:
+
+```dotenv
+TELEGRAM_OAUTH_USE_BOT_PROXY=True
+```
+
+Тогда `backend` отправляет через SOCKS5 `POST https://oauth.telegram.org/token` и загрузку
+`https://oauth.telegram.org/.well-known/jwks.json`. TLS остается end-to-end до Telegram, DNS-имена
+разрешаются на стороне SOCKS5 proxy. `True` без `TELEGRAM_BOT_PROXY_URL` считается ошибкой
+конфигурации и останавливает запуск.
+
+Не проксируются:
 
 - входящая доставка Telegram webhook на `WEBHOOK_BASE_URL`;
-- браузерный Telegram OAuth и server-side запросы к `oauth.telegram.org`;
+- открытие `https://oauth.telegram.org/auth` в браузере пользователя: сервер не управляет сетевым
+  маршрутом браузера;
 - Remnawave Panel, платежные провайдеры, SMTP и другие HTTP-клиенты.
 
-Webhook-режим по-прежнему требует публичного HTTPS endpoint, доступного Telegram. Настройка
-меняет только исходящий маршрут к Bot API.
+Webhook-режим по-прежнему требует публичного HTTPS endpoint, доступного Telegram. SOCKS5 меняет
+только исходящие маршруты Bot API и, при отдельном opt-in, server-side OAuth.
 
 Proxy должен быть достижим из обоих контейнеров — `backend` и `worker`. Адрес `127.0.0.1` внутри
 контейнера указывает на сам контейнер, а не на Docker host. Для proxy-контейнера используйте его
@@ -69,8 +84,10 @@ docker compose logs --tail=100 backend worker
 ```
 
 Startup-лог показывает только замаскированный endpoint. Не публикуйте `.env` и полный proxy URL
-при диагностике. Для rollback удалите или очистите `TELEGRAM_BOT_PROXY_URL` и снова пересоздайте
-`backend` и `worker` — приложение вернется к прямому подключению.
+при диагностике. Если менялся только `TELEGRAM_OAUTH_USE_BOT_PROXY`, достаточно пересоздать
+`backend`. Если менялся URL или маршрут Bot API, пересоздайте `backend` и `worker`. Для полного
+rollback установите `TELEGRAM_OAUTH_USE_BOT_PROXY=False`, удалите или очистите
+`TELEGRAM_BOT_PROXY_URL` и пересоздайте оба процесса.
 
 ## Инфраструктура и Compose
 
@@ -297,6 +314,7 @@ Xray-Core 26.3.27+, `NET_ADMIN`, nftables, корректный sniffing и вк
 | `TELEGRAM_OAUTH_CLIENT_ID` | `.env` | Идентификатор клиента Telegram OAuth / OpenID Connect. Если пусто, берется bot ID из `BOT_TOKEN`. |
 | `TELEGRAM_OAUTH_CLIENT_SECRET` | `.env` | Секрет клиента Telegram OAuth / OpenID Connect. |
 | `TELEGRAM_OAUTH_REQUEST_ACCESS` | `.env` | Дополнительные разрешения, например `write`. |
+| `TELEGRAM_OAUTH_USE_BOT_PROXY` | `.env` | Использовать `TELEGRAM_BOT_PROXY_URL` для server-side OAuth token/JWKS запросов. Браузерный redirect не проксируется. |
 | `WEBAPP_PRIMARY_COLOR` | Админка | Устаревшее env-поле, игнорируется. |
 | `WEBAPP_LOGO_URL` | Админка | Устаревшее env-поле, игнорируется. |
 | `WEBAPP_FAVICON_USE_CUSTOM` | Админка | Устаревшее env-поле, игнорируется. |

@@ -21,6 +21,8 @@ WEBAPP_LOGIN_TOKEN_TTL_SECONDS=600
 TELEGRAM_OAUTH_CLIENT_ID=<client-id-from-botfather>
 TELEGRAM_OAUTH_CLIENT_SECRET=<client-secret-from-botfather>
 TELEGRAM_OAUTH_REQUEST_ACCESS=write
+# Optional: reuse TELEGRAM_BOT_PROXY_URL for server-side token/JWKS requests.
+TELEGRAM_OAUTH_USE_BOT_PROXY=False
 ```
 
 `SUBSCRIPTION_MINI_APP_URL` должен быть публичным HTTPS URL именно frontend/Mini App-домена. Не добавляйте сюда `/api`, `/auth`, webhook-путь или конкретную страницу.
@@ -65,6 +67,19 @@ docker compose up -d --force-recreate backend frontend
 
 Готовые схемы Caddy, Angie, Nginx, Newt и прямой публикации описаны в [развертывании](../getting-started/deployment.md#готовые-папки-запуска).
 
+Если сервер не может напрямую открыть `oauth.telegram.org`, задайте SOCKS5 endpoint и включите
+его только для server-side части OAuth:
+
+```dotenv
+TELEGRAM_BOT_PROXY_URL=socks5://username:password@proxy.example.com:1080
+TELEGRAM_OAUTH_USE_BOT_PROXY=True
+```
+
+Через proxy пойдут обмен authorization code на token и загрузка JWKS для проверки подписи
+`id_token`. Страница `/auth` по-прежнему открывается браузером пользователя через его сеть, а
+входящий Telegram webhook приходит на публичный `WEBHOOK_BASE_URL`. Mini App `initData` и legacy
+Login Widget проверяются локально и не создают OAuth-запросов.
+
 ## Как проверить
 
 Внутри Telegram:
@@ -93,6 +108,9 @@ docker compose logs -f backend frontend
 - `Telegram OAuth nonce mismatch`: сессия/state устарели, поменялся `WEBAPP_SESSION_SECRET`, пользователь открыл старую вкладку или callback пришел с другого домена.
 - `Telegram OAuth ID token is stale`: `WEBAPP_AUTH_MAX_AGE_SECONDS` слишком маленький или на сервере/клиенте сбито время.
 - `Telegram OAuth callback failed`: проверьте allowed URL в BotFather и что `/auth/*` доходит до frontend/WebApp API.
+- OAuth работает до callback, но завершается `invalid_token`: проверьте доступ `backend` к token
+  endpoint и JWKS; при включенном proxy также проверьте `TELEGRAM_BOT_PROXY_URL` и
+  `TELEGRAM_OAUTH_USE_BOT_PROXY=True`.
 - Mini App не открывается внутри Telegram: домен в BotFather должен совпадать с `SUBSCRIPTION_MINI_APP_URL`, а URL должен быть HTTPS.
 
 Общие логи по авторизации собраны в [разделе диагностики логов](../troubleshooting/logs.md#авторизация-mini-app-и-telegram-oauth).

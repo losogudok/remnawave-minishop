@@ -677,6 +677,12 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
         default="write",
         description="Comma-separated Telegram Login permissions to request: write,phone. Leave empty to request only OpenID profile.",  # noqa: E501
     )
+    TELEGRAM_OAUTH_USE_BOT_PROXY: bool = Field(
+        default=False,
+        description=(
+            "Reuse TELEGRAM_BOT_PROXY_URL for server-side Telegram OAuth token and JWKS requests"
+        ),
+    )
 
     SMTP_HOST: str = Field(default="smtp-relay.brevo.com")
     SMTP_PORT: int = Field(default=587)

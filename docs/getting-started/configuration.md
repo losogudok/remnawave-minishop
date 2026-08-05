@@ -43,8 +43,9 @@ openssl rand -hex 32
 
 Если Telegram Bot API доступен только через SOCKS5, добавьте необязательный
 `TELEGRAM_BOT_PROXY_URL=socks5://host:port`. Настройка действует на исходящие запросы bot-клиента
-из `backend` и `worker`, но не проксирует входящий webhook или Telegram OAuth. Полный контракт,
-Docker-оговорки и rollback описаны в разделе
+из `backend` и `worker`. Для server-side Telegram OAuth token/JWKS запросов дополнительно задайте
+`TELEGRAM_OAUTH_USE_BOT_PROXY=True`. Входящий webhook и открываемая браузером страница OAuth через
+этот proxy не идут. Полный контракт, Docker-оговорки и rollback описаны в разделе
 [SOCKS5 proxy для Telegram Bot API](../configuration/env-vars.md#socks5-proxy-для-telegram-bot-api).
 
 ## Если Web App выключен
@@ -78,7 +79,8 @@ Docker-оговорки и rollback описаны в разделе
 Не все настройки стоит переносить в базу. В `.env` остаются:
 
 - токен бота и `ADMIN_IDS`;
-- `TELEGRAM_BOT_PROXY_URL`, если исходящие Bot API запросы должны идти через SOCKS5;
+- `TELEGRAM_BOT_PROXY_URL` и `TELEGRAM_OAUTH_USE_BOT_PROXY`, если Telegram Bot API и server-side
+  OAuth запросы должны идти через SOCKS5;
 - параметры PostgreSQL, Redis, портов и Compose;
 - `WEBHOOK_BASE_URL`, потому что вебхук Telegram устанавливается при старте;
 - стабильные секреты `WEBAPP_SESSION_SECRET` и `WEBHOOK_SECRET_TOKEN`;

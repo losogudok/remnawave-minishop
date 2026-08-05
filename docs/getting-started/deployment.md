@@ -102,6 +102,7 @@ Wizard старается предлагать безопасные значен
 | `Тег Docker-образа` | Версия backend/worker/frontend образов. | Для обычной установки оставьте `latest` или укажите конкретный опубликованный релизный тег. |
 | `Токен Telegram бота` | `BOT_TOKEN` из BotFather. | Вставьте токен бота, через которого пользователи будут открывать Mini App. |
 | `SOCKS5 proxy для исходящих запросов Telegram Bot API` | Необязательный `TELEGRAM_BOT_PROXY_URL` для `backend` и `worker`. | Оставьте пустым для прямого подключения либо укажите `socks5://host:port`; значение с credentials wizard показывает только в маскированном виде. |
+| `Использовать SOCKS5 proxy для server-side Telegram OAuth token/JWKS` | Необязательный `TELEGRAM_OAUTH_USE_BOT_PROXY` для `backend`. | Включайте, если `oauth.telegram.org` недоступен серверу напрямую; браузер пользователя этот выбор не затрагивает. |
 | `Telegram ID администраторов` | Список Telegram ID, которым доступна админка и сервисные уведомления. | Укажите свой ID; несколько ID разделяйте запятыми. |
 | `Пользователь/пароль/база PostgreSQL` | Учетные данные внутренней базы Minishop. | Пользователя и имя базы можно оставить по умолчанию; пароль wizard генерирует сам, его можно принять Enter. |
 | `Название Web App` | Название приложения в интерфейсе. | Можно оставить `remnawave-minishop` и позже поменять в настройках. |
@@ -171,12 +172,15 @@ Docker daemon, нет прав на Docker socket, недоступен registry
 Wizard принимает только `socks5://host:port` или
 `socks5://username:password@host:port`; специальные символы credentials должны быть
 percent-encoded. Значение сохраняется как `TELEGRAM_BOT_PROXY_URL` и применяется после рестарта
-к исходящим Bot API вызовам обоих процессов — `backend` и `worker`.
+к исходящим Bot API вызовам обоих процессов — `backend` и `worker`. Если proxy заполнен, wizard
+отдельно предлагает включить `TELEGRAM_OAUTH_USE_BOT_PROXY`: тогда `backend` использует его для
+OAuth token endpoint и JWKS.
 
 Это не туннель для входящего webhook: Telegram по-прежнему должен достигать публичного HTTPS
-`WEBHOOK_PUBLIC_URL`/`WEBHOOK_BASE_URL`. Telegram OAuth, Panel API и платежные клиенты также идут
-своими маршрутами. В Docker не используйте `127.0.0.1` для proxy на host без отдельно настроенного
-host gateway: loopback принадлежит контейнеру. Проверяйте endpoint из обоих контейнеров.
+`WEBHOOK_PUBLIC_URL`/`WEBHOOK_BASE_URL`. Страница авторизации OAuth открывается сетью браузера,
+даже когда server-side token/JWKS идут через proxy. Panel API и платежные клиенты используют свои
+маршруты. В Docker не используйте `127.0.0.1` для proxy на host без отдельно настроенного host
+gateway: loopback принадлежит контейнеру. Проверяйте endpoint из обоих контейнеров.
 
 Подробные примеры, ограничения схем и rollback:
 [SOCKS5 proxy для Telegram Bot API](../configuration/env-vars.md#socks5-proxy-для-telegram-bot-api).
