@@ -201,6 +201,15 @@
         onValueChange={(value) =>
           tariffsStore.updateDraftField("premium_traffic_limit_strategy", value)}
       />
+      {#if tariffDraft.premium_traffic_limit_strategy === "MONTH_ROLLING"}
+        <small
+          >{at(
+            "tariff_hint_premium_traffic_strategy_month_rolling",
+            {},
+            "Core calculates this premium cycle from the subscription start, independently of Remnawave reset dates. Existing subscriptions are re-anchored on the next premium sync."
+          )}</small
+        >
+      {/if}
     </div>
   </section>
 

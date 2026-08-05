@@ -112,6 +112,6 @@ describe("tariffSettings", () => {
       "MONTH_ROLLING",
     ]);
     expect(options[0].label).toBe("ru:No automatic reset");
-    expect(options[4].label).toBe("ru:Monthly from reset date");
+    expect(options[4].label).toBe("ru:Monthly from subscription start");
   });
 });

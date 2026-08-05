@@ -117,7 +117,7 @@ export function trafficStrategyOptions(at: TranslateFn): SelectOption[] {
       label: at(
         "settings_field_user_traffic_strategy_choice_month_rolling",
         {},
-        "Monthly from reset date"
+        "Monthly from subscription start"
       ),
     },
   ];

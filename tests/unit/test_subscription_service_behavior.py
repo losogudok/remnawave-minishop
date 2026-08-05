@@ -332,6 +332,57 @@ class SubscriptionServiceCalculationTests(unittest.TestCase):
                         "MONTH",
                     )
 
+    def test_explicit_premium_month_rolling_uses_subscription_start(self):
+        payload = _tariffs_config_payload()
+        payload["tariffs"][0]["premium_traffic_limit_strategy"] = "MONTH_ROLLING"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(payload, tmpdir, USER_TRAFFIC_STRATEGY="NO_RESET")
+            service = _make_service(settings)
+            sub = SimpleNamespace(
+                tariff_key="standard",
+                provider="admin",
+                status_from_panel="ACTIVE",
+                start_date=datetime(2026, 5, 3, 12, 30, tzinfo=UTC),
+                premium_period_start_at=datetime(2026, 7, 15, 9, tzinfo=UTC),
+            )
+
+            period_start = service._premium_accounting_period_start(
+                sub,
+                datetime(2026, 8, 20, 9, tzinfo=UTC),
+                panel_user_data={
+                    "trafficLimitStrategy": "MONTH_ROLLING",
+                    "lastTrafficResetAt": "2026-06-15T12:30:00Z",
+                },
+            )
+
+        self.assertEqual(period_start, datetime(2026, 8, 3, 12, 30, tzinfo=UTC))
+
+    def test_explicit_premium_month_rolling_keeps_legacy_saved_period_fallback(self):
+        payload = _tariffs_config_payload()
+        payload["tariffs"][0]["premium_traffic_limit_strategy"] = "MONTH_ROLLING"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(payload, tmpdir)
+            service = _make_service(settings)
+            saved_period_start = datetime(2026, 7, 15, 9, tzinfo=UTC)
+
+            for subscription_start in (None, datetime(2026, 9, 3, tzinfo=UTC)):
+                sub = SimpleNamespace(
+                    tariff_key="standard",
+                    provider="admin",
+                    status_from_panel="ACTIVE",
+                    start_date=subscription_start,
+                    premium_period_start_at=saved_period_start,
+                )
+
+                with self.subTest(subscription_start=subscription_start):
+                    self.assertEqual(
+                        service._premium_accounting_period_start(
+                            sub,
+                            datetime(2026, 8, 20, 9, tzinfo=UTC),
+                        ),
+                        datetime(2026, 8, 15, 9, tzinfo=UTC),
+                    )
+
 
 class SubscriptionServicePremiumAccessTests(unittest.IsolatedAsyncioTestCase):
     async def test_premium_access_hides_hidden_and_disabled_hosts(self):

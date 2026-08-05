@@ -253,16 +253,30 @@ class TariffMixin(SubscriptionServiceMixinContract):
             panel_user_data=panel_user_data if inherit_regular else None,
             tariff=tariff,
         )
+        current = self._aware_utc(now) or datetime.now(UTC)
+        subscription_start = self._aware_utc(getattr(sub, "start_date", None))
         previous_period_start = self._aware_utc(getattr(sub, "premium_period_start_at", None))
         if not inherit_regular and strategy in {"DAY", "WEEK", "MONTH"}:
             # Explicit calendar strategies must move immediately to their
             # canonical boundary, even when an older inherited strategy left a
             # different anchor on the subscription.
             previous_period_start = None
+        elif (
+            not inherit_regular
+            and strategy == "MONTH_ROLLING"
+            and subscription_start is not None
+            and subscription_start <= current
+        ):
+            # A configured premium rolling month is defined by the immutable
+            # subscription start. ``premium_period_start_at`` is only the
+            # current accounting window and may have been written under an
+            # older strategy. Keep it solely as a compatibility fallback for
+            # legacy subscriptions without a usable start date.
+            previous_period_start = None
         return traffic_accounting_period_start(
             strategy,
-            now,
-            subscription_start_at=self._aware_utc(getattr(sub, "start_date", None)),
+            current,
+            subscription_start_at=subscription_start,
             previous_period_start_at=previous_period_start,
             panel_user_data=panel_user_data if inherit_regular else None,
         )
