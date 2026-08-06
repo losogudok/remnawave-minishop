@@ -2987,6 +2987,11 @@ export interface components {
       default_currency: string;
       /** Default Tariff */
       default_tariff: string;
+      /**
+       * Referral Welcome Bonus Tariff
+       * @default null
+       */
+      referral_welcome_bonus_tariff: string | null;
       /** Tariffs */
       tariffs: components["schemas"]["Tariff"][];
       /** @default null */

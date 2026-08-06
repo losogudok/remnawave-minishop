@@ -2902,6 +2902,18 @@
             "title": "Default Tariff",
             "type": "string"
           },
+          "referral_welcome_bonus_tariff": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Referral Welcome Bonus Tariff"
+          },
           "tariffs": {
             "items": {
               "$ref": "#/components/schemas/Tariff"

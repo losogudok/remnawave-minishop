@@ -147,6 +147,7 @@ describe("tariffsStore", () => {
       tariffsCatalog: {
         ...catalog([originalTariff]),
         default_tariff: "old-key",
+        referral_welcome_bonus_tariff: "old-key",
       },
     });
 
@@ -156,10 +157,35 @@ describe("tariffsStore", () => {
 
     const body = JSON.parse(api.mock.calls[0][1].body);
     expect(body.catalog.default_tariff).toBe("current");
+    expect(body.catalog.referral_welcome_bonus_tariff).toBe("current");
     expect(body.catalog.tariffs[0]).toMatchObject({
       key: "current",
       legacy_keys: ["old-key"],
     });
+  });
+
+  it("persists a dedicated referral welcome tariff", async () => {
+    const api = vi.fn(async (_path, options = {}) => {
+      const body = JSON.parse(options.body);
+      return {
+        ok: true,
+        exists: true,
+        path: "data/tariffs.json",
+        provider_currency_support: [],
+        catalog: body.catalog,
+      };
+    });
+    const { store, toasts } = makeStore(api);
+    const standard = periodTariff();
+    const starter = periodTariff({ key: "starter" });
+    store.updateState({ tariffsCatalog: catalog([standard, starter]) });
+
+    await store.setReferralWelcomeBonusTariff("starter");
+
+    const body = JSON.parse(api.mock.calls[0][1].body);
+    expect(body.catalog.referral_welcome_bonus_tariff).toBe("starter");
+    expect(store.tariffsCatalog.referral_welcome_bonus_tariff).toBe("starter");
+    expect(toasts).toEqual(["tariff_referral_welcome_updated"]);
   });
 
   it("persists the reordered catalog when a tariff is moved", async () => {

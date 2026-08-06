@@ -28,6 +28,7 @@ from bot.utils.install_links import (
 from bot.utils.mini_app_url import subscription_mini_app_checkout_code_url
 from bot.utils.text_sanitizer import sanitize_display_name, sanitize_username
 from config.settings import Settings
+from config.tariffs_config import referral_welcome_bonus_tariff_key_for_settings
 from db.dal import subscription_dal, user_dal
 
 from .start_channel import ensure_required_channel_subscription
@@ -315,17 +316,16 @@ async def start_command_handler(
                             await session.rollback()
                         else:
                             db_user = locked_user
-                            default_tariff_key = None
-                            tariffs_config = settings.tariffs_config
-                            if tariffs_config:
-                                default_tariff_key = getattr(tariffs_config, "default_tariff", None)
+                            welcome_tariff_key = referral_welcome_bonus_tariff_key_for_settings(
+                                settings
+                            )
                             referral_bonus_end_date = (
                                 await subscription_service.extend_active_subscription_days(
                                     session,
                                     user_id,
                                     referral_welcome_days,
                                     reason="referral_welcome_bonus",
-                                    tariff_key=default_tariff_key,
+                                    tariff_key=welcome_tariff_key,
                                 )
                             )
                         if referral_bonus_end_date:

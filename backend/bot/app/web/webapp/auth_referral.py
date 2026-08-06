@@ -21,6 +21,7 @@ from bot.services.registration_invite_gate import (
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.utils.text_sanitizer import sanitize_display_name, sanitize_username
 from config.settings import Settings
+from config.tariffs_config import referral_welcome_bonus_tariff_key_for_settings
 from db.dal import subscription_dal, user_dal
 from db.models import User
 
@@ -143,16 +144,13 @@ async def _grant_referral_welcome_bonus_if_eligible(
         return None
 
     subscription_service: SubscriptionService = get_subscription_service(request)
-    default_tariff_key = None
-    tariffs_config = settings.tariffs_config
-    if tariffs_config:
-        default_tariff_key = getattr(tariffs_config, "default_tariff", None)
+    welcome_tariff_key = referral_welcome_bonus_tariff_key_for_settings(settings)
     end_date = await subscription_service.extend_active_subscription_days(
         session,
         int(user.user_id),
         referral_welcome_days,
         reason="referral_welcome_bonus",
-        tariff_key=default_tariff_key,
+        tariff_key=welcome_tariff_key,
     )
     if end_date:
         # Persisted together with the grant on the caller's commit (the extend

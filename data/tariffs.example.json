@@ -1,5 +1,6 @@
 {
   "default_tariff": "standard",
+  "referral_welcome_bonus_tariff": "standard",
   "default_currency": "rub",
   "tariffs": [
     {

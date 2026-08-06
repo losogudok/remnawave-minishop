@@ -83,6 +83,7 @@ export type TariffsStore = TariffsState & {
   toggleTariffEnabled: (tariff: Tariff) => Promise<void>;
   moveTariff: (fromIndex: number, toIndex: number) => Promise<void>;
   setDefaultTariff: (key: string) => Promise<void>;
+  setReferralWelcomeBonusTariff: (key: string | null) => Promise<void>;
   setDefaultCurrency: (value: string) => Promise<void>;
   deleteTariff: () => Promise<void>;
   updateDraftField: (field: string, value: unknown) => void;
@@ -99,6 +100,7 @@ function isOkResponse<T extends { ok: true }>(response: T | AdminErrorResponse):
 function defaultCatalog(): TariffsCatalog {
   return {
     default_tariff: "",
+    referral_welcome_bonus_tariff: null,
     default_currency: "rub",
     topup_packages_default: { rub: [], stars: [] },
     tariffs: [],
@@ -135,6 +137,7 @@ export function createTariffsStore({
   const state = $state<TariffsStore>({
     tariffsCatalog: {
       default_tariff: "",
+      referral_welcome_bonus_tariff: null,
       default_currency: "rub",
       topup_packages_default: { rub: [], stars: [] },
       tariffs: [],
@@ -174,6 +177,7 @@ export function createTariffsStore({
     toggleTariffEnabled,
     moveTariff,
     setDefaultTariff,
+    setReferralWelcomeBonusTariff,
     setDefaultCurrency,
     deleteTariff,
     updateDraftField,
@@ -459,8 +463,27 @@ export function createTariffsStore({
     const currentDefault =
       catalog.default_tariff === s.tariffEditingKey ? tariff.key : catalog.default_tariff;
     const defaultTariff = enabledKeys.includes(currentDefault) ? currentDefault : enabledKeys[0];
+    const currentWelcomeTariff =
+      catalog.referral_welcome_bonus_tariff === s.tariffEditingKey
+        ? tariff.key
+        : catalog.referral_welcome_bonus_tariff;
+    const welcomeTariff =
+      currentWelcomeTariff &&
+      tariffs.some(
+        (item) =>
+          item.key === currentWelcomeTariff &&
+          item.enabled !== false &&
+          item.billing_model === "period"
+      )
+        ? currentWelcomeTariff
+        : null;
     await persistTariffs(
-      { ...cloneCatalog(catalog), default_tariff: defaultTariff, tariffs },
+      {
+        ...cloneCatalog(catalog),
+        default_tariff: defaultTariff,
+        referral_welcome_bonus_tariff: welcomeTariff,
+        tariffs,
+      },
       at("tariff_saved", {}, "Tariff saved")
     );
   }
@@ -479,8 +502,23 @@ export function createTariffsStore({
     const defaultTariff = enabledKeys.includes(catalog.default_tariff)
       ? catalog.default_tariff
       : enabledKeys[0];
+    const welcomeTariff =
+      catalog.referral_welcome_bonus_tariff &&
+      tariffs.some(
+        (item) =>
+          item.key === catalog.referral_welcome_bonus_tariff &&
+          item.enabled !== false &&
+          item.billing_model === "period"
+      )
+        ? catalog.referral_welcome_bonus_tariff
+        : null;
     await persistTariffs(
-      { ...cloneCatalog(catalog), default_tariff: defaultTariff, tariffs },
+      {
+        ...cloneCatalog(catalog),
+        default_tariff: defaultTariff,
+        referral_welcome_bonus_tariff: welcomeTariff,
+        tariffs,
+      },
       at("tariff_status_updated", {}, "Tariff status updated")
     );
   }
@@ -517,6 +555,17 @@ export function createTariffsStore({
     );
   }
 
+  async function setReferralWelcomeBonusTariff(key: string | null): Promise<void> {
+    const s = readState();
+    const catalog = snapshotForPayload(s.tariffsCatalog);
+    const normalizedKey = String(key || "").trim() || null;
+    if (normalizedKey === (catalog.referral_welcome_bonus_tariff || null)) return;
+    await persistTariffs(
+      { ...cloneCatalog(catalog), referral_welcome_bonus_tariff: normalizedKey },
+      at("tariff_referral_welcome_updated", {}, "Welcome bonus tariff updated")
+    );
+  }
+
   async function setDefaultCurrency(value: string): Promise<void> {
     const currency = normalizeCurrencyKey(value || "rub") as string;
     if (!currency || currency === "stars") {
@@ -546,8 +595,17 @@ export function createTariffsStore({
     const defaultTariff = enabledKeys.includes(catalog.default_tariff)
       ? catalog.default_tariff
       : enabledKeys[0];
+    const welcomeTariff =
+      catalog.referral_welcome_bonus_tariff === target.key
+        ? null
+        : catalog.referral_welcome_bonus_tariff || null;
     await persistTariffs(
-      { ...cloneCatalog(catalog), default_tariff: defaultTariff, tariffs },
+      {
+        ...cloneCatalog(catalog),
+        default_tariff: defaultTariff,
+        referral_welcome_bonus_tariff: welcomeTariff,
+        tariffs,
+      },
       at("tariff_deleted", {}, "Tariff deleted")
     );
   }

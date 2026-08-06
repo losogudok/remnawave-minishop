@@ -522,6 +522,45 @@ class TariffsConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             TariffsConfig.model_validate(data)
 
+    def test_referral_welcome_tariff_defaults_to_default_tariff(self):
+        config = TariffsConfig.model_validate(_valid_config())
+
+        self.assertIsNone(config.referral_welcome_bonus_tariff)
+        self.assertEqual(config.referral_welcome_bonus_tariff_key, "standard")
+
+    def test_referral_welcome_tariff_accepts_enabled_period_tariff(self):
+        data = _valid_config()
+        period_tariff = deepcopy(data["tariffs"][0])
+        period_tariff["key"] = "starter"
+        data["tariffs"].append(period_tariff)
+        data["referral_welcome_bonus_tariff"] = "starter"
+
+        config = TariffsConfig.model_validate(data)
+
+        self.assertEqual(config.referral_welcome_bonus_tariff, "starter")
+        self.assertEqual(config.referral_welcome_bonus_tariff_key, "starter")
+
+    def test_referral_welcome_tariff_rejects_missing_or_disabled_tariff(self):
+        for key in ("missing", "disabled"):
+            with self.subTest(key=key):
+                data = _valid_config()
+                if key == "disabled":
+                    disabled_tariff = deepcopy(data["tariffs"][0])
+                    disabled_tariff["key"] = "disabled"
+                    disabled_tariff["enabled"] = False
+                    data["tariffs"].append(disabled_tariff)
+                data["referral_welcome_bonus_tariff"] = key
+
+                with self.assertRaisesRegex(ValueError, "must reference an enabled tariff"):
+                    TariffsConfig.model_validate(data)
+
+    def test_referral_welcome_tariff_rejects_traffic_tariff(self):
+        data = _valid_config()
+        data["referral_welcome_bonus_tariff"] = "traffic"
+
+        with self.assertRaisesRegex(ValueError, "must reference a period tariff"):
+            TariffsConfig.model_validate(data)
+
     def test_period_price_required_for_enabled_period(self):
         data = _valid_config()
         data["tariffs"][0]["prices_rub"] = {"1": 0}

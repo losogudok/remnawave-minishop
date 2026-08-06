@@ -171,6 +171,7 @@ class TariffsSaveBody(HttpBodyModel):
 
 class AdminTariffsCatalogOut(HttpResponseModel):
     default_tariff: str
+    referral_welcome_bonus_tariff: str | None = None
     default_currency: str = "rub"
     topup_packages_default: PackageSet | None = None
     tariffs: list[Tariff]

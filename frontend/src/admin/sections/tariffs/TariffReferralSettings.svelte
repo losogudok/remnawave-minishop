@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { getSettingsStore } from "$lib/admin/context";
+  import { getSettingsStore, getTariffsStore } from "$lib/admin/context";
   import { Input, Textarea } from "$components/ui/index.js";
   import { ChevronRight, Save, X } from "$components/ui/icons.js";
-  import { AdminBadge, AdminButton } from "$components/patterns/admin/index.js";
+  import { AdminBadge, AdminButton, AdminSelect } from "$components/patterns/admin/index.js";
   import { Switch } from "$components/ui/primitives.js";
   import {
     DISPOSABLE_EMAIL_DOMAINS_PLACEHOLDER,
@@ -21,6 +21,7 @@
     type SettingsDirtyState,
   } from "$lib/admin/tariffSettings";
   import type { SettingField, SettingsSavedPayload } from "$lib/admin/stores/settingsStore";
+  import type { Tariff } from "$lib/admin/stores/tariffsStore";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
 
@@ -39,6 +40,32 @@
   } = $props();
 
   const settingsStore = getSettingsStore();
+  const tariffsStore = getTariffsStore();
+  const tariffsState = $derived(tariffsStore);
+  const tariffsCatalog = $derived(tariffsState.tariffsCatalog);
+  const tariffsSaving = $derived(Boolean(tariffsState.tariffsSaving));
+  const defaultTariff = $derived(
+    (tariffsCatalog.tariffs || []).find(
+      (tariff: Tariff) => tariff.key === tariffsCatalog.default_tariff
+    )
+  );
+  const welcomeTariffUsesInvalidDefault = $derived(
+    !tariffsCatalog.referral_welcome_bonus_tariff && defaultTariff?.billing_model !== "period"
+  );
+  const welcomeTariffOptions = $derived([
+    {
+      value: "",
+      label: at(
+        "tariffs_referral_welcome_bonus_tariff_default",
+        { tariff: tariffLabel(defaultTariff) },
+        "Default tariff ({tariff})"
+      ),
+      disabled: defaultTariff?.billing_model !== "period",
+    },
+    ...(tariffsCatalog.tariffs || [])
+      .filter((tariff: Tariff) => tariff.enabled !== false && tariff.billing_model === "period")
+      .map((tariff: Tariff) => ({ value: tariff.key, label: tariffLabel(tariff) })),
+  ]);
 
   let referralSettingsOpen = $state(false);
   const referralDirtyCount = $derived(
@@ -47,6 +74,10 @@
   const referralEnabled = $derived(
     Number(valueForKey("REFERRAL_WELCOME_BONUS_DAYS", settingsDirty, settingsFieldMap) || 0) > 0
   );
+
+  function tariffLabel(tariff: Tariff | undefined): string {
+    return tariff?.names?.ru || tariff?.names?.en || tariff?.key || "—";
+  }
 
   function valueForKey(
     key: string,
@@ -106,6 +137,10 @@
 
   async function saveTariffSettings(): Promise<void> {
     await settingsStore.saveSettings(onSettingsSaved);
+  }
+
+  async function setReferralWelcomeBonusTariff(value: string): Promise<void> {
+    await tariffsStore.setReferralWelcomeBonusTariff(value || null);
   }
 </script>
 
@@ -380,6 +415,45 @@
                         {at("reset", {}, "Reset")}
                       </AdminButton>
                     {/if}
+                  </div>
+                </div>
+
+                <div class="admin-setting admin-trial-setting-row">
+                  <div class="admin-setting-meta">
+                    <strong>
+                      {at("tariffs_referral_welcome_bonus_tariff", {}, "Welcome bonus tariff")}
+                    </strong>
+                    <code>referral_welcome_bonus_tariff</code>
+                    <small>
+                      {at(
+                        "tariffs_referral_welcome_bonus_tariff_hint",
+                        {},
+                        "The selected period tariff supplies traffic limits, squads, reset strategy, and device limits."
+                      )}
+                    </small>
+                    {#if welcomeTariffUsesInvalidDefault}
+                      <small class="admin-muted">
+                        {at(
+                          "tariffs_referral_welcome_bonus_tariff_invalid_default",
+                          {},
+                          "The default tariff is not period-based. Select a period tariff to avoid an unbound bonus subscription."
+                        )}
+                      </small>
+                    {/if}
+                  </div>
+                  <div class="admin-setting-control">
+                    <AdminSelect
+                      class="admin-setting-select"
+                      value={String(tariffsCatalog.referral_welcome_bonus_tariff || "")}
+                      items={welcomeTariffOptions}
+                      ariaLabel={at(
+                        "tariffs_referral_welcome_bonus_tariff",
+                        {},
+                        "Welcome bonus tariff"
+                      )}
+                      disabled={tariffsSaving || welcomeTariffOptions.length <= 1}
+                      onValueChange={setReferralWelcomeBonusTariff}
+                    />
                   </div>
                 </div>
 
