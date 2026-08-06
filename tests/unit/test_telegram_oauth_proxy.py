@@ -96,7 +96,7 @@ def test_oauth_transport_uses_socks5_with_remote_dns_and_redacted_log(monkeypatc
     assert "socks5://***:***@proxy.example.test:1080" in caplog.text
 
 
-def test_oauth_transport_remains_direct_without_explicit_opt_in(monkeypatch) -> None:
+def test_oauth_transport_allows_explicit_opt_out(monkeypatch) -> None:
     settings = settings_stub(
         TELEGRAM_BOT_PROXY_URL=SecretStr("socks5://proxy.example.test:1080"),
         TELEGRAM_OAUTH_USE_BOT_PROXY=False,
@@ -104,7 +104,7 @@ def test_oauth_transport_remains_direct_without_explicit_opt_in(monkeypatch) -> 
     created_connectors: list[object | None] = []
 
     def unexpected_connector(*_args: Any, **_kwargs: Any) -> object:
-        raise AssertionError("The OAuth proxy must remain opt-in")
+        raise AssertionError("The OAuth proxy must respect the explicit opt-out")
 
     def create_session(**kwargs: Any) -> _RecordingSession:
         created_connectors.append(kwargs["connector"])
@@ -122,6 +122,12 @@ def test_oauth_transport_remains_direct_without_explicit_opt_in(monkeypatch) -> 
     asyncio.run(run())
 
     assert created_connectors == [None]
+
+
+def test_oauth_transport_stays_direct_when_no_proxy_is_configured() -> None:
+    settings = settings_stub(TELEGRAM_OAUTH_USE_BOT_PROXY=True)
+
+    assert telegram_oauth_transport.telegram_oauth_transport_route_key(settings) == "direct"
 
 
 def test_oauth_token_exchange_uses_dedicated_transport(monkeypatch) -> None:

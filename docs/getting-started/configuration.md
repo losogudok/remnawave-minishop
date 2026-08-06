@@ -43,9 +43,10 @@ openssl rand -hex 32
 
 Если Telegram Bot API доступен только через SOCKS5, добавьте необязательный
 `TELEGRAM_BOT_PROXY_URL=socks5://host:port`. Настройка действует на исходящие запросы bot-клиента
-из `backend` и `worker`. Для server-side Telegram OAuth token/JWKS запросов дополнительно задайте
-`TELEGRAM_OAUTH_USE_BOT_PROXY=True`. Входящий webhook и открываемая браузером страница OAuth через
-этот proxy не идут. Полный контракт, Docker-оговорки и rollback описаны в разделе
+из `backend` и `worker`, а server-side Telegram OAuth token/JWKS запросы используют тот же proxy
+автоматически. Для OAuth opt-out задайте `TELEGRAM_OAUTH_USE_BOT_PROXY=False`. Входящий webhook и
+открываемая браузером страница OAuth через этот proxy не идут. Полный контракт, Docker-оговорки и
+rollback описаны в разделе
 [SOCKS5 proxy для Telegram Bot API](../configuration/env-vars.md#socks5-proxy-для-telegram-bot-api).
 
 ## Если Web App выключен
@@ -79,8 +80,7 @@ openssl rand -hex 32
 Не все настройки стоит переносить в базу. В `.env` остаются:
 
 - токен бота и `ADMIN_IDS`;
-- `TELEGRAM_BOT_PROXY_URL` и `TELEGRAM_OAUTH_USE_BOT_PROXY`, если Telegram Bot API и server-side
-  OAuth запросы должны идти через SOCKS5;
+- `TELEGRAM_BOT_PROXY_URL` и необязательный OAuth opt-out `TELEGRAM_OAUTH_USE_BOT_PROXY`;
 - параметры PostgreSQL, Redis, портов и Compose;
 - `WEBHOOK_BASE_URL`, потому что вебхук Telegram устанавливается при старте;
 - стабильные секреты `WEBAPP_SESSION_SECRET` и `WEBHOOK_SECRET_TOKEN`;

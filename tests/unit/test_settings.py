@@ -102,18 +102,18 @@ class SettingsTests(unittest.TestCase):
         self.assertNotIn(password, redacted)
         self.assertIn("socks5://***:***@proxy.example.com:1080/path", redacted)
 
-    def test_telegram_oauth_proxy_is_opt_in_and_requires_bot_proxy_url(self):
-        self.assertIs(self._settings().TELEGRAM_OAUTH_USE_BOT_PROXY, False)
-
-        with self.assertRaises(ValidationError) as error:
-            self._settings(TELEGRAM_OAUTH_USE_BOT_PROXY=True)
-
-        self.assertIn("TELEGRAM_BOT_PROXY_URL", str(error.exception))
+    def test_telegram_oauth_reuses_configured_bot_proxy_by_default(self):
+        self.assertIs(self._settings().TELEGRAM_OAUTH_USE_BOT_PROXY, True)
         configured = self._settings(
             TELEGRAM_BOT_PROXY_URL="socks5://proxy.example.com:1080",
-            TELEGRAM_OAUTH_USE_BOT_PROXY=True,
         )
         self.assertIs(configured.TELEGRAM_OAUTH_USE_BOT_PROXY, True)
+
+        opted_out = self._settings(
+            TELEGRAM_BOT_PROXY_URL="socks5://proxy.example.com:1080",
+            TELEGRAM_OAUTH_USE_BOT_PROXY=False,
+        )
+        self.assertIs(opted_out.TELEGRAM_OAUTH_USE_BOT_PROXY, False)
 
     def test_blank_postgres_password_is_rejected(self):
         with self.assertRaises(ValidationError):

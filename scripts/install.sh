@@ -1514,17 +1514,17 @@ prompt_common_env() {
     TELEGRAM_OAUTH_CLIENT_SECRET_VALUE="$PROMPT_VALUE"
     TELEGRAM_OAUTH_REQUEST_ACCESS_VALUE="$(env_get TELEGRAM_OAUTH_REQUEST_ACCESS write)"
     info "Параметр Telegram OAuth request_access: $TELEGRAM_OAUTH_REQUEST_ACCESS_VALUE. Значение write позволяет боту написать пользователю после входа через Web Login."
-    TELEGRAM_OAUTH_USE_BOT_PROXY_VALUE="False"
+    TELEGRAM_OAUTH_USE_BOT_PROXY_VALUE="True"
     if [ -n "$TELEGRAM_BOT_PROXY_URL_VALUE" ]; then
-        oauth_proxy_default=0
-        existing_oauth_proxy=$(env_get TELEGRAM_OAUTH_USE_BOT_PROXY False | tr '[:upper:]' '[:lower:]')
+        oauth_proxy_default=1
+        existing_oauth_proxy=$(env_get TELEGRAM_OAUTH_USE_BOT_PROXY True | tr '[:upper:]' '[:lower:]')
         case "$existing_oauth_proxy" in
-            true|1|yes|y|да|д)
-                oauth_proxy_default=1
+            false|0|no|n|нет|н)
+                oauth_proxy_default=0
                 ;;
         esac
-        if confirm "Использовать этот SOCKS5 proxy для server-side Telegram OAuth token/JWKS?" "$oauth_proxy_default"; then
-            TELEGRAM_OAUTH_USE_BOT_PROXY_VALUE="True"
+        if ! confirm "Использовать этот SOCKS5 proxy для server-side Telegram OAuth token/JWKS?" "$oauth_proxy_default"; then
+            TELEGRAM_OAUTH_USE_BOT_PROXY_VALUE="False"
         fi
     fi
 

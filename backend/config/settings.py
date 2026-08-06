@@ -678,9 +678,10 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
         description="Comma-separated Telegram Login permissions to request: write,phone. Leave empty to request only OpenID profile.",  # noqa: E501
     )
     TELEGRAM_OAUTH_USE_BOT_PROXY: bool = Field(
-        default=False,
+        default=True,
         description=(
-            "Reuse TELEGRAM_BOT_PROXY_URL for server-side Telegram OAuth token and JWKS requests"
+            "Reuse TELEGRAM_BOT_PROXY_URL for server-side Telegram OAuth token and JWKS requests "
+            "when the proxy is configured"
         ),
     )
 

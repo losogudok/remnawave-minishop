@@ -21,12 +21,9 @@ _TELEGRAM_OAUTH_HTTP_SESSION_ROUTE_KEY: str | None = None
 
 def telegram_oauth_transport_route_key(settings: Settings) -> str:
     """Return a credential-free identity for the selected OAuth network route."""
-    if not settings.TELEGRAM_OAUTH_USE_BOT_PROXY:
-        return "direct"
-
     proxy_url = settings.TELEGRAM_BOT_PROXY_URL
-    if proxy_url is None:
-        raise RuntimeError("Telegram OAuth proxy is enabled without TELEGRAM_BOT_PROXY_URL")
+    if not settings.TELEGRAM_OAUTH_USE_BOT_PROXY or proxy_url is None:
+        return "direct"
 
     digest = hashlib.sha256(proxy_url.get_secret_value().encode("utf-8")).hexdigest()
     return f"socks5:{digest}"
@@ -52,9 +49,7 @@ async def get_telegram_oauth_http_session(settings: Settings) -> ClientSession:
 
         connector = None
         proxy_url = settings.TELEGRAM_BOT_PROXY_URL
-        if settings.TELEGRAM_OAUTH_USE_BOT_PROXY:
-            if proxy_url is None:
-                raise RuntimeError("Telegram OAuth proxy is enabled without TELEGRAM_BOT_PROXY_URL")
+        if settings.TELEGRAM_OAUTH_USE_BOT_PROXY and proxy_url is not None:
             connector = ProxyConnector.from_url(
                 proxy_url.get_secret_value(),
                 rdns=True,

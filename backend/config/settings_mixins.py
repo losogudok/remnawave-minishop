@@ -744,15 +744,6 @@ class SettingsValidationMixin:
         return validate_telegram_bot_proxy_url(value)
 
     @model_validator(mode="after")
-    def validate_telegram_oauth_proxy_setting(self) -> Self:
-        if (
-            bool(getattr(self, "TELEGRAM_OAUTH_USE_BOT_PROXY", False))
-            and getattr(self, "TELEGRAM_BOT_PROXY_URL", None) is None
-        ):
-            raise ValueError("TELEGRAM_OAUTH_USE_BOT_PROXY requires TELEGRAM_BOT_PROXY_URL")
-        return self
-
-    @model_validator(mode="after")
     def validate_referral_link_visibility(self) -> Self:
         if not (
             bool(getattr(self, "REFERRAL_WEBAPP_LINK_ENABLED", False))

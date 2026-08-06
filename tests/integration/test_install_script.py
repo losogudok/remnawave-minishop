@@ -130,7 +130,7 @@ def test_telegram_proxy_deploy_contract_is_backend_only():
     for env_path in backend_env_examples:
         env_example = env_path.read_text(encoding="utf-8")
         assert "TELEGRAM_BOT_PROXY_URL" in env_example, env_path
-        assert "TELEGRAM_OAUTH_USE_BOT_PROXY" in env_example, env_path
+        assert "TELEGRAM_OAUTH_USE_BOT_PROXY=True" in env_example, env_path
 
     frontend_env = (
         REPO_ROOT / "deploy" / "examples" / "split-protected-upstream" / ".env.frontend.example"
@@ -146,7 +146,7 @@ def test_telegram_proxy_deploy_contract_is_backend_only():
         / "backend.docker-compose.yml"
     ).read_text(encoding="utf-8")
     assert "TELEGRAM_BOT_PROXY_URL: ${TELEGRAM_BOT_PROXY_URL:-}" in split_compose
-    assert "TELEGRAM_OAUTH_USE_BOT_PROXY: ${TELEGRAM_OAUTH_USE_BOT_PROXY:-False}" in split_compose
+    assert "TELEGRAM_OAUTH_USE_BOT_PROXY: ${TELEGRAM_OAUTH_USE_BOT_PROXY:-True}" in split_compose
 
 
 def test_shell_installer_manages_only_core_telegram_proxy_key():
@@ -156,7 +156,7 @@ def test_shell_installer_manages_only_core_telegram_proxy_key():
     assert 'env_get TELEGRAM_BOT_PROXY_URL ""' in script
     assert 'env_line TELEGRAM_BOT_PROXY_URL "$TELEGRAM_BOT_PROXY_URL_VALUE"' in script
     assert "TELEGRAM_OAUTH_USE_BOT_PROXY_VALUE" in script
-    assert "env_get TELEGRAM_OAUTH_USE_BOT_PROXY False" in script
+    assert "env_get TELEGRAM_OAUTH_USE_BOT_PROXY True" in script
     assert 'env_line TELEGRAM_OAUTH_USE_BOT_PROXY "$TELEGRAM_OAUTH_USE_BOT_PROXY_VALUE"' in script
     assert "\nPROXY_URL_VALUE=" not in script
 
