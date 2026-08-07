@@ -466,6 +466,28 @@ async def merge_users(
         .values(referred_by_id=target_user_id)
     )
 
+    # Support history and verification codes reference users(user_id) with a
+    # plain foreign key -- no ON DELETE clause, and User declares no
+    # relationship for them, so neither the database nor the ORM moves them
+    # implicitly. Leaving them behind makes the delete below raise
+    # ForeignKeyViolationError and rolls the whole merge back, which is what a
+    # customer who opened a ticket before linking their email would hit.
+    await session.execute(
+        update(SupportTicket)
+        .where(SupportTicket.user_id == source_user_id)
+        .values(user_id=target_user_id)
+    )
+    await session.execute(
+        update(SupportTicketMessage)
+        .where(SupportTicketMessage.author_user_id == source_user_id)
+        .values(author_user_id=target_user_id)
+    )
+    await session.execute(
+        update(EmailVerificationCode)
+        .where(EmailVerificationCode.target_user_id == source_user_id)
+        .values(target_user_id=target_user_id)
+    )
+
     await session.delete(source)
     await session.flush()
     await session.refresh(target)

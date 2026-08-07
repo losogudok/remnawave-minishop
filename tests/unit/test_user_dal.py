@@ -368,10 +368,126 @@ class UserDalMergeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("legacy_referral_codes", update_tables)
         self.assertIn("legacy_import_mappings", update_tables)
         self.assertIn("message_logs", update_tables)
+        self.assertIn("support_tickets", update_tables)
+        self.assertIn("support_ticket_messages", update_tables)
+        self.assertIn("email_verification_codes", update_tables)
         self.assertIn("users", update_tables)
         self.assertIn("user_payment_methods", delete_tables)
         self.assertNotIn("promo_code_activations", delete_tables)
+        self.assertNotIn("support_tickets", delete_tables)
         session.delete.assert_awaited_once_with(source)
+
+    async def test_merge_users_reassigns_support_history_before_deleting_source(self):
+        """A source account that opened a support ticket must still merge.
+
+        ``support_tickets.user_id`` and ``support_ticket_messages.author_user_id``
+        are plain foreign keys with no ``ON DELETE`` clause, and ``User`` declares
+        no relationship for them, so nothing reassigns or cascades them
+        implicitly. Deleting the source row while a ticket still points at it
+        raises ``ForeignKeyViolationError`` and the whole merge is rolled back --
+        the user simply cannot link their email. The same holds for
+        ``email_verification_codes.target_user_id``.
+        """
+
+        source = SimpleNamespace(
+            user_id=-8795979672785453,
+            email="user@example.com",
+            telegram_id=None,
+            panel_user_uuid=None,
+            email_verified_at=datetime.now(UTC),
+            username=None,
+            first_name=None,
+            last_name=None,
+            language_code="ru",
+            telegram_photo_url=None,
+            channel_subscription_verified=None,
+            channel_subscription_checked_at=None,
+            channel_subscription_verified_for=None,
+            lifetime_used_traffic_bytes=None,
+            referred_by_id=None,
+            referral_code="YESHX7KVN",
+        )
+        target = SimpleNamespace(
+            user_id=850641041,
+            email=None,
+            telegram_id=850641041,
+            panel_user_uuid="panel-target",
+            email_verified_at=None,
+            username="avtozen",
+            first_name="Target",
+            last_name=None,
+            language_code="ru",
+            telegram_photo_url=None,
+            channel_subscription_verified=None,
+            channel_subscription_checked_at=None,
+            channel_subscription_verified_for=None,
+            lifetime_used_traffic_bytes=None,
+            referred_by_id=None,
+            referral_code=None,
+        )
+
+        events: list[str] = []
+
+        async def _execute(stmt):
+            if isinstance(stmt, Update):
+                events.append(f"update:{stmt.table.name}")
+            elif isinstance(stmt, Delete):
+                events.append(f"delete:{stmt.table.name}")
+            return FakeResult()
+
+        async def _delete(obj):
+            events.append("delete_source_row")
+
+        session = SimpleNamespace(
+            execute=AsyncMock(side_effect=_execute),
+            delete=AsyncMock(side_effect=_delete),
+            flush=AsyncMock(),
+            refresh=AsyncMock(),
+        )
+
+        with (
+            patch(
+                "db.dal.user_merge_dal._lock_users_for_merge",
+                AsyncMock(return_value=(source, target)),
+            ),
+            patch("db.dal.user_merge_dal._get_active_subscription_for_user", return_value=None),
+            patch("db.dal.user_merge_dal._get_latest_subscription_for_user", return_value=None),
+        ):
+            await user_dal.merge_users(
+                session,
+                source_user_id=source.user_id,
+                target_user_id=target.user_id,
+                reason="email_link",
+            )
+
+        source_row_delete = events.index("delete_source_row")
+        for table in (
+            "support_tickets",
+            "support_ticket_messages",
+            "email_verification_codes",
+        ):
+            with self.subTest(table=table):
+                self.assertIn(
+                    f"update:{table}",
+                    events,
+                    f"{table} rows are never moved off the source account",
+                )
+                self.assertLess(
+                    events.index(f"update:{table}"),
+                    source_row_delete,
+                    f"{table} must be reassigned before the source row is deleted",
+                )
+
+        statements = [call.args[0] for call in session.execute.await_args_list]
+        by_table = {stmt.table.name: stmt for stmt in statements if isinstance(stmt, Update)}
+        ticket_sql = str(
+            by_table["support_tickets"].compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True},
+            )
+        ).upper()
+        self.assertIn(f"SET USER_ID={target.user_id}", ticket_sql.replace(" = ", "="))
+        self.assertIn(f"USER_ID = {source.user_id}", ticket_sql)
 
     async def test_merge_users_rejects_duplicate_promo_redemptions(self):
         source = SimpleNamespace(
