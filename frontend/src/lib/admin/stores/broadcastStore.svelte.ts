@@ -650,7 +650,11 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
   ): Promise<void> {
     if (state.broadcastPreviewBusy) return;
     const written = localizedForPayload(state.broadcastTexts);
-    const text = state.broadcastText.trim() || written[state.broadcastLanguage] || "";
+    const text =
+      state.broadcastText.trim() ||
+      written[state.broadcastLanguage] ||
+      Object.values(written)[0] ||
+      "";
     if (!text && !Object.keys(written).length) {
       onToast(at("broadcast_preview_empty", {}, "Enter text to preview"));
       return;

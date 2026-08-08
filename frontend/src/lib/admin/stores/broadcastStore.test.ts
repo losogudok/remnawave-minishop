@@ -158,6 +158,24 @@ describe("broadcastStore", () => {
     ]);
   });
 
+  it("uses the first localized draft when previewing before a language is selected", async () => {
+    const api = vi.fn().mockResolvedValue({
+      ok: true,
+      rendered_text: "Привет",
+      rendered_subject: null,
+      unknown_shortcodes: [],
+      length: 6,
+      sent: true,
+    });
+    const store = makeStore(api);
+    store.updateField({ broadcastTexts: { ru: "Привет" } });
+
+    await store.sendPreview("send_telegram");
+
+    const payload = JSON.parse(api.mock.calls[0][1].body);
+    expect(payload.text).toBe("Привет");
+  });
+
   it("keeps codes owned by a customer in their own dropdown group, below the shared ones", async () => {
     const api = vi.fn().mockResolvedValue({
       ok: true,
