@@ -270,3 +270,117 @@ class PanelWebhookReceivedPayload(EventPayload):
     event: str
     panel_user_uuid: str | None = None
     telegram_id: int | str | None = None
+
+
+class PartnerApplicationSubmittedPayload(EventPayload):
+    EVENT_NAME: ClassVar[str] = "partner.application_submitted"
+
+    application_id: int
+    user_id: int
+    status: str
+    submitted_at: datetime
+
+
+class PartnerApplicationDecidedPayload(EventPayload):
+    EVENT_NAME: ClassVar[str] = "partner.application_decided"
+
+    application_id: int
+    partner_id: int | None = None
+    user_id: int | None = None
+    status: str
+    decided_at: datetime
+
+
+class PartnerStatusChangedPayload(EventPayload):
+    EVENT_NAME: ClassVar[str] = "partner.status_changed"
+
+    partner_id: int
+    old_status: str
+    status: str
+    changed_at: datetime
+
+
+class PartnerClientAttributedPayload(EventPayload):
+    EVENT_NAME: ClassVar[str] = "partner.client_attributed"
+
+    partner_id: int
+    partner_client_id: int
+    client_user_id: int
+    source: str
+    attributed_at: datetime
+
+
+class PartnerCommissionRecordedPayload(EventPayload):
+    EVENT_NAME: ClassVar[str] = "partner.commission_recorded"
+
+    partner_id: int
+    commission_id: int
+    payment_db_id: int
+    status: str
+    currency: str
+    gross_amount_minor: int
+    commission_amount_minor: int
+    available_at: datetime
+
+
+class PartnerCommissionAvailablePayload(EventPayload):
+    EVENT_NAME: ClassVar[str] = "partner.commission_available"
+
+    partner_id: int
+    commission_id: int
+    currency: str
+    commission_amount_minor: int
+    available_at: datetime
+
+
+class PartnerCommissionReversedPayload(EventPayload):
+    EVENT_NAME: ClassVar[str] = "partner.commission_reversed"
+
+    partner_id: int
+    commission_id: int
+    payment_db_id: int | None = None
+    currency: str
+    commission_amount_minor: int
+    reversed_at: datetime
+
+
+class PartnerWithdrawalRequestedPayload(EventPayload):
+    EVENT_NAME: ClassVar[str] = "partner.withdrawal_requested"
+
+    partner_id: int
+    withdrawal_id: int
+    status: str
+    currency: str
+    amount_minor: int
+    requested_at: datetime
+
+
+class PartnerWithdrawalStatusChangedPayload(EventPayload):
+    EVENT_NAME: ClassVar[str] = "partner.withdrawal_status_changed"
+
+    partner_id: int
+    withdrawal_id: int
+    old_status: str
+    status: str
+    status_version: int
+    changed_at: datetime
+
+
+class PartnerBalanceAdjustedPayload(EventPayload):
+    EVENT_NAME: ClassVar[str] = "partner.balance_adjusted"
+
+    partner_id: int
+    currency: str
+    amount_minor: int
+    balance_minor: int
+    adjusted_at: datetime
+
+
+class PartnerBalanceSpentPayload(EventPayload):
+    EVENT_NAME: ClassVar[str] = "partner.balance_spent"
+
+    partner_id: int
+    payment_db_id: int
+    currency: str
+    amount_minor: int
+    spent_at: datetime

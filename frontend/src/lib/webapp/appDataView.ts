@@ -27,6 +27,7 @@ export type AppDataView = {
   faviconBrand: WebappRecord;
   installGuidesEnabled: boolean;
   methods: PaymentMethod[];
+  partnerProgramEnabled: boolean;
   pendingPayment: WebappRecord | null;
   plans: WebappRecord[];
   rawEmailAuthEnabled: unknown;
@@ -106,6 +107,7 @@ export function computeAppDataView({
     faviconBrand,
     installGuidesEnabled: Boolean(appSettings.subscription_guides_enabled),
     methods,
+    partnerProgramEnabled: Boolean(appSettings.partner_program_enabled ?? false),
     pendingPayment: recordOrNull(dataRecord.pending_payment),
     plans,
     rawEmailAuthEnabled,

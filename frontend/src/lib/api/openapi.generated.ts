@@ -430,6 +430,399 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/admin/partner-applications": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Partner Applications */
+    get: operations["get_admin_partner_applications_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partner-applications/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Partner Application Detail */
+    get: operations["get_admin_partner_application_detail_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partner-applications/{id}/approve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Partner Application Approve */
+    post: operations["post_admin_partner_application_approve_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partner-applications/{id}/reject": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Partner Application Reject */
+    post: operations["post_admin_partner_application_reject_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partner-applications/{id}/reopen": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Partner Application Reopen */
+    post: operations["post_admin_partner_application_reopen_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partner-withdrawals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Partner Withdrawals */
+    get: operations["get_admin_partner_withdrawals_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partner-withdrawals/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Partner Withdrawal Detail */
+    get: operations["get_admin_partner_withdrawal_detail_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partner-withdrawals/{id}/fail": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Partner Withdrawal Fail */
+    post: operations["post_admin_partner_withdrawal_fail_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partner-withdrawals/{id}/paid": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Partner Withdrawal Paid */
+    post: operations["post_admin_partner_withdrawal_paid_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partner-withdrawals/{id}/processing": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Partner Withdrawal Processing */
+    post: operations["post_admin_partner_withdrawal_processing_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partner-withdrawals/{id}/reject": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Partner Withdrawal Reject */
+    post: operations["post_admin_partner_withdrawal_reject_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partner-withdrawals/{id}/reveal": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Partner Withdrawal Reveal */
+    post: operations["post_admin_partner_withdrawal_reveal_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partners": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Partners List */
+    get: operations["get_admin_partners_list_route"];
+    put?: never;
+    /** Admin Partner Create */
+    post: operations["post_admin_partner_create_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partners/attention": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Partner Attention */
+    get: operations["get_admin_partner_attention_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partners/overview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Partner Overview */
+    get: operations["get_admin_partner_overview_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partners/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Partner Detail */
+    get: operations["get_admin_partner_detail_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partners/{id}/balance-adjustments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Partner Balance Adjustment */
+    post: operations["post_admin_partner_balance_adjustment_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partners/{id}/close": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Partner Close */
+    post: operations["post_admin_partner_close_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partners/{id}/commission-rate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Partner Rate */
+    post: operations["post_admin_partner_rate_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partners/{id}/link/rotate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Partner Link Rotate */
+    post: operations["post_admin_partner_link_rotate_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partners/{id}/pause": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Partner Pause */
+    post: operations["post_admin_partner_pause_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partners/{id}/referral-import": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Partner Referral Import Preview */
+    get: operations["get_admin_partner_referral_import_preview_route"];
+    put?: never;
+    /** Admin Partner Referral Import */
+    post: operations["post_admin_partner_referral_import_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/partners/{id}/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Partner Resume */
+    post: operations["post_admin_partner_resume_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/admin/payments": {
     parameters: {
       query?: never;
@@ -1334,6 +1727,126 @@ export interface paths {
     get: operations["get_me_route"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/partner/applications": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Partner Application Create */
+    post: operations["post_partner_application_create_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/partner/balance/renew": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Partner Balance Renew */
+    post: operations["post_partner_balance_renew_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/partner/clients": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Partner Clients */
+    get: operations["get_partner_clients_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/partner/commissions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Partner Commissions */
+    get: operations["get_partner_commissions_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/partner/overview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Partner Overview */
+    get: operations["get_partner_overview_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/partner/withdrawals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Partner Withdrawals */
+    get: operations["get_partner_withdrawals_route"];
+    put?: never;
+    /** Partner Withdrawal Create */
+    post: operations["post_partner_withdrawal_create_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/partner/withdrawals/{id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Partner Withdrawal Cancel */
+    post: operations["post_partner_withdrawal_cancel_route"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2262,6 +2775,135 @@ export interface components {
       /** Users Processed */
       users_processed: number;
     };
+    /** AdminPartnerApplicationDecisionIn */
+    AdminPartnerApplicationDecisionIn: {
+      /**
+       * Commission Bps
+       * @default null
+       */
+      commission_bps: number | null;
+      /**
+       * Decision Message
+       * @default null
+       */
+      decision_message: string | null;
+      /**
+       * Welcome Message
+       * @default null
+       */
+      welcome_message: string | null;
+    };
+    /** AdminPartnerBalanceAdjustmentIn */
+    AdminPartnerBalanceAdjustmentIn: {
+      /**
+       * Allow Negative
+       * @default false
+       */
+      allow_negative: boolean;
+      /** Amount Minor */
+      amount_minor: number;
+      /** Currency */
+      currency: string;
+      /** Currency Scale */
+      currency_scale: number;
+      /** Idempotency Key */
+      idempotency_key: string;
+      /**
+       * Internal Reference
+       * @default null
+       */
+      internal_reference: string | null;
+      /**
+       * Mode
+       * @enum {string}
+       */
+      mode: "add" | "subtract" | "set";
+      /** Reason */
+      reason: string;
+    };
+    /** AdminPartnerCreateIn */
+    AdminPartnerCreateIn: {
+      /**
+       * Commission Bps
+       * @default null
+       */
+      commission_bps: number | null;
+      /** User Id */
+      user_id: number;
+      /**
+       * Welcome Message
+       * @default null
+       */
+      welcome_message: string | null;
+    };
+    /** AdminPartnerRateIn */
+    AdminPartnerRateIn: {
+      /** Commission Bps */
+      commission_bps: number;
+      /** Reason */
+      reason: string;
+    };
+    /** AdminPartnerReferralImportIn */
+    AdminPartnerReferralImportIn: {
+      /** Confirm Without Retroactive Commission */
+      confirm_without_retroactive_commission: boolean;
+    };
+    /** AdminPartnerReferralImportPreviewOut */
+    AdminPartnerReferralImportPreviewOut: {
+      /** Already This Partner */
+      already_this_partner: number;
+      /** Found */
+      found: number;
+      /** Historical Payments */
+      historical_payments: number;
+      /** Importable */
+      importable: number;
+      /** Other Partner */
+      other_partner: number;
+      /** Self Conflict */
+      self_conflict: number;
+    };
+    /** AdminPartnerReferralImportResultOut */
+    AdminPartnerReferralImportResultOut: {
+      /** Conflicts */
+      conflicts: number;
+      /** Existing */
+      existing: number;
+      /** Imported */
+      imported: number;
+    };
+    /** AdminPartnerRequisitesOut */
+    AdminPartnerRequisitesOut: {
+      [key: string]: string;
+    };
+    /** AdminPartnerStatusIn */
+    AdminPartnerStatusIn: {
+      /**
+       * Reason
+       * @default null
+       */
+      reason: string | null;
+    };
+    /** AdminPartnerWithdrawalTransitionIn */
+    AdminPartnerWithdrawalTransitionIn: {
+      /**
+       * External Reference
+       * @default null
+       */
+      external_reference: string | null;
+      /**
+       * Message
+       * @default null
+       */
+      message: string | null;
+      /**
+       * Settlement Amount
+       * @default null
+       */
+      settlement_amount: string | null;
+      /** Status Version */
+      status_version: number;
+    };
     /** AdminPaymentsListOut */
     AdminPaymentsListOut: {
       /** Page */
@@ -2453,6 +3095,8 @@ export interface components {
     AdminSettingsOut: {
       /** Features */
       features: string[];
+      /** Partner Encryption Available */
+      partner_encryption_available: boolean;
       /** Sections */
       sections: components["schemas"]["AdminSettingsSectionOut"][];
     };
@@ -3616,6 +4260,389 @@ export interface components {
     PackageSet: {
       [key: string]: components["schemas"]["TrafficPackage"][];
     };
+    /** PartnerApplicationCreateIn */
+    PartnerApplicationCreateIn: {
+      /** Message */
+      message: string;
+    };
+    /** PartnerApplicationOut */
+    PartnerApplicationOut: {
+      /** Application Id */
+      application_id: number;
+      /**
+       * Approved Commission Bps
+       * @default null
+       */
+      approved_commission_bps: number | null;
+      /**
+       * Decided At
+       * @default null
+       */
+      decided_at: string | null;
+      /**
+       * Decision Message
+       * @default null
+       */
+      decision_message: string | null;
+      /** Display Label */
+      display_label: string;
+      /**
+       * Message
+       * @default null
+       */
+      message: string | null;
+      /**
+       * Reapply Allowed At
+       * @default null
+       */
+      reapply_allowed_at: string | null;
+      /** Status */
+      status: string;
+      /**
+       * Submitted At
+       * Format: date-time
+       */
+      submitted_at: string;
+      /**
+       * User Id
+       * @default null
+       */
+      user_id: number | null;
+      /**
+       * Welcome Message
+       * @default null
+       */
+      welcome_message: string | null;
+    };
+    /** PartnerBalanceOut */
+    PartnerBalanceOut: {
+      /** Available Minor */
+      available_minor: number;
+      /** Currency */
+      currency: string;
+      /** Currency Scale */
+      currency_scale: number;
+      /** Lifetime Earned Minor */
+      lifetime_earned_minor: number;
+      /** Pending Minor */
+      pending_minor: number;
+      /** Reserved Minor */
+      reserved_minor: number;
+    };
+    /** PartnerBalanceRenewIn */
+    PartnerBalanceRenewIn: {
+      /** Idempotency Key */
+      idempotency_key: string;
+      /** Months */
+      months: number;
+      /**
+       * Promo Code
+       * @default null
+       */
+      promo_code: string | null;
+      /** Tariff Key */
+      tariff_key: string;
+    };
+    /** PartnerClientOut */
+    PartnerClientOut: {
+      /**
+       * Attributed At
+       * Format: date-time
+       */
+      attributed_at: string;
+      /**
+       * Currency
+       * @default null
+       */
+      currency: string | null;
+      /** Currency Scale */
+      currency_scale: number;
+      /**
+       * Eligible From
+       * Format: date-time
+       */
+      eligible_from: string;
+      /** Gross Minor */
+      gross_minor: number;
+      /** Label */
+      label: string;
+      /** Partner Client Id */
+      partner_client_id: number;
+      /** Payments Count */
+      payments_count: number;
+      /** Public Client Id */
+      public_client_id: string;
+      /** Source */
+      source: string;
+    };
+    /** PartnerCommissionOut */
+    PartnerCommissionOut: {
+      /**
+       * Available At
+       * Format: date-time
+       */
+      available_at: string;
+      /** Client Label */
+      client_label: string;
+      /** Client Public Id */
+      client_public_id: string;
+      /** Commission Amount Minor */
+      commission_amount_minor: number;
+      /** Commission Bps */
+      commission_bps: number;
+      /** Commission Id */
+      commission_id: number;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Currency */
+      currency: string;
+      /** Currency Scale */
+      currency_scale: number;
+      /**
+       * Exclusion Reason
+       * @default null
+       */
+      exclusion_reason: string | null;
+      /** Gross Amount Minor */
+      gross_amount_minor: number;
+      /**
+       * Payment Id
+       * @default null
+       */
+      payment_id: number | null;
+      /**
+       * Provider
+       * @default null
+       */
+      provider: string | null;
+      /**
+       * Reversed At
+       * @default null
+       */
+      reversed_at: string | null;
+      /**
+       * Sale Mode
+       * @default null
+       */
+      sale_mode: string | null;
+      /**
+       * Source Paid At
+       * Format: date-time
+       */
+      source_paid_at: string;
+      /** Status */
+      status: string;
+    };
+    /** PartnerLinksOut */
+    PartnerLinksOut: {
+      /**
+       * Telegram
+       * @default null
+       */
+      telegram: string | null;
+      /** Telegram Enabled */
+      telegram_enabled: boolean;
+      /**
+       * Web
+       * @default null
+       */
+      web: string | null;
+      /** Web Enabled */
+      web_enabled: boolean;
+    };
+    /** PartnerOverviewOut */
+    PartnerOverviewOut: {
+      /** @default null */
+      application: components["schemas"]["PartnerApplicationOut"] | null;
+      /** Application Message Max Length */
+      application_message_max_length: number;
+      /** Balance Payment Enabled */
+      balance_payment_enabled: boolean;
+      /** Balances */
+      balances: components["schemas"]["PartnerBalanceOut"][];
+      /** Encryption Available */
+      encryption_available: boolean;
+      /** @default null */
+      links: components["schemas"]["PartnerLinksOut"] | null;
+      /** @default null */
+      profile: components["schemas"]["PartnerProfileOut"] | null;
+      /** Program Enabled */
+      program_enabled: boolean;
+      /** Withdrawal Methods */
+      withdrawal_methods: components["schemas"]["PartnerWithdrawalMethodOut"][];
+      /** Withdrawals Enabled */
+      withdrawals_enabled: boolean;
+    };
+    /** PartnerProfileOut */
+    PartnerProfileOut: {
+      /**
+       * Activated At
+       * Format: date-time
+       */
+      activated_at: string;
+      /** Commission Bps */
+      commission_bps: number;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Display Label */
+      display_label: string;
+      /** Partner Id */
+      partner_id: number;
+      /**
+       * Pause Reason
+       * @default null
+       */
+      pause_reason: string | null;
+      /** Status */
+      status: string;
+      /**
+       * User Id
+       * @default null
+       */
+      user_id: number | null;
+      /**
+       * Welcome Message
+       * @default null
+       */
+      welcome_message: string | null;
+    };
+    /** PartnerWithdrawalCreateIn */
+    PartnerWithdrawalCreateIn: {
+      /** Amount Minor */
+      amount_minor: number;
+      /** Currency */
+      currency: string;
+      /** Idempotency Key */
+      idempotency_key: string;
+      /** Method Id */
+      method_id: string;
+      /**
+       * Network
+       * @default null
+       */
+      network: string | null;
+      /** Requisites */
+      requisites: {
+        [key: string]: string;
+      };
+    };
+    /** PartnerWithdrawalMethodOut */
+    PartnerWithdrawalMethodOut: {
+      /** Currency Scale */
+      currency_scale: number;
+      /** Debit Currency */
+      debit_currency: string;
+      /** Enabled */
+      enabled: boolean;
+      /** Fields */
+      fields: {
+        [key: string]: unknown;
+      }[];
+      /** Help Text */
+      help_text: string;
+      /** Id */
+      id: string;
+      /** Label */
+      label: string;
+      /**
+       * Max Amount Minor
+       * @default null
+       */
+      max_amount_minor: number | null;
+      /** Min Amount Minor */
+      min_amount_minor: number;
+      /** Networks */
+      networks: {
+        [key: string]: string;
+      }[];
+      /**
+       * Settlement Asset
+       * @default null
+       */
+      settlement_asset: string | null;
+      /** Sort Order */
+      sort_order: number;
+      /** Type */
+      type: string;
+    };
+    /** PartnerWithdrawalOut */
+    PartnerWithdrawalOut: {
+      /** Amount Minor */
+      amount_minor: number;
+      /** Currency */
+      currency: string;
+      /** Currency Scale */
+      currency_scale: number;
+      /**
+       * Decided At
+       * @default null
+       */
+      decided_at: string | null;
+      /**
+       * External Reference
+       * @default null
+       */
+      external_reference: string | null;
+      /** Masked Requisites */
+      masked_requisites: string;
+      /** Method Id */
+      method_id: string;
+      /** Method Snapshot */
+      method_snapshot: {
+        [key: string]: unknown;
+      };
+      /** Method Type */
+      method_type: string;
+      /**
+       * Network
+       * @default null
+       */
+      network: string | null;
+      /**
+       * Paid At
+       * @default null
+       */
+      paid_at: string | null;
+      /** Partner Id */
+      partner_id: number;
+      /**
+       * Processing At
+       * @default null
+       */
+      processing_at: string | null;
+      /**
+       * Requested At
+       * Format: date-time
+       */
+      requested_at: string;
+      /**
+       * Settlement Amount
+       * @default null
+       */
+      settlement_amount: string | null;
+      /**
+       * Settlement Asset
+       * @default null
+       */
+      settlement_asset: string | null;
+      /** Status */
+      status: string;
+      /**
+       * Status Message
+       * @default null
+       */
+      status_message: string | null;
+      /** Status Version */
+      status_version: number;
+      /** Withdrawal Id */
+      withdrawal_id: number;
+    };
     /** PaymentDetailOut */
     PaymentDetailOut: {
       /** Amount */
@@ -3635,6 +4662,11 @@ export interface components {
        * @default null
        */
       description: string | null;
+      /**
+       * Funding Source
+       * @default external
+       */
+      funding_source: string;
       /**
        * Idempotence Key
        * @default null
@@ -3736,6 +4768,11 @@ export interface components {
        * @default null
        */
       description: string | null;
+      /**
+       * Funding Source
+       * @default external
+       */
+      funding_source: string;
       /** Payment Id */
       payment_id: number;
       /**
@@ -6144,6 +7181,688 @@ export interface operations {
       };
     };
   };
+  get_admin_partner_applications_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  get_admin_partner_application_detail_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            application: components["schemas"]["PartnerApplicationOut"];
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_application_approve_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminPartnerApplicationDecisionIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_application_reject_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminPartnerApplicationDecisionIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            application: components["schemas"]["PartnerApplicationOut"];
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_application_reopen_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            application: components["schemas"]["PartnerApplicationOut"];
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  get_admin_partner_withdrawals_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  get_admin_partner_withdrawal_detail_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            withdrawal: components["schemas"]["PartnerWithdrawalOut"];
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_withdrawal_fail_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminPartnerWithdrawalTransitionIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            withdrawal: components["schemas"]["PartnerWithdrawalOut"];
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_withdrawal_paid_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminPartnerWithdrawalTransitionIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            withdrawal: components["schemas"]["PartnerWithdrawalOut"];
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_withdrawal_processing_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminPartnerWithdrawalTransitionIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            withdrawal: components["schemas"]["PartnerWithdrawalOut"];
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_withdrawal_reject_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminPartnerWithdrawalTransitionIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            withdrawal: components["schemas"]["PartnerWithdrawalOut"];
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_withdrawal_reveal_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            requisites: components["schemas"]["AdminPartnerRequisitesOut"];
+          };
+        };
+      };
+    };
+  };
+  get_admin_partners_list_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_create_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminPartnerCreateIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            partner: components["schemas"]["PartnerProfileOut"];
+          };
+        };
+      };
+    };
+  };
+  get_admin_partner_attention_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  get_admin_partner_overview_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  get_admin_partner_detail_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_balance_adjustment_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminPartnerBalanceAdjustmentIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_close_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminPartnerStatusIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            partner: components["schemas"]["PartnerProfileOut"];
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_rate_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminPartnerRateIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            partner: components["schemas"]["PartnerProfileOut"];
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_link_rotate_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            partner: components["schemas"]["PartnerProfileOut"];
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_pause_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminPartnerStatusIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            partner: components["schemas"]["PartnerProfileOut"];
+          };
+        };
+      };
+    };
+  };
+  get_admin_partner_referral_import_preview_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            preview: components["schemas"]["AdminPartnerReferralImportPreviewOut"];
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_referral_import_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminPartnerReferralImportIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            result: components["schemas"]["AdminPartnerReferralImportResultOut"];
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_resume_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminPartnerStatusIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            partner: components["schemas"]["PartnerProfileOut"];
+          };
+        };
+      };
+    };
+  };
   get_admin_payments_list_route: {
     parameters: {
       query?: never;
@@ -8204,6 +9923,222 @@ export interface operations {
               telegram_photo_url?: string;
               username?: string | null;
             };
+          };
+        };
+      };
+    };
+  };
+  post_partner_application_create_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PartnerApplicationCreateIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            application: components["schemas"]["PartnerApplicationOut"];
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  post_partner_balance_renew_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PartnerBalanceRenewIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            payment_id: number;
+            remaining_balance_minor: number;
+            status: string;
+          };
+        };
+      };
+    };
+  };
+  get_partner_clients_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            clients: components["schemas"]["PartnerClientOut"][];
+            limit: number;
+            offset: number;
+            /** @constant */
+            ok: true;
+            total: number;
+          };
+        };
+      };
+    };
+  };
+  get_partner_commissions_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            commissions: components["schemas"]["PartnerCommissionOut"][];
+            limit: number;
+            offset: number;
+            /** @constant */
+            ok: true;
+            total: number;
+          };
+        };
+      };
+    };
+  };
+  get_partner_overview_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          } & components["schemas"]["PartnerOverviewOut"];
+        };
+      };
+    };
+  };
+  get_partner_withdrawals_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            limit: number;
+            offset: number;
+            /** @constant */
+            ok: true;
+            total: number;
+            withdrawals: components["schemas"]["PartnerWithdrawalOut"][];
+          };
+        };
+      };
+    };
+  };
+  post_partner_withdrawal_create_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PartnerWithdrawalCreateIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            withdrawal: components["schemas"]["PartnerWithdrawalOut"];
+          };
+        };
+      };
+    };
+  };
+  post_partner_withdrawal_cancel_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            withdrawal: components["schemas"]["PartnerWithdrawalOut"];
           };
         };
       };

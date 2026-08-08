@@ -9,6 +9,9 @@ from bot.services.outbound_messaging import OutboundMessagingService
 from bot.services.panel_api_service import PanelApiService
 from bot.services.panel_dry_run_api_service import PanelDryRunApiService
 from bot.services.panel_webhook_service import PanelWebhookService
+from bot.services.partner_commission_service import PartnerCommissionService
+from bot.services.partner_program_service import PartnerProgramService
+from bot.services.partner_withdrawal_service import PartnerWithdrawalService
 from bot.services.promo_code_service import PromoCodeService
 from bot.services.referral_service import ReferralService
 from bot.services.subscription_service_impl.core import SubscriptionService
@@ -30,6 +33,9 @@ class CoreServices:
     panel_webhook_service: PanelWebhookService
     audience_segmentation_service: AudienceSegmentationService
     outbound_messaging_service: OutboundMessagingService
+    partner_program_service: PartnerProgramService
+    partner_commission_service: PartnerCommissionService
+    partner_withdrawal_service: PartnerWithdrawalService
     payment_services: PaymentServices
 
     def as_dict(self) -> dict[str, object]:
@@ -44,5 +50,8 @@ class CoreServices:
             "panel_webhook_service": self.panel_webhook_service,
             "audience_segmentation_service": self.audience_segmentation_service,
             "outbound_messaging_service": self.outbound_messaging_service,
+            "partner_program_service": self.partner_program_service,
+            "partner_commission_service": self.partner_commission_service,
+            "partner_withdrawal_service": self.partner_withdrawal_service,
             **self.payment_services,
         }

@@ -65,12 +65,12 @@ describe("admin navigation groups", () => {
     expect(coreGroupIds).toContain("communication");
   });
 
-  it("keeps only broadcast, promos, and ads in marketing and support/logs in support", () => {
+  it("keeps the core marketing and support sections in their navigation groups", () => {
     const byGroup = (groupId: string) =>
       ADMIN_SECTIONS.filter((section) => section.group === groupId)
         .sort((a, b) => a.order - b.order)
         .map((section) => section.id);
-    expect(byGroup("marketing")).toEqual(["broadcast", "promos", "ads"]);
+    expect(byGroup("marketing")).toEqual(["broadcast", "partners", "promos", "ads"]);
     expect(byGroup("support")).toEqual(["support", "logs"]);
     // Core itself no longer populates the legacy group.
     expect(byGroup("communication")).toEqual([]);

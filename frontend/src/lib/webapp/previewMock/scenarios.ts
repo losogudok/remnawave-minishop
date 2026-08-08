@@ -489,23 +489,32 @@ export function applyPreviewMock(kind: unknown): void {
         token: "demo-device-windows",
         can_disconnect: true,
       },
+      {
+        display_name: "Ubuntu Desktop",
+        platform_label: "Ubuntu 24.04",
+        user_agent: "v2rayA/2.2.6",
+        created_at_text: "24.05.2026 08:15",
+        hwid_short: "D3MOLNX...3F0BB4",
+        token: "demo-device-linux",
+        can_disconnect: true,
+      },
     ]
-      .slice(0, 5)
+      .slice(0, 6)
       .map((device, index) => ({ ...device, index: index + 1 }));
     DEV_MOCK.data.settings.my_devices_enabled = true;
     DEV_MOCK.data.devices = {
       ...baseDevices,
       ok: true,
       enabled: true,
-      current_devices: 5,
-      max_devices: 5,
-      max_devices_label: "5",
+      current_devices: 6,
+      max_devices: 6,
+      max_devices_label: "6",
       devices,
     };
     DEV_MOCK.data.subscription = {
       ...DEV_MOCK.data.subscription,
       active: true,
-      max_devices: 5,
+      max_devices: 6,
       can_topup_devices: true,
       extra_hwid_devices: 0,
       extra_hwid_devices_valid_until_text: "",
@@ -515,9 +524,9 @@ export function applyPreviewMock(kind: unknown): void {
       enabled: true,
       tariff_key: "standard",
       tariff_name: "Стандарт",
-      current_limit: 5,
-      current_devices: 5,
-      max_devices: 5,
+      current_limit: 6,
+      current_devices: 6,
+      max_devices: 6,
       available_extra_devices: 3,
       extra_hwid_devices: 0,
       extra_hwid_devices_valid_until_text: "",

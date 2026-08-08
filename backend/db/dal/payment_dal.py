@@ -4,13 +4,23 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy import Date, and_, case, cast, func, or_, update
+from sqlalchemy import and_, func, or_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload, selectinload
 
-from db.models import Payment, User
+from db.models import Payment
+
+from .payment_reporting_dal import (
+    get_financial_statistics as get_financial_statistics,
+)
+from .payment_reporting_dal import (
+    get_referral_revenue as get_referral_revenue,
+)
+from .payment_reporting_dal import (
+    get_user_total_paid as get_user_total_paid,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -695,6 +705,7 @@ async def update_payment_status_by_db_id(
 ) -> Payment | None:
     payment = await get_payment_by_db_id_for_update(session, payment_db_id)
     if payment:
+        previous_status = _normalize_payment_status(payment.status)
         preserve_succeeded = _would_overwrite_succeeded_payment(payment.status, new_status)
         if preserve_succeeded:
             logger.info(
@@ -705,6 +716,29 @@ async def update_payment_status_by_db_id(
         else:
             payment.status = new_status
             payment.updated_at = func.now()
+            if (
+                previous_status == "succeeded"
+                and _normalize_payment_status(new_status) == "refunded"
+            ):
+                try:
+                    reversal_savepoint = await session.begin_nested()
+                    try:
+                        from bot.services.partner_commission_service import (
+                            PartnerCommissionService,
+                        )
+
+                        await PartnerCommissionService.reverse_payment(session, payment_db_id)
+                    except Exception:
+                        await reversal_savepoint.rollback()
+                        raise
+                    else:
+                        await reversal_savepoint.commit()
+                except Exception:
+                    logger.exception(
+                        "Partner commission reversal failed for refunded payment %s; "
+                        "the reconciler will retry it.",
+                        payment_db_id,
+                    )
         if yk_payment_id and payment.yookassa_payment_id is None:
             payment.yookassa_payment_id = yk_payment_id
         if provider_payment_url:
@@ -873,108 +907,3 @@ async def transition_provider_payment_to_terminal(
         normalized_new_status,
     )
     return payment, True
-
-
-async def _daily_revenue_series_utc(session: AsyncSession, days: int = 14) -> list[dict[str, Any]]:
-    """Succeeded payment totals per calendar day (UTC) for the last `days` days."""
-    from datetime import date, datetime, timedelta
-
-    now = datetime.now(UTC)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    range_start = today_start - timedelta(days=days - 1)
-
-    day_col = cast(func.date_trunc("day", Payment.created_at), Date).label("d")
-    stmt = (
-        select(day_col, func.coalesce(func.sum(Payment.amount), 0.0))
-        .where(
-            and_(
-                Payment.status == "succeeded",
-                Payment.created_at >= range_start,
-            )
-        )
-        .group_by(day_col)
-        .order_by(day_col)
-    )
-    result = await session.execute(stmt)
-    by_day: dict[date, float] = {}
-    for row in result.all():
-        d_key = row[0]
-        if isinstance(d_key, datetime):
-            d_key = d_key.date()
-        by_day[d_key] = float(row[1] or 0)
-
-    out: list[dict[str, Any]] = []
-    for i in range(days):
-        d = (range_start + timedelta(days=i)).date()
-        out.append({"date": d.isoformat(), "amount": float(by_day.get(d, 0.0) or 0.0)})
-    return out
-
-
-async def get_financial_statistics(session: AsyncSession) -> dict[str, Any]:
-    """Get comprehensive financial statistics."""
-    from datetime import datetime, timedelta
-
-    now = datetime.now(UTC)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start = today_start - timedelta(days=7)
-    month_start = today_start - timedelta(days=30)
-
-    revenue_stmt = select(
-        func.coalesce(
-            func.sum(case((Payment.created_at >= today_start, Payment.amount), else_=0)), 0
-        ),
-        func.coalesce(
-            func.sum(case((Payment.created_at >= week_start, Payment.amount), else_=0)), 0
-        ),
-        func.coalesce(
-            func.sum(case((Payment.created_at >= month_start, Payment.amount), else_=0)),
-            0,
-        ),
-        func.coalesce(func.sum(Payment.amount), 0),
-        func.coalesce(func.sum(case((Payment.created_at >= today_start, 1), else_=0)), 0),
-    ).where(Payment.status == "succeeded")
-    revenue_row = (await session.execute(revenue_stmt)).one()
-    today_amount = revenue_row[0] or 0
-    week_amount = revenue_row[1] or 0
-    month_amount = revenue_row[2] or 0
-    all_amount = revenue_row[3] or 0
-    today_payments_count = int(revenue_row[4] or 0)
-
-    # Longer tail for admin dashboard charts (presets up to 1y + custom range on the client).
-    daily_series = await _daily_revenue_series_utc(session, days=730)
-
-    return {
-        "today_revenue": float(today_amount),
-        "week_revenue": float(week_amount),
-        "month_revenue": float(month_amount),
-        "all_time_revenue": float(all_amount),
-        "today_payments_count": today_payments_count,
-        "daily_series": daily_series,
-    }
-
-
-async def get_user_total_paid(session: AsyncSession, user_id: int) -> float:
-    """Get total amount paid by a specific user (sum of all succeeded payments)."""
-    stmt = select(func.sum(Payment.amount)).where(
-        and_(Payment.user_id == user_id, Payment.status == "succeeded")
-    )
-    result = await session.execute(stmt)
-    total = result.scalar()
-    return float(total or 0)
-
-
-async def get_referral_revenue(session: AsyncSession, referrer_id: int) -> float:
-    """Get total revenue generated from referred users' payments.
-
-    This calculates the sum of all succeeded payments made by users
-    where referred_by_id equals the referrer_id.
-    """
-
-    stmt = (
-        select(func.sum(Payment.amount))
-        .join(User, Payment.user_id == User.user_id)
-        .where(and_(User.referred_by_id == referrer_id, Payment.status == "succeeded"))
-    )
-    result = await session.execute(stmt)
-    total = result.scalar()
-    return float(total or 0)

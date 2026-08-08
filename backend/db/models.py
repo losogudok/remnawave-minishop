@@ -14,13 +14,10 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
-
-class Base(AsyncAttrs, DeclarativeBase):
-    pass
+from db.base import Base
 
 
 class User(Base):
@@ -332,6 +329,7 @@ class Payment(Base):
     provider_checked_at = Column(DateTime(timezone=True), nullable=True, index=True)
     failure_notified_at = Column(DateTime(timezone=True), nullable=True, index=True)
     provider = Column(String, nullable=False, default="yookassa", index=True)
+    funding_source = Column(String(48), nullable=False, default="external", index=True)
     idempotence_key = Column(String, unique=True, nullable=True)
     amount = Column(Float, nullable=False)
     currency = Column(String, nullable=False)
@@ -964,3 +962,9 @@ class LocaleOverride(Base):
         nullable=False,
     )
     updated_by = Column(BigInteger, nullable=True)
+
+
+# Register decomposed domain tables in the same metadata used by create_all,
+# backup/restore and migration tests.  Domain code imports the classes from
+# ``db.partner_models`` directly; this import exists only for registration.
+from db import partner_models as partner_models  # noqa: E402

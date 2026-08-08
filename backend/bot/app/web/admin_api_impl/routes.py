@@ -29,6 +29,33 @@ from .logs import (
 from .panel import (
     admin_panel_internal_squads_route,
 )
+from .partners import (
+    admin_partner_application_approve_route,
+    admin_partner_application_detail_route,
+    admin_partner_application_reject_route,
+    admin_partner_application_reopen_route,
+    admin_partner_applications_route,
+    admin_partner_attention_route,
+    admin_partner_balance_adjustment_route,
+    admin_partner_close_route,
+    admin_partner_create_route,
+    admin_partner_detail_route,
+    admin_partner_link_rotate_route,
+    admin_partner_overview_route,
+    admin_partner_pause_route,
+    admin_partner_rate_route,
+    admin_partner_referral_import_preview_route,
+    admin_partner_referral_import_route,
+    admin_partner_resume_route,
+    admin_partner_withdrawal_detail_route,
+    admin_partner_withdrawal_fail_route,
+    admin_partner_withdrawal_paid_route,
+    admin_partner_withdrawal_processing_route,
+    admin_partner_withdrawal_reject_route,
+    admin_partner_withdrawal_reveal_route,
+    admin_partner_withdrawals_route,
+    admin_partners_list_route,
+)
 from .payments import (
     admin_payment_detail_route,
     admin_payments_export_route,
@@ -109,6 +136,77 @@ def setup_admin_routes(app: web.Application) -> None:
     router.add_get("/api/admin/me", admin_me_route)
     router.add_get("/api/admin/stats", admin_stats_route)
     router.add_get("/api/admin/health", admin_health_route)
+
+    router.add_get("/api/admin/partners/attention", admin_partner_attention_route)
+    router.add_get("/api/admin/partners/overview", admin_partner_overview_route)
+    router.add_get("/api/admin/partners", admin_partners_list_route)
+    router.add_post("/api/admin/partners", admin_partner_create_route)
+    router.add_get("/api/admin/partners/{id:\\d+}", admin_partner_detail_route)
+    router.add_get(
+        "/api/admin/partners/{id:\\d+}/referral-import",
+        admin_partner_referral_import_preview_route,
+    )
+    router.add_post(
+        "/api/admin/partners/{id:\\d+}/referral-import",
+        admin_partner_referral_import_route,
+    )
+    router.add_post(
+        "/api/admin/partners/{id:\\d+}/commission-rate",
+        admin_partner_rate_route,
+    )
+    router.add_post(
+        "/api/admin/partners/{id:\\d+}/balance-adjustments",
+        admin_partner_balance_adjustment_route,
+    )
+    router.add_post("/api/admin/partners/{id:\\d+}/pause", admin_partner_pause_route)
+    router.add_post("/api/admin/partners/{id:\\d+}/resume", admin_partner_resume_route)
+    router.add_post("/api/admin/partners/{id:\\d+}/close", admin_partner_close_route)
+    router.add_post(
+        "/api/admin/partners/{id:\\d+}/link/rotate",
+        admin_partner_link_rotate_route,
+    )
+    router.add_get("/api/admin/partner-applications", admin_partner_applications_route)
+    router.add_get(
+        "/api/admin/partner-applications/{id:\\d+}",
+        admin_partner_application_detail_route,
+    )
+    router.add_post(
+        "/api/admin/partner-applications/{id:\\d+}/approve",
+        admin_partner_application_approve_route,
+    )
+    router.add_post(
+        "/api/admin/partner-applications/{id:\\d+}/reject",
+        admin_partner_application_reject_route,
+    )
+    router.add_post(
+        "/api/admin/partner-applications/{id:\\d+}/reopen",
+        admin_partner_application_reopen_route,
+    )
+    router.add_get("/api/admin/partner-withdrawals", admin_partner_withdrawals_route)
+    router.add_get(
+        "/api/admin/partner-withdrawals/{id:\\d+}",
+        admin_partner_withdrawal_detail_route,
+    )
+    router.add_post(
+        "/api/admin/partner-withdrawals/{id:\\d+}/reveal",
+        admin_partner_withdrawal_reveal_route,
+    )
+    router.add_post(
+        "/api/admin/partner-withdrawals/{id:\\d+}/processing",
+        admin_partner_withdrawal_processing_route,
+    )
+    router.add_post(
+        "/api/admin/partner-withdrawals/{id:\\d+}/paid",
+        admin_partner_withdrawal_paid_route,
+    )
+    router.add_post(
+        "/api/admin/partner-withdrawals/{id:\\d+}/reject",
+        admin_partner_withdrawal_reject_route,
+    )
+    router.add_post(
+        "/api/admin/partner-withdrawals/{id:\\d+}/fail",
+        admin_partner_withdrawal_fail_route,
+    )
 
     router.add_get("/api/admin/users", admin_users_list_route)
     router.add_get("/api/admin/users/{user_id:-?\\d+}", admin_user_detail_route)

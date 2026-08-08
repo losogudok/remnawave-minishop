@@ -8,7 +8,7 @@ from typing import Literal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import Settings
-from db.dal import user_dal
+from db.dal import partner_dal, user_dal
 from db.models import User
 
 ReferralLookupSource = Literal["webapp", "telegram_start"]
@@ -32,6 +32,8 @@ class RegistrationInviteCheck:
     enabled: bool
     status: RegistrationInviteStatus
     referrer_user_id: int | None = None
+    partner_id: int | None = None
+    partner_code: str | None = None
 
     @property
     def allowed(self) -> bool:
@@ -289,6 +291,37 @@ async def evaluate_registration_invite(
     current_user_id: int | None,
     source: ReferralLookupSource = "webapp",
 ) -> RegistrationInviteCheck:
+    raw_value = str(raw_referral_param or "").strip()
+    if raw_value == "ambiguous_invite":
+        return RegistrationInviteCheck(
+            enabled=True,
+            status=RegistrationInviteStatus.INVALID,
+        )
+    if raw_value.lower().startswith("p_"):
+        code = raw_value[2:]
+        profile = None
+        try:
+            partner_enabled = bool(settings.partner_settings.enabled)
+        except (AttributeError, ValueError):
+            partner_enabled = False
+        if partner_enabled and re.fullmatch(r"[A-Za-z0-9_-]{8,64}", code):
+            profile = await partner_dal.get_profile_by_code(session, code)
+        partner_id: int | None = None
+        partner_code: str | None = None
+        if not profile or profile.status != "active" or profile.user_id is None:
+            status = RegistrationInviteStatus.INVALID
+        elif current_user_id is not None and int(profile.user_id) == int(current_user_id):
+            status = RegistrationInviteStatus.SELF_REFERRAL
+        else:
+            status = RegistrationInviteStatus.VALID
+            partner_id = int(profile.partner_id)
+            partner_code = str(profile.partner_code)
+        return RegistrationInviteCheck(
+            enabled=registration_invite_only_enabled(settings),
+            status=status,
+            partner_id=partner_id,
+            partner_code=partner_code,
+        )
     lookup = await _lookup_referrer(
         session,
         raw_referral_param,

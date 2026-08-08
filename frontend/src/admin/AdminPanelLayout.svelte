@@ -1,6 +1,6 @@
 ﻿<script lang="ts">
   import { ArrowLeft, Check, ChevronsUpDown, Globe2, Menu } from "$components/ui/icons.js";
-  import { onDestroy } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { MediaQuery } from "svelte/reactivity";
   import { prefersReducedMotion } from "svelte/motion";
   import { fade } from "svelte/transition";
@@ -17,7 +17,12 @@
   import type { TranslationsSavedPayload } from "$lib/admin/stores/translationsStore";
   import type { AdminUser } from "$lib/admin/stores/usersStore";
   import type { UsersFilter, UsersRouteFilters } from "$lib/admin/usersRouteFilters";
+  import type { AdminApi } from "./adminStores.js";
   import { lockPageScroll } from "$lib/webapp/scrollLock.js";
+  import {
+    openWithdrawalCount,
+    pendingApplicationCount,
+  } from "$lib/admin/previewMock/partnerProgram.js";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
   type SettingsPath = string[];
@@ -49,6 +54,7 @@
   type StatsStoreBridge = { triggerSync: () => unknown };
 
   let {
+    api,
     active,
     activeSectionComponent,
     activeSectionLoading,
@@ -79,6 +85,8 @@
     onExportPayments,
     onLanguageChange,
     onOpenPaymentUserCard,
+    onOpenPartnerCard,
+    onOpenPaymentCard,
     onOpenSettingsPath,
     onOpenUserCard,
     onOpenUsersFilter,
@@ -115,6 +123,7 @@
     warmSectionComponent,
     t,
   }: {
+    api: AdminApi;
     active: string;
     activeSectionComponent: DynamicComponent | null;
     activeSectionLoading: boolean;
@@ -145,6 +154,8 @@
     onExportPayments: () => void;
     onLanguageChange: (value: string, meta: LanguageChangeMeta) => void;
     onOpenPaymentUserCard: (userId: unknown) => void;
+    onOpenPartnerCard: (partnerId: string) => void;
+    onOpenPaymentCard: (paymentId: number) => void;
     onOpenSettingsPath: (path?: unknown) => void;
     onOpenUserCard: (userId: unknown) => void;
     onOpenUsersFilter: (filter: UsersFilter) => void;
@@ -261,6 +272,31 @@
 
   onDestroy(() => {
     clearAdminLanguageClickGuard();
+    if (partnerAttentionTimer !== null) window.clearInterval(partnerAttentionTimer);
+  });
+
+  const partnerAttentionPreviewMode =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).has("partner_admin_scenario");
+  let partnerAttentionCount = $state(
+    partnerAttentionPreviewMode ? pendingApplicationCount + openWithdrawalCount : 0
+  );
+  let partnerAttentionTimer: number | null = null;
+
+  async function refreshPartnerAttention(): Promise<void> {
+    if (partnerAttentionPreviewMode) return;
+    try {
+      const response = (await api("/admin/partners/attention")) as Record<string, unknown>;
+      partnerAttentionCount =
+        Number(response.pending_applications || 0) + Number(response.open_withdrawals || 0);
+    } catch {
+      // The badge is advisory; the partner section still reports its own load errors.
+    }
+  }
+
+  onMount(() => {
+    void refreshPartnerAttention();
+    partnerAttentionTimer = window.setInterval(() => void refreshPartnerAttention(), 30_000);
   });
 </script>
 
@@ -326,6 +362,10 @@
               {#if item.id === "support" && supportStore.stats?.total_unread_admin}
                 <AdminBadge variant="danger">
                   <span class="numeric-badge-value">{supportStore.stats.total_unread_admin}</span>
+                </AdminBadge>
+              {:else if item.id === "partners" && partnerAttentionCount}
+                <AdminBadge variant="danger">
+                  <span class="numeric-badge-value">{partnerAttentionCount}</span>
                 </AdminBadge>
               {/if}
             </span>
@@ -460,6 +500,7 @@
               {#if activeSectionComponent}
                 {@const ActiveSectionComponent = activeSectionComponent}
                 <ActiveSectionComponent
+                  {api}
                   {at}
                   {availableFeatures}
                   {brand}
@@ -482,6 +523,7 @@
                   {appFaviconUrl}
                   {appFaviconUseCustom}
                   {onOpenUserCard}
+                  {onOpenPaymentCard}
                   {onOpenUsersFilter}
                   {onUsersFiltersChange}
                   {onOpenSettingsPath}
@@ -523,5 +565,6 @@
   {userTelegramProfileLinkKind}
   {onCloseUser}
   {onOpenPaymentUserCard}
+  {onOpenPartnerCard}
   {routePrefix}
 />

@@ -30,6 +30,8 @@
     legendValueLabel?: string;
     /** Readout: column header for the change against the previous point */
     legendDeltaLabel?: string;
+    /** Line/area for revenue, bars for payout-like series. */
+    variant?: "area" | "bar";
   };
 
   let {
@@ -40,6 +42,7 @@
     legendTimeLabel = "Time",
     legendValueLabel = "Value",
     legendDeltaLabel = "Change",
+    variant = "area",
   }: Props = $props();
 
   let hostEl = $state<HTMLDivElement | undefined>();
@@ -187,7 +190,8 @@
     const plotHeightPx = u.bbox.height;
     const point = canvasPositionAt(u, renderedIndex);
     const stepPx = stepWidth(u) * ratio;
-    const halfWindow = Math.max(stepPx * 0.92, 15 * ratio);
+    const halfWindow =
+      variant === "bar" ? Math.max(stepPx * 0.55, 9 * ratio) : Math.max(stepPx * 0.92, 15 * ratio);
     const windowLeft = clamp(point.x - halfWindow, plotLeft, plotRight);
     const windowRight = clamp(point.x + halfWindow, plotLeft, plotRight);
     const windowWidth = Math.max(1, windowRight - windowLeft);
@@ -197,13 +201,24 @@
     ctx.rect(windowLeft, plotTop, windowWidth, plotHeightPx);
     ctx.clip();
 
+    // A bar carries far less ink than an area curve, so the hovered column gets
+    // a wash behind it; the area chart lights only the ink under its own curve.
+    if (variant === "bar") {
+      const columnGradient = ctx.createLinearGradient(0, plotTop, 0, plotTop + plotHeightPx);
+      columnGradient.addColorStop(0, accent);
+      columnGradient.addColorStop(1, "transparent");
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = columnGradient;
+      ctx.fillRect(windowLeft, plotTop, windowWidth, plotHeightPx);
+    }
+
     // The area under the highlighted stretch, brighter than the base gradient.
     if (paths.fill) {
       const areaGradient = ctx.createLinearGradient(0, plotTop, 0, plotTop + plotHeightPx);
       areaGradient.addColorStop(0, accent);
       areaGradient.addColorStop(0.32, accent);
       areaGradient.addColorStop(1, "transparent");
-      ctx.globalAlpha = 0.46;
+      ctx.globalAlpha = variant === "bar" ? 0.72 : 0.46;
       ctx.fillStyle = areaGradient;
       ctx.fill(paths.fill);
     }
@@ -212,12 +227,12 @@
     ctx.lineCap = "round";
     ctx.strokeStyle = accent;
     ctx.globalAlpha = 0.24;
-    ctx.lineWidth = 10 * ratio;
+    ctx.lineWidth = (variant === "bar" ? 6 : 10) * ratio;
     ctx.stroke(paths.stroke);
     ctx.globalAlpha = 1;
     ctx.shadowColor = accent;
     ctx.shadowBlur = 10 * ratio;
-    ctx.lineWidth = 3.4 * ratio;
+    ctx.lineWidth = (variant === "bar" ? 2 : 3.4) * ratio;
     ctx.stroke(paths.stroke);
     ctx.shadowBlur = 0;
     ctx.restore();
@@ -252,7 +267,7 @@
     // periods the interpolated position is a chord, not the spline, so a
     // travelling dot would visibly cut the corner. The glow flows; the marker
     // — which stands for one discrete value — lands.
-    if (Math.abs(targetIndex - renderedIndex) < 0.02) {
+    if (variant !== "bar" && Math.abs(targetIndex - renderedIndex) < 0.02) {
       ctx.save();
       ctx.shadowColor = accent;
       ctx.shadowBlur = 9 * ratio;
@@ -388,23 +403,29 @@
       },
       scales: {
         x: { time: true },
-        y: {
-          range: (_u: uPlot, min: number, max: number) => [
-            Math.min(0, Number.isFinite(min) ? min : 0),
-            Math.max(0, Number.isFinite(max) ? max : 0),
-          ],
-        },
+        y:
+          variant === "bar"
+            ? { range: [0, null] }
+            : {
+                range: (_u: uPlot, min: number, max: number) => [
+                  Math.min(0, Number.isFinite(min) ? min : 0),
+                  Math.max(0, Number.isFinite(max) ? max : 0),
+                ],
+              },
       },
       series: [
         { label: legendTimeLabel },
         {
           label: legendValueLabel,
-          paths: uPlot.paths.spline?.(),
+          paths:
+            variant === "bar"
+              ? uPlot.paths.bars?.({ size: [0.68, 48], radius: [0.22, 0] })
+              : uPlot.paths.spline?.(),
           stroke: lineStroke,
-          width: 2,
+          width: variant === "bar" ? 1 : 2,
           cap: "round",
           fill: chartFill,
-          points: { show: true },
+          points: { show: variant !== "bar" },
         },
       ],
       axes: [
@@ -431,7 +452,7 @@
   function syncChart() {
     if (!hostEl) return;
     const d = toAlignedData(series);
-    const legendSig = `${legendTimeLabel}\0${legendValueLabel}`;
+    const legendSig = `${legendTimeLabel}\0${legendValueLabel}\0${variant}`;
     if (!d) {
       plot?.destroy();
       plot = undefined;
@@ -502,6 +523,7 @@
     currency;
     legendTimeLabel;
     legendValueLabel;
+    variant;
     scheduleSync();
   });
 </script>

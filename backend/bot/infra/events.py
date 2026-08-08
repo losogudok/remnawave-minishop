@@ -52,6 +52,17 @@ PROMO_CODE_APPLIED = "promo_code.applied"
 REFERRAL_BONUS_GRANTED = "referral.bonus_granted"
 SUPPORT_TICKET_CREATED = "support.ticket_created"
 PANEL_WEBHOOK_RECEIVED = "panel.webhook_received"
+PARTNER_APPLICATION_SUBMITTED = "partner.application_submitted"
+PARTNER_APPLICATION_DECIDED = "partner.application_decided"
+PARTNER_STATUS_CHANGED = "partner.status_changed"
+PARTNER_CLIENT_ATTRIBUTED = "partner.client_attributed"
+PARTNER_COMMISSION_RECORDED = "partner.commission_recorded"
+PARTNER_COMMISSION_AVAILABLE = "partner.commission_available"
+PARTNER_COMMISSION_REVERSED = "partner.commission_reversed"
+PARTNER_WITHDRAWAL_REQUESTED = "partner.withdrawal_requested"
+PARTNER_WITHDRAWAL_STATUS_CHANGED = "partner.withdrawal_status_changed"
+PARTNER_BALANCE_ADJUSTED = "partner.balance_adjusted"
+PARTNER_BALANCE_SPENT = "partner.balance_spent"
 
 #: Handlers receive ``(event_name, payload)`` so one subscriber can serve
 #: several events.

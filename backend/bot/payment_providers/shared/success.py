@@ -17,6 +17,7 @@ from bot.infra.event_payloads import (
 )
 from bot.infra.payment_events import build_payment_succeeded_payload
 from bot.keyboards.inline.user_keyboards import get_connect_and_main_keyboard
+from bot.services.partner_commission_service import PartnerCommissionService
 from bot.utils.config_link import prepare_config_links
 from bot.utils.install_links import ensure_user_install_guide_links
 from bot.utils.text_sanitizer import sanitize_display_name, username_for_display
@@ -430,6 +431,7 @@ async def finalize_successful_payment(
         activation_extra_kwargs.pop("tariff_key", None)
 
     try:
+        partner_decision = None
         activation = await req.subscription_service.activate_subscription(
             req.session,
             req.user_id,
@@ -489,6 +491,35 @@ async def finalize_successful_payment(
                     req.log_prefix,
                     payment_id,
                 )
+        partner_service: PartnerCommissionService | None = None
+        try:
+            _partner_settings = req.settings.partner_settings
+        except (AttributeError, ValueError):
+            # Compatibility for lightweight provider integrations and tests
+            # that predate the partner settings contract.
+            pass
+        else:
+            if _partner_settings is not None:
+                partner_service = PartnerCommissionService(req.settings)
+        if partner_service is not None:
+            try:
+                partner_savepoint = await req.session.begin_nested()
+                try:
+                    partner_decision = await partner_service.record_payment_decision(
+                        req.session, locked_payment
+                    )
+                except Exception:
+                    await partner_savepoint.rollback()
+                    raise
+                else:
+                    await partner_savepoint.commit()
+            except Exception:
+                partner_decision = None
+                logger.exception(
+                    "%s: partner commission failed for payment %s; keeping the paid entitlement.",
+                    req.log_prefix,
+                    payment_id,
+                )
         await payment_dal.update_payment_status_by_db_id(
             req.session,
             payment_id,
@@ -503,6 +534,8 @@ async def finalize_successful_payment(
         )
         await _mark_activation_failed(req, payment_id)
         return None
+
+    await PartnerCommissionService.emit_recorded(partner_decision)
 
     await events.emit_model(
         PaymentSucceededPayload.model_validate(

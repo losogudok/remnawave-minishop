@@ -674,7 +674,9 @@ async function openUserDetailFromCurrentSection(
 }
 
 async function exerciseSettingsDisclosures(stage: Locator): Promise<void> {
-  const sectionTriggers = stage.locator(".admin-accordion-trigger");
+  const sectionTriggers = stage.locator(
+    ".admin-accordion > .admin-accordion-item > .admin-accordion-trigger"
+  );
   const sectionCount = await sectionTriggers.count();
   for (let index = 0; index < sectionCount; index += 1) {
     const trigger = sectionTriggers.nth(index);
@@ -876,6 +878,151 @@ test("device traffic bonuses stay legible on mobile", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("partner operations open their linked payment card", async ({ page }) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto("/demo/runtime/admin/partners/partner/PT-104?theme_preview=dark");
+
+  await page.getByRole("tab", { name: "Операции", exact: true }).click();
+  const activity = page.locator(".partners-detail-tabs");
+  await expect(activity.locator("tbody")).toContainText("LG-903");
+
+  const commission = activity
+    .locator(".admin-entity-link.is-actionable")
+    .filter({ hasText: "COM-184" })
+    .first();
+  await expect(commission).toBeVisible();
+  await commission.click();
+
+  const paymentDialog = page.locator(".dialog-card.admin-payment-dialog");
+  await expect(paymentDialog).toBeVisible();
+  await expect(paymentDialog).toContainText("Платёж #710024");
+  await closeDialog(paymentDialog);
+});
+
+test("partner account stays compact, table-driven, and keeps the tour ring local", async ({
+  page,
+}) => {
+  await page.setViewportSize(MOBILE_VIEWPORT);
+  await page.goto("/demo/runtime/partner?partner_scenario=active_populated&theme_preview=dark");
+
+  const overview = page.locator(".partner-overview-card");
+  await expect(overview.locator(".partner-overview-head")).toContainText("Партнёрский кабинет");
+  await expect(overview.locator(".partner-link-item")).toHaveCount(2);
+  await expect(overview.getByRole("button", { name: "Поделиться" })).toHaveCount(0);
+  await expect(overview.getByRole("button", { name: "Открыть QR-код" })).toHaveCount(0);
+  await expect(overview.locator(".partner-link-item code")).toHaveText([
+    "https://t.me/minishop_bot?start=p_Q7m2pK8v4",
+    "https://example.com/?start=p_Q7m2pK8v4",
+  ]);
+  await expect(page.locator(".partner-balance-card .partner-section-head")).toContainText(
+    "Баланс и вывод"
+  );
+  const statistics = page.locator(".partner-stats-card");
+  await expect(statistics.locator(".partner-section-head")).toContainText("Партнёрская статистика");
+  await expect(statistics).not.toContainText("Детали партнёрской программы");
+  await expect(page.locator(".partner-methods-section, .partner-methods")).toHaveCount(0);
+  await expect(statistics.locator(".partner-data-table tbody tr")).toHaveCount(20);
+  const pagination = statistics.locator(".admin-pagination");
+  await expect(pagination).toContainText("Страница 1 из 2");
+  await expect(pagination).toContainText("Всего 21");
+
+  await pagination.getByRole("button", { name: "Далее", exact: true }).click();
+  await expect(statistics.locator(".partner-data-table tbody tr")).toHaveCount(1);
+  await expect(statistics.locator(".partner-data-table tbody tr").first()).toContainText(
+    "Demo client 17"
+  );
+  await expect(pagination).toContainText("Страница 2 из 2");
+  await pagination.getByRole("button", { name: "Назад", exact: true }).click();
+
+  await page.getByRole("button", { name: "Вывести", exact: true }).click();
+  const withdrawalDialog = page.locator(".dialog-card.partner-withdraw-dialog");
+  await expect(withdrawalDialog).toBeVisible();
+  await expect(withdrawalDialog.locator(".partner-method-options button")).toHaveCount(3);
+  await closeDialog(withdrawalDialog);
+
+  const firstLink = overview.locator(".partner-link-item").first();
+  const linkField = firstLink.locator("code");
+  const copyButton = firstLink.locator(".partner-copy-button");
+  const [fieldBox, copyBox] = await Promise.all([
+    linkField.boundingBox(),
+    copyButton.boundingBox(),
+  ]);
+  expect(fieldBox).not.toBeNull();
+  expect(copyBox).not.toBeNull();
+  expect(Math.abs(copyBox!.y - fieldBox!.y)).toBeLessThan(2);
+  expect(copyBox!.x).toBeGreaterThan(fieldBox!.x);
+  expect(fieldBox!.x + fieldBox!.width).toBeLessThanOrEqual(copyBox!.x + 1);
+
+  const firstTableRow = statistics.locator(".partner-data-table tbody tr").first();
+  await expect(firstTableRow).toHaveCSS("display", "block");
+  await statistics.getByRole("tab", { name: /Комиссии/ }).click();
+  await expect(statistics.locator(".partner-data-table tbody tr")).toHaveCount(20);
+  await expect(statistics.locator(".partner-data-table thead th")).toHaveCount(5);
+  const reversedCommission = statistics.locator(".partner-status-tooltip-trigger").first();
+  await expect(reversedCommission).toContainText("Отменена");
+  await reversedCommission.hover();
+  await expect(page.locator(".partner-status-tooltip-content")).toContainText(
+    "Начисление отменено, потому что платёж клиента был возвращён или аннулирован."
+  );
+  await pagination.getByRole("button", { name: "Далее", exact: true }).click();
+  await expect(statistics.locator(".partner-data-table tbody tr")).toHaveCount(1);
+  await expect(statistics.locator(".partner-data-table tbody tr").first()).toContainText(
+    "Demo client 17"
+  );
+  await pagination.getByRole("button", { name: "Назад", exact: true }).click();
+  await statistics.getByRole("tab", { name: /Выводы/ }).click();
+  await expect(statistics.locator(".partner-data-table tbody tr")).toHaveCount(20);
+  await expect(statistics.locator(".partner-data-table thead th")).toHaveCount(5);
+  await pagination.getByRole("button", { name: "Далее", exact: true }).click();
+  await expect(statistics.locator(".partner-data-table tbody tr")).toHaveCount(1);
+  await expect(statistics.locator(".partner-data-table tbody tr").first()).toContainText("WD-D17");
+  await pagination.getByRole("button", { name: "Назад", exact: true }).click();
+
+  await page.getByRole("button", { name: "Как это работает", exact: true }).click();
+  const spotlight = page.locator(".partner-tour-spotlight.is-ready");
+  await expect(spotlight).toBeVisible();
+  const spotlightPaint = await spotlight.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    const ring = window.getComputedStyle(element, "::after");
+    return {
+      boxWidth: box.width,
+      viewportWidth: window.innerWidth,
+      shadow: style.boxShadow,
+      transitionDuration: style.transitionDuration,
+      ringBorderWidth: ring.borderTopWidth,
+      ringOpacity: ring.opacity,
+    };
+  });
+  expect(spotlightPaint.boxWidth).toBeLessThan(spotlightPaint.viewportWidth - 24);
+  expect(spotlightPaint.shadow).toContain("9999px");
+  expect(spotlightPaint.transitionDuration).toBe("0s");
+  expect(spotlightPaint.ringBorderWidth).toBe("2px");
+  expect(spotlightPaint.ringOpacity).toBe("1");
+
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto("/demo/runtime/partner?partner_scenario=active_populated&theme_preview=dark");
+  await expect(page.locator(".partner-copy-button").first()).toBeVisible();
+  const desktopStatistics = page.locator(".partner-stats-card");
+  await expect(desktopStatistics.locator(".partner-table-primary").first()).toContainText(
+    "Alex M."
+  );
+  await desktopStatistics.getByRole("button", { name: "Оборот", exact: true }).click();
+  await expect(desktopStatistics.locator(".partner-table-primary").first()).toContainText(
+    "Demo client 17"
+  );
+  const desktopLayout = await page.evaluate(() => {
+    const copyButton = document.querySelector<HTMLElement>(".partner-copy-button");
+    return {
+      viewportWidth: window.innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      copyRight: copyButton?.getBoundingClientRect().right ?? 0,
+    };
+  });
+  expect(desktopLayout.scrollWidth).toBeLessThanOrEqual(desktopLayout.viewportWidth);
+  expect(desktopLayout.copyRight).toBeLessThanOrEqual(desktopLayout.viewportWidth);
+});
+
 test("webapp and admin sections, dialogs, tabs stay interactive without console errors", async ({
   page,
 }) => {
@@ -1015,9 +1162,7 @@ test("webapp and admin sections, dialogs, tabs stay interactive without console 
   await shortcodeToggle.click();
   const shortcodeList = page.locator(".rt-menu-list");
   await expect(shortcodeList).toBeVisible();
-  await expect(
-    shortcodeList.locator(".rt-menu-scroll .scroll-area__viewport")
-  ).toBeVisible();
+  await expect(shortcodeList.locator(".rt-menu-scroll .scroll-area__viewport")).toBeVisible();
   await shortcodeList.locator(".rt-menu-item").first().click();
   await expect(page.locator(".rt-surface .rt-chip").first()).toBeVisible();
   await page.locator("[data-rt-source-toggle]").click();

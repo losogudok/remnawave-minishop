@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import secrets
@@ -20,6 +21,8 @@ from config.settings_models import (
     DBSettings,
     EmailSettings,
     PanelSettings,
+    PartnerSettings,
+    PartnerWithdrawalMethod,
     PaymentSettings,
     ReferralSettings,
     RegistrationSettings,
@@ -151,6 +154,25 @@ if TYPE_CHECKING:
         REFERRAL_WELCOME_BONUS_WITHOUT_TELEGRAM_ENABLED: bool
         REFERRAL_WEBAPP_LINK_ENABLED: bool
         REFERRAL_TELEGRAM_LINK_ENABLED: bool
+        PARTNER_PROGRAM_ENABLED: bool
+        PARTNER_WITHDRAWALS_ENABLED: bool
+        PARTNER_BALANCE_PAYMENT_ENABLED: bool
+        PARTNER_DEFAULT_COMMISSION_BPS: int
+        PARTNER_COMMISSION_HOLD_DAYS: int
+        PARTNER_ELIGIBLE_CURRENCIES: str
+        PARTNER_EXCLUDED_SALE_MODES: str
+        PARTNER_WITHDRAWAL_METHODS_JSON: str
+        PARTNER_TELEGRAM_LINK_ENABLED: bool
+        PARTNER_WEBAPP_LINK_ENABLED: bool
+        PARTNER_APPLICATION_MESSAGE_MAX_LENGTH: int
+        PARTNER_MAX_ACTIVE_WITHDRAWALS: int
+        PARTNER_REAPPLICATION_ENABLED: bool
+        PARTNER_REAPPLICATION_COOLDOWN_DAYS: int
+        PARTNER_LIST_PAGE_LIMIT: int
+        PARTNER_APPLICATION_RATE_LIMIT_HOURS: int
+        PARTNER_WITHDRAWAL_RATE_LIMIT_SECONDS: int
+        PARTNER_AUDIT_RETENTION_DAYS: int
+        PARTNER_REQUISITES_RETENTION_DAYS: int
         REGISTRATION_INVITE_ONLY_ENABLED: bool
         LEGACY_REFS: bool
         MIGRATION_REMNASHOP_REFERRAL_CODE_COMPAT_ENABLED: bool
@@ -273,6 +295,51 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
             webapp_link_enabled=self.REFERRAL_WEBAPP_LINK_ENABLED,
             telegram_link_enabled=self.REFERRAL_TELEGRAM_LINK_ENABLED,
             legacy_refs_enabled=self.LEGACY_REFS,
+        )
+
+    @property
+    def partner_settings(self) -> PartnerSettings:
+        def _json_list(raw: str, key: str) -> list[Any]:
+            try:
+                value = json.loads(raw or "[]")
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{key} must be valid JSON") from exc
+            if not isinstance(value, list):
+                raise ValueError(f"{key} must be a JSON array")
+            return value
+
+        return PartnerSettings(
+            enabled=self.PARTNER_PROGRAM_ENABLED,
+            withdrawals_enabled=self.PARTNER_WITHDRAWALS_ENABLED,
+            balance_payment_enabled=self.PARTNER_BALANCE_PAYMENT_ENABLED,
+            default_commission_bps=self.PARTNER_DEFAULT_COMMISSION_BPS,
+            commission_hold_days=self.PARTNER_COMMISSION_HOLD_DAYS,
+            eligible_currencies=_json_list(
+                self.PARTNER_ELIGIBLE_CURRENCIES,
+                "PARTNER_ELIGIBLE_CURRENCIES",
+            ),
+            excluded_sale_modes=_json_list(
+                self.PARTNER_EXCLUDED_SALE_MODES,
+                "PARTNER_EXCLUDED_SALE_MODES",
+            ),
+            withdrawal_methods=[
+                PartnerWithdrawalMethod.model_validate(item)
+                for item in _json_list(
+                    self.PARTNER_WITHDRAWAL_METHODS_JSON,
+                    "PARTNER_WITHDRAWAL_METHODS_JSON",
+                )
+            ],
+            telegram_link_enabled=self.PARTNER_TELEGRAM_LINK_ENABLED,
+            webapp_link_enabled=self.PARTNER_WEBAPP_LINK_ENABLED,
+            application_message_max_length=self.PARTNER_APPLICATION_MESSAGE_MAX_LENGTH,
+            max_active_withdrawals=self.PARTNER_MAX_ACTIVE_WITHDRAWALS,
+            reapplication_enabled=self.PARTNER_REAPPLICATION_ENABLED,
+            reapplication_cooldown_days=self.PARTNER_REAPPLICATION_COOLDOWN_DAYS,
+            list_page_limit=self.PARTNER_LIST_PAGE_LIMIT,
+            application_rate_limit_hours=self.PARTNER_APPLICATION_RATE_LIMIT_HOURS,
+            withdrawal_rate_limit_seconds=self.PARTNER_WITHDRAWAL_RATE_LIMIT_SECONDS,
+            audit_retention_days=self.PARTNER_AUDIT_RETENTION_DAYS,
+            requisites_retention_days=self.PARTNER_REQUISITES_RETENTION_DAYS,
         )
 
     @property

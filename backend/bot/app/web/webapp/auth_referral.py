@@ -13,6 +13,7 @@ from bot.app.web.context import (
 )
 from bot.infra import events
 from bot.infra.event_payloads import ReferralBonusGrantedPayload
+from bot.services.partner_program_service import PartnerProgramService
 from bot.services.registration_invite_gate import (
     RegistrationInviteRequiredError,
     evaluate_registration_invite,
@@ -278,6 +279,13 @@ async def _ensure_user_from_telegram(
                 "registration_date": datetime.now(UTC),
             },
         )
+        if created and invite_check.partner_code:
+            await PartnerProgramService(settings).attribute_user(
+                session,
+                user=db_user,
+                partner_code=invite_check.partner_code,
+                source="partner_web_link",
+            )
         db_user._webapp_created = bool(created)
         return db_user
 

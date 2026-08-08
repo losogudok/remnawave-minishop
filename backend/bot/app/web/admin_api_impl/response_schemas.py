@@ -224,6 +224,7 @@ class AdminSettingsSectionOut(HttpResponseModel):
 class AdminSettingsOut(HttpResponseModel):
     sections: list[AdminSettingsSectionOut]
     features: list[str]
+    partner_encryption_available: bool
 
 
 class AdminTranslationLanguageOut(HttpResponseModel):

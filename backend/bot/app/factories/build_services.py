@@ -21,6 +21,9 @@ from bot.services.outbound_messaging import OutboundMessagingService
 from bot.services.panel_api_service import PanelApiService
 from bot.services.panel_dry_run_api_service import PanelDryRunApiService
 from bot.services.panel_webhook_service import PanelWebhookService
+from bot.services.partner_commission_service import PartnerCommissionService
+from bot.services.partner_program_service import PartnerProgramService
+from bot.services.partner_withdrawal_service import PartnerWithdrawalService
 from bot.services.promo_code_service import PromoCodeService
 from bot.services.referral_service import ReferralService
 from bot.services.subscription_service_impl.core import SubscriptionService
@@ -72,6 +75,9 @@ def build_core_services(
         tariffs=_broadcast_tariff_audiences(settings),
     )
     outbound_messaging_service = OutboundMessagingService(bot)
+    partner_program_service = PartnerProgramService(settings)
+    partner_commission_service = PartnerCommissionService(settings)
+    partner_withdrawal_service = PartnerWithdrawalService(settings)
     provider_configs = build_provider_configs()
     payment_services = build_provider_services(
         ServiceFactoryContext(
@@ -107,6 +113,9 @@ def build_core_services(
         panel_webhook_service=panel_webhook_service,
         audience_segmentation_service=audience_segmentation_service,
         outbound_messaging_service=outbound_messaging_service,
+        partner_program_service=partner_program_service,
+        partner_commission_service=partner_commission_service,
+        partner_withdrawal_service=partner_withdrawal_service,
         payment_services=payment_services,
     )
 

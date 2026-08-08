@@ -44,6 +44,7 @@ Remnawave Minishop - Telegram-бот и Web App (Mini App) для продажи
 - [Настройка окружения](docs/getting-started/configuration.md) - bootstrap `.env` и рекомендуемая настройка через Web App админку.
 - [Переменные `.env`](docs/configuration/env-vars.md) - полный справочник всех env-ключей по разделам.
 - [Бэкапы и восстановление](docs/features/backups.md) - автоматические архивы, Telegram-отправка и restore через админку.
+- [Партнёрская программа](docs/features/partner-program.md) - заявки, ссылки, комиссии, ручные выплаты, оплата балансом и эксплуатационные процедуры.
 - [Тарифы](docs/features/tariffs.md) - каталог тарифов, модели на срок и по трафику, обычные и premium-докупки, premium-сквады, смена тарифа, HWID-лимиты и обработка трафика.
 - [Админ-панель](docs/features/admin-panel.md) - права доступа, настройки, редактор тарифов, premium-сквады и сохранение JSON-каталога.
 - [Веб-приложение / Mini App](docs/features/web-app.md) - отдельный порт, домен, инструкции установки и реферальные ссылки.

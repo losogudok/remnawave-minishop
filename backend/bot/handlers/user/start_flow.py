@@ -13,6 +13,7 @@ from bot.infra import events
 from bot.infra.event_payloads import ReferralBonusGrantedPayload
 from bot.middlewares.i18n import JsonI18n
 from bot.services.behavior_events import BotStartedSource, emit_bot_started
+from bot.services.partner_program_service import PartnerProgramService
 from bot.services.referral_service import ReferralService
 from bot.services.registration_invite_gate import evaluate_registration_invite
 from bot.services.subscription_service_impl.core import SubscriptionService
@@ -55,13 +56,14 @@ def _start_argument(message: types.Message) -> str | None:
 def _bot_started_source(
     *,
     ref_match: re.Match | None,
+    partner_match: re.Match | None,
     promo_match: re.Match | None,
     page_ref_match: re.Match | None,
     ad_param_match: re.Match | None,
     ticket_match: re.Match | None,
     notifications_match: re.Match | None,
 ) -> BotStartedSource:
-    if ref_match or page_ref_match:
+    if ref_match or partner_match or page_ref_match:
         return "referral"
     if promo_match:
         return "promo"
@@ -77,6 +79,9 @@ def _bot_started_source(
 @router.message(CommandStart())
 @router.message(CommandStart(magic=F.args.regexp(r"^ref_([A-Za-z0-9_-]{1,64})$").as_("ref_match")))
 @router.message(
+    CommandStart(magic=F.args.regexp(r"^p_([A-Za-z0-9_-]{8,64})$").as_("partner_match"))
+)
+@router.message(
     CommandStart(magic=F.args.regexp(r"^promo_([A-Za-z0-9_-]{1,100})$").as_("promo_match"))
 )
 @router.message(CommandStart(magic=F.args.regexp(r"^admin_user_(\d+)$").as_("admin_user_match")))
@@ -86,7 +91,7 @@ def _bot_started_source(
 @router.message(
     CommandStart(
         magic=F.args.regexp(
-            r"^(?!ref_|promo_|admin_user_|ticket_|notifications$|page_ref$|webapp_auth_)([A-Za-z0-9_\-]{2,64})$"
+            r"^(?!ref_|p_|promo_|admin_user_|ticket_|notifications$|page_ref$|webapp_auth_)([A-Za-z0-9_\-]{2,64})$"
         ).as_("ad_param_match")
     )
 )
@@ -99,6 +104,7 @@ async def start_command_handler(
     referral_service: ReferralService,
     session: AsyncSession,
     ref_match: re.Match | None = None,
+    partner_match: re.Match | None = None,
     promo_match: re.Match | None = None,
     page_ref_match: re.Match | None = None,
     ad_param_match: re.Match | None = None,
@@ -116,6 +122,7 @@ async def start_command_handler(
     start_param = _start_argument(message)
     start_source = _bot_started_source(
         ref_match=ref_match,
+        partner_match=partner_match,
         promo_match=promo_match,
         page_ref_match=page_ref_match,
         ad_param_match=ad_param_match,
@@ -212,6 +219,7 @@ async def start_command_handler(
             return
 
     referred_by_user_id: int | None = None
+    partner_code: str | None = None
     raw_ref_value: str | None = None
     promo_code_to_apply: str | None = None
     should_open_referral_from_start = False
@@ -220,6 +228,9 @@ async def start_command_handler(
 
     if ref_match:
         raw_ref_value = ref_match.group(1)
+    elif partner_match:
+        partner_code = partner_match.group(1)
+        raw_ref_value = f"p_{partner_code}"
     elif promo_match:
         promo_code_to_apply = promo_match.group(1)
         logger.info("User %s started with promo code: %s", user_id, promo_code_to_apply)
@@ -265,6 +276,7 @@ async def start_command_handler(
             await message.answer(_("registration_invite_required"))
             return
         referred_by_user_id = invite_check.referrer_user_id
+        partner_code = invite_check.partner_code
 
     if not db_user:
         user_data_to_create = {
@@ -285,6 +297,13 @@ async def start_command_handler(
             db_user, created = await user_dal.create_user(session, user_data_to_create)
 
             if created:
+                if partner_code:
+                    await PartnerProgramService(settings).attribute_user(
+                        session,
+                        user=db_user,
+                        partner_code=partner_code,
+                        source="partner_telegram_link",
+                    )
                 try:
                     await session.commit()
                 except Exception as commit_error:

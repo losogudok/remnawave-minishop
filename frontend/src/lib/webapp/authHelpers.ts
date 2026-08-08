@@ -24,7 +24,10 @@ type TranslateFn = (key: string, params?: Record<string, unknown>) => string;
 function readReferralParamFromLocation(): string {
   if (typeof window === "undefined") return "";
   const params = new URLSearchParams(window.location.search);
-  return params.get("ref") || params.get("start") || params.get("start_param") || "";
+  const referral = params.get("ref") || params.get("start") || params.get("start_param") || "";
+  const partner = String(params.get("partner") || "").trim();
+  if (partner && referral) return "ambiguous_invite";
+  return partner ? `p_${partner}` : referral;
 }
 
 export function readReferralParam(tg: unknown = null): string {
@@ -79,6 +82,10 @@ export function clearAuthQuery(): void {
     "photo_url",
     "auth_date",
     "hash",
+    "partner",
+    "ref",
+    "start",
+    "start_param",
   ].forEach((key) => url.searchParams.delete(key));
   window.history?.replaceState?.({}, document.title, url.pathname + url.search + url.hash);
 }

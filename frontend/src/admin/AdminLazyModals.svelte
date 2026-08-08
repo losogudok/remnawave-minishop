@@ -24,6 +24,7 @@
     userTelegramProfileLinkKind,
     onCloseUser,
     onOpenPaymentUserCard,
+    onOpenPartnerCard,
     routePrefix,
   }: {
     at: TranslateFn;
@@ -43,6 +44,7 @@
     userTelegramProfileLinkKind: (user: AdminUser) => string;
     onCloseUser: () => void;
     onOpenPaymentUserCard: (userId: unknown) => void;
+    onOpenPartnerCard: (partnerId: string) => void;
     routePrefix: string;
   } = $props();
 
@@ -92,7 +94,7 @@
 </script>
 
 {#if TariffEditorModalComponent}
-  <TariffEditorModalComponent {at} />
+  <TariffEditorModalComponent {at} {routePrefix} />
 {/if}
 
 {#if PaymentDetailModalComponent}
@@ -102,6 +104,7 @@
     {fmtMoney}
     {paymentStatusVariant}
     onOpenUserCard={onOpenPaymentUserCard}
+    {onOpenPartnerCard}
   />
 {/if}
 

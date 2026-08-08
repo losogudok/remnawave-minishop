@@ -158,7 +158,7 @@ def _user_payment_summary_sq() -> Subquery:
             sa_func.coalesce(sa_func.sum(Payment.amount), 0.0).label("payments_total_amount"),
             sa_func.count(Payment.payment_id).label("payments_count"),
         )
-        .where(Payment.status == "succeeded")
+        .where(Payment.status == "succeeded", Payment.funding_source == "external")
         .group_by(Payment.user_id)
         .subquery(name="user_payment_summary")
     )
@@ -221,7 +221,11 @@ async def _bulk_user_payment_summaries(
             sa_func.count(Payment.payment_id),
             sa_func.max(Payment.currency),
         )
-        .where(Payment.user_id.in_(user_ids), Payment.status == "succeeded")
+        .where(
+            Payment.user_id.in_(user_ids),
+            Payment.status == "succeeded",
+            Payment.funding_source == "external",
+        )
         .group_by(Payment.user_id)
     )
     rows = (await session.execute(stmt)).all()

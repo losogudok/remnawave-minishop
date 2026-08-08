@@ -1,6 +1,7 @@
 export {
   Accordion,
   Label,
+  Popover,
   ScrollArea,
   Select,
   Separator,

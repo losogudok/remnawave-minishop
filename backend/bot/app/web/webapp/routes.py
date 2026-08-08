@@ -81,6 +81,16 @@ from .guides import (
     public_subscription_guides_route,
     subscription_guides_route,
 )
+from .partner import (
+    partner_application_create_route,
+    partner_balance_renew_route,
+    partner_clients_route,
+    partner_commissions_route,
+    partner_overview_route,
+    partner_withdrawal_cancel_route,
+    partner_withdrawal_create_route,
+    partner_withdrawals_route,
+)
 from .payloads import (
     WebAppEmailPayload as WebAppEmailPayload,
 )
@@ -119,6 +129,7 @@ def setup_subscription_webapp_routes(app: web.Application) -> None:
     app.router.add_get("/open-app", app_deeplink_route)
     app.router.add_get(r"/s/{share_token:[a-f0-9]{32}}", index_route)
     app.router.add_get("/invite", index_route)
+    app.router.add_get("/partner", index_route)
     app.router.add_get("/devices", index_route)
     app.router.add_get("/settings", index_route)
     app.router.add_get("/support", index_route)
@@ -127,7 +138,7 @@ def setup_subscription_webapp_routes(app: web.Application) -> None:
     app.router.add_get(
         (
             "/admin/{section:stats|users|payments|promos|ads|broadcast|logs|tariffs|"
-            "appearance|settings|translations|support|backups}"
+            "appearance|settings|translations|support|backups|partners}"
         ),
         index_route,
     )
@@ -220,6 +231,17 @@ def setup_subscription_webapp_routes(app: web.Application) -> None:
     app.router.add_post("/api/subscription/reissue", subscription_reissue_route)
     app.router.add_post("/api/subscription/quote-promo", quote_promo_route)
     app.router.add_get("/api/devices", devices_route)
+    app.router.add_get("/api/partner/overview", partner_overview_route)
+    app.router.add_post("/api/partner/applications", partner_application_create_route)
+    app.router.add_get("/api/partner/clients", partner_clients_route)
+    app.router.add_get("/api/partner/commissions", partner_commissions_route)
+    app.router.add_get("/api/partner/withdrawals", partner_withdrawals_route)
+    app.router.add_post("/api/partner/withdrawals", partner_withdrawal_create_route)
+    app.router.add_post(
+        "/api/partner/withdrawals/{id:\\d+}/cancel",
+        partner_withdrawal_cancel_route,
+    )
+    app.router.add_post("/api/partner/balance/renew", partner_balance_renew_route)
     app.router.add_post("/api/devices/disconnect", disconnect_device_route)
     app.router.add_get("/api/devices/topup-options", device_topup_options_route)
     app.router.add_get("/api/support/tickets", support_tickets_route)

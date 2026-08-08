@@ -40,6 +40,15 @@ describe("createWebappNavigation", () => {
     expect(deps.syncSectionPath).toHaveBeenCalledWith("invite");
   });
 
+  it("keeps the partner program on its own navigation item", () => {
+    const { deps, navigation, state } = makeNavigation();
+
+    navigation.goPartner();
+
+    expect(state).toEqual({ activeTab: "partner", screen: "partner" });
+    expect(deps.syncSectionPath).toHaveBeenCalledWith("partner");
+  });
+
   it("opens the connect link instead of install guides when guides are unavailable", () => {
     const { deps, navigation } = makeNavigation({ canUseInstallGuides: () => false });
 

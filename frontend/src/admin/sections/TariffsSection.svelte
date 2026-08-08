@@ -3,6 +3,7 @@
   import { Input, Sortable } from "$components/ui/index.js";
   import {
     ChevronRight,
+    Gift,
     RefreshCw,
     Trash2,
     Plus,
@@ -13,7 +14,6 @@
   import { onMount } from "svelte";
   import { AdminBadge, AdminButton, AdminEmptyState } from "$components/patterns/admin/index.js";
   import { Switch } from "$components/ui/primitives.js";
-  import TariffReferralSettings from "./tariffs/TariffReferralSettings.svelte";
   import TariffTrialSettings from "./tariffs/TariffTrialSettings.svelte";
   import { normalizeCurrencyKey } from "$lib/admin/tariffDraft";
   import {
@@ -636,13 +636,29 @@
       {onSettingsSaved}
     />
 
-    <TariffReferralSettings
-      {at}
-      {settingsDirty}
-      {settingsFieldMap}
-      {settingsSaving}
-      {onSettingsSaved}
-    />
+    <article class="admin-card tariff-referral-moved-card">
+      <span class="tariff-referral-moved-icon"><Gift size={20} /></span>
+      <div>
+        <strong
+          >{at(
+            "tariffs_referral_moved_title",
+            {},
+            "Referral bonuses moved to Marketing programs"
+          )}</strong
+        >
+        <small
+          >{at(
+            "tariffs_referral_moved_hint",
+            {},
+            "The tariff catalog values are unchanged. Edit the tariff × period bonus matrix in the dedicated referral settings."
+          )}</small
+        >
+      </div>
+      <AdminButton onclick={() => onOpenSettingsPath(["referral"])}>
+        {at("tariffs_referral_moved_action", {}, "Configure referral bonuses")}
+        <ChevronRight size={15} />
+      </AdminButton>
+    </article>
 
     <div class="admin-accordion admin-tariff-settings-accordion">
       <section class="admin-accordion-item admin-card admin-tariff-settings-card">
@@ -850,3 +866,44 @@
     </div>
   </div>
 {/if}
+
+<style>
+  .tariff-referral-moved-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 15px 16px;
+  }
+
+  .tariff-referral-moved-icon {
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, var(--admin-surface-2));
+  }
+
+  .tariff-referral-moved-card > div {
+    display: grid;
+    gap: 4px;
+  }
+
+  .tariff-referral-moved-card small {
+    color: var(--admin-muted);
+    line-height: 1.4;
+  }
+
+  @media (max-width: 680px) {
+    .tariff-referral-moved-card {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .tariff-referral-moved-card :global(.admin-btn) {
+      grid-column: 1 / -1;
+      width: 100%;
+    }
+  }
+</style>

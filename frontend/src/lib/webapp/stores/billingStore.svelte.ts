@@ -70,6 +70,7 @@ export type BillingState = {
   checkoutPromoStatus: string;
   checkoutPromoIsError: boolean;
   checkoutPromoPriceText: string;
+  checkoutPromoEffectiveAmount: number;
   checkoutPromoDiscountPercent: number;
   checkoutPromoAppliesTo: string;
   checkoutPromoMinSubscriptionMonths: number | null;
@@ -204,6 +205,7 @@ export function createBillingStore({
     checkoutPromoStatus: "",
     checkoutPromoIsError: false,
     checkoutPromoPriceText: "",
+    checkoutPromoEffectiveAmount: 0,
     checkoutPromoDiscountPercent: 0,
     checkoutPromoAppliesTo: "all",
     checkoutPromoMinSubscriptionMonths: null,
@@ -419,6 +421,7 @@ export function createBillingStore({
         checkoutPromoIsError: false,
         checkoutPromoStatus: stringField(payload.effect_summary),
         checkoutPromoPriceText: promoPriceText(payload),
+        checkoutPromoEffectiveAmount: Math.max(0, Number(payload.effective_amount || 0)),
         checkoutPromoDiscountPercent: Math.max(0, Number(payload.discount_percent || 0)),
         checkoutPromoAppliesTo: stringField(payload.applies_to) || "all",
         checkoutPromoMinSubscriptionMonths: optionalNumber(payload.min_subscription_months),

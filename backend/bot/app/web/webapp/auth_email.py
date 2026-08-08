@@ -12,6 +12,7 @@ from bot.app.web.context import (
 )
 from bot.app.web.webapp_auth import create_webapp_session_token
 from bot.services.email_auth_service import EmailAuthService
+from bot.services.partner_program_service import PartnerProgramService
 from bot.services.registration_invite_gate import evaluate_registration_invite
 from config.settings import Settings
 from db.dal import security_dal, user_dal
@@ -221,6 +222,13 @@ async def email_auth_verify_route(request: web.Request) -> web.Response:
                     referred_by_id=invite_check.referrer_user_id,
                 )
                 created_user = True
+                if invite_check.partner_code:
+                    await PartnerProgramService(settings).attribute_user(
+                        session,
+                        user=db_user,
+                        partner_code=invite_check.partner_code,
+                        source="partner_web_link",
+                    )
             elif not db_user.email_verified_at:
                 db_user.email_verified_at = datetime.now(UTC)
 
@@ -312,6 +320,13 @@ async def email_auth_magic_route(request: web.Request) -> web.Response:
                     referred_by_id=invite_check.referrer_user_id,
                 )
                 created_user = True
+                if invite_check.partner_code:
+                    await PartnerProgramService(settings).attribute_user(
+                        session,
+                        user=db_user,
+                        partner_code=invite_check.partner_code,
+                        source="partner_web_link",
+                    )
             elif not db_user.email_verified_at:
                 db_user.email_verified_at = datetime.now(UTC)
 

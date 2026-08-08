@@ -49,6 +49,7 @@ from bot.services.auto_renew_retry_worker import AutoRenewRetryWorker
 from bot.services.backup_worker import BackupWorker
 from bot.services.event_reactions import register_core_reactions
 from bot.services.message_log_notifier import configure_message_log_notifier
+from bot.services.partner_program_worker import PartnerProgramWorker
 from bot.services.payment_reconciliation_worker import PaymentReconciliationWorker
 from bot.services.settings_override_service import refresh_overrides_from_db
 from bot.services.subscription_notification_worker import SubscriptionNotificationWorker
@@ -425,6 +426,13 @@ async def _payment_reconciliation_task(ctx: PluginContext) -> None:
     ).run()
 
 
+async def _partner_program_task(ctx: PluginContext) -> None:
+    await PartnerProgramWorker(
+        ctx.settings,
+        ctx.require_session_factory(),
+    ).run()
+
+
 def _backup_worker_task(ctx: PluginContext) -> Coroutine[Any, Any, None]:
     return BackupWorker(
         ctx.settings,
@@ -462,6 +470,10 @@ def _core_worker_tasks() -> list[WorkerTaskSpec]:
         WorkerTaskSpec(
             name="PaymentReconciliationWorker",
             factory=_payment_reconciliation_task,
+        ),
+        WorkerTaskSpec(
+            name="PartnerProgramWorker",
+            factory=_partner_program_task,
         ),
         WorkerTaskSpec(name="BackupWorker", factory=_backup_worker_task),
         WorkerTaskSpec(name="PanelSyncLoop", factory=_panel_sync_loop),

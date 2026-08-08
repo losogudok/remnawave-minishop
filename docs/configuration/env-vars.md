@@ -785,6 +785,7 @@ Stripe создает hosted Checkout Sessions и подтверждает ав�
 | `LEGACY_REFS` | Разрешить старые ссылки вида `/start ref_<telegram_id>`, где payload содержит Telegram/user ID пригласившего. |
 | `DISPOSABLE_EMAIL_DOMAINS` | Домены одноразовой почты через запятую. Для таких email trial и реферальный welcome bonus доступны только после привязки Telegram. |
 | `REFERRAL_BONUS_DAYS_1_MONTH`, `REFERRAL_BONUS_DAYS_3_MONTHS`, `REFERRAL_BONUS_DAYS_6_MONTHS`, `REFERRAL_BONUS_DAYS_12_MONTHS` | Legacy-бонусы пригласившему без JSON-каталога. В JSON-тарифах используйте `referral_bonus_days_inviter`. |
+
 | `REFEREE_BONUS_DAYS_1_MONTH`, `REFEREE_BONUS_DAYS_3_MONTHS`, `REFEREE_BONUS_DAYS_6_MONTHS`, `REFEREE_BONUS_DAYS_12_MONTHS` | Legacy-бонусы приглашенному без JSON-каталога. В JSON-тарифах используйте `referral_bonus_days_referee`. |
 | `SUBSCRIPTION_NOTIFICATIONS_ENABLED` | Включает напоминания о подписке. |
 | `SUBSCRIPTION_EMAIL_NOTIFICATIONS_ENABLED` | Дублирует пользовательские уведомления жизненного цикла подписки на email, если SMTP настроен и у пользователя есть email. |
@@ -793,6 +794,38 @@ Stripe создает hosted Checkout Sessions и подтверждает ав�
 | `SUBSCRIPTION_NOTIFY_DAYS_BEFORE` | За сколько дней предупреждать. |
 | `SUBSCRIPTION_NOTIFY_HOURS_BEFORE` | За сколько часов предупреждать дополнительно. |
 | `SUBSCRIPTION_NOTIFICATION_WORKER_TICK_SECONDS` | Период локальной проверки уведомлений. |
+
+### Партнёрская программа
+
+Партнёрская программа по умолчанию выключена. Обычные параметры меняются в Web App админке:
+**Настройки → Маркетинговые программы → Партнёрская программа**. Секрет шифрования реквизитов
+задаётся только через окружение и не возвращается admin API.
+
+| Переменная | Назначение |
+| --- | --- |
+| `PARTNER_PROGRAM_ENABLED` | Включает новые заявки, атрибуцию и начисления. По умолчанию `False`. История и обработка уже созданных обязательств остаются доступны после выключения. |
+| `PARTNER_WITHDRAWALS_ENABLED` | Разрешает активным партнёрам создавать новые заявки на вывод. |
+| `PARTNER_BALANCE_PAYMENT_ENABLED` | Разрешает полностью оплатить продление действующей period-подписки партнёрским балансом. Частичная оплата не поддерживается. |
+| `PARTNER_DEFAULT_COMMISSION_BPS` | Ставка по умолчанию в базисных пунктах: `3000` означает 30%. Индивидуальная ставка сохраняется в профиле партнёра и снимке начисления. |
+| `PARTNER_COMMISSION_HOLD_DAYS` | Сколько дней начисление остаётся pending до перехода в доступный баланс. |
+| `PARTNER_ELIGIBLE_CURRENCIES` | JSON-массив валют, например `["RUB","USD"]`. Балансы разных валют никогда не складываются. |
+| `PARTNER_EXCLUDED_SALE_MODES` | JSON-массив внутренних sale mode, за которые комиссия не начисляется. |
+| `PARTNER_WITHDRAWAL_METHODS_JSON` | JSON-массив методов ручной выплаты. Рекомендуется редактировать специализированной формой в админке. |
+| `PARTNER_TELEGRAM_LINK_ENABLED`, `PARTNER_WEBAPP_LINK_ENABLED` | Включают независимые Telegram/Web App партнёрские ссылки. |
+| `PARTNER_REAPPLICATION_ENABLED`, `PARTNER_REAPPLICATION_COOLDOWN_DAYS` | Разрешают повторную заявку после отказа и задают задержку. |
+| `PARTNER_APPLICATION_RATE_LIMIT_HOURS`, `PARTNER_WITHDRAWAL_RATE_LIMIT_SECONDS` | Серверные per-user ограничения частоты заявок. |
+| `PARTNER_AUDIT_RETENTION_DAYS`, `PARTNER_REQUISITES_RETENTION_DAYS` | Сроки хранения аудита и зашифрованных реквизитов завершённых выплат. |
+| `PARTNER_REQUISITES_ENCRYPTION_KEY` | Только `.env`: urlsafe-base64 ключ AES длиной 16/24/32 байта. Для production используйте 32 байта. Без валидного ключа создание и раскрытие реквизитов fail-safe отключены. |
+| `PARTNER_REQUISITES_KEY_ID` | Несекретная версия текущего ключа, например `v1`. Меняется только после атомарной ротации данных. |
+
+Сгенерировать 32-байтовый ключ:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Полная настройка, обработка выплат, отчёт сверки, ротация ключа и rollback описаны в
+[руководстве по партнёрской программе](../features/partner-program.md).
 
 ## Поддержка
 

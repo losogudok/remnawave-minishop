@@ -7,12 +7,15 @@
     Database,
     Tag,
     User,
+    UsersRound,
     WalletCards,
   } from "$components/ui/icons.js";
   import { AdminBadge, AdminButton } from "$components/patterns/admin/index.js";
   import Dialog from "$components/ui/dialog.svelte";
   import type { AdminPayment } from "../../lib/admin/stores/paymentsStore";
   import type { AdminBadgeVariant } from "$components/patterns/admin/types";
+  import { partnerAttributionForPayment } from "$lib/admin/previewMock/partnerProgram.js";
+  import { partnerStatusVariant } from "$lib/admin/partnerProgramUi.js";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
   type MetaRow = {
@@ -27,12 +30,14 @@
     fmtMoney = (amount, currency) => `${amount} ${currency || ""}`.trim(),
     paymentStatusVariant = () => "muted",
     onOpenUserCard = () => {},
+    onOpenPartnerCard = () => {},
   }: {
     at?: TranslateFn;
     fmtDate?: (value: string | null | undefined) => string;
     fmtMoney?: (amount: unknown, currency?: string | null) => string;
     paymentStatusVariant?: (status: string | null | undefined) => AdminBadgeVariant;
     onOpenUserCard?: (userId: number) => void;
+    onOpenPartnerCard?: (partnerId: string) => void;
   } = $props();
 
   const paymentsStore = getPaymentsStore();
@@ -114,6 +119,12 @@
 
   function copy(value: unknown): void {
     paymentsStore.copyToClipboard(value, at("payment_detail_copied", {}, "Copied"));
+  }
+
+  function openPartner(): void {
+    if (!partnerAttribution) return;
+    paymentsStore.closePayment({ skipPush: true });
+    onOpenPartnerCard(partnerAttribution.partnerId);
   }
 
   function openUser(): void {
@@ -202,6 +213,10 @@
     { label: "User ID", value: payment?.user_id, copy: payment?.user_id },
     { label: "Telegram ID", value: payment?.telegram_id, copy: payment?.telegram_id },
   ] satisfies MetaRow[]);
+
+  // Partner attribution for this payment. Prototype data: the commission is
+  // looked up in the preview mock, keyed by the real payment id.
+  const partnerAttribution = $derived(partnerAttributionForPayment(payment?.payment_id));
 </script>
 
 <Dialog
@@ -272,6 +287,42 @@
           <User size={14} />
           {at("payments_open_user", {}, "Open user card")}
         </AdminButton>
+
+        {#if partnerAttribution}
+          <div class="admin-subsection-title">
+            {at("payment_detail_partner_section", {}, "Partner program")}
+          </div>
+          <ul class="admin-meta-list admin-payment-meta-list">
+            <li>
+              <span>{at("payment_detail_partner", {}, "Partner")}</span>
+              <strong class="admin-meta-truncate">{partnerAttribution.partnerName}</strong>
+            </li>
+            <li>
+              <span>{at("payment_detail_partner_rate", {}, "Rate")}</span>
+              <strong>{partnerAttribution.rate}%</strong>
+            </li>
+            <li>
+              <span>{at("payment_detail_partner_commission", {}, "Commission")}</span>
+              <strong>{money(partnerAttribution.amount, payment.currency)}</strong>
+            </li>
+            <li>
+              <span>{at("payment_detail_partner_commission_status", {}, "Commission status")}</span>
+              <strong>
+                <AdminBadge variant={partnerStatusVariant(partnerAttribution.status)}>
+                  {at(
+                    `partners_status_${partnerAttribution.status}`,
+                    {},
+                    partnerAttribution.status
+                  )}
+                </AdminBadge>
+              </strong>
+            </li>
+          </ul>
+          <AdminButton variant="ghost" onclick={openPartner}>
+            <UsersRound size={14} />
+            {at("payment_detail_open_partner", {}, "Open partner card")}
+          </AdminButton>
+        {/if}
       </aside>
 
       <main class="admin-payment-main">

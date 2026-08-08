@@ -3,6 +3,7 @@
   import LinkEmailDialog from "./payment-dialogs/LinkEmailDialog.svelte";
   import PaymentCheckoutDialog from "./payment-dialogs/PaymentCheckoutDialog.svelte";
   import SetPasswordDialog from "./payment-dialogs/SetPasswordDialog.svelte";
+  import type { ApiClient } from "$lib/webapp/publicApi.js";
   import type {
     DeviceView,
     PaymentMethodView,
@@ -21,6 +22,8 @@
   };
 
   let {
+    api,
+    refreshData = async () => {},
     createPayment = () => {},
     deviceConfirmOpen = false,
     deviceDisconnectBusy = false,
@@ -72,6 +75,7 @@
     checkoutPromoInput = $bindable(""),
     checkoutPromoIsError = false,
     checkoutPromoPriceText = "",
+    checkoutPromoEffectiveAmount = 0,
     checkoutPromoStatus = "",
     checkoutPromoDiscountPercent = 0,
     checkoutPromoAppliesTo = "all",
@@ -90,6 +94,8 @@
     verifyLinkEmailCode = () => {},
     confirmSetPassword = () => {},
   }: {
+    api: ApiClient["api"];
+    refreshData?: () => Promise<unknown>;
     createPayment?: VoidAction;
     deviceConfirmOpen?: boolean;
     deviceDisconnectBusy?: boolean;
@@ -141,6 +147,7 @@
     checkoutPromoInput?: string;
     checkoutPromoIsError?: boolean;
     checkoutPromoPriceText?: string;
+    checkoutPromoEffectiveAmount?: number;
     checkoutPromoStatus?: string;
     checkoutPromoDiscountPercent?: number;
     checkoutPromoAppliesTo?: string;
@@ -162,6 +169,8 @@
 </script>
 
 <PaymentCheckoutDialog
+  {api}
+  {refreshData}
   {createPayment}
   {hasMultipleTariffs}
   {methods}
@@ -187,6 +196,7 @@
   bind:checkoutPromoInput
   {checkoutPromoIsError}
   {checkoutPromoPriceText}
+  {checkoutPromoEffectiveAmount}
   {checkoutPromoStatus}
   {checkoutPromoDiscountPercent}
   {checkoutPromoAppliesTo}

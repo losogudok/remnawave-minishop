@@ -12,6 +12,7 @@ import {
   Sparkles,
   Tag,
   UsersRound,
+  WalletCards,
 } from "$components/ui/icons.js";
 import {
   ADMIN_SECTION_EXTENSIONS,
@@ -158,6 +159,19 @@ const CORE_ADMIN_SECTIONS: AdminSectionDescriptor[] = [
     fallbackSubtitle: "Create and manage promo codes",
     icon: Tag,
     loadComponent: () => import("./PromosSection.svelte").then((module) => module.default),
+  },
+  {
+    id: "partners",
+    group: "marketing",
+    order: 15,
+    i18nKey: "nav_partners",
+    fallbackLabel: "Partner program",
+    titleI18nKey: "section_partners_title",
+    fallbackTitle: "Partner program",
+    subtitleI18nKey: "section_partners_subtitle",
+    fallbackSubtitle: "Applications, partners, commissions, balances, and withdrawals",
+    icon: WalletCards,
+    loadComponent: () => import("./PartnersSection.svelte").then((module) => module.default),
   },
   {
     id: "ads",

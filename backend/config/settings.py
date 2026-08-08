@@ -464,6 +464,49 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
         default=True,
         description="Show the Telegram bot referral link in the user Web App bonus section.",
     )
+    PARTNER_PROGRAM_ENABLED: bool = Field(
+        default=False,
+        description="Enable partner applications, attribution, commissions and user actions.",
+    )
+    PARTNER_WITHDRAWALS_ENABLED: bool = Field(
+        default=True,
+        description="Allow active partners to create withdrawal requests.",
+    )
+    PARTNER_BALANCE_PAYMENT_ENABLED: bool = Field(
+        default=True,
+        description="Allow active partners to renew their subscription from partner balance.",
+    )
+    PARTNER_DEFAULT_COMMISSION_BPS: int = Field(default=3000, ge=0, le=10000)
+    PARTNER_COMMISSION_HOLD_DAYS: int = Field(default=0, ge=0, le=365)
+    PARTNER_ELIGIBLE_CURRENCIES: str = Field(
+        default='["RUB"]',
+        description="JSON array of currencies eligible for partner commission.",
+    )
+    PARTNER_EXCLUDED_SALE_MODES: str = Field(
+        default="[]",
+        description="JSON array of sale-mode base names excluded from partner commission.",
+    )
+    PARTNER_WITHDRAWAL_METHODS_JSON: str = Field(
+        default="[]",
+        description="Validated JSON array of manual partner withdrawal methods.",
+    )
+    PARTNER_TELEGRAM_LINK_ENABLED: bool = Field(default=True)
+    PARTNER_WEBAPP_LINK_ENABLED: bool = Field(default=True)
+    PARTNER_APPLICATION_MESSAGE_MAX_LENGTH: int = Field(default=2000, ge=10, le=10000)
+    PARTNER_MAX_ACTIVE_WITHDRAWALS: int = Field(default=3, ge=1, le=50)
+    PARTNER_REAPPLICATION_ENABLED: bool = Field(default=False)
+    PARTNER_REAPPLICATION_COOLDOWN_DAYS: int = Field(default=0, ge=0, le=3650)
+    PARTNER_LIST_PAGE_LIMIT: int = Field(default=50, ge=10, le=200)
+    PARTNER_APPLICATION_RATE_LIMIT_HOURS: int = Field(default=24, ge=1, le=8760)
+    PARTNER_WITHDRAWAL_RATE_LIMIT_SECONDS: int = Field(default=10, ge=1, le=3600)
+    PARTNER_AUDIT_RETENTION_DAYS: int = Field(default=1095, ge=30, le=3650)
+    PARTNER_REQUISITES_RETENTION_DAYS: int = Field(default=90, ge=1, le=3650)
+    PARTNER_REQUISITES_ENCRYPTION_KEY: SecretStr | None = Field(
+        default=None,
+        description="Environment-only urlsafe base64 AES key for withdrawal requisites.",
+        exclude=True,
+    )
+    PARTNER_REQUISITES_KEY_ID: str = Field(default="v1", exclude=True)
     LEGACY_REFS: bool = Field(
         default=True,
         description="Allow legacy referral links like /start ref_<telegram_id>, where the payload contains the inviter's Telegram/user ID.",  # noqa: E501

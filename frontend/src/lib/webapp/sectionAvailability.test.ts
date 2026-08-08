@@ -35,6 +35,7 @@ describe("section availability", () => {
     expect(activeTabForWebappSection("admin")).toBe("settings");
     expect(activeTabForWebappSection("install")).toBe("home");
     expect(activeTabForWebappSection("trial")).toBe("home");
+    expect(activeTabForWebappSection("partner")).toBe("partner");
     expect(activeTabForWebappSection("support")).toBe("support");
   });
 });

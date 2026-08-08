@@ -78,6 +78,7 @@ EXPECTED_CORE_MIGRATION_IDS = [
     "0055_add_auto_renew_retry_state",
     "0056_add_tariff_binding_audit",
     "0057_add_platega_subscriptions",
+    "0058_add_partner_program",
 ]
 
 

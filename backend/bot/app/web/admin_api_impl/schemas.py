@@ -678,6 +678,7 @@ class PaymentOut(HttpResponseModel):
     traffic_regular_gb: float | None = None
     traffic_premium_gb: float | None = None
     provider: str | None = None
+    funding_source: str = "external"
     provider_payment_id: str | None = None
     amount: float
     currency: str | None = None
@@ -711,6 +712,7 @@ class PaymentOut(HttpResponseModel):
             traffic_regular_gb=regular_gb,
             traffic_premium_gb=premium_gb,
             provider=payment.provider,
+            funding_source=str(getattr(payment, "funding_source", "external") or "external"),
             provider_payment_id=payment.provider_payment_id,
             amount=float(payment.amount),
             currency=payment.currency,

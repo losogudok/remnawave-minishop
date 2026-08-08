@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getTariffsStore } from "$lib/admin/context";
   import { Input, Sortable } from "$components/ui/index.js";
-  import { Label, Tabs } from "$components/ui/primitives.js";
+  import { Tabs } from "$components/ui/primitives.js";
   import { AdminButton, AdminSelect } from "$components/patterns/admin/index.js";
   import { Plus, Trash2 } from "$components/ui/icons.js";
   import type { TariffDraft, TariffsCatalog } from "$lib/admin/stores/tariffsStore";
@@ -18,7 +18,6 @@
     currencyPriceAriaLabel as formatCurrencyPriceAriaLabel,
     currencyPriceColumnLabel as formatCurrencyPriceColumnLabel,
     defaultCurrencyCode as getDefaultCurrencyCode,
-    draftInputHandler,
     draftRowInputHandler,
     draftRowKey,
     moveDraftRowHandler,

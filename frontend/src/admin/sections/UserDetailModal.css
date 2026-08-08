@@ -178,11 +178,7 @@
   padding: 10px;
   border: 1px solid var(--admin-border);
   border-radius: 8px;
-  background: color-mix(
-    in srgb,
-    var(--admin-surface-2) 82%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--admin-surface-2) 82%, transparent);
 }
 .admin-squad-section-head {
   display: grid;

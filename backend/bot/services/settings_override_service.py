@@ -24,7 +24,7 @@ from bot.app.web.admin_settings_manifest import (
     manifest_keys,
 )
 from config.settings import Settings
-from db.dal import app_settings_dal
+from db.dal import app_settings_dal, partner_dal
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,27 @@ REFERRAL_LINK_VISIBILITY_KEYS = (
     "REFERRAL_WEBAPP_LINK_ENABLED",
     "REFERRAL_TELEGRAM_LINK_ENABLED",
 )
+PARTNER_SETTING_KEYS = {
+    "PARTNER_PROGRAM_ENABLED",
+    "PARTNER_WITHDRAWALS_ENABLED",
+    "PARTNER_BALANCE_PAYMENT_ENABLED",
+    "PARTNER_DEFAULT_COMMISSION_BPS",
+    "PARTNER_COMMISSION_HOLD_DAYS",
+    "PARTNER_ELIGIBLE_CURRENCIES",
+    "PARTNER_EXCLUDED_SALE_MODES",
+    "PARTNER_WITHDRAWAL_METHODS_JSON",
+    "PARTNER_TELEGRAM_LINK_ENABLED",
+    "PARTNER_WEBAPP_LINK_ENABLED",
+    "PARTNER_APPLICATION_MESSAGE_MAX_LENGTH",
+    "PARTNER_MAX_ACTIVE_WITHDRAWALS",
+    "PARTNER_REAPPLICATION_ENABLED",
+    "PARTNER_REAPPLICATION_COOLDOWN_DAYS",
+    "PARTNER_LIST_PAGE_LIMIT",
+    "PARTNER_APPLICATION_RATE_LIMIT_HOURS",
+    "PARTNER_WITHDRAWAL_RATE_LIMIT_SECONDS",
+    "PARTNER_AUDIT_RETENTION_DAYS",
+    "PARTNER_REQUISITES_RETENTION_DAYS",
+}
 APP_ROOT = Path(__file__).resolve().parents[3]
 APPEARANCE_OVERRIDES_BACKUP_PATH = APP_ROOT / "data" / "webapp-logo" / "appearance-settings.json"
 
@@ -204,6 +225,31 @@ def _referral_link_visibility_errors(
     if any(values.values()):
         return {}
     return dict.fromkeys(sorted(touched), "at least one referral link must remain enabled")
+
+
+def _partner_settings_errors(
+    settings: Settings,
+    updates: dict[str, Any],
+    deletes: list[str],
+) -> dict[str, str]:
+    touched = PARTNER_SETTING_KEYS.intersection((*updates, *deletes))
+    if not touched:
+        return {}
+    candidate = settings.model_copy(deep=True)
+    if deletes:
+        try:
+            env_only = Settings()
+        except Exception:
+            return dict.fromkeys(sorted(touched), "could not resolve the environment default")
+        for key in PARTNER_SETTING_KEYS.intersection(deletes):
+            setattr(candidate, key, getattr(env_only, key))
+    for key in PARTNER_SETTING_KEYS.intersection(updates):
+        setattr(candidate, key, updates[key])
+    try:
+        _ = candidate.partner_settings
+    except Exception as exc:
+        return dict.fromkeys(sorted(touched), str(exc))
+    return {}
 
 
 def _appearance_snapshot(settings: Settings) -> dict[str, Any]:
@@ -384,12 +430,37 @@ async def update_overrides(
             valid_deletes,
         )
     )
+    errors.update(_partner_settings_errors(settings, coerced_updates, valid_deletes))
     if errors:
         return {"ok": False, "errors": errors}
+
+    removed_partner_method_ids: set[str] = set()
+    methods_key = "PARTNER_WITHDRAWAL_METHODS_JSON"
+    if methods_key in coerced_updates or methods_key in valid_deletes:
+        current_method_ids = {method.id for method in settings.partner_settings.withdrawal_methods}
+        candidate = settings.model_copy(deep=True)
+        if methods_key in coerced_updates:
+            candidate.PARTNER_WITHDRAWAL_METHODS_JSON = coerced_updates[methods_key]
+        else:
+            candidate.PARTNER_WITHDRAWAL_METHODS_JSON = Settings().PARTNER_WITHDRAWAL_METHODS_JSON
+        next_method_ids = {method.id for method in candidate.partner_settings.withdrawal_methods}
+        removed_partner_method_ids = current_method_ids - next_method_ids
 
     async with async_session_factory() as raw_session:
         session: AsyncSession = raw_session
         async with session.begin():
+            methods_in_use = await partner_dal.active_withdrawal_methods_in_use(
+                session,
+                removed_partner_method_ids,
+            )
+            if methods_in_use:
+                return {
+                    "ok": False,
+                    "errors": {
+                        methods_key: "active withdrawals use methods: "
+                        + ", ".join(sorted(methods_in_use))
+                    },
+                }
             for key, value in coerced_updates.items():
                 await app_settings_dal.upsert_override(
                     session, key=key, value=value, updated_by=actor_id

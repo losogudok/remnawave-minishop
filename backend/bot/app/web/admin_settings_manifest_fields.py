@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from bot.app.web.admin_settings_manifest_email_fields import EMAIL_SETTINGS_FIELDS
 from bot.app.web.admin_settings_manifest_types import TRAFFIC_STRATEGY_CHOICES, SettingField
+from bot.app.web.admin_settings_partner_manifest_fields import PARTNER_SETTINGS_FIELDS
 
 SETTINGS_MANIFEST: list[SettingField] = [
     # ─── General ────────────────────────────────────────────────────
@@ -543,6 +544,7 @@ SETTINGS_MANIFEST: list[SettingField] = [
         "Show the Telegram bot referral link in the user Web App bonus section.",
         subsection="referral",
     ),
+    *PARTNER_SETTINGS_FIELDS,
     SettingField(
         "LEGACY_REFS",
         "bool",

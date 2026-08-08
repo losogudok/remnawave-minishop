@@ -7,6 +7,7 @@
     History,
     LockKeyhole,
     Tag,
+    WalletCards,
   } from "$components/ui/icons.js";
 
   import Button from "$components/ui/button.svelte";
@@ -19,7 +20,12 @@
     checkoutPromoBlockVisible,
     selectPaymentMethodWithPromoReset,
   } from "$lib/webapp/checkoutPromoPolicy.js";
-  import { formatCompactNumber } from "$lib/webapp/formatters.js";
+  import { formatCompactNumber, formatMoney } from "$lib/webapp/formatters.js";
+  import {
+    partnerBalanceCheckoutPreview,
+    type PartnerBalanceCheckoutPreview,
+  } from "$lib/webapp/previewMock/partnerProgram.js";
+  import type { ApiClient, PartnerOverviewResponse } from "$lib/webapp/publicApi.js";
   import {
     planKey as planKeyFn,
     planDisplayTitle as planDisplayTitleFn,
@@ -43,6 +49,8 @@
   } from "$lib/webapp/types.js";
 
   let {
+    api,
+    refreshData = async () => {},
     createPayment = () => {},
     hasMultipleTariffs = false,
     methods = [],
@@ -68,6 +76,7 @@
     checkoutPromoInput = $bindable(""),
     checkoutPromoIsError = false,
     checkoutPromoPriceText = "",
+    checkoutPromoEffectiveAmount = 0,
     checkoutPromoStatus = "",
     checkoutPromoDiscountPercent = 0,
     checkoutPromoAppliesTo = "all",
@@ -82,6 +91,8 @@
     t = (key) => key,
     termUnitLabel = () => "",
   }: {
+    api: ApiClient["api"];
+    refreshData?: () => Promise<unknown>;
     createPayment?: VoidAction;
     hasMultipleTariffs?: boolean;
     methods?: PaymentMethodView[];
@@ -107,6 +118,7 @@
     checkoutPromoInput?: string;
     checkoutPromoIsError?: boolean;
     checkoutPromoPriceText?: string;
+    checkoutPromoEffectiveAmount?: number;
     checkoutPromoStatus?: string;
     checkoutPromoDiscountPercent?: number;
     checkoutPromoAppliesTo?: string;
@@ -411,7 +423,153 @@
     if (paymentStep === "tariff") return false;
     return String(selectedTariff?.billing_model || "period").toLowerCase() !== "traffic";
   }
+  const initialPartnerBalancePreview = partnerBalanceCheckoutPreview();
+  const partnerCheckoutPreviewMode =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).has("partner_checkout");
+  let partnerBalancePreview = $state<PartnerBalanceCheckoutPreview | null>(
+    initialPartnerBalancePreview
+  );
+  let partnerBalanceSpent = $state(false);
+  let partnerBalanceBusy = $state(false);
+  let partnerBalanceError = $state("");
+  let partnerBalanceRequestKey = "";
+
+  function balancePaymentContext() {
+    const plan = selectedPlan;
+    const tariffKey = String(plan?.tariff_key || selectedTariffKey || selectedTariff?.key || "");
+    const months = Number(plan?.months || 0);
+    const currency = String(plan?.currency || "").toUpperCase();
+    const quotedPromoAmount = Number(checkoutPromoEffectiveAmount || 0);
+    const due =
+      checkoutPromoAppliedCode && quotedPromoAmount > 0
+        ? quotedPromoAmount
+        : Number(plan?.price || 0);
+    const subscriptionTariff = String(subscription?.tariff_key || "");
+    const eligible = Boolean(
+      plan &&
+      subscription?.active &&
+      months > 0 &&
+      due > 0 &&
+      currency &&
+      tariffKey &&
+      (!subscriptionTariff || subscriptionTariff === tariffKey) &&
+      String(plan.sale_mode || "subscription").startsWith("subscription") &&
+      !trafficMode
+    );
+    return { plan, tariffKey, months, currency, due, eligible };
+  }
+
+  async function loadPartnerBalanceOption(): Promise<void> {
+    if (partnerCheckoutPreviewMode || !paymentModalOpen) return;
+    const context = balancePaymentContext();
+    if (!context.eligible) {
+      partnerBalancePreview = null;
+      return;
+    }
+    const requestKey = [
+      context.tariffKey,
+      context.months,
+      context.currency,
+      checkoutPromoAppliedCode,
+    ].join(":");
+    partnerBalanceRequestKey = requestKey;
+    try {
+      const overview = (await api("/partner/overview")) as PartnerOverviewResponse;
+      if (partnerBalanceRequestKey !== requestKey) return;
+      const balance = overview.balances.find((item) => item.currency === context.currency);
+      if (!overview.balance_payment_enabled || overview.profile?.status !== "active" || !balance) {
+        partnerBalancePreview = null;
+        return;
+      }
+      const available = balance.available_minor / 10 ** balance.currency_scale;
+      const shortage = Math.max(0, context.due - available);
+      partnerBalancePreview = {
+        available: formatMoney(available, context.currency),
+        due: formatMoney(context.due, context.currency),
+        shortage: shortage ? formatMoney(shortage, context.currency) : "",
+        enabled: shortage === 0 && available >= 0,
+        reasonKey:
+          available < 0 ? "wa_partner_balance_negative" : "wa_partner_balance_insufficient",
+      };
+    } catch {
+      partnerBalancePreview = null;
+    }
+  }
+
+  async function payWithPartnerBalance(): Promise<void> {
+    if (partnerCheckoutPreviewMode) {
+      partnerBalanceSpent = true;
+      return;
+    }
+    const context = balancePaymentContext();
+    if (!partnerBalancePreview?.enabled || !context.eligible || partnerBalanceBusy) return;
+    partnerBalanceBusy = true;
+    partnerBalanceError = "";
+    try {
+      const random = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+      await api("/partner/balance/renew", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tariff_key: context.tariffKey,
+          months: context.months,
+          promo_code: checkoutPromoAppliedCode || null,
+          idempotency_key: `balance-${random}`,
+        }),
+      });
+      partnerBalanceSpent = true;
+      await refreshData();
+      closePaymentModal();
+    } catch {
+      partnerBalanceError = t("wa_partner_balance_checkout_error");
+      await loadPartnerBalanceOption();
+    } finally {
+      partnerBalanceBusy = false;
+    }
+  }
+
+  $effect(() => {
+    paymentModalOpen;
+    selectedPlan;
+    selectedTariffKey;
+    checkoutPromoAppliedCode;
+    if (!partnerCheckoutPreviewMode) void loadPartnerBalanceOption();
+  });
 </script>
+
+{#snippet partnerBalanceOption()}
+  {#if partnerBalancePreview}
+    <section class="partner-balance-checkout" class:disabled={!partnerBalancePreview.enabled}>
+      <div class="partner-balance-checkout-icon"><WalletCards size={19} /></div>
+      <div class="partner-balance-checkout-copy">
+        <strong>{t("wa_partner_balance_checkout_title")}</strong>
+        <span
+          >{t("wa_partner_balance_checkout_summary", {
+            balance: partnerBalancePreview.available,
+            due: partnerBalancePreview.due,
+          })}</span
+        >
+        {#if partnerBalancePreview.shortage}<small
+            >{t(partnerBalancePreview.reasonKey, {
+              shortage: partnerBalancePreview.shortage,
+            })}</small
+          >{/if}
+        {#if partnerBalanceError}<small>{partnerBalanceError}</small>{/if}
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={!partnerBalancePreview.enabled || partnerBalanceSpent || partnerBalanceBusy}
+        onclick={payWithPartnerBalance}
+      >
+        {partnerBalanceSpent
+          ? t("wa_partner_balance_checkout_confirmed")
+          : t("wa_partner_balance_checkout_action")}
+      </Button>
+    </section>
+  {/if}
+{/snippet}
 
 <Dialog
   open={paymentModalOpen}
@@ -604,6 +762,7 @@
             {t}
           />
         {/if}
+        {@render partnerBalanceOption()}
         <Button
           class="wide bottom-action payment-submit-button"
           onclick={createPayment}
@@ -717,6 +876,7 @@
           {t}
         />
       {/if}
+      {@render partnerBalanceOption()}
       <Button
         class="wide bottom-action payment-submit-button"
         onclick={createPayment}
@@ -729,3 +889,58 @@
     {/if}
   </div>
 </Dialog>
+
+<style>
+  .partner-balance-checkout {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border));
+    border-radius: 13px;
+    background: color-mix(in srgb, var(--accent) 10%, var(--panel-2));
+  }
+
+  .partner-balance-checkout.disabled {
+    border-color: var(--border);
+    background: var(--surface-muted);
+  }
+
+  .partner-balance-checkout-icon {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border-radius: 11px;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+  }
+
+  .partner-balance-checkout-copy {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+
+  .partner-balance-checkout-copy span,
+  .partner-balance-checkout-copy small {
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .partner-balance-checkout-copy small {
+    color: var(--warning-text);
+  }
+
+  @media (max-width: 480px) {
+    .partner-balance-checkout {
+      grid-template-columns: auto 1fr;
+    }
+
+    .partner-balance-checkout :global(.btn) {
+      grid-column: 1 / -1;
+      width: 100%;
+    }
+  }
+</style>

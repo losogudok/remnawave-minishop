@@ -123,6 +123,14 @@ export type TariffChangeOptionsResponse = GetResponse<"/api/tariffs/change-optio
 export type TariffChangePaymentResponse = PostResponse<"/api/tariffs/change-payment">;
 export type TariffTopupOptionsResponse = GetResponse<"/api/tariffs/topup-options">;
 export type TrialActivateResponse = PostResponse<"/api/trial/activate">;
+export type PartnerOverviewResponse = GetResponse<"/api/partner/overview">;
+export type PartnerApplicationCreateResponse = PostResponse<"/api/partner/applications">;
+export type PartnerClientsResponse = GetResponse<"/api/partner/clients">;
+export type PartnerCommissionsResponse = GetResponse<"/api/partner/commissions">;
+export type PartnerWithdrawalsResponse = GetResponse<"/api/partner/withdrawals">;
+export type PartnerWithdrawalCreateResponse = PostResponse<"/api/partner/withdrawals">;
+export type PartnerWithdrawalCancelResponse = PostResponse<"/api/partner/withdrawals/{id}/cancel">;
+export type PartnerBalanceRenewResponse = PostResponse<"/api/partner/balance/renew">;
 
 export type AccountEmailRequestPath = "/account/email/request";
 export type AccountEmailVerifyPath = "/account/email/verify";
@@ -155,6 +163,7 @@ export type SubscriptionGuidesPath = "/subscription-guides";
 export type PublicSubscriptionGuidesPath =
   BuiltApiPath<"/api/subscription-guides/public/{share_token}">;
 export type PaymentsPath = "/payments";
+export type PartnerWithdrawalCancelPath = BuiltApiPath<"/api/partner/withdrawals/{id}/cancel">;
 
 type MockContext = Record<string, unknown>;
 export type MockApi = (
@@ -246,6 +255,12 @@ function builtApiPath<Template extends RawApiPath>(path: string): BuiltApiPath<T
 export type MePath = "/me" | "/me?fresh=1";
 export function buildMePath(fresh: boolean = false): MePath {
   return fresh ? "/me?fresh=1" : "/me";
+}
+
+export function buildPartnerWithdrawalCancelPath(id: string | number): PartnerWithdrawalCancelPath {
+  return builtApiPath<"/api/partner/withdrawals/{id}/cancel">(
+    `/partner/withdrawals/${encodeURIComponent(String(id))}/cancel`
+  );
 }
 
 export function buildAccountEmailRequestPath(): AccountEmailRequestPath {
@@ -825,5 +840,5 @@ export function createApiClient({
     return (await publicApiUnchecked(path, payload, options)) as PostResponse<Path>;
   }
 
-  return { api, apiUnchecked, publicApi, publicApiUnchecked };
+  return { api, apiUnchecked, publicApi, publicApiUnchecked } as ApiClient;
 }
