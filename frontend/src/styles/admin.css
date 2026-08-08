@@ -991,10 +991,135 @@
   width: 100%;
 }
 
+.admin-revenue-chart-body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-revenue-uplot-wrap {
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
 .admin-revenue-uplot-host {
   width: 100%;
   min-width: 0;
   display: block;
+}
+
+/* The hover highlight is a canvas laid over uPlot's own. The component clips
+   uPlot's rendered `Path2D` to a window around the active period, so the bright
+   line and the lit area under it sit on the curve by construction rather than
+   by re-deriving the spline. */
+.admin-chart-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  display: block;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+.admin-chart-highlight.is-visible {
+  opacity: 1;
+}
+
+/* uPlot's own crosshair would double the overlay's drop line. */
+.admin-revenue-uplot-host .u-cursor-x,
+.admin-revenue-uplot-host .u-cursor-y {
+  display: none;
+}
+
+/* Reserved lane below the plot: the readout never covers the graph and its
+   vertical position stays stable while the active period changes. */
+.admin-chart-tooltip-lane {
+  position: relative;
+  min-width: 0;
+  height: 70px;
+  overflow: hidden;
+}
+
+/* Compact readout follows only the active period's horizontal position. */
+/* Surface, border and notch come from the shared `Plate`; everything here is
+   the chart-specific part — where it sits and how it slides. */
+.admin-chart-tooltip {
+  --ui-plate-bg: color-mix(in srgb, var(--admin-surface-2) 92%, var(--admin-bg));
+  --ui-plate-border: color-mix(in srgb, var(--accent) 42%, var(--admin-border));
+  --ui-plate-position: absolute;
+  --ui-plate-radius: 9px;
+  --ui-plate-arrow: 9px;
+  --ui-plate-transition:
+    transform 0.2s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.13s ease, visibility 0s linear 0.13s;
+  top: 6px;
+  left: 0;
+  z-index: 4;
+  width: min(190px, calc(100% - 16px));
+  display: grid;
+  gap: 5px;
+  padding: 8px 10px 9px;
+  color: var(--admin-text);
+  box-shadow:
+    0 12px 30px color-mix(in srgb, var(--admin-bg) 72%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.admin-chart-tooltip-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--admin-muted);
+  font-size: 10px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.admin-chart-tooltip-meta .is-up {
+  color: var(--success-text);
+}
+
+.admin-chart-tooltip-meta .is-down {
+  color: var(--danger-text);
+}
+
+.admin-chart-tooltip-value {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.admin-chart-tooltip-value small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--admin-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-chart-tooltip-value strong {
+  flex: 0 0 auto;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-chart-tooltip {
+    transition: opacity 0.16s ease;
+  }
 }
 
 /* uPlot ships `width: min-content` on `.uplot`, which can prevent full-width layout */

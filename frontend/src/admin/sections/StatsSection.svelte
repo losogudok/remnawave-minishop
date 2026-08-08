@@ -12,6 +12,7 @@
     AdminButton,
     AdminEmptyState,
     AdminRevenueCustomRangePopover,
+    AdminRevenueTabs,
     AdminSortableHeader,
     AdminTable,
     AdminTableSkeleton,
@@ -495,24 +496,15 @@
           <div class="admin-revenue-chart-head">
             <div class="admin-revenue-chart-title">{at("stats_revenue_chart_title", {}, "")}</div>
             <div class="admin-revenue-chart-toolbar">
-              <div
-                class="admin-revenue-period"
-                role="tablist"
-                aria-label={at("stats_revenue_chart_aria", {}, "")}
-              >
-                {#each REVENUE_PRESET_DAYS as d (d)}
-                  <button
-                    type="button"
-                    class="admin-revenue-period-btn"
-                    class:is-active={revenueRangeMode === "preset" && revenuePresetDays === d}
-                    role="tab"
-                    aria-selected={revenueRangeMode === "preset" && revenuePresetDays === d}
-                    onclick={() => setRevenuePresetDays(d)}
-                  >
-                    {revenuePeriodLabel(d)}
-                  </button>
-                {/each}
-              </div>
+              <AdminRevenueTabs
+                value={revenueRangeMode === "preset" ? String(revenuePresetDays) : ""}
+                items={REVENUE_PRESET_DAYS.map((days) => ({
+                  value: String(days),
+                  label: revenuePeriodLabel(days),
+                }))}
+                ariaLabel={at("stats_revenue_chart_aria", {}, "")}
+                onValueChange={(value) => setRevenuePresetDays(Number(value))}
+              />
               <AdminRevenueCustomRangePopover
                 bind:open={revenueCustomPopoverOpen}
                 minIso={revenueBoundsIso?.min ?? ""}
@@ -527,24 +519,16 @@
               />
             </div>
           </div>
-          <div
-            class="admin-revenue-granularity"
-            role="tablist"
-            aria-label={at("stats_revenue_granularity_aria", {}, "")}
-          >
-            {#each ["day", "week", "month"] as g (g)}
-              <button
-                type="button"
-                class="admin-revenue-period-btn admin-revenue-period-btn--compact"
-                class:is-active={revenueGranularity === g}
-                role="tab"
-                aria-selected={revenueGranularity === g}
-                onclick={() => setRevenueGranularity(g)}
-              >
-                {at(`stats_revenue_granularity_${g}`, {}, g)}
-              </button>
-            {/each}
-          </div>
+          <AdminRevenueTabs
+            value={revenueGranularity}
+            items={["day", "week", "month"].map((value) => ({
+              value,
+              label: at(`stats_revenue_granularity_${value}`, {}, value),
+            }))}
+            ariaLabel={at("stats_revenue_granularity_aria", {}, "")}
+            variant="granularity"
+            onValueChange={setRevenueGranularity}
+          />
           <p class="admin-revenue-chart-hint admin-muted">{at(revenueChartHintKey(), {}, "")}</p>
           {#if revenueChartSeries.length}
             <div class="admin-revenue-chart-meta admin-muted">
@@ -590,6 +574,7 @@
                   {currency}
                   legendTimeLabel={at("stats_revenue_chart_uplot_time", {}, "Time")}
                   legendValueLabel={at("stats_revenue_chart_uplot_value", {}, "Value")}
+                  legendDeltaLabel={at("stats_revenue_chart_uplot_delta", {}, "Change")}
                 />
               {:else}
                 <span

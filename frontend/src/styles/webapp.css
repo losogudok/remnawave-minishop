@@ -3632,6 +3632,106 @@ a {
     grid-column: 1 / -1;
   }
 
+  /* Devices: the phone layout stacks full-width cards, which leaves a column of
+     tall, mostly empty boxes on desktop. Lay the list out as a card grid, put
+     the facts into chips side by side, and pin the action to the bottom edge so
+     the cards in a row stay aligned. */
+  .devices-summary-card > .btn.wide {
+    width: auto;
+    min-width: 260px;
+    justify-self: start;
+  }
+
+  .devices-list {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+    gap: 12px;
+  }
+
+  .device-card {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 14px;
+    padding: 16px;
+    transition:
+      border-color 0.16s ease,
+      background 0.16s ease;
+  }
+
+  .device-card:hover {
+    border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  }
+
+  .device-card .device-card-head {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .device-card .device-icon {
+    width: 46px;
+    height: 46px;
+  }
+
+  .device-card .device-glyph {
+    width: 28px;
+    height: 28px;
+  }
+
+  .device-card .device-card-head strong {
+    font-size: 15px;
+  }
+
+  .device-card .device-card-head small {
+    justify-self: start;
+    max-width: 100%;
+    overflow: hidden;
+    padding: 2px 8px;
+    border: 1px solid var(--surface-subtle-border);
+    border-radius: 999px;
+    background: var(--surface-subtle);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .device-meta {
+    align-content: start;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .device-meta > div {
+    gap: 3px;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--surface-subtle-border);
+    border-radius: 12px;
+    background: var(--surface-subtle);
+  }
+
+  .device-user-agent {
+    grid-column: 1 / -1;
+  }
+
+  .device-card .device-disconnect-button {
+    min-height: 42px;
+    font-size: 13px;
+  }
+
+  /* Empty/inactive states: full width turns them into a thin banner, so give
+     them the footprint of a single card instead. */
+  .devices-empty-card {
+    width: min(100%, 440px);
+    margin-inline: auto;
+    padding: 30px 22px;
+    gap: 10px;
+  }
+
+  /* The chips only exist on desktop, so their light-tone tint lives here too
+     (mirrors the .trial-card-facts override in base.css). */
+  .theme-light .device-meta > div,
+  .theme-light .device-card .device-card-head small {
+    border-color: rgba(15, 23, 42, 0.12);
+    background: rgba(15, 23, 42, 0.025);
+  }
+
   /* Wider modals on desktop. */
   .dialog-card {
     width: min(100%, 560px);

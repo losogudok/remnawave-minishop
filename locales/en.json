@@ -1602,6 +1602,7 @@
   "admin_stats_revenue_chart_days_available": "Series length: {count} days",
   "admin_stats_revenue_chart_uplot_time": "Time",
   "admin_stats_revenue_chart_uplot_value": "Value",
+  "admin_stats_revenue_chart_uplot_delta": "Change",
   "admin_stats_revenue_period_7": "7d",
   "admin_stats_revenue_period_14": "14d",
   "admin_stats_revenue_period_30": "30d",

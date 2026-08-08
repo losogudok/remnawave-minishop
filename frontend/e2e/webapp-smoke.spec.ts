@@ -75,6 +75,38 @@ function activeAdminSection(page: Page, id: string): Locator {
   return page.locator(`.admin-section-stage[data-admin-active-section="${id}"]:not([inert])`);
 }
 
+/**
+ * Horizontal position of the hover drop line, in CSS px inside the overlay.
+ * The highlight is painted on a canvas (it clips uPlot's own path), so this
+ * samples the axis strip under the plot, where only the dashed line to the
+ * readout card is drawn — that line marks the active point.
+ */
+async function chartHighlightCentre(chart: Locator): Promise<number | null> {
+  return chart.locator(".admin-chart-highlight").evaluate((element) => {
+    const canvas = element as HTMLCanvasElement;
+    const context = canvas.getContext("2d");
+    if (!context || !canvas.width || !canvas.height) return null;
+    const bandTop = Math.floor(canvas.height * 0.9);
+    const bandHeight = canvas.height - bandTop;
+    if (bandHeight <= 0) return null;
+    const pixels = context.getImageData(0, bandTop, canvas.width, bandHeight).data;
+    let total = 0;
+    let weighted = 0;
+    for (let y = 0; y < bandHeight; y += 1) {
+      for (let x = 0; x < canvas.width; x += 1) {
+        const alpha = pixels[(y * canvas.width + x) * 4 + 3];
+        if (alpha > 40) {
+          total += alpha;
+          weighted += x * alpha;
+        }
+      }
+    }
+    if (!total) return null;
+    const ratio = canvas.width / (canvas.getBoundingClientRect().width || canvas.width);
+    return weighted / total / ratio;
+  });
+}
+
 async function assertNoDuplicateIds(page: Page, phase: string): Promise<void> {
   const duplicates = await page.locator("[id]").evaluateAll((elements) => {
     const seen = new Map<string, number>();
@@ -903,6 +935,68 @@ test("webapp and admin sections, dialogs, tabs stay interactive without console 
   await page.goBack();
   await expect(page).toHaveURL(/\/demo\/runtime\/admin\/stats$/);
   await expect(activeAdminSection(page, "stats")).toBeVisible();
+
+  setPhase("admin-dashboard:revenue-chart-hover");
+  const revenueChart = activeAdminSection(page, "stats").locator(".admin-revenue-chart-body");
+  const revenueChartOver = revenueChart.locator(".u-over");
+  await revenueChart.scrollIntoViewIfNeeded();
+  await expect(revenueChartOver).toBeVisible();
+  const revenueChartOverBox = await revenueChartOver.boundingBox();
+  if (!revenueChartOverBox) throw new Error("revenue chart hover surface has no bounding box");
+  await revenueChartOver.hover({
+    position: { x: revenueChartOverBox.width / 2, y: revenueChartOverBox.height / 2 },
+  });
+  await expect(revenueChart.locator(".admin-chart-tooltip.is-visible")).toBeVisible();
+  await expect(revenueChart.locator(".admin-chart-highlight.is-visible")).toBeVisible();
+  const firstTooltipBox = await revenueChart
+    .locator(".admin-chart-tooltip.is-visible")
+    .boundingBox();
+  const firstHighlightCentre = await chartHighlightCentre(revenueChart);
+  await revenueChartOver.hover({
+    position: { x: revenueChartOverBox.width - 2, y: revenueChartOverBox.height / 2 },
+  });
+  await page.waitForTimeout(400);
+  const secondHighlightCentre = await chartHighlightCentre(revenueChart);
+  expect(secondHighlightCentre).not.toBeNull();
+  expect(Math.abs((secondHighlightCentre ?? 0) - (firstHighlightCentre ?? 0))).toBeGreaterThan(20);
+  const revenueWrapBox = await revenueChart.locator(".admin-revenue-uplot-wrap").boundingBox();
+  const revenueTooltipBox = await revenueChart
+    .locator(".admin-chart-tooltip.is-visible")
+    .boundingBox();
+  if (!revenueWrapBox || !revenueTooltipBox) {
+    throw new Error("revenue chart tooltip has no bounding box");
+  }
+  if (!firstTooltipBox) throw new Error("revenue chart tooltip has no initial bounding box");
+  const revenueTooltipLaneBox = await revenueChart
+    .locator(".admin-chart-tooltip-lane")
+    .boundingBox();
+  const revenueHighlightBox = await revenueChart
+    .locator(".admin-chart-highlight.is-visible")
+    .boundingBox();
+  // The readout's notch comes from the shared `Plate` component.
+  const revenueTooltipArrowBox = await revenueChart
+    .locator(".admin-chart-tooltip .ui-plate-arrow")
+    .boundingBox();
+  if (
+    !revenueTooltipLaneBox ||
+    !revenueHighlightBox ||
+    !revenueTooltipArrowBox ||
+    secondHighlightCentre === null
+  ) {
+    throw new Error("revenue chart overlay geometry is unavailable");
+  }
+  const highlightDotX = revenueHighlightBox.x + secondHighlightCentre;
+  const tooltipArrowX = revenueTooltipArrowBox.x + revenueTooltipArrowBox.width / 2;
+  expect(Math.abs(revenueTooltipBox.y - firstTooltipBox.y)).toBeLessThanOrEqual(1);
+  expect(revenueTooltipLaneBox.y).toBeGreaterThanOrEqual(revenueWrapBox.y + revenueWrapBox.height);
+  expect(Math.abs(revenueHighlightBox.width - revenueWrapBox.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(revenueHighlightBox.height - revenueWrapBox.height)).toBeLessThanOrEqual(1);
+  // The card is clamped at the extreme right; its arrow keeps a safe inset
+  // from the rounded corner while staying visually attached to the point.
+  expect(Math.abs(tooltipArrowX - highlightDotX)).toBeLessThanOrEqual(12);
+  expect(
+    revenueWrapBox.x + revenueWrapBox.width - revenueTooltipBox.x - revenueTooltipBox.width
+  ).toBeGreaterThanOrEqual(7);
 
   setPhase("admin-section-registry");
   for (const id of CORE_ADMIN_SECTION_IDS) {

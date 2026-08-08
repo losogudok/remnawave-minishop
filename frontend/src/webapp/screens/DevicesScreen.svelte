@@ -3,7 +3,12 @@
 
   import Button from "$components/ui/button.svelte";
   import Card from "$components/ui/card.svelte";
-  import { EmptyCard, LinearProgress, StatusMessage } from "$components/patterns/webapp/index.js";
+  import {
+    DeviceGlyph,
+    EmptyCard,
+    LinearProgress,
+    StatusMessage,
+  } from "$components/patterns/webapp/index.js";
   import {
     deviceLimitReached,
     devicesCountLabel,
@@ -175,7 +180,7 @@
       {#each deviceList as device (device.token || device.index)}
         <Card class="device-card">
           <div class="device-card-head">
-            <div class="device-icon"><Smartphone size={20} /></div>
+            <div class="device-icon"><DeviceGlyph {device} size={24} /></div>
             <span>
               <strong
                 >{device.display_name ||

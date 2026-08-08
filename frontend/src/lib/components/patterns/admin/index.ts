@@ -7,6 +7,7 @@ export { default as AdminField } from "./AdminField.svelte";
 export { default as AdminPagination } from "./AdminPagination.svelte";
 export { default as AdminRevenueChart } from "./AdminRevenueChart.svelte";
 export { default as AdminRevenueCustomRangePopover } from "./AdminRevenueCustomRangePopover.svelte";
+export { default as AdminRevenueTabs } from "./AdminRevenueTabs.svelte";
 export { default as AdminSelect } from "./AdminSelect.svelte";
 export { default as AdminSectionHeader } from "./AdminSectionHeader.svelte";
 export { default as AdminSortHeader } from "./AdminSortHeader.svelte";
