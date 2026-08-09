@@ -87,6 +87,7 @@
     balancePaymentEnabled: settingBoolean("PARTNER_BALANCE_PAYMENT_ENABLED", true),
     clientWelcomeBonusEnabled: settingBoolean("PARTNER_CLIENT_WELCOME_BONUS_ENABLED", false),
     clientPaymentBonusEnabled: settingBoolean("PARTNER_CLIENT_PAYMENT_BONUS_ENABLED", false),
+    oneBonusPerClient: settingBoolean("PARTNER_ONE_BONUS_PER_CLIENT", true),
     defaultRate: settingNumber("PARTNER_DEFAULT_COMMISSION_BPS", 3000) / 100,
     holdDays: settingNumber("PARTNER_COMMISSION_HOLD_DAYS", 0),
     telegramLinks: previewMode
@@ -213,6 +214,7 @@
       PARTNER_BALANCE_PAYMENT_ENABLED: config.balancePaymentEnabled,
       PARTNER_CLIENT_WELCOME_BONUS_ENABLED: config.clientWelcomeBonusEnabled,
       PARTNER_CLIENT_PAYMENT_BONUS_ENABLED: config.clientPaymentBonusEnabled,
+      PARTNER_ONE_BONUS_PER_CLIENT: config.oneBonusPerClient,
       PARTNER_DEFAULT_COMMISSION_BPS: Math.round(config.defaultRate * 100),
       PARTNER_COMMISSION_HOLD_DAYS: Math.round(config.holdDays),
       PARTNER_ELIGIBLE_CURRENCIES: JSON.stringify(config.eligibleCurrencies),
@@ -479,8 +481,10 @@
     {at}
     welcomeEnabled={config.clientWelcomeBonusEnabled}
     paymentEnabled={config.clientPaymentBonusEnabled}
+    oneBonusPerClient={config.oneBonusPerClient}
     onWelcomeChange={(checked) => (config.clientWelcomeBonusEnabled = checked)}
     onPaymentChange={(checked) => (config.clientPaymentBonusEnabled = checked)}
+    onOneBonusPerClientChange={(checked) => (config.oneBonusPerClient = checked)}
   />
 
   <section class="admin-settings-field-group">

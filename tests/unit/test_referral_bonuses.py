@@ -79,12 +79,13 @@ class SkipPathTests(unittest.IsolatedAsyncioTestCase):
         )
         subscription_service.extend_active_subscription_days.assert_not_called()
 
-    async def test_partner_client_with_prior_payment_uses_shared_first_payment_rule(self):
+    async def test_partner_client_with_prior_payment_uses_independent_first_payment_rule(self):
         settings = _make_settings(
-            REFERRAL_ONE_BONUS_PER_REFEREE=True,
+            REFERRAL_ONE_BONUS_PER_REFEREE=False,
             partner_settings=SimpleNamespace(
                 enabled=True,
                 client_payment_bonus_enabled=True,
+                one_bonus_per_client=True,
             ),
         )
         subscription_service = AsyncMock()
@@ -336,10 +337,11 @@ class InviterBonusTests(unittest.IsolatedAsyncioTestCase):
 class RefereeBonusTests(unittest.IsolatedAsyncioTestCase):
     async def test_partner_client_gets_only_referee_tariff_bonus(self):
         settings = _make_settings(
-            REFERRAL_ONE_BONUS_PER_REFEREE=False,
+            REFERRAL_ONE_BONUS_PER_REFEREE=True,
             partner_settings=SimpleNamespace(
                 enabled=True,
                 client_payment_bonus_enabled=True,
+                one_bonus_per_client=False,
             ),
         )
         subscription_service = AsyncMock()
@@ -367,6 +369,10 @@ class RefereeBonusTests(unittest.IsolatedAsyncioTestCase):
                 "bot.services.referral_service.subscription_dal.get_active_subscription_by_user_id",
                 AsyncMock(),
             ) as inviter_subscription,
+            patch(
+                "bot.services.referral_service.payment_dal.count_user_succeeded_payments",
+                AsyncMock(return_value=1),
+            ) as payment_count,
         ):
             result = await service.apply_referral_bonuses_for_payment(
                 session=AsyncMock(),
@@ -379,6 +385,8 @@ class RefereeBonusTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["referee_new_end_date"], referee_new_end)
         self.assertEqual(result["referee_bonus_source"], "partner")
         self.assertFalse(result["inviter_bonus_applied_flag"])
+        self.assertFalse(result["event_payload"]["one_bonus_per_referee"])
+        payment_count.assert_not_awaited()
         inviter_subscription.assert_not_awaited()
         subscription_service.extend_active_subscription_days.assert_awaited_once_with(
             session=unittest.mock.ANY,

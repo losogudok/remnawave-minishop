@@ -3302,6 +3302,7 @@
   "admin_partner_settings_client_bonuses_title": "Client bonuses",
   "admin_partner_settings_client_payment_bonus": "Grant referral bonus days to partner clients after payment",
   "admin_partner_settings_client_welcome_bonus": "Grant a welcome bonus after registration through a partner link",
+  "admin_partner_settings_one_bonus_per_client": "Grant payment bonus only for the client's first payment",
   "admin_partner_settings_commission_hint": "The rate is snapshotted when each payment succeeds.",
   "admin_partner_settings_commission_title": "Commissions",
   "admin_partner_settings_confirm_balance_payment_text": "Partners will no longer be able to pay for subscriptions from their available balance. Existing ledger history remains available.",

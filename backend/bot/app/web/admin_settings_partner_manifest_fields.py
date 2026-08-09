@@ -50,6 +50,17 @@ PARTNER_SETTINGS_FIELDS: tuple[SettingField, ...] = (
         subsection="partner",
     ),
     SettingField(
+        "PARTNER_ONE_BONUS_PER_CLIENT",
+        "bool",
+        "pricing",
+        "First-payment partner client bonuses only",
+        (
+            "When enabled, later purchases by the same partner client do not grant tariff "
+            "bonus days."
+        ),
+        subsection="partner",
+    ),
+    SettingField(
         "PARTNER_DEFAULT_COMMISSION_BPS",
         "int",
         "pricing",

@@ -688,6 +688,8 @@ def test_legacy_tariff_settings_are_separated_from_payment_settings():
     assert manifest["PARTNER_CLIENT_WELCOME_BONUS_ENABLED"]["subsection"] == "partner"
     assert manifest["PARTNER_CLIENT_PAYMENT_BONUS_ENABLED"]["section"] == "pricing"
     assert manifest["PARTNER_CLIENT_PAYMENT_BONUS_ENABLED"]["subsection"] == "partner"
+    assert manifest["PARTNER_ONE_BONUS_PER_CLIENT"]["section"] == "pricing"
+    assert manifest["PARTNER_ONE_BONUS_PER_CLIENT"]["subsection"] == "partner"
     assert manifest["LEGACY_REFS"]["section"] == "pricing"
     assert manifest["LEGACY_REFS"]["subsection"] == "legacy_tariffs"
     assert manifest["DISPOSABLE_EMAIL_DOMAINS"]["section"] == "pricing"

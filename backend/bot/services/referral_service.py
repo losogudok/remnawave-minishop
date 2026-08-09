@@ -79,11 +79,18 @@ class ReferralService:
                 )
                 return {"referee_bonus_applied_days": None, "referee_new_end_date": None}
 
-            # If configured to apply referral bonuses only once per invited user,
-            # check if the referee already has succeeded payments.
-            # Use getattr with a safe default (True) to avoid AttributeError if
-            # running with an older settings schema.
-            if getattr(self.settings, "REFERRAL_ONE_BONUS_PER_REFEREE", True):
+            one_bonus_per_client = bool(
+                getattr(self.settings, "REFERRAL_ONE_BONUS_PER_REFEREE", True)
+            )
+            if partner_client_bonus:
+                one_bonus_per_client = bool(
+                    getattr(self.settings.partner_settings, "one_bonus_per_client", True)
+                )
+
+            # The payment finalizer holds the user row lock while this prior-payment
+            # check and the resulting bonus are committed, so concurrent payments for
+            # one user cannot both win the one-time bonus.
+            if one_bonus_per_client:
                 try:
                     succeeded_count = await payment_dal.count_user_succeeded_payments(
                         session, referee_user_id, exclude_payment_id=current_payment_db_id
@@ -246,11 +253,7 @@ class ReferralService:
                     payment_db_id=current_payment_db_id,
                     purchased_subscription_months=purchased_subscription_months,
                     tariff_key=tariff_key,
-                    one_bonus_per_referee=getattr(
-                        self.settings,
-                        "REFERRAL_ONE_BONUS_PER_REFEREE",
-                        True,
-                    ),
+                    one_bonus_per_referee=one_bonus_per_client,
                     reason="payment",
                 ).to_payload()
             else:

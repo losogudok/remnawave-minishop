@@ -159,6 +159,7 @@ if TYPE_CHECKING:
         PARTNER_BALANCE_PAYMENT_ENABLED: bool
         PARTNER_CLIENT_WELCOME_BONUS_ENABLED: bool
         PARTNER_CLIENT_PAYMENT_BONUS_ENABLED: bool
+        PARTNER_ONE_BONUS_PER_CLIENT: bool
         PARTNER_DEFAULT_COMMISSION_BPS: int
         PARTNER_COMMISSION_HOLD_DAYS: int
         PARTNER_ELIGIBLE_CURRENCIES: str
@@ -316,6 +317,7 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
             balance_payment_enabled=self.PARTNER_BALANCE_PAYMENT_ENABLED,
             client_welcome_bonus_enabled=self.PARTNER_CLIENT_WELCOME_BONUS_ENABLED,
             client_payment_bonus_enabled=self.PARTNER_CLIENT_PAYMENT_BONUS_ENABLED,
+            one_bonus_per_client=self.PARTNER_ONE_BONUS_PER_CLIENT,
             default_commission_bps=self.PARTNER_DEFAULT_COMMISSION_BPS,
             commission_hold_days=self.PARTNER_COMMISSION_HOLD_DAYS,
             eligible_currencies=_json_list(

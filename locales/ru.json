@@ -3302,6 +3302,7 @@
   "admin_partner_settings_client_bonuses_title": "Бонусы клиентам",
   "admin_partner_settings_client_payment_bonus": "Начислять клиентам реферальные бонусы при оплате",
   "admin_partner_settings_client_welcome_bonus": "Начислять клиентам приветственный бонус при регистрации по ссылке партнёра",
+  "admin_partner_settings_one_bonus_per_client": "Начислять бонус только за первый платёж клиента",
   "admin_partner_settings_commission_hint": "Ставка фиксируется в момент успешной оплаты.",
   "admin_partner_settings_commission_title": "Комиссии",
   "admin_partner_settings_confirm_balance_payment_text": "Партнёры больше не смогут оплачивать подписки с доступного баланса. История операций сохранится.",

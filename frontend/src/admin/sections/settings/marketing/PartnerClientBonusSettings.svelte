@@ -8,14 +8,18 @@
     at,
     welcomeEnabled,
     paymentEnabled,
+    oneBonusPerClient,
     onWelcomeChange,
     onPaymentChange,
+    onOneBonusPerClientChange,
   }: {
     at: TranslateFn;
     welcomeEnabled: boolean;
     paymentEnabled: boolean;
+    oneBonusPerClient: boolean;
     onWelcomeChange: (checked: boolean) => void;
     onPaymentChange: (checked: boolean) => void;
+    onOneBonusPerClientChange: (checked: boolean) => void;
   } = $props();
 
   function switchStateLabel(checked: boolean): string {
@@ -94,6 +98,27 @@
       ),
       "PARTNER_CLIENT_PAYMENT_BONUS_ENABLED",
       clientPaymentBonusControl
+    )}
+
+    {#snippet oneBonusPerClientControl()}
+      {@render switchControl(
+        oneBonusPerClient,
+        at(
+          "partner_settings_one_bonus_per_client",
+          {},
+          "Grant payment bonus only for the client's first payment"
+        ),
+        onOneBonusPerClientChange
+      )}
+    {/snippet}
+    {@render settingRow(
+      at(
+        "partner_settings_one_bonus_per_client",
+        {},
+        "Grant payment bonus only for the client's first payment"
+      ),
+      "PARTNER_ONE_BONUS_PER_CLIENT",
+      oneBonusPerClientControl
     )}
   </div>
 </section>

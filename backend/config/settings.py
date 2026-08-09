@@ -475,6 +475,7 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
     PARTNER_BALANCE_PAYMENT_ENABLED: bool = True
     PARTNER_CLIENT_WELCOME_BONUS_ENABLED: bool = False
     PARTNER_CLIENT_PAYMENT_BONUS_ENABLED: bool = False
+    PARTNER_ONE_BONUS_PER_CLIENT: bool = True
     PARTNER_DEFAULT_COMMISSION_BPS: int = Field(default=3000, ge=0, le=10000)
     PARTNER_COMMISSION_HOLD_DAYS: int = Field(default=0, ge=0, le=365)
     PARTNER_ELIGIBLE_CURRENCIES: str = Field(
