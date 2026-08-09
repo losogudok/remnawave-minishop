@@ -407,6 +407,38 @@
 .partners-dashboard-error > svg {
   color: var(--danger);
 }
+.partners-skeleton {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.partners-skeleton-control,
+.partners-skeleton-button {
+  min-height: 0;
+  max-width: 100%;
+}
+.partners-skeleton-control {
+  border-radius: 10px;
+}
+.partners-skeleton-button {
+  border-radius: 8px;
+}
+.partners-skeleton-copy {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.partners-skeleton-entity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.partners-skeleton-entity > span {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
 @media (max-width: 1120px) {
   .partners-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

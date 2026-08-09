@@ -49,6 +49,14 @@ export function sliceLastDays(points: RevenuePoint[], n: number): RevenuePoint[]
   return points.slice(-take);
 }
 
+/** A calendar series can be populated entirely with zero-value buckets. */
+export function hasChartValues(points: RevenuePoint[]): boolean {
+  return points.some((point) => {
+    const amount = Number(point.amount);
+    return Number.isFinite(amount) && amount !== 0;
+  });
+}
+
 /** `daily` sorted ascending, day granularity. */
 function bucketWeeks(daily: RevenuePoint[]): RevenuePoint[] {
   const sums = new Map<number, number>();

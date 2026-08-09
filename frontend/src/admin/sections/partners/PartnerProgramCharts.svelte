@@ -1,7 +1,15 @@
 <script lang="ts">
   import { TrendingUp, WalletCards } from "$components/ui/icons.js";
-  import { AdminRevenueChart, AdminRevenueTabs } from "$components/patterns/admin/index.js";
-  import { aggregateRevenueSeries, sliceLastDays } from "$lib/admin/revenueSeriesAgg.js";
+  import {
+    AdminChartEmptyState,
+    AdminRevenueChart,
+    AdminRevenueTabs,
+  } from "$components/patterns/admin/index.js";
+  import {
+    aggregateRevenueSeries,
+    hasChartValues,
+    sliceLastDays,
+  } from "$lib/admin/revenueSeriesAgg.js";
   import type { PartnerChartPoint } from "$lib/admin/previewMock/partnerProgram.js";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
@@ -35,6 +43,8 @@
   );
   const revenueTotal = $derived(revenueSeries.reduce((sum, point) => sum + point.amount, 0));
   const payoutTotal = $derived(payoutSeries.reduce((sum, point) => sum + point.amount, 0));
+  const revenueHasValues = $derived(hasChartValues(revenueSeries));
+  const payoutHasValues = $derived(hasChartValues(payoutSeries));
 </script>
 
 <!-- One card, laid out like the dashboard revenue chart: a shared head with the
@@ -79,15 +89,22 @@
         <b>{money(revenueTotal)}</b>
       </header>
       <div class="admin-revenue-svg-frame admin-revenue-svg-frame--chart">
-        <AdminRevenueChart
-          series={revenueSeries}
-          plotHeight={PLOT_HEIGHT}
-          fmtMoney={(value) => money(value)}
-          {currency}
-          legendTimeLabel={at("partners_chart_time", {}, "Time")}
-          legendValueLabel={at("partners_chart_revenue_value", {}, "Revenue")}
-          legendDeltaLabel={at("partners_chart_delta", {}, "Change")}
-        />
+        {#if revenueHasValues}
+          <AdminRevenueChart
+            series={revenueSeries}
+            plotHeight={PLOT_HEIGHT}
+            fmtMoney={(value) => money(value)}
+            {currency}
+            legendTimeLabel={at("partners_chart_time", {}, "Time")}
+            legendValueLabel={at("partners_chart_revenue_value", {}, "Revenue")}
+            legendDeltaLabel={at("partners_chart_delta", {}, "Change")}
+          />
+        {:else}
+          <AdminChartEmptyState
+            label={at("stats_revenue_no_chart", {}, "No data yet")}
+            plotHeight={PLOT_HEIGHT}
+          />
+        {/if}
       </div>
     </section>
 
@@ -98,16 +115,23 @@
         <b>{money(payoutTotal)}</b>
       </header>
       <div class="admin-revenue-svg-frame admin-revenue-svg-frame--chart">
-        <AdminRevenueChart
-          series={payoutSeries}
-          plotHeight={PLOT_HEIGHT}
-          fmtMoney={(value) => money(value)}
-          {currency}
-          legendTimeLabel={at("partners_chart_time", {}, "Time")}
-          legendValueLabel={at("partners_chart_payout_value", {}, "Withdrawals")}
-          legendDeltaLabel={at("partners_chart_delta", {}, "Change")}
-          variant="bar"
-        />
+        {#if payoutHasValues}
+          <AdminRevenueChart
+            series={payoutSeries}
+            plotHeight={PLOT_HEIGHT}
+            fmtMoney={(value) => money(value)}
+            {currency}
+            legendTimeLabel={at("partners_chart_time", {}, "Time")}
+            legendValueLabel={at("partners_chart_payout_value", {}, "Withdrawals")}
+            legendDeltaLabel={at("partners_chart_delta", {}, "Change")}
+            variant="bar"
+          />
+        {:else}
+          <AdminChartEmptyState
+            label={at("stats_revenue_no_chart", {}, "No data yet")}
+            plotHeight={PLOT_HEIGHT}
+          />
+        {/if}
       </div>
     </section>
   </div>

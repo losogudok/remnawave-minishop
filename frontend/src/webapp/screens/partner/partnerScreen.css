@@ -782,6 +782,78 @@
   display: grid;
   gap: 12px;
 }
+.partner-skeleton-card {
+  pointer-events: none;
+}
+.partner-skeleton-card .ui-skeleton {
+  max-width: 100%;
+}
+.partner-skeleton .partner-overview-title > div {
+  flex: 1 1 auto;
+}
+.partner-skeleton .partner-overview-head > .partner-skeleton-button {
+  flex: 0 1 34%;
+  width: 122px !important;
+}
+.partner-skeleton-icon {
+  border-radius: 11px;
+}
+.partner-skeleton-button,
+.partner-skeleton-field,
+.partner-skeleton-tab {
+  min-height: 0;
+}
+.partner-skeleton-button {
+  border-radius: 9px;
+}
+.partner-skeleton-field {
+  border-radius: 9px;
+}
+.partner-skeleton-copy {
+  display: grid;
+  gap: 6px;
+}
+.partner-skeleton .partner-links-section {
+  display: grid;
+  gap: 12px;
+}
+.partner-skeleton-tabs {
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+}
+.partner-skeleton-tab {
+  flex: 0 0 auto;
+  border-radius: 9px;
+}
+.partner-skeleton-table {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel-2) 82%, transparent);
+}
+.partner-skeleton-table-head,
+.partner-skeleton-table-row {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 0.9fr 0.75fr 0.85fr;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 11px;
+}
+.partner-skeleton-table-head {
+  background: color-mix(in srgb, var(--surface-muted) 84%, transparent);
+}
+.partner-skeleton-table-row {
+  min-height: 42px;
+  border-top: 1px solid var(--border);
+}
+.partner-skeleton-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 @media (max-width: 720px) {
   .partner-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -852,6 +924,25 @@
     justify-content: flex-start;
     overflow-x: auto;
   }
+  .partner-skeleton-table-head {
+    display: none;
+  }
+  .partner-skeleton-table {
+    display: grid;
+    gap: 8px;
+    padding: 8px;
+  }
+  .partner-skeleton-table-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 18px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel-2);
+  }
+  .partner-skeleton-table-row > :first-child {
+    grid-column: 1 / -1;
+  }
 }
 @media (max-width: 420px) {
   .partner-overview-card,
@@ -868,6 +959,9 @@
   }
   .partner-balance-summary > .btn {
     width: 100%;
+  }
+  .partner-balance-summary > .partner-skeleton-button {
+    width: 100% !important;
   }
   .partner-balance-breakdown {
     grid-template-columns: 1fr;

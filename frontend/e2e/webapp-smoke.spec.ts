@@ -880,7 +880,9 @@ test("device traffic bonuses stay legible on mobile", async ({ page }) => {
 
 test("partner operations open their linked payment card", async ({ page }) => {
   await page.setViewportSize(DESKTOP_VIEWPORT);
-  await page.goto("/demo/runtime/admin/partners/partner/PT-104?theme_preview=dark");
+  await page.goto(
+    "/demo/runtime/admin/partners/partner/PT-104?partner_admin_scenario=populated&theme_preview=dark"
+  );
 
   await page.getByRole("tab", { name: "Операции", exact: true }).click();
   const activity = page.locator(".partners-detail-tabs");
@@ -1021,6 +1023,78 @@ test("partner account stays compact, table-driven, and keeps the tour ring local
   });
   expect(desktopLayout.scrollWidth).toBeLessThanOrEqual(desktopLayout.viewportWidth);
   expect(desktopLayout.copyRight).toBeLessThanOrEqual(desktopLayout.viewportWidth);
+});
+
+test("partner loading and empty chart states preserve their final geometry", async ({ page }) => {
+  await page.setViewportSize(MOBILE_VIEWPORT);
+  await page.goto("/demo/runtime/partner?partner_scenario=loading&theme_preview=dark");
+
+  const accountSkeleton = page.locator(".partner-skeleton");
+  await expect(accountSkeleton.locator(".partner-skeleton-card")).toHaveCount(3);
+  await expect(accountSkeleton.locator(".partner-skeleton-table-row")).toHaveCount(4);
+  const mobileFit = await page.evaluate(() => {
+    const card = document.querySelector<HTMLElement>(".partner-skeleton-card");
+    const button = document.querySelector<HTMLElement>(
+      ".partner-overview-head > .partner-skeleton-button"
+    );
+    return {
+      buttonRight: button?.getBoundingClientRect().right ?? 0,
+      cardRight: card?.getBoundingClientRect().right ?? 0,
+      scrollWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+    };
+  });
+  expect(mobileFit.buttonRight).toBeLessThanOrEqual(mobileFit.cardRight);
+  expect(mobileFit.scrollWidth).toBeLessThanOrEqual(mobileFit.viewportWidth);
+
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto("/demo/runtime/admin/partners?partner_admin_scenario=loading&theme_preview=dark");
+  const adminSkeleton = page.locator(".partners-skeleton");
+  await expect(adminSkeleton.locator(".partners-kpi-card")).toHaveCount(8);
+  await expect(
+    adminSkeleton.locator(".partners-chart-block .admin-revenue-chart-body")
+  ).toHaveCount(2);
+  await expect(adminSkeleton.locator(".partners-preview-card")).toHaveCount(3);
+  const skeletonKpiHeight = await adminSkeleton
+    .locator(".partners-kpi-card")
+    .first()
+    .evaluate((element) => element.getBoundingClientRect().height);
+  const skeletonChartHeight = await adminSkeleton
+    .locator(".partners-chart-block .admin-revenue-svg-frame")
+    .first()
+    .evaluate((element) => element.getBoundingClientRect().height);
+
+  await page.goto(
+    "/demo/runtime/admin/partners?partner_admin_scenario=populated&theme_preview=dark"
+  );
+  const partnerDashboard = page.locator(".partners-admin-page");
+  const finalKpiHeight = await partnerDashboard
+    .locator(".partners-kpi-card")
+    .first()
+    .evaluate((element) => element.getBoundingClientRect().height);
+  const finalChartHeight = await partnerDashboard
+    .locator(".partners-chart-block .admin-revenue-svg-frame")
+    .first()
+    .evaluate((element) => element.getBoundingClientRect().height);
+  expect(Math.abs(skeletonKpiHeight - finalKpiHeight)).toBeLessThanOrEqual(12);
+  expect(Math.abs(skeletonChartHeight - finalChartHeight)).toBeLessThanOrEqual(1);
+
+  await page.goto(
+    "/demo/runtime/admin/partners?partner_admin_scenario=empty_charts&theme_preview=dark"
+  );
+  const emptyPartnerCharts = page.locator(".partners-chart-block .admin-chart-empty");
+  await expect(emptyPartnerCharts).toHaveCount(2);
+  await expect(emptyPartnerCharts).toHaveText(["Нет данных для графика", "Нет данных для графика"]);
+  const emptyPartnerChartHeight = await emptyPartnerCharts
+    .first()
+    .locator("..")
+    .evaluate((element) => element.getBoundingClientRect().height);
+  expect(Math.abs(emptyPartnerChartHeight - finalChartHeight)).toBeLessThanOrEqual(1);
+
+  await page.goto("/demo/runtime/admin/stats?stats_scenario=empty_revenue&theme_preview=dark");
+  const emptyRevenueChart = page.locator(".admin-revenue-chart .admin-chart-empty");
+  await expect(emptyRevenueChart).toHaveText("Нет данных для графика");
+  await expect(page.locator(".admin-revenue-chart .admin-revenue-chart-body")).toHaveCount(0);
 });
 
 test("webapp and admin sections, dialogs, tabs stay interactive without console errors", async ({

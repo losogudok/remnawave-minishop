@@ -360,7 +360,9 @@
   const faviconBrand = $derived(shellView.appDataView.faviconBrand);
   const installGuidesEnabled = $derived(shellView.appDataView.installGuidesEnabled);
   const methods = $derived(shellView.appDataView.methods);
-  const partnerProgramEnabled = $derived(shellView.appDataView.partnerProgramEnabled);
+  const partnerProgramEnabled = $derived(
+    shellView.appDataView.partnerProgramEnabled || query.has("partner_scenario")
+  );
   const plans = $derived(shellView.appDataView.plans);
   const subscription = $derived(shellView.appDataView.subscription);
   const supportEnabled = $derived(shellView.appDataView.supportEnabled);

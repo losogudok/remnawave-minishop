@@ -16,7 +16,6 @@
     UsersRound,
     WalletCards,
   } from "$components/ui/icons.js";
-  import { Skeleton } from "$components/ui/index.js";
   import { Tabs } from "$components/ui/primitives.js";
   import {
     AdminBadge,
@@ -55,6 +54,7 @@
     type PartnerLinkRow,
   } from "$lib/admin/partnerProgramApi.js";
   import PartnerProgramCharts from "./partners/PartnerProgramCharts.svelte";
+  import PartnerProgramSkeleton from "./partners/PartnerProgramSkeleton.svelte";
   import PartnerProgramTables from "./partners/PartnerProgramTables.svelte";
   import PartnerActionDialog from "./partners/PartnerActionDialog.svelte";
   import PartnerOperationDetails from "./partners/PartnerOperationDetails.svelte";
@@ -90,6 +90,7 @@
 
   const adminScenario = initialScenario();
   const previewMode = Boolean(adminScenario);
+  const emptyChartsPreview = adminScenario === "empty_charts";
   let currency = $state("RUB");
   let partners = $state<PartnerRow[]>(
     previewMode ? previewPartners.map((item) => ({ ...item })) : []
@@ -115,10 +116,18 @@
   let partnerLedger = $state<PartnerLedgerRow[]>(previewMode ? [...previewPartnerLedger] : []);
   let partnerAudit = $state<PartnerAuditRow[]>(previewMode ? [...previewPartnerAudit] : []);
   let partnerRevenueDaily = $state<PartnerChartPoint[]>(
-    previewMode ? [...previewPartnerRevenueDaily] : []
+    previewMode
+      ? previewPartnerRevenueDaily.map((item) =>
+          emptyChartsPreview ? { ...item, amount: 0 } : { ...item }
+        )
+      : []
   );
   let partnerPayoutsDaily = $state<PartnerChartPoint[]>(
-    previewMode ? [...previewPartnerPayoutsDaily] : []
+    previewMode
+      ? previewPartnerPayoutsDaily.map((item) =>
+          emptyChartsPreview ? { ...item, amount: 0 } : { ...item }
+        )
+      : []
   );
   let dashboard = $state<AdminPartnerDashboard | null>(null);
   let loading = $state(!previewMode);
@@ -696,19 +705,9 @@
     </div>
   {/if}
 
-  {#if view === "dashboard" && (adminScenario === "loading" || loading)}
-    <div class="partners-kpi-grid" role="status" aria-label={at("partners_loading", {}, "Loading")}>
-      {#each Array(8) as _, index (index)}
-        <article class="partners-kpi-card">
-          <Skeleton width="38px" height="38px" />
-          <div>
-            <Skeleton variant="tiny" width="64%" />
-            <Skeleton variant="line" width="46%" height="19px" />
-          </div>
-        </article>
-      {/each}
-    </div>
-  {:else if view === "dashboard" && (adminScenario === "error" || loadError)}
+  {#if adminScenario === "loading" || loading}
+    <PartnerProgramSkeleton {at} {view} />
+  {:else if adminScenario === "error" || loadError}
     <AdminEmptyState class="partners-dashboard-state partners-dashboard-error">
       <TriangleAlert size={26} />
       <h2>{at("partners_load_error_title", {}, "Could not load partner dashboard")}</h2>

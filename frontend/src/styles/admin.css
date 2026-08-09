@@ -1171,6 +1171,47 @@
   min-height: 120px;
 }
 
+.admin-chart-tooltip-lane--skeleton {
+  display: flex;
+  align-items: flex-start;
+  padding: 6px 8px 0;
+}
+
+.admin-chart-skeleton-control {
+  height: 34px;
+  max-width: 100%;
+}
+
+.admin-chart-tooltip-skeleton {
+  width: min(190px, calc(100% - 16px));
+  display: grid;
+  gap: 7px;
+  padding: 8px 10px 9px;
+  border: 1px solid var(--admin-border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--admin-surface-2) 92%, var(--admin-bg));
+}
+
+.admin-chart-empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--admin-muted);
+  text-align: center;
+}
+
+.admin-chart-empty svg {
+  opacity: 0.68;
+}
+
+.admin-chart-empty strong {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .admin-revenue-xlabels {
   display: flex;
   justify-content: space-between;

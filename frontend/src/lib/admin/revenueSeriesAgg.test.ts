@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateRevenueSeries,
   filterDailyByIsoRange,
+  hasChartValues,
   inclusiveDaySpan,
   sliceLastDays,
   utcMonthStartMs,
@@ -56,6 +57,18 @@ describe("revenueSeriesAgg", () => {
     ]);
     expect(inclusiveDaySpan("2026-06-01", "2026-06-03")).toBe(3);
     expect(inclusiveDaySpan("", "2026-06-03")).toBe(0);
+  });
+
+  it("distinguishes calendar buckets from actual chart values", () => {
+    expect(hasChartValues([])).toBe(false);
+    expect(
+      hasChartValues([
+        { date: "2026-06-01", amount: 0 },
+        { date: "2026-06-02", amount: Number.NaN },
+      ])
+    ).toBe(false);
+    expect(hasChartValues([{ date: "2026-06-01", amount: 0.01 }])).toBe(true);
+    expect(hasChartValues([{ date: "2026-06-01", amount: -5 }])).toBe(true);
   });
 
   it("computes UTC bucket starts", () => {

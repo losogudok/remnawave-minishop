@@ -10,6 +10,8 @@
     AdminDashboardStack,
     AdminBadge,
     AdminButton,
+    AdminChartEmptyState,
+    AdminChartSkeleton,
     AdminEmptyState,
     AdminRevenueCustomRangePopover,
     AdminRevenueTabs,
@@ -23,6 +25,7 @@
   import {
     aggregateRevenueSeries,
     filterDailyByIsoRange,
+    hasChartValues,
     inclusiveDaySpan,
     sliceLastDays,
   } from "../../lib/admin/revenueSeriesAgg.js";
@@ -103,6 +106,9 @@
   const REVENUE_CHART_MAX_CSS_HEIGHT = 204;
 
   const REVENUE_PRESET_DAYS = [7, 14, 30, 90, 180, 365];
+  const emptyRevenuePreview =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("stats_scenario") === "empty_revenue";
 
   let revenueRangeMode = $state<RevenueRangeMode>("preset");
   let revenuePresetDays = $state(14);
@@ -112,7 +118,9 @@
   let AdminRevenueChartComponent = $state<DynamicComponent | null>(null);
 
   const dailySeries: RevenuePoint[] = $derived(
-    Array.isArray(fin.daily_series) ? fin.daily_series : []
+    Array.isArray(fin.daily_series)
+      ? fin.daily_series.map((point) => (emptyRevenuePreview ? { ...point, amount: 0 } : point))
+      : []
   );
   const revenueBoundsIso: { min: string; max: string } | null = $derived(
     dailySeries.length > 0
@@ -133,6 +141,7 @@
   );
 
   const revenueKpis: RevenueKpis = $derived(computeRevenueKpis(fin, dailySeries));
+  const revenueHasValues = $derived(hasChartValues(revenueChartSeries));
   const chartRangeSum = $derived(
     revenueChartSeries.reduce((a, p) => a + (Number(p.amount) || 0), 0)
   );
@@ -145,7 +154,7 @@
   }
 
   $effect(() => {
-    if (revenueChartSeries.length) loadRevenueChart();
+    if (revenueHasValues) loadRevenueChart();
   });
 
   function setRevenuePresetDays(days: number): void {
@@ -530,7 +539,7 @@
             onValueChange={setRevenueGranularity}
           />
           <p class="admin-revenue-chart-hint admin-muted">{at(revenueChartHintKey(), {}, "")}</p>
-          {#if revenueChartSeries.length}
+          {#if revenueHasValues}
             <div class="admin-revenue-chart-meta admin-muted">
               <span
                 >{at(
@@ -577,14 +586,16 @@
                   legendDeltaLabel={at("stats_revenue_chart_uplot_delta", {}, "Change")}
                 />
               {:else}
-                <span
-                  class="admin-skeleton admin-revenue-chart-skeleton"
-                  style={`height:${REVENUE_CHART_MAX_CSS_HEIGHT}px`}
-                ></span>
+                <AdminChartSkeleton plotHeight={REVENUE_CHART_MAX_CSS_HEIGHT} />
               {/if}
             </div>
           {:else}
-            <p class="admin-muted">{at("stats_revenue_no_chart", {}, "")}</p>
+            <div class="admin-revenue-svg-frame admin-revenue-svg-frame--chart">
+              <AdminChartEmptyState
+                label={at("stats_revenue_no_chart", {}, "No data yet")}
+                plotHeight={REVENUE_CHART_MAX_CSS_HEIGHT}
+              />
+            </div>
           {/if}
         </div>
       </Card.Content>

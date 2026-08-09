@@ -90,6 +90,18 @@ describe("app load flow decisions", () => {
         routeSection: "partner",
       }).section
     ).toBe("partner");
+
+    expect(
+      resolveLoadedWebappRoute({
+        fallbackAdminSection: "stats",
+        partnerProgramPreview: true,
+        payload: {
+          settings: { partner_program_enabled: false },
+          user: { is_admin: false },
+        },
+        routeSection: "partner",
+      }).section
+    ).toBe("partner");
   });
 
   it("keeps admin routes for admin users and carries the section forward", () => {

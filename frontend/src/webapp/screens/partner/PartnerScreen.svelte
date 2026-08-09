@@ -21,13 +21,13 @@
   import Card from "$components/ui/card.svelte";
   import Dialog from "$components/ui/dialog.svelte";
   import Input from "$components/ui/input.svelte";
-  import Skeleton from "$components/ui/skeleton.svelte";
   import Textarea from "$components/ui/textarea.svelte";
   import { Select } from "$components/ui/primitives.js";
   import { StatusMessage } from "$components/patterns/webapp/index.js";
   import { sortAdminRows, type AdminSortColumn } from "$lib/admin/tableSort.js";
   import PartnerTour, { type PartnerTourStep } from "./PartnerTour.svelte";
   import PartnerActivity from "./PartnerActivity.svelte";
+  import PartnerScreenSkeleton from "./PartnerScreenSkeleton.svelte";
   import {
     partnerProgramPreview,
     type PartnerClientPreview,
@@ -485,12 +485,7 @@
 
 <main class="content with-nav partner-page" aria-busy={preview.loading}>
   {#if preview.loading}
-    <div class="partner-skeleton" role="status" aria-label={t("wa_loading")}>
-      <Skeleton height="120px" />
-      <Skeleton height="180px" />
-      <Skeleton height="90px" />
-      <Skeleton height="120px" />
-    </div>
+    <PartnerScreenSkeleton label={t("wa_loading")} />
   {:else if preview.error}
     <Card class="partner-state-card partner-state-error">
       <div class="partner-state-icon partner-state-icon-rejected"><TriangleAlert size={28} /></div>
