@@ -99,7 +99,25 @@ class SubscriptionLifecycleExtensionMixin(SubscriptionServiceMixinContract):
                         user_id,
                     )
 
-        initial_squads = self._panel_squads_for_tariff(initial_tariff)
+        initial_premium_baseline = initial_tariff.premium_monthly_bytes if initial_tariff else 0
+        initial_premium_limit = self._premium_effective_limit_bytes(
+            initial_premium_baseline,
+            int(getattr(active_sub, "premium_topup_balance_bytes", 0) or 0),
+            int(getattr(active_sub, "premium_topup_used_bytes", 0) or 0),
+            int(getattr(active_sub, "premium_bonus_bytes", 0) or 0),
+        )
+        initial_premium_is_limited = self._premium_access_should_be_limited(
+            initial_tariff,
+            premium_limit_bytes=initial_premium_limit,
+            premium_used_bytes=int(getattr(active_sub, "premium_used_bytes", 0) or 0),
+            premium_unlimited_override=bool(
+                getattr(active_sub, "premium_unlimited_override", False)
+            ),
+        )
+        initial_squads = self._panel_squads_for_tariff(
+            initial_tariff,
+            include_premium=not initial_premium_is_limited,
+        )
         create_options = entitlement_helpers.panel_user_create_options(
             new_end_date_obj,
             initial_traffic_limit,
@@ -159,7 +177,7 @@ class SubscriptionLifecycleExtensionMixin(SubscriptionServiceMixinContract):
                 "premium_topup_balance_bytes": 0,
                 "premium_topup_used_bytes": 0,
                 "premium_used_bytes": 0,
-                "premium_is_limited": False,
+                "premium_is_limited": initial_premium_is_limited,
                 "premium_period_start_at": None,
                 "period_start_at": None,
                 "is_throttled": False,
@@ -277,7 +295,14 @@ class SubscriptionLifecycleExtensionMixin(SubscriptionServiceMixinContract):
                     "premium_baseline_bytes": premium_baseline,
                     "premium_topup_balance_bytes": premium_topup_balance,
                     "premium_topup_used_bytes": premium_topup_used,
-                    "premium_is_limited": bool(premium_limit > 0 and premium_used >= premium_limit),
+                    "premium_is_limited": self._premium_access_should_be_limited(
+                        admin_tariff,
+                        premium_limit_bytes=premium_limit,
+                        premium_used_bytes=premium_used,
+                        premium_unlimited_override=bool(
+                            getattr(active_sub, "premium_unlimited_override", False)
+                        ),
+                    ),
                     "period_start_at": None,
                     "is_throttled": False,
                     "effective_monthly_price_rub": target_monthly_price,

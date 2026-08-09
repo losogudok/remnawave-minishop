@@ -295,9 +295,12 @@ class TopupMixin(SubscriptionServiceMixinContract):
             premium_topup_used,
             premium_bonus,
         )
-        premium_unlimited = bool(getattr(sub, "premium_unlimited_override", False))
-        premium_is_limited = (
-            not premium_unlimited and premium_limit > 0 and premium_used >= premium_limit
+        premium_unlimited_override = bool(getattr(sub, "premium_unlimited_override", False))
+        premium_is_limited = self._premium_access_should_be_limited(
+            tariff,
+            premium_limit_bytes=premium_limit,
+            premium_used_bytes=premium_used,
+            premium_unlimited_override=premium_unlimited_override,
         )
 
         await subscription_dal.update_subscription(
@@ -525,9 +528,12 @@ class TopupMixin(SubscriptionServiceMixinContract):
             premium_topup_used,
             premium_bonus,
         )
-        premium_unlimited = bool(getattr(sub, "premium_unlimited_override", False))
-        premium_is_limited = (
-            not premium_unlimited and premium_limit > 0 and premium_used >= premium_limit
+        premium_unlimited_override = bool(getattr(sub, "premium_unlimited_override", False))
+        premium_is_limited = self._premium_access_should_be_limited(
+            tariff,
+            premium_limit_bytes=premium_limit,
+            premium_used_bytes=premium_used,
+            premium_unlimited_override=premium_unlimited_override,
         )
 
         await subscription_dal.update_subscription(

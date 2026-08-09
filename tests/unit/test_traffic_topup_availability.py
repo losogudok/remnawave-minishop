@@ -27,6 +27,8 @@ def _tariffs_payload(
     *,
     topup_rub=None,
     premium_topup_rub=None,
+    premium_monthly_gb: float = 20,
+    premium_unlimited: bool = False,
     topup_always_available: bool = False,
     premium_topup_always_available: bool = False,
 ) -> dict:
@@ -47,7 +49,8 @@ def _tariffs_payload(
         tariff["topup_packages"] = {"rub": topup_rub, "stars": []}
     if premium_topup_rub:
         tariff["premium_squad_uuids"] = ["premium-squad"]
-        tariff["premium_monthly_gb"] = 20
+        tariff["premium_monthly_gb"] = premium_monthly_gb
+        tariff["premium_unlimited"] = premium_unlimited
         tariff["premium_topup_packages"] = {"rub": premium_topup_rub, "stars": []}
         tariff["premium_topup_always_available"] = premium_topup_always_available
     return {"default_tariff": "standard", "tariffs": [tariff]}
@@ -205,6 +208,41 @@ class TrafficTopupAvailabilityTests(unittest.TestCase):
         self.assertFalse(availability.regular_unlocked)
         self.assertTrue(availability.premium_unlocked)
         self.assertTrue(availability.unlocked)
+
+    def test_zero_premium_quota_unlocks_topup_immediately(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(
+                tmpdir,
+                _tariffs_payload(
+                    premium_topup_rub=[{"gb": 10, "price": 50}],
+                    premium_monthly_gb=0,
+                ),
+            )
+            availability = resolve_traffic_topup_availability(
+                settings,
+                _active(premium_limit_bytes=0, premium_used_bytes=0),
+            )
+
+        self.assertTrue(availability.premium_offer_exists)
+        self.assertTrue(availability.premium_unlocked)
+
+    def test_explicit_premium_unlimited_hides_topup(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(
+                tmpdir,
+                _tariffs_payload(
+                    premium_topup_rub=[{"gb": 10, "price": 50}],
+                    premium_monthly_gb=0,
+                    premium_unlimited=True,
+                ),
+            )
+            availability = resolve_traffic_topup_availability(
+                settings,
+                _active(premium_limit_bytes=0, premium_used_bytes=0),
+            )
+
+        self.assertTrue(availability.premium_offer_exists)
+        self.assertFalse(availability.premium_unlocked)
 
     def test_no_offers_without_packages(self):
         with tempfile.TemporaryDirectory() as tmpdir:

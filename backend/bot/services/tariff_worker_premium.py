@@ -159,9 +159,14 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin, TariffWorkerPremiu
                 sub.premium_is_limited = False
             return
 
-        tariff_has_premium_limit = bool(
-            int(getattr(tariff, "premium_monthly_bytes", 0) or 0) > 0
-            or getattr(tariff, "premium_topup_packages", None)
+        configured_unlimited = getattr(tariff, "premium_unlimited", None)
+        tariff_has_premium_limit = (
+            not bool(configured_unlimited)
+            if configured_unlimited is not None
+            else bool(
+                int(getattr(tariff, "premium_monthly_bytes", 0) or 0) > 0
+                or getattr(tariff, "premium_topup_packages", None)
+            )
         )
         regular_panel_user_dict = (
             panel_user_dict

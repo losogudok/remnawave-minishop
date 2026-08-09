@@ -197,6 +197,7 @@ class SubscriptionLifecycleDetailsMixin(SubscriptionServiceMixinContract):
             if local_active_sub
             else False
         )
+        premium_traffic_limited = bool(tariff and tariff.has_premium_squad_limit())
         regular_bonus_bytes = (
             int(getattr(local_active_sub, "regular_bonus_bytes", 0) or 0) if local_active_sub else 0
         )
@@ -342,6 +343,7 @@ class SubscriptionLifecycleDetailsMixin(SubscriptionServiceMixinContract):
             "premium_used_bytes": local_active_sub.premium_used_bytes if local_active_sub else 0,
             "premium_bonus_bytes": premium_bonus_bytes,
             "premium_unlimited_override": premium_unlimited_override,
+            "premium_traffic_limited": premium_traffic_limited,
             "premium_limit_bytes": premium_limit_bytes,
             "premium_is_limited": bool(local_active_sub.premium_is_limited)
             if local_active_sub

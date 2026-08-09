@@ -5514,6 +5514,11 @@ export interface components {
        */
       premium_traffic_limit_strategy:
         ("NO_RESET" | "DAY" | "WEEK" | "MONTH" | "MONTH_ROLLING") | null;
+      /**
+       * Premium Unlimited
+       * @default false
+       */
+      premium_unlimited: boolean;
       /** Prices */
       prices?: {
         [key: string]: {
@@ -9626,6 +9631,7 @@ export interface operations {
             premium_title?: string;
             premium_topup_balance_bytes?: number;
             premium_topup_used_bytes?: number;
+            premium_traffic_limited?: boolean;
             premium_traffic_percent?: number;
             premium_unlimited_override?: boolean;
             premium_used_bytes?: number;
@@ -9870,6 +9876,7 @@ export interface operations {
               premium_topup_balance_bytes?: number | null;
               premium_topup_used_bytes?: number | null;
               premium_traffic_limit_strategy?: string;
+              premium_traffic_limited?: boolean;
               premium_unlimited_override?: boolean;
               premium_used?: string;
               premium_used_bytes?: number | null;
@@ -10891,6 +10898,7 @@ export interface operations {
             premium_title?: string;
             premium_topup_balance_bytes?: number;
             premium_topup_used_bytes?: number;
+            premium_traffic_limited?: boolean;
             premium_traffic_percent?: number;
             premium_unlimited_override?: boolean;
             premium_used_bytes?: number;

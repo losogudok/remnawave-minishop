@@ -100,6 +100,7 @@ async def tariff_topup_options_route(request: web.Request) -> web.Response:
         )
         premium_bonus_bytes = int(getattr(sub, "premium_bonus_bytes", 0) or 0)
         premium_unlimited_override = bool(getattr(sub, "premium_unlimited_override", False))
+        premium_traffic_limited = tariff.has_premium_squad_limit()
         premium_limit_bytes = (
             int(sub.premium_baseline_bytes or 0)
             + int(sub.premium_topup_balance_bytes or 0)
@@ -138,6 +139,7 @@ async def tariff_topup_options_route(request: web.Request) -> web.Response:
                 "premium_topup_used_bytes": int(getattr(sub, "premium_topup_used_bytes", 0) or 0),
                 "premium_bonus_bytes": premium_bonus_bytes,
                 "premium_unlimited_override": premium_unlimited_override,
+                "premium_traffic_limited": premium_traffic_limited,
                 "premium_is_limited": bool(sub.premium_is_limited),
                 "premium_squad_labels": premium_access.get("squad_labels") or [],
                 "premium_node_labels": premium_access.get("node_labels") or [],

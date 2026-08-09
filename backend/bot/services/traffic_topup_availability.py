@@ -85,7 +85,13 @@ def resolve_traffic_topup_availability(
     premium_always_available = bool(tariff.premium_topup_always_available)
     traffic_billed = tariff.billing_model == "traffic"
     regular_threshold_bypassed = regular_always_available or traffic_billed
-    premium_threshold_bypassed = premium_always_available or traffic_billed
+    premium_quota_controlled = tariff.has_premium_squad_limit()
+    premium_limit_bytes = _coerce_bytes(active.get("premium_limit_bytes"))
+    premium_threshold_bypassed = (
+        premium_always_available
+        or traffic_billed
+        or (premium_quota_controlled and premium_limit_bytes == 0)
+    )
 
     regular_visible = not bool(active.get("regular_unlimited_override")) and (
         _coerce_bytes(active.get("traffic_limit_bytes")) > 0
@@ -100,8 +106,8 @@ def resolve_traffic_topup_availability(
         )
     )
 
-    premium_visible = not bool(active.get("premium_unlimited_override")) and (
-        _coerce_bytes(active.get("premium_limit_bytes")) > 0
+    premium_visible = premium_quota_controlled and not bool(
+        active.get("premium_unlimited_override")
     )
     premium_unlocked = bool(
         premium_offer_exists

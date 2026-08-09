@@ -502,7 +502,7 @@ class WebAppAssetTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Number(sub?.traffic_limit_bytes || 0) > 0", traffic_source)
         self.assertIn("export function premiumTrafficLimitVisible", traffic_source)
         self.assertIn("!sub?.premium_unlimited_override", traffic_source)
-        self.assertIn("Number(sub?.premium_limit_bytes || 0) > 0", traffic_source)
+        self.assertIn("sub?.premium_traffic_limited === true", traffic_source)
         self.assertIn("{#if regularTrafficLimitVisible(subscription)}", home_source)
         self.assertIn(
             "{#if premiumTrafficAvailable(subscription) "

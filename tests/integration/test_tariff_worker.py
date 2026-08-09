@@ -846,6 +846,7 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
     async def test_unmetered_premium_squad_is_added_to_existing_subscription(self):
         payload = _tariffs_config_payload()
         payload["tariffs"][0]["premium_squad_uuids"] = ["premium-squad"]
+        payload["tariffs"][0]["premium_unlimited"] = True
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "tariffs.json"
             config_path.write_text(json.dumps(payload), encoding="utf-8")

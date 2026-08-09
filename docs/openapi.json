@@ -7533,6 +7533,11 @@
             "default": null,
             "title": "Premium Traffic Limit Strategy"
           },
+          "premium_unlimited": {
+            "default": false,
+            "title": "Premium Unlimited",
+            "type": "boolean"
+          },
           "prices": {
             "additionalProperties": {
               "additionalProperties": {
@@ -16400,6 +16405,9 @@
                     "premium_topup_used_bytes": {
                       "type": "integer"
                     },
+                    "premium_traffic_limited": {
+                      "type": "boolean"
+                    },
                     "premium_traffic_percent": {
                       "type": "integer"
                     },
@@ -17277,6 +17285,9 @@
                         },
                         "premium_traffic_limit_strategy": {
                           "type": "string"
+                        },
+                        "premium_traffic_limited": {
+                          "type": "boolean"
                         },
                         "premium_unlimited_override": {
                           "type": "boolean"
@@ -19628,6 +19639,9 @@
                     },
                     "premium_topup_used_bytes": {
                       "type": "integer"
+                    },
+                    "premium_traffic_limited": {
+                      "type": "boolean"
                     },
                     "premium_traffic_percent": {
                       "type": "integer"

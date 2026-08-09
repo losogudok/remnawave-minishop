@@ -321,6 +321,24 @@ describe("tariffDraft", () => {
     expect(tariffFromDraft(draft)).not.toHaveProperty("premium_traffic_limit_strategy");
   });
 
+  it("round-trips the explicit premium unlimited flag", () => {
+    const draft = draftFromTariff({
+      key: "premium",
+      billing_model: "period",
+      premium_squad_uuids: ["premium-squad"],
+      premium_monthly_gb: 0,
+      premium_unlimited: true,
+      enabled_periods: [1],
+      prices_rub: { 1: 100 },
+    });
+
+    expect(draft.premium_unlimited).toBe(true);
+    expect(tariffFromDraft(draft)).toMatchObject({
+      premium_monthly_gb: 0,
+      premium_unlimited: true,
+    });
+  });
+
   it("normalizes uuid lists from arrays and text", () => {
     expect(normalizeUuidList([" a ", "", "b"])).toEqual(["a", "b"]);
     expect(normalizeUuidList("a\nb, c")).toEqual(["a", "b", "c"]);

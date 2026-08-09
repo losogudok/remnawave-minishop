@@ -517,6 +517,10 @@ class Tariff(BaseModel):
     hwid_device_packages: HwidDevicePackageSet | None = None
     premium_squad_uuids: list[str] = Field(default_factory=list)
     premium_monthly_gb: float | None = None
+    # Premium traffic is quota-controlled by default, including an explicit
+    # zero-byte quota. Unlimited premium access must be enabled separately so
+    # zero can represent a top-up-only tariff without granting premium squads.
+    premium_unlimited: bool = False
     # None means that premium traffic follows the effective regular-traffic
     # strategy. This includes a per-user Remnawave override for period tariffs;
     # traffic tariffs therefore inherit their fixed NO_RESET behavior.
@@ -785,15 +789,12 @@ class Tariff(BaseModel):
 
     @property
     def premium_monthly_bytes(self) -> int:
-        if self.premium_monthly_gb is None or self.premium_monthly_gb <= 0:
+        if self.premium_unlimited or self.premium_monthly_gb is None:
             return 0
-        return int(float(self.premium_monthly_gb) * (1024**3))
+        return max(0, int(float(self.premium_monthly_gb) * (1024**3)))
 
     def has_premium_squad_limit(self) -> bool:
-        return bool(
-            self.premium_squad_uuids
-            and (self.premium_monthly_bytes > 0 or self.premium_topup_packages)
-        )
+        return bool(self.premium_squad_uuids and not self.premium_unlimited)
 
 
 class TariffsConfig(BaseModel):

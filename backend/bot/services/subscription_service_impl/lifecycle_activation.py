@@ -413,6 +413,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
         effective_monthly_price = subscription_amount_for_pricing / max(1, months_int)
         regular_bonus_carry = int(getattr(current_active_sub, "regular_bonus_bytes", 0) or 0)
         regular_unl_carry = bool(getattr(current_active_sub, "regular_unlimited_override", False))
+        premium_unl_carry = bool(getattr(current_active_sub, "premium_unlimited_override", False))
         traffic_limit_bytes = self._traffic_limit_for_period_tariff(
             tariff,
             topup_balance_bytes,
@@ -423,8 +424,11 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
         )
         base_hwid_limit = self._base_hwid_limit_for_tariff(tariff)
         effective_hwid_limit = self._effective_hwid_limit(base_hwid_limit, extra_hwid_devices)
-        premium_is_limited = bool(
-            premium_limit_bytes > 0 and premium_used_bytes >= premium_limit_bytes
+        premium_is_limited = self._premium_access_should_be_limited(
+            tariff,
+            premium_limit_bytes=premium_limit_bytes,
+            premium_used_bytes=premium_used_bytes,
+            premium_unlimited_override=premium_unl_carry,
         )
         managed_squads = self._panel_squads_for_tariff(
             tariff,

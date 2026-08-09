@@ -66,3 +66,19 @@ def test_traffic_topup_always_toggle_labels_are_localized():
         messages = json.loads(path.read_text(encoding="utf-8"))
         missing = sorted(required_keys - set(messages))
         assert not missing, f"{path.name} is missing {missing}"
+
+
+def test_premium_unlimited_checkbox_disables_the_limit_input_and_is_localized():
+    source = (TARIFF_EDITOR_TABS / "TariffEditorPremiumTab.svelte").read_text(encoding="utf-8")
+    required_keys = {
+        "admin_tariff_hint_premium_unlimited",
+        "admin_tariff_label_premium_unlimited",
+    }
+
+    assert 'updateDraftField("premium_unlimited", value)' in source
+    assert "disabled={Boolean(tariffDraft.premium_unlimited)}" in source
+    for key in required_keys:
+        assert key.removeprefix("admin_") in source
+    for path in LOCALES:
+        messages = json.loads(path.read_text(encoding="utf-8"))
+        assert required_keys <= set(messages)

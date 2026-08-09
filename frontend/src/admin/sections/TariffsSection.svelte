@@ -151,7 +151,9 @@
 
   function tariffPremiumTrafficLimit(tariff: Tariff): string {
     if (!(tariff.premium_squad_uuids || []).length) return "—";
-    return tariffGbLimitLabel(tariff.premium_monthly_gb);
+    if (tariff.premium_unlimited) return tariffUnlimitedLabel();
+    const gb = Number(tariff.premium_monthly_gb ?? 0);
+    return `${Number.isFinite(gb) && gb >= 0 ? gb : 0} GB`;
   }
 
   function tariffDeviceLimit(tariff: Tariff): string {

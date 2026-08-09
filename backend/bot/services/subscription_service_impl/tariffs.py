@@ -184,6 +184,20 @@ class TariffMixin(SubscriptionServiceMixinContract):
             return 0
         return int(tariff.premium_monthly_bytes + max(0, topup_balance_bytes))
 
+    def _premium_access_should_be_limited(
+        self,
+        tariff: Tariff | None,
+        *,
+        premium_limit_bytes: Any,
+        premium_used_bytes: Any,
+        premium_unlimited_override: bool = False,
+    ) -> bool:
+        if not tariff or premium_unlimited_override or not tariff.has_premium_squad_limit():
+            return False
+        limit = self._nonnegative_bytes(premium_limit_bytes)
+        used = self._nonnegative_bytes(premium_used_bytes)
+        return used >= limit
+
     def _period_tariff_traffic_strategy(self, tariff: Tariff | None = None) -> str:
         configured_strategy = getattr(tariff, "traffic_limit_strategy", None)
         return normalize_traffic_limit_strategy(

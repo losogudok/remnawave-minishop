@@ -137,6 +137,37 @@ def _configure_persisted_panel_echo(
 
 
 class SubscriptionServiceCalculationTests(unittest.TestCase):
+    def test_zero_premium_quota_limits_access_until_balance_is_added(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            payload = _tariffs_config_payload()
+            payload["tariffs"][0]["premium_monthly_gb"] = 0
+            settings = _make_settings(payload, tmpdir)
+            service = _make_service(settings)
+            tariff = settings.tariffs_config.require("standard")
+
+            self.assertTrue(
+                service._premium_access_should_be_limited(
+                    tariff,
+                    premium_limit_bytes=0,
+                    premium_used_bytes=0,
+                )
+            )
+            self.assertFalse(
+                service._premium_access_should_be_limited(
+                    tariff,
+                    premium_limit_bytes=10 * GIB,
+                    premium_used_bytes=0,
+                )
+            )
+            self.assertFalse(
+                service._premium_access_should_be_limited(
+                    tariff,
+                    premium_limit_bytes=0,
+                    premium_used_bytes=0,
+                    premium_unlimited_override=True,
+                )
+            )
+
     def test_panel_squads_for_tariff_deduplicates_and_can_hide_premium(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             settings = _make_settings(_tariffs_config_payload(), tmpdir)

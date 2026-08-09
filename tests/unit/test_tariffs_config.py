@@ -698,3 +698,24 @@ class TariffsConfigTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             TariffsConfig.model_validate(data)
+
+    def test_zero_premium_limit_is_explicitly_quota_controlled(self):
+        data = _valid_config()
+        data["tariffs"][0]["premium_squad_uuids"] = ["premium-squad"]
+        data["tariffs"][0]["premium_monthly_gb"] = 0
+
+        tariff = TariffsConfig.model_validate(data).require("standard")
+
+        self.assertEqual(tariff.premium_monthly_bytes, 0)
+        self.assertTrue(tariff.has_premium_squad_limit())
+
+    def test_explicit_premium_unlimited_disables_quota_control(self):
+        data = _valid_config()
+        data["tariffs"][0]["premium_squad_uuids"] = ["premium-squad"]
+        data["tariffs"][0]["premium_monthly_gb"] = 50
+        data["tariffs"][0]["premium_unlimited"] = True
+
+        tariff = TariffsConfig.model_validate(data).require("standard")
+
+        self.assertEqual(tariff.premium_monthly_bytes, 0)
+        self.assertFalse(tariff.has_premium_squad_limit())

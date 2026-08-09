@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getTariffsStore } from "$lib/admin/context";
-  import { Input, Sortable } from "$components/ui/index.js";
+  import { Checkbox, Input, Sortable } from "$components/ui/index.js";
   import { Tabs, Label, Switch } from "$components/ui/primitives.js";
   import { AdminButton, AdminSelect } from "$components/patterns/admin/index.js";
   import { Plus, Trash2, X } from "$components/ui/icons.js";
@@ -148,7 +148,7 @@
           {/each}
         </div>
       </div>
-      <Label.Root class="admin-field-label">
+      <div class="admin-field-label">
         <span
           >{at(
             "tariff_label_premium_traffic_limit",
@@ -160,19 +160,42 @@
           >{at(
             "tariff_hint_premium_traffic_limit",
             {},
-            "How many GB through premium squads are included in one premium period. 0 or empty means there is no separate premium limit"
+            "How many GB through premium squads are included in one premium period. 0 means premium access starts only after a top-up"
           )}</small
         >
-        <Input
-          class="input"
-          type="number"
-          min="0"
-          step="0.1"
-          placeholder="50"
-          value={tariffDraft.premium_monthly_gb}
-          oninput={draftInputHandler(tariffsStore, "premium_monthly_gb")}
-        />
-      </Label.Root>
+        <div class="premium-limit-input-row">
+          <Input
+            class="input"
+            type="number"
+            min="0"
+            step="0.1"
+            placeholder="50"
+            value={tariffDraft.premium_monthly_gb}
+            disabled={Boolean(tariffDraft.premium_unlimited)}
+            aria-label={at(
+              "tariff_label_premium_traffic_limit",
+              {},
+              "Premium traffic limit per period, GB"
+            )}
+            oninput={draftInputHandler(tariffsStore, "premium_monthly_gb")}
+          />
+          <label class="premium-limit-unlimited-option">
+            <Checkbox
+              checked={Boolean(tariffDraft.premium_unlimited)}
+              ariaLabel={at("tariff_label_premium_unlimited", {}, "Unlimited")}
+              onCheckedChange={(value) => tariffsStore.updateDraftField("premium_unlimited", value)}
+            />
+            <span>{at("tariff_label_premium_unlimited", {}, "Unlimited")}</span>
+          </label>
+        </div>
+        <small
+          >{at(
+            "tariff_hint_premium_unlimited",
+            {},
+            "Premium squads stay available without a traffic quota. Enabling this locks the GB field."
+          )}</small
+        >
+      </div>
     </div>
     <div class="admin-field-label">
       <span
@@ -367,3 +390,27 @@
     {/if}
   </section>
 </Tabs.Content>
+
+<style>
+  .premium-limit-input-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    align-items: center;
+  }
+
+  .premium-limit-unlimited-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 2.5rem;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  @media (max-width: 640px) {
+    .premium-limit-input-row {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

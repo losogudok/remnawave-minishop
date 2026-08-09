@@ -73,6 +73,7 @@ class SubscriptionLifecycleSwitchMixin(SubscriptionServiceMixinContract):
         premium_unlimited_override = bool(
             getattr(local_active_sub, "premium_unlimited_override", False)
         )
+        premium_traffic_limited = bool(tariff and tariff.has_premium_squad_limit())
         premium_limit_bytes = self._premium_effective_limit_bytes(
             premium_baseline,
             premium_topup_balance,
@@ -143,6 +144,7 @@ class SubscriptionLifecycleSwitchMixin(SubscriptionServiceMixinContract):
             "premium_used_bytes": local_active_sub.premium_used_bytes,
             "premium_bonus_bytes": premium_bonus_bytes,
             "premium_unlimited_override": premium_unlimited_override,
+            "premium_traffic_limited": premium_traffic_limited,
             "premium_limit_bytes": premium_limit_bytes,
             "premium_is_limited": bool(local_active_sub.premium_is_limited),
             "premium_traffic_limit_strategy": premium_traffic_limit_strategy,
@@ -299,6 +301,12 @@ class SubscriptionLifecycleSwitchMixin(SubscriptionServiceMixinContract):
             premium_topup_used,
         )
         premium_used = int(sub.premium_used_bytes or 0)
+        premium_is_limited = self._premium_access_should_be_limited(
+            target,
+            premium_limit_bytes=premium_limit,
+            premium_used_bytes=premium_used,
+            premium_unlimited_override=bool(getattr(sub, "premium_unlimited_override", False)),
+        )
         tariff_binding_source = (
             "admin" if mode == "admin_assign" else "payment" if mode == "paid_diff" else "user"
         )
@@ -311,7 +319,7 @@ class SubscriptionLifecycleSwitchMixin(SubscriptionServiceMixinContract):
             "premium_baseline_bytes": premium_baseline,
             "premium_topup_balance_bytes": premium_topup_balance,
             "premium_topup_used_bytes": premium_topup_used,
-            "premium_is_limited": bool(premium_limit > 0 and premium_used >= premium_limit),
+            "premium_is_limited": premium_is_limited,
         }
         if convert_trial_admin_assignment:
             update_data.update(

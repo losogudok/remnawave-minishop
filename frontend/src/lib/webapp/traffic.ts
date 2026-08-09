@@ -12,6 +12,7 @@ type SubscriptionTraffic = WebappRecord & {
   premium_squad_labels?: unknown[];
   premium_title?: string | null;
   premium_topup_balance_bytes?: number | string | null;
+  premium_traffic_limited?: boolean;
   premium_unlimited_override?: boolean;
   premium_used?: string | null;
   premium_used_bytes?: number | string | null;
@@ -97,7 +98,10 @@ export function premiumTrafficPercent(sub: SubscriptionTraffic | null | undefine
 }
 
 export function premiumTrafficLimitVisible(sub: SubscriptionTraffic | null | undefined): boolean {
-  return !sub?.premium_unlimited_override && Number(sub?.premium_limit_bytes || 0) > 0;
+  const limitedByTariff =
+    sub?.premium_traffic_limited === true ||
+    (sub?.premium_traffic_limited === undefined && Number(sub?.premium_limit_bytes || 0) > 0);
+  return !sub?.premium_unlimited_override && limitedByTariff;
 }
 
 export function premiumTrafficLabel(
@@ -106,7 +110,7 @@ export function premiumTrafficLabel(
 ): string {
   return t("wa_traffic_of", {
     used: sub?.premium_used || "0 GB",
-    limit: sub?.premium_limit || "0 GB",
+    limit: formatTrafficBytes(sub?.premium_limit_bytes),
   });
 }
 
