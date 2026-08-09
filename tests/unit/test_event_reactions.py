@@ -188,6 +188,8 @@ class CoreEventReactionsTests(IsolatedAsyncioTestCase):
             user_id=42,
             promo_code="HELLO",
             bonus_days=7,
+            regular_traffic_gb=0.0,
+            premium_traffic_gb=0.0,
             username="alice",
             email="alice@example.test",
         )

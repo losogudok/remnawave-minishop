@@ -356,6 +356,8 @@ Core reactions: `CoreEventReactions.on_promo_code_applied`
 | `user_id` | `int` | required |
 | `code` | `str` | required |
 | `bonus_days` | `int` | required |
+| `regular_traffic_gb` | `float` | `0` |
+| `premium_traffic_gb` | `float` | `0` |
 | `new_end_date` | `datetime | None` | `None` |
 
 ## `referral.bonus_granted`

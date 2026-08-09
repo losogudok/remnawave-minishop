@@ -465,6 +465,8 @@ def tribute_checkout_promo_supported(
     effects = getattr(promo, "effects", None)
     try:
         bonus_days = int(getattr(effects, "bonus_days", 0) or 0)
+        regular_traffic_gb = float(getattr(effects, "regular_traffic_gb", 0) or 0)
+        premium_traffic_gb = float(getattr(effects, "premium_traffic_gb", 0) or 0)
         duration_multiplier = float(getattr(effects, "duration_multiplier", 1.0) or 1.0)
         traffic_multiplier = float(getattr(effects, "traffic_multiplier", 1.0) or 1.0)
         discount_amount = float(getattr(promo, "discount_amount", 0) or 0)
@@ -473,6 +475,8 @@ def tribute_checkout_promo_supported(
     return (
         discount_amount > 0
         and bonus_days == 0
+        and regular_traffic_gb == 0
+        and premium_traffic_gb == 0
         and duration_multiplier == 1.0
         and traffic_multiplier == 1.0
     )

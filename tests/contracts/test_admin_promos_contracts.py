@@ -49,6 +49,8 @@ def _promo(**overrides):
         "promo_code_id": 5,
         "code": "GIFT",
         "bonus_days": 7,
+        "regular_traffic_gb": None,
+        "premium_traffic_gb": None,
         "max_activations": 3,
         "current_activations": 1,
         "is_active": True,
@@ -255,6 +257,8 @@ def test_promo_create_uses_typed_body_and_response_model():
     assert created_payload == {
         "code": "GIFT",
         "bonus_days": 7,
+        "regular_traffic_gb": None,
+        "premium_traffic_gb": None,
         "discount_percent": None,
         "duration_multiplier": None,
         "traffic_multiplier": None,
@@ -274,26 +278,23 @@ def test_promo_create_uses_typed_body_and_response_model():
     assert _json_body(response)["promo"] == PromoOut.from_orm_promo(promo).model_dump(mode="json")
 
 
-def test_promo_create_rejects_multiple_effects():
-    async def run():
-        request = _FakeRequest(
-            {
-                "code": "gift",
-                "bonus_days": 7,
-                "discount_percent": 10,
-                "max_activations": 3,
-            }
-        )
+def test_promo_create_accepts_multiple_effects():
+    body = PromoCreateBody.model_validate(
+        {
+            "code": "gift",
+            "bonus_days": 7,
+            "regular_traffic_gb": 50,
+            "premium_traffic_gb": 20,
+            "discount_percent": 10,
+            "applies_to": "subscription",
+            "max_activations": 3,
+        }
+    )
 
-        with patch.object(promos_module, "_require_admin_user_id", return_value=100):
-            return await promos_module.admin_promo_create_route(request)
-
-    response = _run_direct_bad_request(run())
-
-    assert response.status == 400
-    body = _json_body(response)
-    assert body["error"] == "invalid_payload"
-    assert "multiple_effects" in body["message"]
+    effects = body.to_effects()
+    assert effects.active_effect_count == 4
+    assert effects.regular_traffic_gb == 50
+    assert effects.premium_traffic_gb == 20
 
 
 def test_promo_create_keeps_invalid_valid_days_error_code():
@@ -383,7 +384,7 @@ def test_promo_update_can_disable_existing_multiple_effects():
     session.commit.assert_awaited_once()
 
 
-def test_promo_update_rejects_enabling_existing_multiple_effects():
+def test_promo_update_allows_enabling_existing_multiple_effects():
     async def run():
         session = _FakeSession()
         promo = _promo(is_active=False, bonus_days=7, discount_percent=10)
@@ -403,7 +404,7 @@ def test_promo_update_rejects_enabling_existing_multiple_effects():
             patch.object(
                 promos_module.promo_code_dal,
                 "update_promo_code",
-                AsyncMock(),
+                AsyncMock(return_value=promo),
             ) as update_promo,
         ):
             response = await promos_module.admin_promo_update_route(request)
@@ -411,10 +412,9 @@ def test_promo_update_rejects_enabling_existing_multiple_effects():
 
     response, session, update_promo = asyncio.run(run())
 
-    assert response.status == 400
-    assert _json_body(response)["error"] == "multiple_effects"
-    update_promo.assert_not_awaited()
-    session.commit.assert_not_awaited()
+    assert response.status == 200
+    update_promo.assert_awaited_once_with(session, 5, {"is_active": True})
+    session.commit.assert_awaited_once()
 
 
 def test_promo_update_returns_no_changes_for_empty_typed_body():

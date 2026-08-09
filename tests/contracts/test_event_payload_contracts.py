@@ -342,6 +342,8 @@ def test_small_event_payloads_match_legacy_wire_dicts():
         "user_id": 42,
         "code": "GIFT",
         "bonus_days": 7,
+        "regular_traffic_gb": 0.0,
+        "premium_traffic_gb": 0.0,
         "new_end_date": UTC_TEXT,
     }
     assert SupportTicketCreatedPayload(

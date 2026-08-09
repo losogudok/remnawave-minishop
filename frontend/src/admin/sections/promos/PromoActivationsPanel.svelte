@@ -92,6 +92,16 @@
     if (Number(row.bonus_days || 0) > 0) {
       parts.push(`+${row.bonus_days} ${at("days_short", {}, "d")}`);
     }
+    if (Number(row.regular_traffic_gb || 0) > 0) {
+      parts.push(
+        `+${numberText(row.regular_traffic_gb)} ${at("promo_regular_traffic_short", {}, "GB regular")}`
+      );
+    }
+    if (Number(row.premium_traffic_gb || 0) > 0) {
+      parts.push(
+        `+${numberText(row.premium_traffic_gb)} ${at("promo_premium_traffic_short", {}, "GB premium")}`
+      );
+    }
     if (Number(row.discount_percent || 0) > 0) {
       parts.push(`-${numberText(row.discount_percent)}%`);
     }

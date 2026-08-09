@@ -1312,7 +1312,7 @@ test("webapp and admin sections, dialogs, tabs stay interactive without console 
     ".dialog-card.admin-promo-dialog:not(.admin-promo-edit-dialog)"
   );
   await expect(createCodeDialog).toBeVisible();
-  await expect(createCodeDialog.locator(".admin-promo-effect-row")).toHaveCount(4);
+  await expect(createCodeDialog.locator(".admin-promo-effect-row")).toHaveCount(6);
   await assertFormFieldsNamed(page, "admin-codes:create-dialog");
   await closeDialog(createCodeDialog);
 

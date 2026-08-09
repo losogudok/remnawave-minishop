@@ -31,10 +31,10 @@ type PromoDraft = Omit<components["schemas"]["PromoCreateBody"], "valid_days"> &
   valid_days: number;
 };
 type PromoPatch = components["schemas"]["PromoUpdateBody"];
-type PromoEffectKind =
-  "bonus_days" | "discount_percent" | "duration_multiplier" | "traffic_multiplier";
 type PromoEffectPayload = {
   bonus_days?: number | null;
+  regular_traffic_gb?: number | null;
+  premium_traffic_gb?: number | null;
   discount_percent?: number | null;
   duration_multiplier?: number | null;
   traffic_multiplier?: number | null;
@@ -112,6 +112,8 @@ class AdminPromosError extends Error {
 const defaultPromoDraft = (): PromoDraft => ({
   code: "",
   bonus_days: 7,
+  regular_traffic_gb: 0,
+  premium_traffic_gb: 0,
   discount_percent: null,
   duration_multiplier: null,
   traffic_multiplier: null,
@@ -127,6 +129,8 @@ const defaultPromoDraft = (): PromoDraft => ({
 const defaultPromoPatchDraft = (): PromoPatch => ({
   is_active: null,
   bonus_days: null,
+  regular_traffic_gb: null,
+  premium_traffic_gb: null,
   discount_percent: null,
   duration_multiplier: null,
   traffic_multiplier: null,
@@ -144,6 +148,8 @@ function promoToPatchDraft(promo: Promo): PromoPatch {
   return {
     is_active: promo.is_active,
     bonus_days: promo.bonus_days,
+    regular_traffic_gb: promo.regular_traffic_gb,
+    premium_traffic_gb: promo.premium_traffic_gb,
     discount_percent: promo.discount_percent,
     duration_multiplier: promo.duration_multiplier,
     traffic_multiplier: promo.traffic_multiplier,
@@ -163,24 +169,25 @@ function finiteNumber(value: number | null | undefined, fallback: number): numbe
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function effectKindFromPayload(payload: PromoEffectPayload): PromoEffectKind {
-  if (finiteNumber(payload.bonus_days, 0) > 0) return "bonus_days";
-  if (finiteNumber(payload.discount_percent, 0) > 0) return "discount_percent";
-  if (finiteNumber(payload.duration_multiplier, 1) > 1) return "duration_multiplier";
-  if (finiteNumber(payload.traffic_multiplier, 1) > 1) return "traffic_multiplier";
-  return "bonus_days";
-}
-
 function normalizeEffectPayload<T extends PromoEffectPayload>(payload: T): T {
-  const kind = effectKindFromPayload(payload);
+  const bonusDays = Math.max(0, Math.trunc(finiteNumber(payload.bonus_days, 0)));
+  const regularTrafficGb = Math.max(0, finiteNumber(payload.regular_traffic_gb, 0));
+  const premiumTrafficGb = Math.max(0, finiteNumber(payload.premium_traffic_gb, 0));
+  const discountPercent = finiteNumber(payload.discount_percent, 0);
+  const durationMultiplier = finiteNumber(payload.duration_multiplier, 1);
+  const trafficMultiplier = finiteNumber(payload.traffic_multiplier, 1);
   return {
     ...payload,
-    bonus_days:
-      kind === "bonus_days" ? Math.max(0, Math.trunc(finiteNumber(payload.bonus_days, 0))) : 0,
-    discount_percent: kind === "discount_percent" ? payload.discount_percent : null,
-    duration_multiplier: kind === "duration_multiplier" ? payload.duration_multiplier : null,
-    traffic_multiplier: kind === "traffic_multiplier" ? payload.traffic_multiplier : null,
-    bonus_requires_payment: kind === "bonus_days" ? Boolean(payload.bonus_requires_payment) : false,
+    bonus_days: bonusDays,
+    regular_traffic_gb: regularTrafficGb,
+    premium_traffic_gb: premiumTrafficGb,
+    discount_percent: discountPercent > 0 ? discountPercent : null,
+    duration_multiplier: durationMultiplier > 1 ? durationMultiplier : null,
+    traffic_multiplier: trafficMultiplier > 1 ? trafficMultiplier : null,
+    bonus_requires_payment:
+      bonusDays > 0 || regularTrafficGb > 0 || premiumTrafficGb > 0
+        ? Boolean(payload.bonus_requires_payment)
+        : false,
   } as T;
 }
 

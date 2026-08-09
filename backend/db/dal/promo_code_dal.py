@@ -133,11 +133,15 @@ async def get_all_promo_codes_with_details(
 ) -> list[PromoCode]:
     """Get all promo codes (active and inactive) with pagination for management"""
     has_bonus = func.coalesce(PromoCode.bonus_days, 0) > 0
+    has_regular_traffic_grant = func.coalesce(PromoCode.regular_traffic_gb, 0) > 0
+    has_premium_traffic_grant = func.coalesce(PromoCode.premium_traffic_gb, 0) > 0
     has_discount = func.coalesce(PromoCode.discount_percent, 0) > 0
     has_duration = func.coalesce(PromoCode.duration_multiplier, 1) > 1
     has_traffic = func.coalesce(PromoCode.traffic_multiplier, 1) > 1
     effect_count = (
         case((has_bonus, 1), else_=0)
+        + case((has_regular_traffic_grant, 1), else_=0)
+        + case((has_premium_traffic_grant, 1), else_=0)
         + case((has_discount, 1), else_=0)
         + case((has_duration, 1), else_=0)
         + case((has_traffic, 1), else_=0)
@@ -162,6 +166,8 @@ async def get_all_promo_codes_with_details(
         "type": (type_rank,),
         "effect": (
             PromoCode.bonus_days,
+            PromoCode.regular_traffic_gb,
+            PromoCode.premium_traffic_gb,
             PromoCode.discount_percent,
             PromoCode.duration_multiplier,
             PromoCode.traffic_multiplier,
@@ -370,6 +376,8 @@ async def record_promo_activation(
     *,
     effect_summary: str | None = None,
     bonus_days: int | None = None,
+    regular_traffic_gb: float | None = None,
+    premium_traffic_gb: float | None = None,
     discount_percent: float | None = None,
     duration_multiplier: float | None = None,
     traffic_multiplier: float | None = None,
@@ -380,6 +388,8 @@ async def record_promo_activation(
     charged_gb: float | None = None,
     granted_days: int | None = None,
     granted_gb: float | None = None,
+    granted_regular_traffic_gb: float | None = None,
+    granted_premium_traffic_gb: float | None = None,
 ) -> PromoCodeActivation | None:
     from .user_dal import lock_user_by_id
 
@@ -421,6 +431,8 @@ async def record_promo_activation(
         "payment_id": payment_id,
         "effect_summary": effect_summary,
         "bonus_days": bonus_days,
+        "regular_traffic_gb": regular_traffic_gb,
+        "premium_traffic_gb": premium_traffic_gb,
         "discount_percent": discount_percent,
         "duration_multiplier": duration_multiplier,
         "traffic_multiplier": traffic_multiplier,
@@ -431,6 +443,8 @@ async def record_promo_activation(
         "charged_gb": charged_gb,
         "granted_days": granted_days,
         "granted_gb": granted_gb,
+        "granted_regular_traffic_gb": granted_regular_traffic_gb,
+        "granted_premium_traffic_gb": granted_premium_traffic_gb,
         "activated_at": datetime.now(UTC),
     }
     new_activation = PromoCodeActivation(**activation_data)
@@ -455,6 +469,8 @@ async def consume_promo_activation(
     enforce_limit: bool = True,
     effect_summary: str | None = None,
     bonus_days: int | None = None,
+    regular_traffic_gb: float | None = None,
+    premium_traffic_gb: float | None = None,
     discount_percent: float | None = None,
     duration_multiplier: float | None = None,
     traffic_multiplier: float | None = None,
@@ -465,6 +481,8 @@ async def consume_promo_activation(
     charged_gb: float | None = None,
     granted_days: int | None = None,
     granted_gb: float | None = None,
+    granted_regular_traffic_gb: float | None = None,
+    granted_premium_traffic_gb: float | None = None,
 ) -> PromoCodeActivation | None:
     """Atomically increment usage and record the activation in one transaction.
 
@@ -512,6 +530,8 @@ async def consume_promo_activation(
         "payment_id": payment_id,
         "effect_summary": effect_summary,
         "bonus_days": bonus_days,
+        "regular_traffic_gb": regular_traffic_gb,
+        "premium_traffic_gb": premium_traffic_gb,
         "discount_percent": discount_percent,
         "duration_multiplier": duration_multiplier,
         "traffic_multiplier": traffic_multiplier,
@@ -522,6 +542,8 @@ async def consume_promo_activation(
         "charged_gb": charged_gb,
         "granted_days": granted_days,
         "granted_gb": granted_gb,
+        "granted_regular_traffic_gb": granted_regular_traffic_gb,
+        "granted_premium_traffic_gb": granted_premium_traffic_gb,
         "activated_at": datetime.now(UTC),
     }
     activation = PromoCodeActivation(**activation_data)

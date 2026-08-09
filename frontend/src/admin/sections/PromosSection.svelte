@@ -30,6 +30,8 @@
   type PromoActivation = components["schemas"]["PromoActivationOut"];
   type CreateNumberField =
     | "bonus_days"
+    | "regular_traffic_gb"
+    | "premium_traffic_gb"
     | "discount_percent"
     | "duration_multiplier"
     | "traffic_multiplier"
@@ -38,7 +40,12 @@
     | "max_activations"
     | "valid_days";
   type PromoEffectKind =
-    "bonus_days" | "discount_percent" | "duration_multiplier" | "traffic_multiplier";
+    | "bonus_days"
+    | "regular_traffic_gb"
+    | "premium_traffic_gb"
+    | "discount_percent"
+    | "duration_multiplier"
+    | "traffic_multiplier";
   type PromoEditTab = "settings" | "activations";
   type PromoEditField =
     | "is_active"
@@ -46,6 +53,8 @@
     | "max_activations"
     | "valid_until"
     | "bonus_days"
+    | "regular_traffic_gb"
+    | "premium_traffic_gb"
     | "bonus_requires_payment"
     | "discount_percent"
     | "duration_multiplier"
@@ -54,6 +63,8 @@
     | "min_traffic_gb";
   type EffectLike = {
     bonus_days?: number | null;
+    regular_traffic_gb?: number | null;
+    premium_traffic_gb?: number | null;
     discount_percent?: number | null;
     duration_multiplier?: number | null;
     traffic_multiplier?: number | null;
@@ -69,6 +80,8 @@
   ];
   const EFFECT_EDIT_FIELDS: readonly PromoEditField[] = [
     "bonus_days",
+    "regular_traffic_gb",
+    "premium_traffic_gb",
     "bonus_requires_payment",
     "discount_percent",
     "duration_multiplier",
@@ -120,6 +133,8 @@
     (promosStore.promoDraft || {
       code: "",
       bonus_days: 7,
+      regular_traffic_gb: 0,
+      premium_traffic_gb: 0,
       discount_percent: null,
       duration_multiplier: null,
       traffic_multiplier: null,
@@ -142,38 +157,25 @@
   );
   const promoEffectDirtyFields = $derived({
     bonus_days: editFieldDirty("bonus_days") || editFieldDirty("bonus_requires_payment"),
+    regular_traffic_gb:
+      editFieldDirty("regular_traffic_gb") || editFieldDirty("bonus_requires_payment"),
+    premium_traffic_gb:
+      editFieldDirty("premium_traffic_gb") || editFieldDirty("bonus_requires_payment"),
     discount_percent: editFieldDirty("discount_percent"),
     duration_multiplier: editFieldDirty("duration_multiplier"),
     traffic_multiplier: editFieldDirty("traffic_multiplier"),
   } satisfies Partial<Record<PromoEffectKind, boolean>>);
-  let promoCreateEffectKind = $state<PromoEffectKind>("bonus_days");
-  let promoEditEffectKind = $state<PromoEffectKind>("bonus_days");
   let promoEditTab = $state<PromoEditTab>("settings");
-  let previousCreateOpen = $state(false);
   let previousEditPromoId = $state<number | null>(null);
-  const promoCreateUsesCheckout = $derived(
-    promoCreateEffectKind !== "bonus_days" || Boolean(promoDraft.bonus_requires_payment)
-  );
-  const promoEditUsesCheckout = $derived(
-    promoEditEffectKind !== "bonus_days" || Boolean(promoEditDraft.bonus_requires_payment)
-  );
+  const promoCreateUsesCheckout = $derived(effectUsesCheckout(promoDraft));
+  const promoEditUsesCheckout = $derived(effectUsesCheckout(promoEditDraft));
 
   $effect(() => promosTable.setRows(promos));
   $effect(() => {
-    if (promoCreateOpen && !previousCreateOpen) {
-      promoCreateEffectKind = effectKind(promoDraft);
-    } else if (!promoCreateOpen) {
-      promoCreateEffectKind = "bonus_days";
-    }
-    previousCreateOpen = promoCreateOpen;
-  });
-  $effect(() => {
     const editPromoId = promoEditing?.id ?? null;
     if (promoEditOpen && editPromoId !== previousEditPromoId) {
-      promoEditEffectKind = effectKind(promoEditDraft);
       previousEditPromoId = editPromoId;
     } else if (!promoEditOpen) {
-      promoEditEffectKind = "bonus_days";
       promoEditTab = "settings";
       previousEditPromoId = null;
     }
@@ -252,12 +254,21 @@
     return Number.isFinite(parsed) && parsed > minimum ? parsed : fallback;
   }
 
-  function effectKind(promo: EffectLike): PromoEffectKind {
-    if (Number(promo.bonus_days || 0) > 0) return "bonus_days";
-    if (Number(promo.discount_percent || 0) > 0) return "discount_percent";
-    if (Number(promo.duration_multiplier || 1) > 1) return "duration_multiplier";
-    if (Number(promo.traffic_multiplier || 1) > 1) return "traffic_multiplier";
-    return "bonus_days";
+  function hasFixedGrant(promo: EffectLike): boolean {
+    return (
+      Number(promo.bonus_days || 0) > 0 ||
+      Number(promo.regular_traffic_gb || 0) > 0 ||
+      Number(promo.premium_traffic_gb || 0) > 0
+    );
+  }
+
+  function effectUsesCheckout(promo: EffectLike): boolean {
+    return (
+      Boolean(promo.bonus_requires_payment) ||
+      Number(promo.discount_percent || 0) > 0 ||
+      Number(promo.duration_multiplier || 1) > 1 ||
+      Number(promo.traffic_multiplier || 1) > 1
+    );
   }
 
   function comparableNumber(value: number | string | null | undefined): number | null {
@@ -303,54 +314,63 @@
     return fields.filter((field) => editFieldDirty(field)).length;
   }
 
-  function singleEffectPatch(kind: PromoEffectKind, source: EffectLike): Partial<PromoDraft> {
-    return {
-      bonus_days:
-        kind === "bonus_days" ? Math.max(1, Math.trunc(positiveNumber(source.bonus_days, 7))) : 0,
-      discount_percent:
-        kind === "discount_percent" ? positiveNumber(source.discount_percent, 10) : null,
-      duration_multiplier:
-        kind === "duration_multiplier" ? positiveNumber(source.duration_multiplier, 2, 1) : null,
-      traffic_multiplier:
-        kind === "traffic_multiplier" ? positiveNumber(source.traffic_multiplier, 2, 1) : null,
-      bonus_requires_payment:
-        kind === "bonus_days" ? Boolean(source.bonus_requires_payment) : false,
+  function toggledEffectPatch(
+    kind: PromoEffectKind,
+    checked: boolean,
+    source: EffectLike
+  ): Partial<PromoDraft> {
+    const values: Record<PromoEffectKind, number | null> = {
+      bonus_days: checked ? Math.max(1, Math.trunc(positiveNumber(source.bonus_days, 7))) : 0,
+      regular_traffic_gb: checked ? positiveNumber(source.regular_traffic_gb, 50) : 0,
+      premium_traffic_gb: checked ? positiveNumber(source.premium_traffic_gb, 20) : 0,
+      discount_percent: checked ? positiveNumber(source.discount_percent, 10) : null,
+      duration_multiplier: checked ? positiveNumber(source.duration_multiplier, 2, 1) : null,
+      traffic_multiplier: checked ? positiveNumber(source.traffic_multiplier, 2, 1) : null,
     };
+    return { [kind]: values[kind] } as Partial<PromoDraft>;
   }
 
-  function selectCreateEffect(value: string): void {
-    const kind = value as PromoEffectKind;
-    promoCreateEffectKind = kind;
-    const patch = singleEffectPatch(kind, promoDraft);
-    if (kind === "bonus_days" && !patch.bonus_requires_payment) {
+  function toggleCreateEffect(kind: PromoEffectKind, checked: boolean): void {
+    const patch = toggledEffectPatch(kind, checked, promoDraft);
+    const next = { ...promoDraft, ...patch };
+    if (hasFixedGrant(next) && effectUsesCheckout(next)) patch.applies_to = "subscription";
+    if (hasFixedGrant(next)) patch.min_traffic_gb = null;
+    if (!effectUsesCheckout(next)) {
       patch.min_subscription_months = null;
       patch.min_traffic_gb = null;
     }
     promosStore.updateDraft(patch);
   }
 
-  function selectEditEffect(value: string): void {
-    const kind = value as PromoEffectKind;
-    promoEditEffectKind = kind;
-    const patch = singleEffectPatch(kind, promoEditDraft);
-    if (kind === "bonus_days" && !patch.bonus_requires_payment) {
+  function toggleEditEffect(kind: PromoEffectKind, checked: boolean): void {
+    const patch = toggledEffectPatch(kind, checked, promoEditDraft);
+    const next = { ...promoEditDraft, ...patch };
+    if (hasFixedGrant(next) && effectUsesCheckout(next)) patch.applies_to = "subscription";
+    if (hasFixedGrant(next)) patch.min_traffic_gb = null;
+    if (!effectUsesCheckout(next)) {
       patch.min_subscription_months = null;
       patch.min_traffic_gb = null;
     }
-    promosStore.updateEditDraft(patch);
+    promosStore.updateEditDraft(patch as Partial<PromoPatch>);
   }
 
   function setCreateBonusRequiresPayment(checked: boolean): void {
+    const fixedPatch = hasFixedGrant(promoDraft) ? {} : { bonus_days: 7 };
     promosStore.updateDraft({
+      ...fixedPatch,
       bonus_requires_payment: checked,
+      applies_to: checked ? "subscription" : promoDraft.applies_to,
       min_subscription_months: checked ? promoDraft.min_subscription_months : null,
       min_traffic_gb: checked ? promoDraft.min_traffic_gb : null,
     });
   }
 
   function setEditBonusRequiresPayment(checked: boolean): void {
+    const fixedPatch = hasFixedGrant(promoEditDraft) ? {} : { bonus_days: 7 };
     promosStore.updateEditDraft({
+      ...fixedPatch,
       bonus_requires_payment: checked,
+      applies_to: checked ? "subscription" : promoEditDraft.applies_to,
       min_subscription_months: checked ? promoEditDraft.min_subscription_months : null,
       min_traffic_gb: checked ? promoEditDraft.min_traffic_gb : null,
     } as Partial<PromoPatch>);
@@ -417,10 +437,19 @@
 
   function promoType(promo: Promo | PromoPatch): string {
     const hasBonus = Number(promo.bonus_days || 0) > 0;
+    const hasRegularTraffic = Number(promo.regular_traffic_gb || 0) > 0;
+    const hasPremiumTraffic = Number(promo.premium_traffic_gb || 0) > 0;
     const hasDiscount = Number(promo.discount_percent || 0) > 0;
     const hasDuration = Number(promo.duration_multiplier || 1) > 1;
     const hasTraffic = Number(promo.traffic_multiplier || 1) > 1;
-    const count = [hasBonus, hasDiscount, hasDuration, hasTraffic].filter(Boolean).length;
+    const count = [
+      hasBonus,
+      hasRegularTraffic,
+      hasPremiumTraffic,
+      hasDiscount,
+      hasDuration,
+      hasTraffic,
+    ].filter(Boolean).length;
     if (count > 1) return at("promo_type_mixed", {}, "Mixed");
     if (hasDiscount) return at("promo_type_discount", {}, "Discount");
     if (hasDuration || hasTraffic) return at("promo_type_multiplier", {}, "Multiplier");
@@ -431,6 +460,16 @@
     const parts: string[] = [];
     if (Number(promo.bonus_days || 0) > 0) {
       parts.push(`+${promo.bonus_days} ${at("days_short", {}, "d")}`);
+    }
+    if (Number(promo.regular_traffic_gb || 0) > 0) {
+      parts.push(
+        `+${numberText(promo.regular_traffic_gb)} ${at("promo_regular_traffic_short", {}, "GB regular")}`
+      );
+    }
+    if (Number(promo.premium_traffic_gb || 0) > 0) {
+      parts.push(
+        `+${numberText(promo.premium_traffic_gb)} ${at("promo_premium_traffic_short", {}, "GB premium")}`
+      );
     }
     if (Number(promo.discount_percent || 0) > 0) {
       parts.push(`-${numberText(promo.discount_percent)}%`);
@@ -445,8 +484,8 @@
   function effectText(promo: EffectLike): string {
     const parts = effectPieces(promo);
     const text = promo.effect_summary || (parts.length ? parts.join(" + ") : "-");
-    if (Number(promo.bonus_days || 0) <= 0) return text;
-    const mode = promo.bonus_requires_payment
+    if (!hasFixedGrant(promo)) return text;
+    const mode = effectUsesCheckout(promo)
       ? at("promo_bonus_mode_payment_short", {}, "after payment")
       : at("promo_bonus_mode_instant_short", {}, "instant");
     return `${text} · ${mode}`;
@@ -495,6 +534,10 @@
     const parsed = nullableNumber(value);
     if (field === "bonus_days") {
       promosStore.updateDraft({ bonus_days: Number(parsed || 0) });
+    } else if (field === "regular_traffic_gb") {
+      promosStore.updateDraft({ regular_traffic_gb: Number(parsed || 0) });
+    } else if (field === "premium_traffic_gb") {
+      promosStore.updateDraft({ premium_traffic_gb: Number(parsed || 0) });
     } else if (field === "discount_percent") {
       promosStore.updateDraft({ discount_percent: parsed });
     } else if (field === "duration_multiplier") {
@@ -746,14 +789,13 @@
   {at}
   open={promoCreateOpen}
   draft={promoDraft}
-  effectKind={promoCreateEffectKind}
   usesCheckout={promoCreateUsesCheckout}
   {scopeItems}
   onClose={() => promosStore.setCreateOpen(false)}
   onCreate={promosStore.createPromo}
   onCodeInput={(code) => promosStore.updateDraft({ code })}
   onScopeChange={(applies_to) => promosStore.updateDraft({ applies_to })}
-  onEffectChange={selectCreateEffect}
+  onEffectEnabledChange={toggleCreateEffect}
   onNumberInput={updateCreateNumber}
   onBonusRequiresPaymentChange={setCreateBonusRequiresPayment}
 />
@@ -774,7 +816,6 @@
   {paymentStatusVariant}
   {promoBasicsDirtyCount}
   {promoEditDraft}
-  {promoEditEffectKind}
   {promoEditOpen}
   {promoEditTab}
   {promoEditUsesCheckout}
@@ -786,7 +827,7 @@
   {promoStatus}
   {promosStore}
   {scopeItems}
-  {selectEditEffect}
+  onEffectEnabledChange={toggleEditEffect}
   {selectPromoEditTab}
   {setEditBonusRequiresPayment}
   {updateEditNumber}

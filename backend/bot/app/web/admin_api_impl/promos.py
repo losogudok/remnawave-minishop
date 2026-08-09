@@ -199,6 +199,9 @@ async def admin_promo_update_route(request: web.Request) -> web.Response:
         update_data["is_active"] = bool(body.is_active)
     if "bonus_days" in fields_set and body.bonus_days is not None:
         update_data["bonus_days"] = int(body.bonus_days)
+    for field in ("regular_traffic_gb", "premium_traffic_gb"):
+        if field in fields_set:
+            update_data[field] = getattr(body, field)
     if "bonus_requires_payment" in fields_set:
         update_data["bonus_requires_payment"] = bool(body.bonus_requires_payment)
     for field in (
@@ -234,6 +237,8 @@ async def admin_promo_update_route(request: web.Request) -> web.Response:
             return _error(400, "max_activations_below_current")
         effect_fields = {
             "bonus_days",
+            "regular_traffic_gb",
+            "premium_traffic_gb",
             "discount_percent",
             "duration_multiplier",
             "traffic_multiplier",
@@ -248,6 +253,8 @@ async def admin_promo_update_route(request: web.Request) -> web.Response:
         if should_validate_effects:
             merged = {
                 "bonus_days": getattr(current, "bonus_days", 0),
+                "regular_traffic_gb": getattr(current, "regular_traffic_gb", None),
+                "premium_traffic_gb": getattr(current, "premium_traffic_gb", None),
                 "discount_percent": getattr(current, "discount_percent", None),
                 "duration_multiplier": getattr(current, "duration_multiplier", None),
                 "traffic_multiplier": getattr(current, "traffic_multiplier", None),

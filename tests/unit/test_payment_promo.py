@@ -36,6 +36,8 @@ class PaymentPromoTests(IsolatedAsyncioTestCase):
             promo_code_id=5,
             promo_effect_summary="-50%",
             promo_bonus_days=0,
+            promo_regular_traffic_gb=50,
+            promo_premium_traffic_gb=20,
             promo_discount_percent=50,
             promo_duration_multiplier=None,
             promo_traffic_multiplier=None,
@@ -54,6 +56,8 @@ class PaymentPromoTests(IsolatedAsyncioTestCase):
         self.assertIsNotNone(effects)
         assert effects is not None
         self.assertEqual(effects.discount_percent, 50)
+        self.assertEqual(effects.regular_traffic_gb, 50)
+        self.assertEqual(effects.premium_traffic_gb, 20)
         self.assertEqual(effects.applies_to, "traffic")
         self.assertEqual(effects.min_traffic_gb, 10)
 

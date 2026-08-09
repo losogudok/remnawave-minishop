@@ -136,13 +136,28 @@ async def resolve_checkout_promo(
     sale_base = _sale_mode_base(sale_mode)
     months = int(payment_units) if sale_base == "subscription" else None
     traffic_units = traffic_gb if _sale_mode_is_traffic(sale_mode) else None
+    if effects.premium_traffic_gb > 0 and sale_base == "subscription":
+        tariffs_config = settings.tariffs_config
+        tariff_key = _sale_mode_tariff_key(sale_mode) or getattr(
+            tariffs_config, "default_tariff", None
+        )
+        try:
+            tariff = tariffs_config.require(tariff_key) if tariffs_config and tariff_key else None
+        except (KeyError, ValueError):
+            tariff = None
+        if tariff is None or not tariff.premium_squad_uuids:
+            return None, CheckoutPromoError(
+                400,
+                "promo_code_premium_traffic_unavailable",
+                "Premium traffic is unavailable for this tariff",
+            )
     if not effects.applies_to_sale_mode(sale_base):
         return None, CheckoutPromoError(
             400,
             "promo_code_not_applicable",
             "Code does not apply to this purchase",
         )
-    if effects.is_bonus_days_only and sale_base != "subscription":
+    if effects.has_fixed_grant and sale_base != "subscription":
         return None, CheckoutPromoError(
             400,
             "promo_code_not_applicable",
@@ -265,6 +280,8 @@ def checkout_promo_payment_fields(promo: CheckoutPromoResult | None) -> Mapping[
         "promo_code_id": promo.promo_code_id,
         "promo_effect_summary": promo.effect_summary,
         "promo_bonus_days": promo.effects.bonus_days,
+        "promo_regular_traffic_gb": promo.effects.regular_traffic_gb or None,
+        "promo_premium_traffic_gb": promo.effects.premium_traffic_gb or None,
         "promo_discount_percent": promo.effects.discount_percent,
         "promo_duration_multiplier": (
             promo.effects.duration_multiplier if promo.effects.duration_multiplier != 1.0 else None

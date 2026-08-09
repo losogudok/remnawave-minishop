@@ -544,6 +544,8 @@ class CoreEventReactions(PartnerEventReactionsMixin):
                 user_id=int(user_id),
                 promo_code=str(payload.get("code") or ""),
                 bonus_days=int(payload.get("bonus_days") or 0),
+                regular_traffic_gb=float(payload.get("regular_traffic_gb") or 0),
+                premium_traffic_gb=float(payload.get("premium_traffic_gb") or 0),
                 username=getattr(user, "username", None),
                 email=getattr(user, "email", None),
             )

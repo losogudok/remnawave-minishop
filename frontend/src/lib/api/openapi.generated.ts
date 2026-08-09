@@ -4900,6 +4900,16 @@ export interface components {
        */
       granted_gb: number | null;
       /**
+       * Granted Premium Traffic Gb
+       * @default null
+       */
+      granted_premium_traffic_gb: number | null;
+      /**
+       * Granted Regular Traffic Gb
+       * @default null
+       */
+      granted_regular_traffic_gb: number | null;
+      /**
        * Payment Amount
        * @default null
        */
@@ -4939,8 +4949,18 @@ export interface components {
        * @default null
        */
       payment_status: string | null;
+      /**
+       * Premium Traffic Gb
+       * @default null
+       */
+      premium_traffic_gb: number | null;
       /** Promo Id */
       promo_id: number;
+      /**
+       * Regular Traffic Gb
+       * @default null
+       */
+      regular_traffic_gb: number | null;
       /**
        * Telegram Id
        * @default null
@@ -5005,6 +5025,16 @@ export interface components {
        * @default admin
        */
       origin: string;
+      /**
+       * Premium Traffic Gb
+       * @default 0
+       */
+      premium_traffic_gb: number;
+      /**
+       * Regular Traffic Gb
+       * @default 0
+       */
+      regular_traffic_gb: number;
       /**
        * Traffic Multiplier
        * @default null
@@ -5076,6 +5106,16 @@ export interface components {
       min_traffic_gb: number | null;
       /** Origin */
       origin: string;
+      /**
+       * Premium Traffic Gb
+       * @default 0
+       */
+      premium_traffic_gb: number;
+      /**
+       * Regular Traffic Gb
+       * @default 0
+       */
+      regular_traffic_gb: number;
       /**
        * Traffic Multiplier
        * @default null
@@ -5164,6 +5204,16 @@ export interface components {
        * @default null
        */
       origin: string | null;
+      /**
+       * Premium Traffic Gb
+       * @default null
+       */
+      premium_traffic_gb: number | null;
+      /**
+       * Regular Traffic Gb
+       * @default null
+       */
+      regular_traffic_gb: number | null;
       /**
        * Traffic Multiplier
        * @default null
@@ -10315,6 +10365,8 @@ export interface operations {
             min_traffic_gb?: number | null;
             /** @constant */
             ok: true;
+            premium_traffic_gb?: number;
+            regular_traffic_gb?: number;
             status: string;
           };
         };

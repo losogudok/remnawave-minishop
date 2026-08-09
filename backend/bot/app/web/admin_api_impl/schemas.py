@@ -26,7 +26,12 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from bot.app.web.http_contracts import HttpBodyModel, HttpResponseModel
 from bot.payment_providers.base import PaymentProviderPresentation, PaymentProviderSpec
-from bot.services.promo_effects import PromoEffects, summarize_effects, validate_effects
+from bot.services.promo_effects import (
+    PROMO_TRAFFIC_GRANT_MAX_GB,
+    PromoEffects,
+    summarize_effects,
+    validate_effects,
+)
 from config.settings import Settings
 from config.tariffs_config import PackageSet, Tariff, TariffsConfig
 
@@ -62,6 +67,8 @@ from .user_schemas import (
 class PromoCreateBody(HttpBodyModel):
     code: str | None = None
     bonus_days: int = Field(default=0, ge=0)
+    regular_traffic_gb: float = Field(default=0, ge=0, le=PROMO_TRAFFIC_GRANT_MAX_GB)
+    premium_traffic_gb: float = Field(default=0, ge=0, le=PROMO_TRAFFIC_GRANT_MAX_GB)
     discount_percent: float | None = Field(default=None, gt=0, le=100)
     duration_multiplier: float | None = Field(default=None, ge=1)
     traffic_multiplier: float | None = Field(default=None, ge=1)
@@ -92,6 +99,8 @@ class PromoCreateBody(HttpBodyModel):
     def to_effects(self) -> PromoEffects:
         return PromoEffects(
             bonus_days=int(self.bonus_days or 0),
+            regular_traffic_gb=float(self.regular_traffic_gb or 0),
+            premium_traffic_gb=float(self.premium_traffic_gb or 0),
             discount_percent=self.discount_percent,
             duration_multiplier=float(self.duration_multiplier or 1.0),
             traffic_multiplier=float(self.traffic_multiplier or 1.0),
@@ -105,6 +114,8 @@ class PromoCreateBody(HttpBodyModel):
 class PromoUpdateBody(HttpBodyModel):
     is_active: Any = None
     bonus_days: int | None = Field(default=None, ge=0)
+    regular_traffic_gb: float | None = Field(default=None, ge=0, le=PROMO_TRAFFIC_GRANT_MAX_GB)
+    premium_traffic_gb: float | None = Field(default=None, ge=0, le=PROMO_TRAFFIC_GRANT_MAX_GB)
     discount_percent: float | None = Field(default=None, gt=0, le=100)
     duration_multiplier: float | None = Field(default=None, ge=1)
     traffic_multiplier: float | None = Field(default=None, ge=1)
@@ -476,6 +487,8 @@ class PromoOut(HttpResponseModel):
     bot_link: str | None = None
     webapp_link: str | None = None
     bonus_days: int
+    regular_traffic_gb: float = 0
+    premium_traffic_gb: float = 0
     discount_percent: float | None = None
     duration_multiplier: float | None = None
     traffic_multiplier: float | None = None
@@ -513,6 +526,8 @@ class PromoOut(HttpResponseModel):
             bot_link=bot_link,
             webapp_link=webapp_link,
             bonus_days=int(promo.bonus_days),
+            regular_traffic_gb=effects.regular_traffic_gb,
+            premium_traffic_gb=effects.premium_traffic_gb,
             discount_percent=effects.discount_percent,
             duration_multiplier=(
                 effects.duration_multiplier if effects.duration_multiplier != 1.0 else None
@@ -582,6 +597,8 @@ class PromoActivationOut(HttpResponseModel):
     payment_created_at: datetime | None = None
     effect_summary: str | None = None
     bonus_days: int | None = None
+    regular_traffic_gb: float | None = None
+    premium_traffic_gb: float | None = None
     discount_percent: float | None = None
     duration_multiplier: float | None = None
     traffic_multiplier: float | None = None
@@ -592,6 +609,8 @@ class PromoActivationOut(HttpResponseModel):
     charged_gb: float | None = None
     granted_days: int | None = None
     granted_gb: float | None = None
+    granted_regular_traffic_gb: float | None = None
+    granted_premium_traffic_gb: float | None = None
 
     @classmethod
     def from_orm_activation(cls, activation: Any) -> PromoActivationOut:
@@ -629,6 +648,8 @@ class PromoActivationOut(HttpResponseModel):
                 if getattr(activation, "bonus_days", None) is not None
                 else None
             ),
+            regular_traffic_gb=_float_or_none(getattr(activation, "regular_traffic_gb", None)),
+            premium_traffic_gb=_float_or_none(getattr(activation, "premium_traffic_gb", None)),
             discount_percent=_float_or_none(getattr(activation, "discount_percent", None)),
             duration_multiplier=_float_or_none(getattr(activation, "duration_multiplier", None)),
             traffic_multiplier=_float_or_none(getattr(activation, "traffic_multiplier", None)),
@@ -667,6 +688,12 @@ class PromoActivationOut(HttpResponseModel):
                 else None
             ),
             granted_gb=_float_or_none(getattr(activation, "granted_gb", None)),
+            granted_regular_traffic_gb=_float_or_none(
+                getattr(activation, "granted_regular_traffic_gb", None)
+            ),
+            granted_premium_traffic_gb=_float_or_none(
+                getattr(activation, "granted_premium_traffic_gb", None)
+            ),
         )
 
 

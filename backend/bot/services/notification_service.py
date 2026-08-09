@@ -595,6 +595,8 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
         user_id: int,
         promo_code: str,
         bonus_days: int,
+        regular_traffic_gb: float = 0,
+        premium_traffic_gb: float = 0,
         username: str | None = None,
         email: str | None = None,
     ) -> None:
@@ -611,11 +613,28 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
             email=email,
         )
 
+        bonus_parts: list[str] = []
+        if bonus_days > 0:
+            bonus_parts.append(_("promo_bonus_days_short", days=bonus_days))
+        if regular_traffic_gb > 0:
+            bonus_parts.append(
+                _(
+                    "promo_bonus_regular_traffic_short",
+                    gb=self._format_traffic_gb_admin(regular_traffic_gb),
+                )
+            )
+        if premium_traffic_gb > 0:
+            bonus_parts.append(
+                _(
+                    "promo_bonus_premium_traffic_short",
+                    gb=self._format_traffic_gb_admin(premium_traffic_gb),
+                )
+            )
         message = _(
             "log_promo_activation",
             user_display=user_display,
             promo_code=promo_code,
-            bonus_days=bonus_days,
+            bonus=", ".join(bonus_parts) or "-",
             timestamp=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
         )
 

@@ -18,7 +18,12 @@
   type PromoPatch = components["schemas"]["PromoUpdateBody"];
   type PromoActivation = components["schemas"]["PromoActivationOut"];
   type PromoEffectKind =
-    "bonus_days" | "discount_percent" | "duration_multiplier" | "traffic_multiplier";
+    | "bonus_days"
+    | "regular_traffic_gb"
+    | "premium_traffic_gb"
+    | "discount_percent"
+    | "duration_multiplier"
+    | "traffic_multiplier";
   type PromoEditTab = "settings" | "activations";
   type PromoEditField =
     | "is_active"
@@ -26,6 +31,8 @@
     | "max_activations"
     | "valid_until"
     | "bonus_days"
+    | "regular_traffic_gb"
+    | "premium_traffic_gb"
     | "bonus_requires_payment"
     | "discount_percent"
     | "duration_multiplier"
@@ -59,7 +66,6 @@
     paymentStatusVariant,
     promoBasicsDirtyCount,
     promoEditDraft,
-    promoEditEffectKind,
     promoEditOpen,
     promoEditTab,
     promoEditUsesCheckout,
@@ -71,7 +77,7 @@
     promoStatus,
     promosStore,
     scopeItems,
-    selectEditEffect,
+    onEffectEnabledChange,
     selectPromoEditTab,
     setEditBonusRequiresPayment,
     updateEditNumber,
@@ -94,7 +100,6 @@
     paymentStatusVariant: (status: string | null | undefined) => AdminBadgeVariant;
     promoBasicsDirtyCount: number;
     promoEditDraft: PromoPatch;
-    promoEditEffectKind: PromoEffectKind;
     promoEditOpen: boolean;
     promoEditTab: PromoEditTab;
     promoEditUsesCheckout: boolean;
@@ -106,13 +111,21 @@
     promoStatus: (promo: Promo) => PromoStatus;
     promosStore: PromosStoreBridge;
     scopeItems: Array<{ value: string; label: string }>;
-    selectEditEffect: (value: string) => void;
+    onEffectEnabledChange: (kind: PromoEffectKind, checked: boolean) => void;
     selectPromoEditTab: (value: string) => void;
     setEditBonusRequiresPayment: (checked: boolean) => void;
     updateEditNumber: (field: keyof PromoPatch, value: string) => void;
     updateEditValidUntil: (value: string) => void;
     validUntilInputValue: (value: string | null | undefined) => string;
   } = $props();
+
+  function hasFixedGrant(promo: PromoPatch): boolean {
+    return (
+      Number(promo.bonus_days || 0) > 0 ||
+      Number(promo.regular_traffic_gb || 0) > 0 ||
+      Number(promo.premium_traffic_gb || 0) > 0
+    );
+  }
 </script>
 
 <Dialog
@@ -304,7 +317,7 @@
                 <div class="admin-editor-section-title">
                   <strong>{at("promo_col_effect", {}, "Effect")}</strong>
                   <small>
-                    {at("promo_effect_single_hint", {}, "Choose one effect; values do not stack.")}
+                    {at("promo_effect_multiple_hint", {}, "Select one or more effects to combine.")}
                   </small>
                 </div>
                 {#if promoEffectDirtyCount}
@@ -319,12 +332,11 @@
               </header>
               <PromoEffectSelector
                 {at}
-                value={promoEditEffectKind}
                 values={promoEditDraft}
                 dirtyFields={promoEffectDirtyFields}
                 bonusRequiresPayment={Boolean(promoEditDraft.bonus_requires_payment)}
                 bonusModeDirty={editFieldDirty("bonus_requires_payment")}
-                onValueChange={selectEditEffect}
+                onEnabledChange={onEffectEnabledChange}
                 onNumberInput={updateEditNumber}
                 onBonusRequiresPaymentChange={setEditBonusRequiresPayment}
               />
@@ -394,7 +406,7 @@
                       class="input"
                       min="0"
                       step="0.01"
-                      disabled={!promoEditUsesCheckout}
+                      disabled={!promoEditUsesCheckout || hasFixedGrant(promoEditDraft)}
                       value={promoEditDraft.min_traffic_gb == null
                         ? ""
                         : String(promoEditDraft.min_traffic_gb)}

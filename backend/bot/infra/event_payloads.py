@@ -233,6 +233,8 @@ class PromoCodeAppliedPayload(EventPayload):
     user_id: int
     code: str
     bonus_days: int
+    regular_traffic_gb: float = 0
+    premium_traffic_gb: float = 0
     new_end_date: datetime | None = None
 
 

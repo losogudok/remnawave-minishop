@@ -150,6 +150,10 @@ def _activation_grant_text(activation: Any) -> str:
             parts.append(f"{charged} -> {granted} GB")
         else:
             parts.append(f"{_number_text(activation.granted_gb)} GB")
+    if getattr(activation, "granted_regular_traffic_gb", None) is not None:
+        parts.append(f"+{_number_text(activation.granted_regular_traffic_gb)} GB regular")
+    if getattr(activation, "granted_premium_traffic_gb", None) is not None:
+        parts.append(f"+{_number_text(activation.granted_premium_traffic_gb)} GB premium")
     return ", ".join(parts) or "-"
 
 

@@ -93,6 +93,8 @@ async def promo_status_route(request: web.Request) -> web.Response:
                     "min_subscription_months": status.min_subscription_months,
                     "min_traffic_gb": status.min_traffic_gb,
                     "bonus_days": status.bonus_days,
+                    "regular_traffic_gb": status.regular_traffic_gb,
+                    "premium_traffic_gb": status.premium_traffic_gb,
                     "end_date_text": (
                         _format_webapp_datetime(status.subscription_end_date)
                         if status.subscription_end_date

@@ -6131,6 +6131,30 @@
             "default": null,
             "title": "Granted Gb"
           },
+          "granted_premium_traffic_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Granted Premium Traffic Gb"
+          },
+          "granted_regular_traffic_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Granted Regular Traffic Gb"
+          },
           "payment_amount": {
             "anyOf": [
               {
@@ -6228,9 +6252,33 @@
             "default": null,
             "title": "Payment Status"
           },
+          "premium_traffic_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Premium Traffic Gb"
+          },
           "promo_id": {
             "title": "Promo Id",
             "type": "integer"
+          },
+          "regular_traffic_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regular Traffic Gb"
           },
           "telegram_id": {
             "anyOf": [
@@ -6366,6 +6414,20 @@
             "default": "admin",
             "title": "Origin",
             "type": "string"
+          },
+          "premium_traffic_gb": {
+            "default": 0,
+            "maximum": 1000000.0,
+            "minimum": 0,
+            "title": "Premium Traffic Gb",
+            "type": "number"
+          },
+          "regular_traffic_gb": {
+            "default": 0,
+            "maximum": 1000000.0,
+            "minimum": 0,
+            "title": "Regular Traffic Gb",
+            "type": "number"
           },
           "traffic_multiplier": {
             "anyOf": [
@@ -6518,6 +6580,16 @@
           "origin": {
             "title": "Origin",
             "type": "string"
+          },
+          "premium_traffic_gb": {
+            "default": 0,
+            "title": "Premium Traffic Gb",
+            "type": "number"
+          },
+          "regular_traffic_gb": {
+            "default": 0,
+            "title": "Regular Traffic Gb",
+            "type": "number"
           },
           "traffic_multiplier": {
             "anyOf": [
@@ -6731,6 +6803,34 @@
             ],
             "default": null,
             "title": "Origin"
+          },
+          "premium_traffic_gb": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Premium Traffic Gb"
+          },
+          "regular_traffic_gb": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regular Traffic Gb"
           },
           "traffic_multiplier": {
             "anyOf": [
@@ -18246,6 +18346,12 @@
                     "ok": {
                       "const": true,
                       "type": "boolean"
+                    },
+                    "premium_traffic_gb": {
+                      "type": "number"
+                    },
+                    "regular_traffic_gb": {
+                      "type": "number"
                     },
                     "status": {
                       "type": "string"

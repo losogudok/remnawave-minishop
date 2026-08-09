@@ -665,7 +665,7 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin, TariffWorkerPremiu
             total = await tariff_dal.sum_traffic_topups(
                 session,
                 subscription_id=subscription_id,
-                kinds=["premium_topup", "admin_premium_topup"],
+                kinds=["premium_topup", "admin_premium_topup", "promo_premium_topup"],
                 created_at_gte=premium_period_start,
             )
             return int(total) if total is not None else None

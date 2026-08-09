@@ -127,6 +127,8 @@ class WebAppPaymentContext:
     promo_code_id: int | None = None
     promo_effect_summary: str | None = None
     promo_bonus_days: int | None = None
+    promo_regular_traffic_gb: float | None = None
+    promo_premium_traffic_gb: float | None = None
     promo_discount_percent: float | None = None
     promo_duration_multiplier: float | None = None
     promo_traffic_multiplier: float | None = None

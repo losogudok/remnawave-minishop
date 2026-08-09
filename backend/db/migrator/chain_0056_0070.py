@@ -288,6 +288,38 @@ def _migration_0059_add_partner_client_welcome_eligibility(connection: Connectio
         )
 
 
+def _migration_0060_add_promo_traffic_grants(connection: Connection) -> None:
+    """Persist fixed regular and premium traffic grants and immutable snapshots."""
+
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+    additions_by_table = {
+        "promo_codes": {
+            "regular_traffic_gb": "NUMERIC(12, 3)",
+            "premium_traffic_gb": "NUMERIC(12, 3)",
+        },
+        "payments": {
+            "promo_regular_traffic_gb": "NUMERIC(12, 3)",
+            "promo_premium_traffic_gb": "NUMERIC(12, 3)",
+        },
+        "promo_code_activations": {
+            "regular_traffic_gb": "NUMERIC(12, 3)",
+            "premium_traffic_gb": "NUMERIC(12, 3)",
+            "granted_regular_traffic_gb": "NUMERIC(12, 3)",
+            "granted_premium_traffic_gb": "NUMERIC(12, 3)",
+        },
+    }
+    for table_name, additions in additions_by_table.items():
+        if table_name not in table_names:
+            continue
+        columns = {column["name"] for column in inspector.get_columns(table_name)}
+        for column, definition in additions.items():
+            if column not in columns:
+                connection.execute(
+                    text(f"ALTER TABLE {table_name} ADD COLUMN {column} {definition}")
+                )
+
+
 CHAIN_0056_0070: list[Migration] = [
     Migration(
         id="0056_add_tariff_binding_audit",
@@ -308,5 +340,10 @@ CHAIN_0056_0070: list[Migration] = [
         id="0059_add_partner_client_welcome_eligibility",
         description="Snapshot partner-link registration eligibility for one-time welcome grants",
         upgrade=_migration_0059_add_partner_client_welcome_eligibility,
+    ),
+    Migration(
+        id="0060_add_promo_traffic_grants",
+        description="Persist fixed regular and premium traffic promo grants and snapshots",
+        upgrade=_migration_0060_add_promo_traffic_grants,
     ),
 ]
