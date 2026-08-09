@@ -31,14 +31,20 @@
       <p>Скидки и бонусные дни, приглашения пользователей, оповещения об окончании подписки и достижении лимита трафика.</p>
       <span class="minishop-card-link">Настройка промокодов <span aria-hidden="true">→</span></span>
     </a>
-    <a class="minishop-feature-card" href="/features/support/">
+    <a class="minishop-feature-card" href="/features/partner-program/">
       <span class="minishop-feature-index">05</span>
+      <h3>Партнёрская программа</h3>
+      <p>Заявки и отдельные ссылки, закрепление клиентов, комиссии, раздельные балансы, ручные выплаты и продление подписки из баланса.</p>
+      <span class="minishop-card-link">Настроить партнёрскую программу <span aria-hidden="true">→</span></span>
+    </a>
+    <a class="minishop-feature-card" href="/features/support/">
+      <span class="minishop-feature-index">06</span>
       <h3>Поддержка внутри продукта</h3>
       <p>Тикеты из Mini App, ответы администраторов, уведомления и история обращений в одном рабочем процессе.</p>
       <span class="minishop-card-link">Поддержка пользователей <span aria-hidden="true">→</span></span>
     </a>
     <a class="minishop-feature-card" href="/features/backups/">
-      <span class="minishop-feature-index">06</span>
+      <span class="minishop-feature-index">07</span>
       <h3>Развертывание и надежность</h3>
       <p>Docker Compose, управляемые обновления, автоматические бэкапы, восстановление и готовые сценарии миграции.</p>
       <span class="minishop-card-link">Бэкапы и восстановление <span aria-hidden="true">→</span></span>
