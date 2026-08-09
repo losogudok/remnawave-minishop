@@ -129,6 +129,7 @@ class PartnerClient(Base):
     source = Column(String(32), nullable=False)
     attributed_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     eligible_from = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    welcome_bonus_eligible_at = Column(DateTime(timezone=True), nullable=True)
     attributed_by_admin_id = Column(
         BigInteger,
         ForeignKey("users.user_id", ondelete="SET NULL"),

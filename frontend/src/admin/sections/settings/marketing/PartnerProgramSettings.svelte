@@ -9,6 +9,7 @@
   import { getSettingsStore } from "$lib/admin/context.js";
   import type { SettingField, SettingsSection } from "$lib/admin/stores/settingsStore.js";
   import { valueForKey, type SettingsDirtyState } from "$lib/admin/tariffSettings.js";
+  import PartnerClientBonusSettings from "./PartnerClientBonusSettings.svelte";
   import PartnerWithdrawalMethods from "./PartnerWithdrawalMethods.svelte";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
@@ -84,6 +85,8 @@
       : settingBoolean("PARTNER_PROGRAM_ENABLED", false),
     withdrawalsEnabled: settingBoolean("PARTNER_WITHDRAWALS_ENABLED", true),
     balancePaymentEnabled: settingBoolean("PARTNER_BALANCE_PAYMENT_ENABLED", true),
+    clientWelcomeBonusEnabled: settingBoolean("PARTNER_CLIENT_WELCOME_BONUS_ENABLED", false),
+    clientPaymentBonusEnabled: settingBoolean("PARTNER_CLIENT_PAYMENT_BONUS_ENABLED", false),
     defaultRate: settingNumber("PARTNER_DEFAULT_COMMISSION_BPS", 3000) / 100,
     holdDays: settingNumber("PARTNER_COMMISSION_HOLD_DAYS", 0),
     telegramLinks: previewMode
@@ -208,6 +211,8 @@
       PARTNER_PROGRAM_ENABLED: config.enabled,
       PARTNER_WITHDRAWALS_ENABLED: config.withdrawalsEnabled,
       PARTNER_BALANCE_PAYMENT_ENABLED: config.balancePaymentEnabled,
+      PARTNER_CLIENT_WELCOME_BONUS_ENABLED: config.clientWelcomeBonusEnabled,
+      PARTNER_CLIENT_PAYMENT_BONUS_ENABLED: config.clientPaymentBonusEnabled,
       PARTNER_DEFAULT_COMMISSION_BPS: Math.round(config.defaultRate * 100),
       PARTNER_COMMISSION_HOLD_DAYS: Math.round(config.holdDays),
       PARTNER_ELIGIBLE_CURRENCIES: JSON.stringify(config.eligibleCurrencies),
@@ -469,6 +474,14 @@
       )}
     </div>
   </section>
+
+  <PartnerClientBonusSettings
+    {at}
+    welcomeEnabled={config.clientWelcomeBonusEnabled}
+    paymentEnabled={config.clientPaymentBonusEnabled}
+    onWelcomeChange={(checked) => (config.clientWelcomeBonusEnabled = checked)}
+    onPaymentChange={(checked) => (config.clientPaymentBonusEnabled = checked)}
+  />
 
   <section class="admin-settings-field-group">
     <header class="admin-settings-field-group-head">

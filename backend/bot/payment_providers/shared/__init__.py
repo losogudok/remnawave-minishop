@@ -96,6 +96,7 @@ from .success import (
     finalize_successful_payment,
     is_traffic_sale_base,
     resolve_inviter_name,
+    resolve_referral_bonus_display,
     resolve_user_language,
     send_success_message_to_user,
 )
@@ -183,6 +184,7 @@ __all__ = [
     "render_link_or_fail",
     "render_payment_link",
     "resolve_inviter_name",
+    "resolve_referral_bonus_display",
     "resolve_user_language",
     "reusable_webapp_payment_response",
     "run_callback_payment",

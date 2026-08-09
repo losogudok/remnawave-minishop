@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.infra.event_payloads import ReferralBonusGrantedPayload
 from bot.middlewares.i18n import JsonI18n
+from bot.services.partner_program_service import PartnerProgramService
 from bot.utils.referral_links import build_bot_referral_link
 from config.settings import Settings
 from db.dal import payment_dal, subscription_dal, user_dal
@@ -59,9 +60,21 @@ class ReferralService:
 
         try:
             referee_user_model = await user_dal.get_user_by_id(session, referee_user_id)
-            if not referee_user_model or referee_user_model.referred_by_id is None:
+            if not referee_user_model:
+                return {"referee_bonus_applied_days": None, "referee_new_end_date": None}
+
+            inviter_user_id = referee_user_model.referred_by_id
+            partner_client_bonus = False
+            if inviter_user_id is None:
+                partner_client_bonus = await PartnerProgramService(
+                    self.settings
+                ).client_payment_bonus_eligible(
+                    session,
+                    user_id=referee_user_id,
+                )
+            if inviter_user_id is None and not partner_client_bonus:
                 logger.debug(
-                    "User %s not referred or inviter ID missing. No referral bonuses.",
+                    "User %s has no eligible referral or partner-client benefit. No bonuses.",
                     referee_user_id,
                 )
                 return {"referee_bonus_applied_days": None, "referee_new_end_date": None}
@@ -106,26 +119,32 @@ class ReferralService:
                         "Failed to check active subscription for %s: %s", referee_user_id, e_sub
                     )
 
-            inviter_user_id = referee_user_model.referred_by_id
-            inviter_user_model = await user_dal.get_user_by_id(session, inviter_user_id)
+            inviter_user_model = (
+                await user_dal.get_user_by_id(session, inviter_user_id)
+                if inviter_user_id is not None
+                else None
+            )
 
             referee_name_for_msg = referee_user_model.first_name or f"User {referee_user_id}"
 
             default_lang_for_placeholder = self.settings.DEFAULT_LANGUAGE
-            inviter_name_for_referee_msg = (
-                inviter_user_model.first_name
-                if inviter_user_model and inviter_user_model.first_name
-                else self.i18n.gettext(default_lang_for_placeholder, "friend_placeholder")
+            inviter_name_for_referee_msg = self.i18n.gettext(
+                default_lang_for_placeholder,
+                "friend_placeholder",
             )
+            if inviter_user_model and inviter_user_model.first_name:
+                inviter_name_for_referee_msg = inviter_user_model.first_name
 
             inviter_bonus_days, referee_bonus_days = self._referral_bonus_days_for_payment(
                 purchased_subscription_months,
                 tariff_key=tariff_key,
             )
+            if partner_client_bonus:
+                inviter_bonus_days = None
             logger.info(
                 "Referral bonus payment check: referee_user_id=%s inviter_user_id=%s "
                 "payment_db_id=%s months=%s tariff_key=%s inviter_bonus_days=%s "
-                "referee_bonus_days=%s",
+                "referee_bonus_days=%s source=%s",
                 referee_user_id,
                 inviter_user_id,
                 current_payment_db_id,
@@ -133,9 +152,10 @@ class ReferralService:
                 tariff_key,
                 inviter_bonus_days,
                 referee_bonus_days,
+                "partner" if partner_client_bonus else "referral",
             )
 
-            if inviter_bonus_days and inviter_bonus_days > 0:
+            if inviter_user_id is not None and inviter_bonus_days and inviter_bonus_days > 0:
                 if not inviter_user_model:
                     logger.warning(
                         "Inviter user %s not found in local DB. Cannot apply inviter bonus.",
@@ -179,12 +199,17 @@ class ReferralService:
                         )
 
             if referee_bonus_days and referee_bonus_days > 0:
+                referee_reason = (
+                    "partner client payment bonus"
+                    if partner_client_bonus
+                    else f"referee bonus (invited by {inviter_name_for_referee_msg})"
+                )
                 new_end_date_referee = (
                     await self.subscription_service.extend_active_subscription_days(
                         session=session,
                         user_id=referee_user_id,
                         bonus_days=referee_bonus_days,
-                        reason=f"referee bonus (invited by {inviter_name_for_referee_msg})",
+                        reason=referee_reason,
                         **({"tariff_key": tariff_key} if tariff_key else {}),
                     )
                 )
@@ -235,6 +260,7 @@ class ReferralService:
                 "referee_bonus_applied_days": referee_bonus_applied_days,
                 "referee_new_end_date": referee_final_end_date,
                 "inviter_bonus_applied_flag": inviter_bonus_successfully_applied,
+                "referee_bonus_source": "partner" if partner_client_bonus else "referral",
                 "event_payload": referral_event_payload,
             }
         except Exception as e:

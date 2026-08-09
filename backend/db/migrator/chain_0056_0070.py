@@ -275,6 +275,19 @@ def _migration_0058_add_partner_program(connection: Connection) -> None:
         connection.execute(text(statement))
 
 
+def _migration_0059_add_partner_client_welcome_eligibility(connection: Connection) -> None:
+    """Snapshot welcome-bonus eligibility at first-touch partner registration."""
+
+    inspector = inspect(connection)
+    if "partner_clients" not in set(inspector.get_table_names()):
+        return
+    columns = {column["name"] for column in inspector.get_columns("partner_clients")}
+    if "welcome_bonus_eligible_at" not in columns:
+        connection.execute(
+            text("ALTER TABLE partner_clients ADD COLUMN welcome_bonus_eligible_at TIMESTAMPTZ")
+        )
+
+
 CHAIN_0056_0070: list[Migration] = [
     Migration(
         id="0056_add_tariff_binding_audit",
@@ -290,5 +303,10 @@ CHAIN_0056_0070: list[Migration] = [
         id="0058_add_partner_program",
         description="Add partner profiles, attribution, commission decisions and money ledger",
         upgrade=_migration_0058_add_partner_program,
+    ),
+    Migration(
+        id="0059_add_partner_client_welcome_eligibility",
+        description="Snapshot partner-link registration eligibility for one-time welcome grants",
+        upgrade=_migration_0059_add_partner_client_welcome_eligibility,
     ),
 ]

@@ -228,6 +228,7 @@ async def email_auth_verify_route(request: web.Request) -> web.Response:
                         user=db_user,
                         partner_code=invite_check.partner_code,
                         source="partner_web_link",
+                        registered_via_partner_link=True,
                     )
             elif not db_user.email_verified_at:
                 db_user.email_verified_at = datetime.now(UTC)
@@ -326,6 +327,7 @@ async def email_auth_magic_route(request: web.Request) -> web.Response:
                         user=db_user,
                         partner_code=invite_check.partner_code,
                         source="partner_web_link",
+                        registered_via_partner_link=True,
                     )
             elif not db_user.email_verified_at:
                 db_user.email_verified_at = datetime.now(UTC)

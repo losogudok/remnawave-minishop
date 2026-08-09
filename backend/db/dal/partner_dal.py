@@ -208,6 +208,7 @@ async def create_client_attribution(
     source: str,
     attributed_by_admin_id: int | None = None,
     eligible_from: datetime | None = None,
+    welcome_bonus_eligible_at: datetime | None = None,
 ) -> PartnerClient:
     now = utcnow()
     attribution = PartnerClient(
@@ -218,6 +219,7 @@ async def create_client_attribution(
         source=source,
         attributed_at=now,
         eligible_from=eligible_from or now,
+        welcome_bonus_eligible_at=welcome_bonus_eligible_at,
         attributed_by_admin_id=attributed_by_admin_id,
     )
     session.add(attribution)

@@ -5,10 +5,12 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import SecretStr, ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.services.partner_commission_service import PartnerCommissionService
 from bot.services.partner_common import (
@@ -23,6 +25,7 @@ from bot.services.partner_withdrawal_service import (
     decrypt_partner_requisites,
     encrypt_partner_requisites,
 )
+from config.settings import Settings
 from config.settings_models import (
     PartnerSettings,
     PartnerWithdrawalField,
@@ -248,6 +251,151 @@ def test_partner_attribution_is_first_touch(monkeypatch: pytest.MonkeyPatch) -> 
 
     assert result is existing
     get_profile.assert_not_awaited()
+
+
+@pytest.mark.parametrize(("enabled", "snapshotted"), [(True, True), (False, False)])
+def test_partner_registration_snapshots_welcome_toggle_at_first_touch(
+    monkeypatch: pytest.MonkeyPatch,
+    enabled: bool,
+    snapshotted: bool,
+) -> None:
+    attribution = SimpleNamespace(
+        partner_client_id=17,
+        partner_id=3,
+        attributed_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    create_attribution = AsyncMock(return_value=attribution)
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.get_client_by_user_id",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.get_profile_by_code",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                partner_id=3,
+                user_id=9,
+                status="active",
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.create_client_attribution",
+        create_attribution,
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.create_audit_event",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.events.emit_model",
+        AsyncMock(),
+    )
+    service = PartnerProgramService(
+        SimpleNamespace(
+            partner_settings=_partner_settings(
+                client_welcome_bonus_enabled=enabled,
+            )
+        )
+    )
+    session = AsyncMock(spec=AsyncSession)
+    session.begin_nested.return_value = AsyncMock()
+    user = SimpleNamespace(
+        user_id=5,
+        first_name="Client",
+        last_name=None,
+        username=None,
+        email=None,
+    )
+
+    result = asyncio.run(
+        service.attribute_user(
+            session,
+            user=user,
+            partner_code="first-link",
+            source="partner_web_link",
+            registered_via_partner_link=True,
+        )
+    )
+
+    assert result is attribution
+    create_call = create_attribution.await_args
+    assert create_call is not None
+    eligible_at = create_call.kwargs["welcome_bonus_eligible_at"]
+    assert (eligible_at is not None) is snapshotted
+
+
+@pytest.mark.parametrize(
+    ("eligible_at", "profile_status", "expected"),
+    [
+        (datetime(2026, 1, 1, tzinfo=UTC), "active", True),
+        (None, "active", False),
+        (datetime(2026, 1, 1, tzinfo=UTC), "paused", False),
+    ],
+)
+def test_partner_welcome_bonus_requires_registration_snapshot_and_active_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    eligible_at: datetime | None,
+    profile_status: str,
+    expected: bool,
+) -> None:
+    get_attribution = AsyncMock(
+        return_value=(
+            SimpleNamespace(
+                source="partner_web_link",
+                welcome_bonus_eligible_at=eligible_at,
+            ),
+            SimpleNamespace(status=profile_status),
+        )
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.get_client_with_profile_for_user",
+        get_attribution,
+    )
+    service = PartnerProgramService(
+        SimpleNamespace(
+            partner_settings=_partner_settings(
+                client_welcome_bonus_enabled=True,
+            )
+        )
+    )
+
+    result = asyncio.run(
+        service.client_welcome_bonus_eligible(
+            AsyncMock(),
+            user_id=5,
+        )
+    )
+
+    assert result is expected
+
+
+def test_partner_client_benefits_stay_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    get_attribution = AsyncMock()
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.get_client_with_profile_for_user",
+        get_attribution,
+    )
+    service = PartnerProgramService(
+        cast(Settings, SimpleNamespace(partner_settings=PartnerSettings(enabled=True)))
+    )
+
+    welcome = asyncio.run(
+        service.client_welcome_bonus_eligible(
+            AsyncMock(),
+            user_id=5,
+        )
+    )
+    payment = asyncio.run(
+        service.client_payment_bonus_eligible(
+            AsyncMock(),
+            user_id=5,
+        )
+    )
+
+    assert welcome is False
+    assert payment is False
+    get_attribution.assert_not_awaited()
 
 
 def test_partner_self_attribution_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:

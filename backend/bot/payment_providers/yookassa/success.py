@@ -36,7 +36,7 @@ from ..shared import (
     payment_units_for_activation,
     payment_uses_entitlement_context,
     preflight_payment_entitlement,
-    resolve_inviter_name,
+    resolve_referral_bonus_display,
     send_success_message_to_user,
 )
 from ..shared import (
@@ -777,7 +777,6 @@ async def process_successful_payment(
             applied_referee_bonus_days_from_referral = referral_bonus_info.get(
                 "referee_bonus_applied_days"
             )
-
         # Use user's DB language for all user-facing messages
         user_lang = (
             db_user.language_code
@@ -844,9 +843,9 @@ async def process_successful_payment(
             details_message = _("payment_successful_error_details")
             include_keyboard = True
         else:
-            inviter_name = None
-            if applied_referee_bonus_days_from_referral and final_end_date_for_user:
-                inviter_name = await resolve_inviter_name(session, translator, db_user)
+            inviter_name, referee_bonus_source = await resolve_referral_bonus_display(
+                session, translator, db_user, referral_bonus_info
+            )
             details_message = build_success_message(
                 SuccessMessage(
                     translator=translator,
@@ -865,6 +864,7 @@ async def process_successful_payment(
                     applied_referee_bonus_days=applied_referee_bonus_days_from_referral or 0,
                     applied_promo_bonus_days=applied_promo_bonus_days,
                     inviter_name=inviter_name,
+                    referee_bonus_source=referee_bonus_source,
                     fallback_date_text="—",
                 )
             )

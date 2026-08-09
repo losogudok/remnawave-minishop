@@ -85,6 +85,18 @@ async def resolve_inviter_name(
     return placeholder
 
 
+async def resolve_referral_bonus_display(
+    session: AsyncSession,
+    translator: Translator,
+    db_user: User | None,
+    referral_bonus: dict[str, Any] | None,
+) -> tuple[str | None, str]:
+    source = str((referral_bonus or {}).get("referee_bonus_source") or "referral")
+    if source != "referral" or not (referral_bonus or {}).get("referee_new_end_date"):
+        return None, source
+    return await resolve_inviter_name(session, translator, db_user), source
+
+
 @dataclass
 class SuccessMessage:
     """Inputs for ``build_success_message``."""
@@ -97,6 +109,7 @@ class SuccessMessage:
     applied_referee_bonus_days: int = 0
     applied_promo_bonus_days: int = 0
     inviter_name: str | None = None
+    referee_bonus_source: str = "referral"
     fallback_date_text: str = ""
 
 
@@ -128,6 +141,14 @@ def build_success_message(payload: SuccessMessage) -> str:
         )
     if payload.applied_referee_bonus_days and payload.final_end_date:
         base_end_text = _fmt_date(payload.base_end_date or payload.final_end_date, end_text)
+        if payload.referee_bonus_source == "partner":
+            return _(
+                "payment_successful_with_partner_client_bonus_full",
+                months=payload.months,
+                base_end_date=base_end_text,
+                bonus_days=payload.applied_referee_bonus_days,
+                final_end_date=end_text,
+            )
         return _(
             "payment_successful_with_referral_bonus_full",
             months=payload.months,
@@ -605,11 +626,12 @@ async def finalize_successful_payment(
         else req.traffic_amount
     )
 
-    inviter_name: str | None = None
     if referral_bonus and referral_bonus.get("referee_new_end_date"):
         final_end_date = referral_bonus["referee_new_end_date"]
         applied_referee_bonus_days = referral_bonus.get("referee_bonus_applied_days", 0) or 0
-        inviter_name = await resolve_inviter_name(req.session, translator, db_user)
+    inviter_name, referee_bonus_source = await resolve_referral_bonus_display(
+        req.session, translator, db_user, referral_bonus
+    )
 
     success_text = build_success_message(
         SuccessMessage(
@@ -625,6 +647,7 @@ async def finalize_successful_payment(
             applied_referee_bonus_days=applied_referee_bonus_days,
             applied_promo_bonus_days=applied_promo_bonus_days,
             inviter_name=inviter_name,
+            referee_bonus_source=referee_bonus_source,
         )
     )
     if is_subscription and activation:

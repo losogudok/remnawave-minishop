@@ -79,6 +79,7 @@ EXPECTED_CORE_MIGRATION_IDS = [
     "0056_add_tariff_binding_audit",
     "0057_add_platega_subscriptions",
     "0058_add_partner_program",
+    "0059_add_partner_client_welcome_eligibility",
 ]
 
 

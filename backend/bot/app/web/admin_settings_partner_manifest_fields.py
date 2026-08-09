@@ -28,6 +28,28 @@ PARTNER_SETTINGS_FIELDS: tuple[SettingField, ...] = (
         subsection="partner",
     ),
     SettingField(
+        "PARTNER_CLIENT_WELCOME_BONUS_ENABLED",
+        "bool",
+        "pricing",
+        "Partner client welcome bonus",
+        (
+            "Grant the referral welcome-bonus days once to a new user registered through an "
+            "active partner link."
+        ),
+        subsection="partner",
+    ),
+    SettingField(
+        "PARTNER_CLIENT_PAYMENT_BONUS_ENABLED",
+        "bool",
+        "pricing",
+        "Partner client payment bonus",
+        (
+            "Grant the tariff referral-referee bonus days to partner clients after subscription "
+            "payments."
+        ),
+        subsection="partner",
+    ),
+    SettingField(
         "PARTNER_DEFAULT_COMMISSION_BPS",
         "int",
         "pricing",

@@ -303,6 +303,7 @@ async def start_command_handler(
                         user=db_user,
                         partner_code=partner_code,
                         source="partner_telegram_link",
+                        registered_via_partner_link=True,
                     )
                 try:
                     await session.commit()
@@ -320,11 +321,20 @@ async def start_command_handler(
 
                 # Auto-grant referral welcome bonus to newly registered referred users.
                 referral_welcome_days = max(0, int(settings.referral_settings.welcome_bonus_days))
-                if referred_by_user_id and referral_welcome_days > 0:
+                if (referred_by_user_id or partner_code) and referral_welcome_days > 0:
                     try:
                         locked_user = await user_dal.lock_user_by_id(session, user_id)
+                        eligible_source = bool(locked_user and locked_user.referred_by_id)
+                        if locked_user and not eligible_source:
+                            eligible_source = await PartnerProgramService(
+                                settings
+                            ).client_welcome_bonus_eligible(
+                                session,
+                                user_id=user_id,
+                            )
                         eligible = bool(
                             locked_user
+                            and eligible_source
                             and locked_user.referral_welcome_bonus_claimed_at is None
                             and not await subscription_dal.has_any_subscription_for_user(
                                 session, user_id
@@ -381,9 +391,10 @@ async def start_command_handler(
                         else:
                             await session.rollback()
                             logger.warning(
-                                "Referral welcome bonus was not applied for user %s (referred by %s).",  # noqa: E501
+                                "Welcome bonus was not applied for user %s (referrer=%s, partner=%s).",  # noqa: E501
                                 user_id,
                                 referred_by_user_id,
+                                bool(partner_code),
                             )
                     except Exception as referral_bonus_error:
                         await session.rollback()

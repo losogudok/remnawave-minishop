@@ -107,7 +107,7 @@ async def _apply_referral_welcome_bonus_if_needed(
     user: User,
     raw_referral_param: str | None,
 ) -> datetime | None:
-    if not raw_referral_param or not user.referred_by_id:
+    if not raw_referral_param:
         return None
 
     settings: Settings = get_settings(request)
@@ -127,19 +127,25 @@ async def _grant_referral_welcome_bonus_if_eligible(
         return None
     user = locked_user
 
-    if not user.referred_by_id:
-        return None
-
     # One-time grant: once a user has claimed the welcome bonus, never grant it
     # again. Without this marker the bonus could be re-claimed every time the
     # previous grant expired (has_active_subscription alone is not enough).
     if getattr(user, "referral_welcome_bonus_claimed_at", None) is not None:
         return None
 
+    settings: Settings = get_settings(request)
+    eligible_source = bool(user.referred_by_id)
+    if not eligible_source:
+        eligible_source = await PartnerProgramService(settings).client_welcome_bonus_eligible(
+            session,
+            user_id=int(user.user_id),
+        )
+    if not eligible_source:
+        return None
+
     if await subscription_dal.has_any_subscription_for_user(session, int(user.user_id)):
         return None
 
-    settings: Settings = get_settings(request)
     referral_welcome_days = max(0, int(settings.referral_settings.welcome_bonus_days))
     if referral_welcome_days <= 0:
         return None
@@ -285,6 +291,7 @@ async def _ensure_user_from_telegram(
                 user=db_user,
                 partner_code=invite_check.partner_code,
                 source="partner_web_link",
+                registered_via_partner_link=True,
             )
         db_user._webapp_created = bool(created)
         return db_user

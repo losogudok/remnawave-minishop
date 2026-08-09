@@ -256,6 +256,48 @@ class PartnerProgramService:
             return None
         return profile
 
+    async def client_welcome_bonus_eligible(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+    ) -> bool:
+        config = getattr(self.settings, "partner_settings", None)
+        if (
+            config is None
+            or not bool(getattr(config, "enabled", False))
+            or not bool(getattr(config, "client_welcome_bonus_enabled", False))
+        ):
+            return False
+        attribution = await partner_dal.get_client_with_profile_for_user(session, user_id)
+        if not attribution:
+            return False
+        client, profile = attribution
+        return bool(
+            profile.status == "active"
+            and client.source in {"partner_telegram_link", "partner_web_link"}
+            and client.welcome_bonus_eligible_at is not None
+        )
+
+    async def client_payment_bonus_eligible(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+    ) -> bool:
+        config = getattr(self.settings, "partner_settings", None)
+        if (
+            config is None
+            or not bool(getattr(config, "enabled", False))
+            or not bool(getattr(config, "client_payment_bonus_enabled", False))
+        ):
+            return False
+        attribution = await partner_dal.get_client_with_profile_for_user(session, user_id)
+        if not attribution:
+            return False
+        _client, profile = attribution
+        return bool(profile.status == "active")
+
     async def attribute_user(
         self,
         session: AsyncSession,
@@ -264,6 +306,7 @@ class PartnerProgramService:
         partner_code: str,
         source: str,
         actor_admin_id: int | None = None,
+        registered_via_partner_link: bool = False,
     ) -> PartnerClient:
         if not self.config.enabled and source != "admin_manual":
             raise PartnerError("partner_program_disabled", 403)
@@ -289,6 +332,13 @@ class PartnerProgramService:
                     public_label=safe_user_label(user, "Client"),
                     source=source,
                     attributed_by_admin_id=actor_admin_id,
+                    welcome_bonus_eligible_at=(
+                        datetime.now(UTC)
+                        if registered_via_partner_link
+                        and self.config.client_welcome_bonus_enabled
+                        and source in {"partner_telegram_link", "partner_web_link"}
+                        else None
+                    ),
                 )
         except IntegrityError as exc:
             existing = await partner_dal.get_client_by_user_id(session, int(user.user_id))
