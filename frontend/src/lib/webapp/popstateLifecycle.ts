@@ -18,6 +18,7 @@ type PopstateLifecycleDeps = {
   getDevicesEnabled: () => boolean;
   getFallbackAdminSection: () => string;
   getIsAdmin: () => boolean;
+  getPartnerProgramEnabled: () => boolean;
   getSupportEnabled: () => boolean;
   getWindowPathname?: () => string;
   isDocsDemo: boolean;
@@ -41,6 +42,7 @@ export function createPopstateLifecycle({
   getDevicesEnabled,
   getFallbackAdminSection,
   getIsAdmin,
+  getPartnerProgramEnabled,
   getSupportEnabled,
   getWindowPathname = () => (typeof window === "undefined" ? "" : window.location.pathname),
   isDocsDemo,
@@ -98,6 +100,7 @@ export function createPopstateLifecycle({
       isAdmin: getIsAdmin(),
       isDocsDemo,
       mode: shellState.mode,
+      partnerProgramEnabled: getPartnerProgramEnabled(),
       pathname: routePathnameFromLocation(),
       routePrefix,
       screenQuery: currentQuery.get("screen"),

@@ -68,6 +68,17 @@ describe("createAdminRuntime", () => {
     expect(deps.reloadWindow).toHaveBeenCalledOnce();
   });
 
+  it("refreshes live app data without reloading for the partner feature flag", async () => {
+    const { deps, runtime } = makeRuntime();
+
+    await runtime.handleAdminPersistedSaved({
+      updates: { PARTNER_PROGRAM_ENABLED: true },
+    });
+
+    expect(deps.loadData).toHaveBeenCalledWith({ fresh: true, preserveView: true });
+    expect(deps.reloadWindow).not.toHaveBeenCalled();
+  });
+
   it("keeps save success when the refresh load fails", async () => {
     const { deps, runtime } = makeRuntime({
       deps: {

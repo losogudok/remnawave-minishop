@@ -106,6 +106,7 @@ function createDeps(overrides: Partial<AppActionRuntimeDeps> = {}) {
     getIsFileProtocol: () => false,
     getMethods: () => state.methods,
     getOrigin: () => "https://shop.example",
+    getPartnerProgramEnabled: () => true,
     getPlans: () => state.plans,
     getPreloadHost: () => null,
     getRoutePathname: () => "/app/admin/stats",

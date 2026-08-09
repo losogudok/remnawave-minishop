@@ -52,6 +52,7 @@ describe("computeAppDataView", () => {
         plans: [{ id: "live-plan" }],
         settings: {
           my_devices_enabled: false,
+          partner_program_enabled: true,
           subscription_guides_enabled: false,
           support_tickets_enabled: false,
         },
@@ -71,6 +72,7 @@ describe("computeAppDataView", () => {
     expect(view.suggestedPromoCode).toBe("PERSONAL15");
     expect(view.devicesEnabled).toBe(false);
     expect(view.installGuidesEnabled).toBe(false);
+    expect(view.partnerProgramEnabled).toBe(true);
     expect(view.supportEnabled).toBe(false);
     expect(view.subscription).toEqual({ active: false });
   });

@@ -16,6 +16,7 @@ function makeNavigation(overrides: TestOverrides = {}) {
     loadInstallGuides: vi.fn(),
     loadSupport: vi.fn(),
     openConnectLink: vi.fn(),
+    partnerProgramEnabled: () => true,
     setActiveTab: vi.fn((tab) => {
       state.activeTab = tab;
     }),
@@ -43,10 +44,20 @@ describe("createWebappNavigation", () => {
   it("keeps the partner program on its own navigation item", () => {
     const { deps, navigation, state } = makeNavigation();
 
-    navigation.goPartner();
+    expect(navigation.goPartner()).toBe(true);
 
     expect(state).toEqual({ activeTab: "partner", screen: "partner" });
     expect(deps.syncSectionPath).toHaveBeenCalledWith("partner");
+  });
+
+  it("guards the partner route while the live feature flag is disabled", () => {
+    const { deps, navigation, state } = makeNavigation({
+      partnerProgramEnabled: () => false,
+    });
+
+    expect(navigation.goPartner()).toBe(false);
+    expect(state).toEqual({ activeTab: "", screen: "" });
+    expect(deps.syncSectionPath).not.toHaveBeenCalled();
   });
 
   it("opens the connect link instead of install guides when guides are unavailable", () => {

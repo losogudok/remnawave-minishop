@@ -9806,6 +9806,7 @@ export interface operations {
               auth_providers?: string[];
               email_auth_enabled?: boolean;
               my_devices_enabled?: boolean;
+              partner_program_enabled?: boolean;
               server_status_url?: string | null;
               subscription_guides_enabled?: boolean;
               subscription_purchase_description?: string;

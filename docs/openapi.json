@@ -16996,6 +16996,9 @@
                         "my_devices_enabled": {
                           "type": "boolean"
                         },
+                        "partner_program_enabled": {
+                          "type": "boolean"
+                        },
                         "server_status_url": {
                           "type": [
                             "string",

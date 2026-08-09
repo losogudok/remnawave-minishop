@@ -554,6 +554,7 @@ export function createShellAppActions({
     getIsFileProtocol: () => window.location.protocol === "file:",
     getMethods: () => getShellView().appDataView.methods,
     getOrigin: () => (typeof window !== "undefined" ? window.location.origin : ""),
+    getPartnerProgramEnabled: () => getShellView().appDataView.partnerProgramEnabled,
     getPlans: () => getShellView().appDataView.plans,
     getSuggestedPromoCode: () => getShellView().appDataView.suggestedPromoCode,
     getPreloadHost: () => (typeof window !== "undefined" ? asWebappRecord(window) : null),

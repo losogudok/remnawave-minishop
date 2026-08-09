@@ -11,7 +11,7 @@ export function resolveAvailableWebappSection({
   devicesEnabled = false,
   installGuidesAvailable = false,
   isAdmin = false,
-  partnerProgramEnabled = true,
+  partnerProgramEnabled = false,
   section,
   supportEnabled = true,
 }: SectionAvailabilityInput) {

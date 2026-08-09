@@ -101,6 +101,7 @@ export function resolveLoadedWebappRoute({
     devicesEnabled: Boolean(settings.my_devices_enabled),
     installGuidesAvailable: Boolean(settings.subscription_guides_enabled && subscription.active),
     isAdmin,
+    partnerProgramEnabled: Boolean(settings.partner_program_enabled),
     section: String(routeSection || "home"),
     supportEnabled: settings.support_tickets_enabled !== false,
   });
