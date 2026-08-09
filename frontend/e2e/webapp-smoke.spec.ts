@@ -901,6 +901,21 @@ test("partner operations open their linked payment card", async ({ page }) => {
   await closeDialog(paymentDialog);
 });
 
+test("partner referral mode blocks referral controls without hiding promo codes", async ({
+  page,
+}) => {
+  await page.goto("/demo/runtime/invite?mock=partner-referral-disabled&theme_preview=dark");
+
+  const referralShell = page.locator(".referral-program-shell.is-disabled");
+  await expect(referralShell).toBeVisible();
+  await expect(referralShell.locator(".referral-program-disabled-overlay")).toContainText(
+    "Для вас действует партнёрская программа"
+  );
+  await expect(referralShell.locator(".referral-program-content")).toHaveAttribute("inert", "");
+  await expect(referralShell.locator(".referral-link-item")).toHaveCount(2);
+  await expect(page.locator(".promo-code-input")).toBeEditable();
+});
+
 test("partner account stays compact, table-driven, and keeps the tour ring local", async ({
   page,
 }) => {

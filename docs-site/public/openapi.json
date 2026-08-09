@@ -17007,6 +17007,9 @@
                         "partner_program_enabled": {
                           "type": "boolean"
                         },
+                        "referral_program_enabled": {
+                          "type": "boolean"
+                        },
                         "server_status_url": {
                           "type": [
                             "string",

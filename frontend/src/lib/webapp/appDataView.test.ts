@@ -53,6 +53,7 @@ describe("computeAppDataView", () => {
         settings: {
           my_devices_enabled: false,
           partner_program_enabled: true,
+          referral_program_enabled: false,
           subscription_guides_enabled: false,
           support_tickets_enabled: false,
         },
@@ -73,6 +74,7 @@ describe("computeAppDataView", () => {
     expect(view.devicesEnabled).toBe(false);
     expect(view.installGuidesEnabled).toBe(false);
     expect(view.partnerProgramEnabled).toBe(true);
+    expect(view.referralProgramEnabled).toBe(false);
     expect(view.supportEnabled).toBe(false);
     expect(view.subscription).toEqual({ active: false });
   });
@@ -162,5 +164,6 @@ describe("computeAppDataView", () => {
     expect(view.referralBonusDetails).toEqual([]);
     expect(view.referralWelcomeBonusDays).toBe(0);
     expect(view.referralOneBonusPerReferee).toBe(false);
+    expect(view.referralProgramEnabled).toBe(true);
   });
 });

@@ -398,6 +398,53 @@ def test_partner_client_benefits_stay_disabled_by_default(monkeypatch: pytest.Mo
     get_attribution.assert_not_awaited()
 
 
+@pytest.mark.parametrize(
+    ("program_enabled", "referrals_disabled", "profile", "expected", "queried"),
+    [
+        (False, True, SimpleNamespace(status="active"), True, False),
+        (True, False, SimpleNamespace(status="active"), True, False),
+        (True, True, None, True, True),
+        (True, True, SimpleNamespace(status="active"), False, True),
+        (True, True, SimpleNamespace(status="paused"), False, True),
+        (True, True, SimpleNamespace(status="closed"), False, True),
+    ],
+)
+def test_partner_profile_controls_referral_program_visibility(
+    monkeypatch: pytest.MonkeyPatch,
+    program_enabled: bool,
+    referrals_disabled: bool,
+    profile: object | None,
+    expected: bool,
+    queried: bool,
+) -> None:
+    get_profile = AsyncMock(return_value=profile)
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.get_profile_by_user_id",
+        get_profile,
+    )
+    service = PartnerProgramService(
+        SimpleNamespace(
+            partner_settings=_partner_settings(
+                enabled=program_enabled,
+                referral_program_disabled=referrals_disabled,
+            )
+        )  # type: ignore[arg-type]
+    )
+
+    result = asyncio.run(
+        service.referral_program_enabled_for_user(
+            AsyncMock(),
+            user_id=5,
+        )
+    )
+
+    assert result is expected
+    if queried:
+        get_profile.assert_awaited_once()
+    else:
+        get_profile.assert_not_awaited()
+
+
 @pytest.mark.parametrize(("application_id", "emitted"), [(None, True), (17, False)])
 def test_direct_partner_activation_emits_status_event_once(
     monkeypatch: pytest.MonkeyPatch,

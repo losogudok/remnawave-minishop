@@ -38,6 +38,19 @@ class PartnerProgramService:
     def config(self):
         return self.settings.partner_settings
 
+    async def referral_program_enabled_for_user(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+    ) -> bool:
+        if not bool(getattr(self.config, "enabled", False)) or not bool(
+            getattr(self.config, "referral_program_disabled", False)
+        ):
+            return True
+        profile = await partner_dal.get_profile_by_user_id(session, user_id)
+        return profile is None
+
     async def submit_application(
         self,
         session: AsyncSession,

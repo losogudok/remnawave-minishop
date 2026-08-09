@@ -34,6 +34,7 @@ export type AppDataView = {
   referral: WebappRecord;
   referralBonusDetails: WebappRecord[];
   referralOneBonusPerReferee: boolean;
+  referralProgramEnabled: boolean;
   referralWelcomeBonusDays: number;
   subscription: WebappRecord;
   subscriptionPurchaseDescription: string;
@@ -114,6 +115,7 @@ export function computeAppDataView({
     referral,
     referralBonusDetails: recordArrayField(referral.bonus_details),
     referralOneBonusPerReferee: Boolean(referral.one_bonus_per_referee),
+    referralProgramEnabled: appSettings.referral_program_enabled !== false,
     referralWelcomeBonusDays: Math.max(0, Number(referral.welcome_bonus_days || 0)),
     subscription,
     subscriptionPurchaseDescription: String(

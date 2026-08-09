@@ -111,6 +111,7 @@
     referral?: ReferralState;
     referralBonusDetails?: ReferralBonusDetail[];
     referralOneBonusPerReferee?: boolean;
+    referralProgramEnabled?: boolean;
     referralWelcomeBonusDays?: number;
     regularTrafficTopupBarClickable?: boolean;
     regularTrafficTopupUnlocked?: boolean;
@@ -224,6 +225,7 @@
     referral = {},
     referralBonusDetails = [],
     referralOneBonusPerReferee = false,
+    referralProgramEnabled = true,
     referralWelcomeBonusDays = 0,
     regularTrafficTopupBarClickable = false,
     regularTrafficTopupUnlocked = false,
@@ -391,6 +393,7 @@
         {referral}
         {referralBonusDetails}
         {referralOneBonusPerReferee}
+        {referralProgramEnabled}
         {referralWelcomeBonusDays}
         {promoCode}
         {promoFieldError}

@@ -232,6 +232,19 @@ class UserBotMenuTests(unittest.TestCase):
         self.assertIn("main_action:bot_info", callbacks)
         self.assertIn("main_action:back_to_main", callbacks)
 
+    def test_bot_interface_hides_only_referral_action_for_partner_mode(self):
+        markup = get_bot_interface_inline_keyboard(
+            "en",
+            self.i18n,
+            self.settings,
+            referral_program_enabled=False,
+        )
+
+        callbacks = self._callback_data(markup)
+
+        self.assertNotIn("main_action:bot_referral", callbacks)
+        self.assertIn("main_action:bot_apply_promo", callbacks)
+
     def test_connect_keyboard_uses_subscription_url_when_bot_guides_disabled(self):
         markup = get_connect_and_main_keyboard(
             "en",

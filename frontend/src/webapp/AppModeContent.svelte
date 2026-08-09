@@ -200,6 +200,7 @@
   const referral = $derived(appDataView.referral);
   const referralBonusDetails = $derived(appDataView.referralBonusDetails);
   const referralOneBonusPerReferee = $derived(appDataView.referralOneBonusPerReferee);
+  const referralProgramEnabled = $derived(appDataView.referralProgramEnabled);
   const referralWelcomeBonusDays = $derived(appDataView.referralWelcomeBonusDays);
   const subscription = $derived(appDataView.subscription);
   const subscriptionPurchaseDescription = $derived(appDataView.subscriptionPurchaseDescription);
@@ -466,6 +467,7 @@
       {referral}
       {referralBonusDetails}
       {referralOneBonusPerReferee}
+      {referralProgramEnabled}
       {referralWelcomeBonusDays}
       {regularTrafficTopupBarClickable}
       {regularTrafficTopupUnlocked}

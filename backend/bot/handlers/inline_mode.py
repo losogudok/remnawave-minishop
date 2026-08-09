@@ -10,6 +10,7 @@ from aiogram.types import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.middlewares.i18n import JsonI18n
+from bot.services.partner_program_service import PartnerProgramService
 from bot.services.referral_service import ReferralService
 from config.settings import Settings
 
@@ -92,6 +93,11 @@ async def create_referral_result(
     _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
 
     try:
+        if not await PartnerProgramService(settings).referral_program_enabled_for_user(
+            session,
+            user_id=inline_query.from_user.id,
+        ):
+            return None
         bot_info = await bot.get_me()
         bot_username = bot_info.username
         if not bot_username:

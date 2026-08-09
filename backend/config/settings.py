@@ -468,6 +468,7 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
         default=False,
         description="Enable partner applications, attribution, commissions and user actions.",
     )
+    PARTNER_REFERRAL_PROGRAM_DISABLED: bool = Field(default=False)
     PARTNER_WITHDRAWALS_ENABLED: bool = Field(
         default=True,
         description="Allow active partners to create withdrawal requests.",

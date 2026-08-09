@@ -48,6 +48,8 @@ class RegistrationInviteCheck:
 class _ReferralLookupResult:
     status: RegistrationInviteStatus
     referrer_user_id: int | None = None
+    partner_id: int | None = None
+    partner_code: str | None = None
 
 
 def registration_invite_only_enabled(settings: Settings) -> bool:
@@ -69,6 +71,43 @@ def _legacy_refs_enabled(settings: Settings) -> bool:
         return bool(settings.LEGACY_REFS)
     except AttributeError:
         return True
+
+
+def _partner_referral_redirect_enabled(settings: Settings) -> bool:
+    try:
+        config = settings.partner_settings
+    except (AttributeError, ValueError):
+        return False
+    return bool(
+        getattr(config, "enabled", False) and getattr(config, "referral_program_disabled", False)
+    )
+
+
+async def _resolved_referrer_result(
+    session: AsyncSession,
+    *,
+    settings: Settings,
+    referrer_user_id: int,
+) -> _ReferralLookupResult:
+    if not _partner_referral_redirect_enabled(settings):
+        return _ReferralLookupResult(
+            RegistrationInviteStatus.VALID,
+            referrer_user_id=referrer_user_id,
+        )
+
+    profile = await partner_dal.get_profile_by_user_id(session, referrer_user_id)
+    if profile is None:
+        return _ReferralLookupResult(
+            RegistrationInviteStatus.VALID,
+            referrer_user_id=referrer_user_id,
+        )
+    if profile.status != "active" or profile.user_id is None:
+        return _ReferralLookupResult(RegistrationInviteStatus.INVALID)
+    return _ReferralLookupResult(
+        RegistrationInviteStatus.VALID,
+        partner_id=int(profile.partner_id),
+        partner_code=str(profile.partner_code),
+    )
 
 
 def strip_referral_param_prefix(
@@ -209,7 +248,11 @@ async def _lookup_referrer(
                 current_user_id=current_user_id,
             )
             if referrer_id is not None:
-                return _ReferralLookupResult(RegistrationInviteStatus.VALID, referrer_id)
+                return await _resolved_referrer_result(
+                    session,
+                    settings=settings,
+                    referrer_user_id=referrer_id,
+                )
             self_referral_seen = self_referral_seen or is_self
         candidates = telegram_start_referral_lookup_candidates(
             value,
@@ -237,7 +280,11 @@ async def _lookup_referrer(
                 current_user_id=current_user_id,
             )
             if referrer_id is not None:
-                return _ReferralLookupResult(RegistrationInviteStatus.VALID, referrer_id)
+                return await _resolved_referrer_result(
+                    session,
+                    settings=settings,
+                    referrer_user_id=referrer_id,
+                )
             self_referral_seen = self_referral_seen or is_self
 
         referrer_id, is_self = await _lookup_referrer_by_code(
@@ -247,7 +294,11 @@ async def _lookup_referrer(
             include_legacy=remnashop_compat,
         )
         if referrer_id is not None:
-            return _ReferralLookupResult(RegistrationInviteStatus.VALID, referrer_id)
+            return await _resolved_referrer_result(
+                session,
+                settings=settings,
+                referrer_user_id=referrer_id,
+            )
         self_referral_seen = self_referral_seen or is_self
 
         if source == "webapp" and candidate.isdigit() and legacy_refs_enabled and remnashop_compat:
@@ -257,7 +308,11 @@ async def _lookup_referrer(
                 current_user_id=current_user_id,
             )
             if referrer_id is not None:
-                return _ReferralLookupResult(RegistrationInviteStatus.VALID, referrer_id)
+                return await _resolved_referrer_result(
+                    session,
+                    settings=settings,
+                    referrer_user_id=referrer_id,
+                )
             self_referral_seen = self_referral_seen or is_self
 
     if self_referral_seen:
@@ -333,4 +388,6 @@ async def evaluate_registration_invite(
         enabled=registration_invite_only_enabled(settings),
         status=lookup.status,
         referrer_user_id=lookup.referrer_user_id,
+        partner_id=lookup.partner_id,
+        partner_code=lookup.partner_code,
     )

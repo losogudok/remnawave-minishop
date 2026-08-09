@@ -547,6 +547,7 @@ WEBAPP_SETTINGS_SCHEMA: dict[str, Any] = {
         "traffic_mode": BOOLEAN_SCHEMA,
         "my_devices_enabled": BOOLEAN_SCHEMA,
         "partner_program_enabled": BOOLEAN_SCHEMA,
+        "referral_program_enabled": BOOLEAN_SCHEMA,
         "subscription_reissue_enabled": BOOLEAN_SCHEMA,
         "user_hwid_device_limit": NULLABLE_INTEGER_SCHEMA,
         "trial_enabled": BOOLEAN_SCHEMA,

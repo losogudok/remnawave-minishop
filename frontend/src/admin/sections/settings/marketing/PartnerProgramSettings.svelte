@@ -83,6 +83,7 @@
     enabled: previewMode
       ? settingsScenario === "program_on" || settingsScenario === "dirty"
       : settingBoolean("PARTNER_PROGRAM_ENABLED", false),
+    referralProgramDisabled: settingBoolean("PARTNER_REFERRAL_PROGRAM_DISABLED", false),
     withdrawalsEnabled: settingBoolean("PARTNER_WITHDRAWALS_ENABLED", true),
     balancePaymentEnabled: settingBoolean("PARTNER_BALANCE_PAYMENT_ENABLED", true),
     clientWelcomeBonusEnabled: settingBoolean("PARTNER_CLIENT_WELCOME_BONUS_ENABLED", false),
@@ -210,6 +211,7 @@
   function settingsPayload(): Record<string, unknown> {
     return {
       PARTNER_PROGRAM_ENABLED: config.enabled,
+      PARTNER_REFERRAL_PROGRAM_DISABLED: config.referralProgramDisabled,
       PARTNER_WITHDRAWALS_ENABLED: config.withdrawalsEnabled,
       PARTNER_BALANCE_PAYMENT_ENABLED: config.balancePaymentEnabled,
       PARTNER_CLIENT_WELCOME_BONUS_ENABLED: config.clientWelcomeBonusEnabled,
@@ -667,6 +669,27 @@
       </small>
     </header>
     <div class="admin-settings-field-group-body">
+      {#snippet referralProgramControl()}
+        {@render switchControl(
+          config.referralProgramDisabled,
+          at(
+            "partner_settings_referral_program_disabled",
+            {},
+            "Disable referral program for partners"
+          ),
+          (checked) => (config.referralProgramDisabled = checked)
+        )}
+      {/snippet}
+      {@render settingRow(
+        at(
+          "partner_settings_referral_program_disabled",
+          {},
+          "Disable referral program for partners"
+        ),
+        "PARTNER_REFERRAL_PROGRAM_DISABLED",
+        referralProgramControl
+      )}
+
       {#snippet telegramLinksControl()}
         {@render switchControl(
           config.telegramLinks,

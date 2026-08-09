@@ -7,6 +7,7 @@ from aiogram.filters import Command
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.middlewares.i18n import JsonI18n
+from bot.services.partner_program_service import PartnerProgramService
 from bot.services.referral_service import ReferralService
 from bot.utils.callback_answer import callback_data, callback_message, message_from_user
 from bot.utils.referral_links import build_webapp_referral_link
@@ -48,6 +49,23 @@ async def referral_command_handler(
 
     _ = lambda key, **kwargs: i18n.gettext(current_lang, key, **kwargs)
 
+    inviter_user_id = (
+        event.from_user.id
+        if isinstance(event, types.CallbackQuery)
+        else message_from_user(event).id
+    )
+    referral_program_enabled = await PartnerProgramService(
+        settings
+    ).referral_program_enabled_for_user(
+        session,
+        user_id=inviter_user_id,
+    )
+    if not referral_program_enabled:
+        await target_message_obj.answer(_("referral_program_unavailable_for_partner"))
+        if isinstance(event, types.CallbackQuery):
+            await event.answer()
+        return
+
     try:
         bot_info = await bot.get_me()
         bot_username = bot_info.username
@@ -65,11 +83,6 @@ async def referral_command_handler(
             await event.answer()
         return
 
-    inviter_user_id = (
-        event.from_user.id
-        if isinstance(event, types.CallbackQuery)
-        else message_from_user(event).id
-    )
     referral_link = await referral_service.generate_referral_link(
         session, bot_username, inviter_user_id
     )
@@ -153,6 +166,16 @@ async def referral_action_handler(
         await callback.answer("Language service error.", show_alert=True)
         return
     _ = lambda key, **kwargs: i18n.gettext(current_lang, key, **kwargs)
+
+    referral_program_enabled = await PartnerProgramService(
+        settings
+    ).referral_program_enabled_for_user(
+        session,
+        user_id=callback.from_user.id,
+    )
+    if not referral_program_enabled:
+        await callback.answer(_("referral_program_unavailable_for_partner"), show_alert=True)
+        return
 
     if action == "share_message":
         try:

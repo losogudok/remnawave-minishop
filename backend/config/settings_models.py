@@ -191,6 +191,7 @@ class PartnerWithdrawalMethod(BaseModel):
 
 class PartnerSettings(BaseModel):
     enabled: bool = False
+    referral_program_disabled: bool = False
     withdrawals_enabled: bool = True
     balance_payment_enabled: bool = True
     client_welcome_bonus_enabled: bool = False

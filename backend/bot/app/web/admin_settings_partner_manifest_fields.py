@@ -12,6 +12,17 @@ PARTNER_SETTINGS_FIELDS: tuple[SettingField, ...] = (
         subsection="partner",
     ),
     SettingField(
+        "PARTNER_REFERRAL_PROGRAM_DISABLED",
+        "bool",
+        "pricing",
+        "Disable referrals for partners",
+        (
+            "Hide referral actions for partner profiles and treat their existing referral "
+            "links as partner attribution links."
+        ),
+        subsection="partner",
+    ),
+    SettingField(
         "PARTNER_WITHDRAWALS_ENABLED",
         "bool",
         "pricing",

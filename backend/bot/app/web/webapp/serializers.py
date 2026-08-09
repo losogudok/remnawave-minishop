@@ -26,6 +26,7 @@ from bot.infra.promo_policies import (
     resolve_promo_checkout_suggestion,
 )
 from bot.services.device_topup_availability import resolve_device_topup_availability
+from bot.services.partner_program_service import PartnerProgramService
 from bot.services.referral_service import ReferralService
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.services.telegram_notifications import (
@@ -209,6 +210,12 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             )
 
         active = await subscription_service.get_active_subscription_details(session, user_id)
+        referral_program_enabled = await PartnerProgramService(
+            settings
+        ).referral_program_enabled_for_user(
+            session,
+            user_id=user_id,
+        )
         referral_code = await user_dal.ensure_referral_code(session, db_user)
         referral_service: ReferralService | None = get_referral_service(request)
         bot_username = get_bot_username(request)
@@ -376,6 +383,7 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             "traffic_mode": bool(settings.traffic_sale_mode),
             "my_devices_enabled": bool(settings.MY_DEVICES_SECTION_ENABLED),
             "partner_program_enabled": bool(settings.partner_settings.enabled),
+            "referral_program_enabled": referral_program_enabled,
             "subscription_reissue_enabled": bool(
                 settings.SUBSCRIPTION_REISSUE_ENABLED and settings.email_auth_configured
             ),

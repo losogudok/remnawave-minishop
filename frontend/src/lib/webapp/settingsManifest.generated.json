@@ -10638,6 +10638,25 @@
         "updated_at": null
       },
       {
+        "key": "PARTNER_REFERRAL_PROGRAM_DISABLED",
+        "type": "bool",
+        "section": "pricing",
+        "section_order": 11,
+        "subsection": "partner",
+        "label": "Disable referrals for partners",
+        "description": "Hide referral actions for partner profiles and treat their existing referral links as partner attribution links.",
+        "i18n_label_key": "admin_settings_field_partner_referral_program_disabled_label",
+        "i18n_description_key": "admin_settings_field_partner_referral_program_disabled_description",
+        "i18n_subsection_key": "admin_settings_subsection_partner",
+        "i18n_placeholder_key": null,
+        "placeholder": "",
+        "optional": true,
+        "secret": false,
+        "value": "",
+        "overridden": false,
+        "updated_at": null
+      },
+      {
         "key": "PARTNER_WITHDRAWALS_ENABLED",
         "type": "bool",
         "section": "pricing",

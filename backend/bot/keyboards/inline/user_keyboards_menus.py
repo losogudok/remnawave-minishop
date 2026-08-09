@@ -82,7 +82,12 @@ def get_main_menu_inline_keyboard(
 
 
 def get_bot_interface_inline_keyboard(
-    lang: str, i18n_instance: JsonI18n, settings: Settings, show_trial_button: bool = False
+    lang: str,
+    i18n_instance: JsonI18n,
+    settings: Settings,
+    show_trial_button: bool = False,
+    *,
+    referral_program_enabled: bool = True,
 ) -> InlineKeyboardMarkup:
     _ = lambda key, **kwargs: i18n_instance.gettext(lang, key, **kwargs)
     builder = InlineKeyboardBuilder()
@@ -111,13 +116,15 @@ def get_bot_interface_inline_keyboard(
         )
     )
 
-    referral_button = InlineKeyboardButton(
-        text=_(key="menu_referral_inline"), callback_data="main_action:bot_referral"
-    )
     promo_button = InlineKeyboardButton(
         text=_(key="menu_apply_promo_button"), callback_data="main_action:bot_apply_promo"
     )
-    builder.row(referral_button)
+    if referral_program_enabled:
+        builder.row(
+            InlineKeyboardButton(
+                text=_(key="menu_referral_inline"), callback_data="main_action:bot_referral"
+            )
+        )
     builder.row(promo_button)
 
     language_button = InlineKeyboardButton(

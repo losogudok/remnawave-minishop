@@ -207,6 +207,12 @@ export function applyPreviewMock(kind: unknown): void {
     return;
   }
 
+  if (mode === "partner-referral-disabled" || mode === "partner_referral_disabled") {
+    DEV_MOCK.data.settings.partner_program_enabled = true;
+    DEV_MOCK.data.settings.referral_program_enabled = false;
+    return;
+  }
+
   if (mode === "trial-telegram" || mode === "trial_requires_telegram") {
     applyInactiveSubscriptionScenario();
     applyEmailOnlyAccountPatch({ email: "trial-user@mailinator.com" });
