@@ -1055,3 +1055,130 @@ class CoreEventReactionsTests(IsolatedAsyncioTestCase):
             removed_panel_user_uuid="source-panel",
         )
         email_service.send_rendered_email.assert_awaited_once()
+
+    async def test_partner_application_events_notify_admin_and_user(self):
+        user = SimpleNamespace(user_id=42)
+        notification_service = SimpleNamespace(
+            notify_partner_application_submitted=AsyncMock(),
+            notify_partner_application_decided=AsyncMock(),
+        )
+        ctx = _context(notification_service=notification_service)
+        submitted_at = datetime(2026, 8, 9, 10, 0, tzinfo=UTC)
+        decided_at = datetime(2026, 8, 9, 10, 5, tzinfo=UTC)
+
+        with patch.object(
+            event_reactions.user_dal,
+            "get_user_by_id",
+            AsyncMock(return_value=user),
+        ):
+            register_core_reactions(ctx)
+            await events.emit(
+                events.PARTNER_APPLICATION_SUBMITTED,
+                {
+                    "application_id": 17,
+                    "user_id": 42,
+                    "status": "pending",
+                    "submitted_at": submitted_at.isoformat(),
+                },
+            )
+            await events.emit(
+                events.PARTNER_APPLICATION_DECIDED,
+                {
+                    "application_id": 17,
+                    "partner_id": 8,
+                    "user_id": 42,
+                    "status": "approved",
+                    "decided_at": decided_at.isoformat(),
+                },
+            )
+
+        notification_service.notify_partner_application_submitted.assert_awaited_once_with(
+            application_id=17,
+            user=user,
+            submitted_at=submitted_at,
+        )
+        notification_service.notify_partner_application_decided.assert_awaited_once_with(
+            application_id=17,
+            user=user,
+            status="approved",
+            decided_at=decided_at,
+        )
+
+    async def test_partner_profile_and_withdrawal_events_notify_user_and_log(self):
+        user = SimpleNamespace(user_id=42)
+        notification_service = SimpleNamespace(
+            notify_partner_profile_status_changed=AsyncMock(),
+            notify_partner_withdrawal_requested=AsyncMock(),
+            notify_partner_withdrawal_status_changed=AsyncMock(),
+        )
+        ctx = _context(notification_service=notification_service)
+        changed_at = datetime(2026, 8, 9, 11, 0, tzinfo=UTC)
+
+        with patch.object(
+            event_reactions.user_dal,
+            "get_user_by_id",
+            AsyncMock(return_value=user),
+        ):
+            register_core_reactions(ctx)
+            await events.emit(
+                events.PARTNER_STATUS_CHANGED,
+                {
+                    "partner_id": 8,
+                    "user_id": 42,
+                    "old_status": "paused",
+                    "status": "active",
+                    "changed_at": changed_at.isoformat(),
+                },
+            )
+            await events.emit(
+                events.PARTNER_WITHDRAWAL_REQUESTED,
+                {
+                    "partner_id": 8,
+                    "user_id": 42,
+                    "withdrawal_id": 23,
+                    "status": "requested",
+                    "currency": "RUB",
+                    "currency_scale": 2,
+                    "amount_minor": 125_050,
+                    "requested_at": changed_at.isoformat(),
+                },
+            )
+            await events.emit(
+                events.PARTNER_WITHDRAWAL_STATUS_CHANGED,
+                {
+                    "partner_id": 8,
+                    "user_id": 42,
+                    "withdrawal_id": 23,
+                    "old_status": "requested",
+                    "status": "processing",
+                    "status_version": 2,
+                    "currency": "RUB",
+                    "currency_scale": 2,
+                    "amount_minor": 125_050,
+                    "changed_at": changed_at.isoformat(),
+                },
+            )
+
+        notification_service.notify_partner_profile_status_changed.assert_awaited_once_with(
+            partner_id=8,
+            user=user,
+            old_status="paused",
+            status="active",
+            changed_at=changed_at,
+        )
+        notification_service.notify_partner_withdrawal_requested.assert_awaited_once_with(
+            withdrawal_id=23,
+            user=user,
+            amount_minor=125_050,
+            currency="RUB",
+            currency_scale=2,
+            requested_at=changed_at,
+        )
+        notification_service.notify_partner_withdrawal_status_changed.assert_awaited_once_with(
+            withdrawal_id=23,
+            user=user,
+            status="processing",
+            amount_minor=125_050,
+            currency="RUB",
+            currency_scale=2,
+        )

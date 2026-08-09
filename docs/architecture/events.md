@@ -97,7 +97,7 @@ Payload model: `PartnerApplicationDecidedPayload`
 
 Emitters: `backend/bot/services/partner_program_service.py`
 
-Core reactions: none
+Core reactions: `CoreEventReactions.on_partner_application_decided`
 
 | Field | Type | Default |
 | --- | --- | --- |
@@ -113,7 +113,7 @@ Payload model: `PartnerApplicationSubmittedPayload`
 
 Emitters: `backend/bot/services/partner_program_service.py`
 
-Core reactions: none
+Core reactions: `CoreEventReactions.on_partner_application_submitted`
 
 | Field | Type | Default |
 | --- | --- | --- |
@@ -228,11 +228,12 @@ Payload model: `PartnerStatusChangedPayload`
 
 Emitters: `backend/bot/services/partner_program_service.py`
 
-Core reactions: none
+Core reactions: `CoreEventReactions.on_partner_status_changed`
 
 | Field | Type | Default |
 | --- | --- | --- |
 | `partner_id` | `int` | required |
+| `user_id` | `int | None` | `None` |
 | `old_status` | `str` | required |
 | `status` | `str` | required |
 | `changed_at` | `datetime` | required |
@@ -243,14 +244,16 @@ Payload model: `PartnerWithdrawalRequestedPayload`
 
 Emitters: `backend/bot/services/partner_withdrawal_service.py`
 
-Core reactions: none
+Core reactions: `CoreEventReactions.on_partner_withdrawal_requested`
 
 | Field | Type | Default |
 | --- | --- | --- |
 | `partner_id` | `int` | required |
+| `user_id` | `int` | required |
 | `withdrawal_id` | `int` | required |
 | `status` | `str` | required |
 | `currency` | `str` | required |
+| `currency_scale` | `int` | required |
 | `amount_minor` | `int` | required |
 | `requested_at` | `datetime` | required |
 
@@ -260,15 +263,19 @@ Payload model: `PartnerWithdrawalStatusChangedPayload`
 
 Emitters: `backend/bot/services/partner_withdrawal_service.py`
 
-Core reactions: none
+Core reactions: `CoreEventReactions.on_partner_withdrawal_status_changed`
 
 | Field | Type | Default |
 | --- | --- | --- |
 | `partner_id` | `int` | required |
+| `user_id` | `int | None` | `None` |
 | `withdrawal_id` | `int` | required |
 | `old_status` | `str` | required |
 | `status` | `str` | required |
 | `status_version` | `int` | required |
+| `currency` | `str` | required |
+| `currency_scale` | `int` | required |
+| `amount_minor` | `int` | required |
 | `changed_at` | `datetime` | required |
 
 ## `payment.canceled`

@@ -331,9 +331,11 @@ class PartnerWithdrawalService:
         await events.emit_model(
             PartnerWithdrawalRequestedPayload(
                 partner_id=int(profile.partner_id),
+                user_id=user_id,
                 withdrawal_id=int(withdrawal.withdrawal_id),
                 status="requested",
                 currency=normalized_currency,
+                currency_scale=int(withdrawal.currency_scale),
                 amount_minor=amount_minor,
                 requested_at=now,
             )
@@ -493,13 +495,22 @@ class PartnerWithdrawalService:
         await events.emit_model(
             PartnerWithdrawalStatusChangedPayload(
                 partner_id=int(withdrawal.partner_id),
+                user_id=await self._partner_user_id(session, int(withdrawal.partner_id)),
                 withdrawal_id=int(withdrawal.withdrawal_id),
                 old_status=old,
                 status=status,
                 status_version=int(withdrawal.status_version),
+                currency=str(withdrawal.debit_currency),
+                currency_scale=int(withdrawal.currency_scale),
+                amount_minor=int(withdrawal.debit_amount_minor),
                 changed_at=now,
             )
         )
+
+    @staticmethod
+    async def _partner_user_id(session: AsyncSession, partner_id: int) -> int | None:
+        profile = await partner_dal.get_profile_by_id(session, partner_id)
+        return int(profile.user_id) if profile and profile.user_id is not None else None
 
     async def reveal_requisites(
         self,

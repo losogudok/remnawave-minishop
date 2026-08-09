@@ -12,6 +12,7 @@ from sqlalchemy.orm import sessionmaker
 from bot.infra.payment_events import PaymentPurchase, payment_purchases_from_legacy_fields
 from bot.middlewares.i18n import JsonI18n
 from bot.services.email_auth_service import EmailAuthService
+from bot.services.notification_partner import NotificationPartnerMixin
 from bot.services.notification_support import NotificationSupportMixin
 from bot.utils.message_queue import get_queue_manager
 from bot.utils.telegram_markup import (
@@ -27,7 +28,7 @@ from config.settings import Settings
 logger = logging.getLogger(__name__)
 
 
-class NotificationService(NotificationSupportMixin):
+class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
     """Enhanced notification service for sending messages to admins and log channels"""
 
     def __init__(

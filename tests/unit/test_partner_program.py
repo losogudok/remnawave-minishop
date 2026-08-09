@@ -398,6 +398,75 @@ def test_partner_client_benefits_stay_disabled_by_default(monkeypatch: pytest.Mo
     get_attribution.assert_not_awaited()
 
 
+@pytest.mark.parametrize(("application_id", "emitted"), [(None, True), (17, False)])
+def test_direct_partner_activation_emits_status_event_once(
+    monkeypatch: pytest.MonkeyPatch,
+    application_id: int | None,
+    emitted: bool,
+) -> None:
+    activated_at = datetime(2026, 8, 9, 10, 0, tzinfo=UTC)
+    profile = SimpleNamespace(
+        partner_id=8,
+        user_id=42,
+        status="active",
+        commission_bps=3000,
+        activated_at=activated_at,
+    )
+    emit_model = AsyncMock()
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.get_profile_by_user_id",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.create_profile",
+        AsyncMock(return_value=profile),
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.create_audit_event",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.events.emit_model",
+        emit_model,
+    )
+    service = PartnerProgramService(
+        SimpleNamespace(
+            partner_settings=_partner_settings(default_commission_bps=3000),
+        )  # type: ignore[arg-type]
+    )
+    session = AsyncMock(spec=AsyncSession)
+    session.begin_nested.return_value = AsyncMock()
+    user = SimpleNamespace(
+        user_id=42,
+        first_name="Alice",
+        last_name=None,
+        username="alice",
+        email=None,
+    )
+
+    asyncio.run(
+        service.create_profile_for_user(
+            session,
+            user=user,  # type: ignore[arg-type]
+            actor_admin_id=1,
+            application_id=application_id,
+        )
+    )
+
+    if emitted:
+        emit_model.assert_awaited_once()
+        emit_call = emit_model.await_args
+        assert emit_call is not None
+        payload = emit_call.args[0]
+        assert payload.partner_id == 8
+        assert payload.user_id == 42
+        assert payload.old_status == "none"
+        assert payload.status == "active"
+        assert payload.changed_at == activated_at
+    else:
+        emit_model.assert_not_awaited()
+
+
 def test_partner_self_attribution_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "bot.services.partner_program_service.partner_dal.get_client_by_user_id",

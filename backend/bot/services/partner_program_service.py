@@ -165,6 +165,16 @@ class PartnerProgramService:
                 {"status": "active", "commission_bps": int(profile.commission_bps)}
             ),
         )
+        if application_id is None:
+            await events.emit_model(
+                PartnerStatusChangedPayload(
+                    partner_id=int(profile.partner_id),
+                    user_id=int(user.user_id),
+                    old_status="none",
+                    status="active",
+                    changed_at=profile.activated_at or datetime.now(UTC),
+                )
+            )
         return profile
 
     async def decide_application(
@@ -457,6 +467,7 @@ class PartnerProgramService:
         await events.emit_model(
             PartnerStatusChangedPayload(
                 partner_id=partner_id,
+                user_id=int(profile.user_id) if profile.user_id is not None else None,
                 old_status=old,
                 status=normalized,
                 changed_at=now,

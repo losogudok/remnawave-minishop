@@ -295,6 +295,7 @@ class PartnerStatusChangedPayload(EventPayload):
     EVENT_NAME: ClassVar[str] = "partner.status_changed"
 
     partner_id: int
+    user_id: int | None = None
     old_status: str
     status: str
     changed_at: datetime
@@ -348,9 +349,11 @@ class PartnerWithdrawalRequestedPayload(EventPayload):
     EVENT_NAME: ClassVar[str] = "partner.withdrawal_requested"
 
     partner_id: int
+    user_id: int
     withdrawal_id: int
     status: str
     currency: str
+    currency_scale: int
     amount_minor: int
     requested_at: datetime
 
@@ -359,10 +362,14 @@ class PartnerWithdrawalStatusChangedPayload(EventPayload):
     EVENT_NAME: ClassVar[str] = "partner.withdrawal_status_changed"
 
     partner_id: int
+    user_id: int | None = None
     withdrawal_id: int
     old_status: str
     status: str
     status_version: int
+    currency: str
+    currency_scale: int
+    amount_minor: int
     changed_at: datetime
 
 
