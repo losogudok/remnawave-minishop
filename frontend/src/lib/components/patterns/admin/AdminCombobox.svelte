@@ -162,7 +162,8 @@
     min-width: 0;
   }
 
-  .admin-combobox-input {
+  .admin-combobox :global(.admin-combobox-input) {
+    display: block;
     width: 100%;
     height: 36px;
     padding: 0 36px 0 12px;
@@ -178,12 +179,12 @@
       box-shadow 0.12s ease;
   }
 
-  .admin-combobox-input:focus {
+  .admin-combobox :global(.admin-combobox-input:focus) {
     border-color: var(--admin-ring);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
   }
 
-  .admin-combobox-trigger {
+  .admin-combobox :global(.admin-combobox-trigger) {
     position: absolute;
     inset: 0 0 0 auto;
     display: grid;
@@ -201,6 +202,12 @@
 
   :global(.admin-combobox-content) {
     min-width: var(--bits-combobox-anchor-width);
+  }
+
+  @media (max-width: 639px) {
+    :global(.admin-combobox-content) {
+      width: var(--bits-combobox-anchor-width);
+    }
   }
 
   :global(.admin-combobox-group-label) {

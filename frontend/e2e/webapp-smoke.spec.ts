@@ -1144,6 +1144,51 @@ test("partner loading and empty chart states preserve their final geometry", asy
   await expect(page.locator(".admin-revenue-chart .admin-revenue-chart-body")).toHaveCount(0);
 });
 
+test("broadcast promo picker fills its mobile editor row", async ({ page }) => {
+  await page.setViewportSize(MOBILE_VIEWPORT);
+  await page.goto("/demo/runtime/admin/broadcast?theme_preview=dark");
+
+  await page.getByRole("button", { name: "Добавить кнопку", exact: true }).click();
+  const row = page.locator(".admin-row-editor-broadcast").first();
+  await row.getByRole("button", { name: "Кнопки", exact: true }).click();
+  await page.getByRole("option", { name: "Промокод — в боте", exact: true }).click();
+
+  const kindSelect = row.locator(".admin-select-trigger");
+  const combo = row.locator(".admin-combobox");
+  const input = row.getByRole("combobox", { name: "Выберите промокод", exact: true });
+  const trigger = row.getByRole("button", { name: "Выберите промокод", exact: true });
+  await input.click();
+  const menu = page.locator(".admin-combobox-content");
+  await expect(menu).toBeVisible();
+
+  const rect = async (locator: Locator) =>
+    locator.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return {
+        bottom: bounds.bottom,
+        left: bounds.left,
+        right: bounds.right,
+        top: bounds.top,
+        width: bounds.width,
+      };
+    });
+  const [kindRect, comboRect, inputRect, triggerRect, menuRect] = await Promise.all([
+    rect(kindSelect),
+    rect(combo),
+    rect(input),
+    rect(trigger),
+    rect(menu),
+  ]);
+
+  expect(Math.abs(comboRect.width - kindRect.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(inputRect.width - comboRect.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(menuRect.width - comboRect.width)).toBeLessThanOrEqual(1);
+  expect(triggerRect.left).toBeGreaterThanOrEqual(inputRect.left);
+  expect(triggerRect.right).toBeLessThanOrEqual(inputRect.right);
+  expect(triggerRect.top).toBeGreaterThanOrEqual(inputRect.top);
+  expect(triggerRect.bottom).toBeLessThanOrEqual(inputRect.bottom);
+});
+
 test("webapp and admin sections, dialogs, tabs stay interactive without console errors", async ({
   page,
 }) => {
