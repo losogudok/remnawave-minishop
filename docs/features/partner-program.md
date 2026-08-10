@@ -12,7 +12,7 @@
 
 1. Сделайте резервную копию и обновите `backend`, `worker` и `frontend` до одной версии, не
    включая программу.
-2. Создайте секрет командой `python -c "import secrets; print(secrets.token_urlsafe(32))"`, задайте
+2. Создайте секрет командой `openssl rand -base64 32 | tr '+/' '-_'`, задайте
    `PARTNER_REQUISITES_ENCRYPTION_KEY` и уникальный `PARTNER_REQUISITES_KEY_ID`, затем пересоздайте
    `backend` и `worker`.
 3. В админке откройте **Настройки → Маркетинговые программы → Партнёрская программа**. Проверьте,

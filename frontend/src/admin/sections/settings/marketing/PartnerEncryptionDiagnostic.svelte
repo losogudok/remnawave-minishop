@@ -12,7 +12,7 @@
     encryptionAvailable: boolean;
   } = $props();
 
-  const GENERATION_COMMAND = 'python -c "import secrets; print(secrets.token_urlsafe(32))"';
+  const GENERATION_COMMAND = "openssl rand -base64 32 | tr '+/' '-_'";
   const ENV_EXAMPLE = "PARTNER_REQUISITES_ENCRYPTION_KEY=PASTE_GENERATED_VALUE_HERE";
 </script>
 

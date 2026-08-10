@@ -926,8 +926,18 @@ test("partner encryption diagnostic explains safe initial key setup", async ({ p
   });
   await expect(diagnostic).toBeVisible();
   await expect(diagnostic.locator("[data-partner-encryption-command]")).toHaveText(
-    'python -c "import secrets; print(secrets.token_urlsafe(32))"'
+    "openssl rand -base64 32 | tr '+/' '-_'"
   );
+  const diagnosticCards = page.locator(".partner-diagnostics > div");
+  await expect(diagnosticCards).toHaveCount(2);
+  const cardGeometry = await diagnosticCards.evaluateAll((cards) =>
+    cards.map((card) => {
+      const rect = card.getBoundingClientRect();
+      return { bottom: rect.bottom, top: rect.top, width: rect.width };
+    })
+  );
+  expect(Math.abs(cardGeometry[0].width - cardGeometry[1].width)).toBeLessThanOrEqual(1);
+  expect(cardGeometry[1].top).toBeGreaterThan(cardGeometry[0].bottom);
   await expect(diagnostic).toContainText("PARTNER_REQUISITES_ENCRYPTION_KEY");
   await expect(diagnostic).toContainText("перезапустите backend и worker");
   await expect(diagnostic).toContainText("никогда не сохраняйте секрет в Git");

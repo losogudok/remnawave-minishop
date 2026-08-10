@@ -3362,7 +3362,7 @@
   "admin_partner_settings_enabled": "Партнёрская программа включена",
   "admin_partner_settings_encryption_missing": "Ключ шифрования реквизитов не задан",
   "admin_partner_settings_encryption_missing_hint": "Номера карт, телефоны и адреса кошельков хранятся зашифрованными на этом ключе. Пока он не задан, заявка на вывод отклоняется, а не сохраняет реквизиты открытым текстом.",
-  "admin_partner_settings_encryption_generate_hint": "Сгенерируйте 32-байтовый ключ с помощью Python 3:",
+  "admin_partner_settings_encryption_generate_hint": "Сгенерируйте 32-байтовый ключ с помощью OpenSSL:",
   "admin_partner_settings_encryption_activate_hint": "Поместите сгенерированное значение в .env, перезапустите backend и worker и никогда не сохраняйте секрет в Git.",
   "admin_partner_settings_encryption_ready": "Шифрование реквизитов готово",
   "admin_partner_settings_encryption_ready_hint": "Новые реквизиты можно шифровать и раскрывать только через аудируемое действие администратора.",

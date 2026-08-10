@@ -830,7 +830,7 @@ Stripe создает hosted Checkout Sessions и подтверждает ав�
 Сгенерировать 32-байтовый ключ:
 
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
+openssl rand -base64 32 | tr '+/' '-_'
 ```
 
 Полная настройка, обработка выплат, отчёт сверки, ротация ключа и rollback описаны в
