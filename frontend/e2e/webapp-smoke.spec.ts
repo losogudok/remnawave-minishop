@@ -916,6 +916,28 @@ test("partner referral mode blocks referral controls without hiding promo codes"
   await expect(page.locator(".promo-code-input")).toBeEditable();
 });
 
+test("partner encryption diagnostic explains safe initial key setup", async ({ page }) => {
+  await page.goto(
+    "/demo/runtime/admin/settings/partner?partner_settings_scenario=missing_key&theme_preview=dark"
+  );
+
+  const diagnostic = page.locator(".partner-diagnostics .danger").filter({
+    hasText: "Ключ шифрования реквизитов не задан",
+  });
+  await expect(diagnostic).toBeVisible();
+  await expect(diagnostic.locator("[data-partner-encryption-command]")).toHaveText(
+    'python -c "import secrets; print(secrets.token_urlsafe(32))"'
+  );
+  await expect(diagnostic).toContainText("PARTNER_REQUISITES_ENCRYPTION_KEY");
+  await expect(diagnostic).toContainText("перезапустите backend и worker");
+  await expect(diagnostic).toContainText("никогда не сохраняйте секрет в Git");
+
+  await page.goto(
+    "/demo/runtime/admin/settings/partner?partner_settings_scenario=program_on&theme_preview=dark"
+  );
+  await expect(page.locator("[data-partner-encryption-command]")).toHaveCount(0);
+});
+
 test("partner account stays compact, table-driven, and keeps the tour ring local", async ({
   page,
 }) => {

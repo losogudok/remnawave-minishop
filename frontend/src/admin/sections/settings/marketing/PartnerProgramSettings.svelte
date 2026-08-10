@@ -1,6 +1,6 @@
 <script lang="ts">
   import "./partnerProgramSettings.css";
-  import { ArrowRight, Key, ShieldCheck, TriangleAlert } from "$components/ui/icons.js";
+  import { ArrowRight, ShieldCheck, TriangleAlert } from "$components/ui/icons.js";
   import { Checkbox, Input } from "$components/ui/index.js";
   import Dialog from "$components/ui/dialog.svelte";
   import { Switch } from "$components/ui/primitives.js";
@@ -10,6 +10,7 @@
   import type { SettingField, SettingsSection } from "$lib/admin/stores/settingsStore.js";
   import { valueForKey, type SettingsDirtyState } from "$lib/admin/tariffSettings.js";
   import PartnerClientBonusSettings from "./PartnerClientBonusSettings.svelte";
+  import PartnerEncryptionDiagnostic from "./PartnerEncryptionDiagnostic.svelte";
   import PartnerWithdrawalMethods from "./PartnerWithdrawalMethods.svelte";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
@@ -883,39 +884,7 @@
       </small>
     </header>
     <div class="partner-diagnostics">
-      <div class={encryptionAvailable ? "success" : "danger"}>
-        <Key size={18} />
-        <span>
-          <strong>
-            {encryptionAvailable
-              ? at("partner_settings_encryption_ready", {}, "Requisites encryption is ready")
-              : at(
-                  "partner_settings_encryption_missing",
-                  {},
-                  "Requisites encryption key is not set"
-                )}
-          </strong>
-          <small>
-            {encryptionAvailable
-              ? at(
-                  "partner_settings_encryption_ready_hint",
-                  {},
-                  "New withdrawal requisites can be encrypted and revealed through audited admin actions."
-                )
-              : at(
-                  "partner_settings_encryption_missing_hint",
-                  {},
-                  "Card numbers, phone numbers, and wallet addresses are encrypted at rest with this key. Until it is set, a withdrawal request fails instead of storing requisites in plain text."
-                )}
-          </small>
-          <code>PARTNER_REQUISITES_ENCRYPTION_KEY</code>
-        </span>
-        <AdminBadge variant={encryptionAvailable ? "success" : "danger"}>
-          {encryptionAvailable
-            ? at("partner_settings_ready", {}, "Ready")
-            : at("partner_settings_action_required", {}, "Action required")}
-        </AdminBadge>
-      </div>
+      <PartnerEncryptionDiagnostic {at} {encryptionAvailable} />
       <div class={enabledMethods.length ? "success" : "warning"}>
         <ShieldCheck size={18} />
         <span>

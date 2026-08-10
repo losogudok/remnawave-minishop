@@ -233,6 +233,25 @@
 .partner-diagnostics small {
   color: var(--admin-muted);
 }
+.partner-encryption-setup {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  margin-top: 5px;
+  padding-top: 9px;
+  border-top: 1px solid var(--admin-border);
+}
+.partner-diagnostics .partner-encryption-command {
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  color: var(--admin-text);
+  background: var(--admin-surface-2);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: all;
+}
 .partner-diagnostics .danger > svg {
   color: var(--danger);
 }
