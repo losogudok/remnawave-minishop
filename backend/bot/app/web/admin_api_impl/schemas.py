@@ -481,6 +481,22 @@ class AdminUserTariffBody(HttpBodyModel):
     apply_tariff_hwid_limit: Any = False
 
 
+class PromoOptionOut(HttpResponseModel):
+    code: str
+    max_activations: int
+    current_activations: int
+    user_id: int | None = None
+
+    @classmethod
+    def from_orm_promo(cls, promo: Any) -> PromoOptionOut:
+        return cls(
+            code=str(promo.code),
+            max_activations=int(promo.max_activations),
+            current_activations=int(promo.current_activations or 0),
+            user_id=int(promo.user_id) if getattr(promo, "user_id", None) else None,
+        )
+
+
 class PromoOut(HttpResponseModel):
     id: int
     code: str

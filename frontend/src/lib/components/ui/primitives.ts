@@ -1,5 +1,6 @@
 export {
   Accordion,
+  Combobox,
   Label,
   Popover,
   ScrollArea,

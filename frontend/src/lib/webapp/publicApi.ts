@@ -664,6 +664,14 @@ export function buildAdminPromosPath(params?: URLSearchParams): AdminPromosPath 
   return (query ? `/admin/promos?${query}` : "/admin/promos") as AdminPromosPath;
 }
 
+export type AdminPromoOptionsPath = "/admin/promos/options" | `/admin/promos/options?${string}`;
+export function buildAdminPromoOptionsPath(params?: URLSearchParams): AdminPromoOptionsPath {
+  const query = params?.toString();
+  return (
+    query ? `/admin/promos/options?${query}` : "/admin/promos/options"
+  ) as AdminPromoOptionsPath;
+}
+
 export type AdminPromoPath = BuiltApiPath<"/api/admin/promos/{promo_id}">;
 export function buildAdminPromoPath(promoId: string | number): AdminPromoPath {
   return builtApiPath<"/api/admin/promos/{promo_id}">(

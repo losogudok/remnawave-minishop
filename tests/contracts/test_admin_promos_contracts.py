@@ -14,6 +14,7 @@ from bot.app.web.admin_api_impl import promos as promos_module
 from bot.app.web.admin_api_impl.schemas import (
     PromoActivationOut,
     PromoCreateBody,
+    PromoOptionOut,
     PromoOut,
     PromoUpdateBody,
 )
@@ -195,6 +196,65 @@ def test_promo_list_without_a_kind_lists_every_code():
             return list_promos
 
     assert asyncio.run(run()).await_args.kwargs["personal"] is None
+
+
+def test_promo_options_reserve_space_for_shared_codes_before_personal_codes():
+    shared = _promo(code="SHARED", user_id=None)
+    personal = _promo(code="PERSONAL", user_id=77)
+
+    async def run():
+        session = _FakeSession()
+        request = _FakeRequest(
+            {},
+            app={"async_session_factory": lambda: session},
+            query={},
+        )
+        with (
+            patch.object(promos_module, "_require_admin_user_id", return_value=100),
+            patch.object(
+                promos_module.promo_code_dal,
+                "get_usable_promo_codes_for_picker",
+                AsyncMock(side_effect=[[shared], [personal]]),
+            ) as list_promos,
+        ):
+            response = await promos_module.admin_promo_options_route(request)
+            return response, list_promos
+
+    response, list_promos = asyncio.run(run())
+
+    assert [call.kwargs["personal"] for call in list_promos.await_args_list] == [False, True]
+    assert [call.kwargs["limit"] for call in list_promos.await_args_list] == [50, 50]
+    assert [item["code"] for item in _json_body(response)["promos"]] == ["SHARED", "PERSONAL"]
+    assert _json_body(response)["promos"] == [
+        PromoOptionOut.from_orm_promo(shared).model_dump(mode="json"),
+        PromoOptionOut.from_orm_promo(personal).model_dump(mode="json"),
+    ]
+
+
+def test_promo_options_searches_all_ownership_kinds_with_a_bounded_query():
+    promo = _promo(code="PERSONAL", user_id=77)
+
+    async def run():
+        session = _FakeSession()
+        request = _FakeRequest(
+            {},
+            app={"async_session_factory": lambda: session},
+            query={"query": "  person  "},
+        )
+        with (
+            patch.object(promos_module, "_require_admin_user_id", return_value=100),
+            patch.object(
+                promos_module.promo_code_dal,
+                "get_usable_promo_codes_for_picker",
+                AsyncMock(return_value=[promo]),
+            ) as list_promos,
+        ):
+            await promos_module.admin_promo_options_route(request)
+            return list_promos
+
+    call = asyncio.run(run()).await_args
+
+    assert call.kwargs == {"search": "person", "personal": None, "limit": 100}
 
 
 def test_promo_owner_is_read_only_for_the_admin_api():

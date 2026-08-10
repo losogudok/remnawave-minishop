@@ -110,6 +110,61 @@ async def get_all_active_promo_codes(
     return list(result.scalars().all())
 
 
+def _escaped_like_fragment(value: str) -> str:
+    """Escape user text before using it inside a LIKE contains pattern."""
+
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+async def get_usable_promo_codes_for_picker(
+    session: AsyncSession,
+    *,
+    search: str | None = None,
+    personal: bool | None = None,
+    limit: int = 50,
+) -> list[PromoCode]:
+    """Return redeemable promo codes ordered for an admin autocomplete.
+
+    Search treats wildcard characters literally and ranks an exact code before
+    prefix and substring matches. Without a search term, shared codes lead the
+    result; callers can request each ownership kind separately to reserve room
+    for both groups in a bounded dropdown.
+    """
+
+    now = datetime.now(UTC)
+    normalized_search = str(search or "").strip().lower()
+    lowered_code = func.lower(PromoCode.code)
+    filters: list[Any] = [
+        PromoCode.archived_at == None,
+        PromoCode.is_active.is_(True),
+        func.coalesce(PromoCode.current_activations, 0)
+        < func.coalesce(PromoCode.max_activations, 0),
+        or_(PromoCode.valid_until == None, PromoCode.valid_until > now),
+        *_promo_owner_filter(personal),
+    ]
+    order: list[Any] = []
+    if normalized_search:
+        escaped_search = _escaped_like_fragment(normalized_search)
+        filters.append(lowered_code.like(f"%{escaped_search}%", escape="\\"))
+        order.append(
+            case(
+                (lowered_code == normalized_search, 0),
+                (lowered_code.like(f"{escaped_search}%", escape="\\"), 1),
+                else_=2,
+            )
+        )
+    order.extend(
+        (
+            case((PromoCode.user_id.is_(None), 0), else_=1),
+            lowered_code.asc(),
+            PromoCode.promo_code_id.desc(),
+        )
+    )
+    stmt = select(PromoCode).where(*filters).order_by(*order).limit(min(100, max(1, int(limit))))
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
 def _promo_owner_filter(personal: bool | None) -> list[Any]:
     """Narrow a promo query to personal or shared codes.
 

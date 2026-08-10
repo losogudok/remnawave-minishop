@@ -24,7 +24,10 @@ from .common import (
     _error,
     _ok,
 )
-from .schemas import PromoActivationOut, PromoCreateBody, PromoOut, PromoUpdateBody
+from .schemas import PromoActivationOut, PromoCreateBody, PromoOptionOut, PromoOut, PromoUpdateBody
+
+_PROMO_PICKER_GROUP_LIMIT = 50
+_PROMO_PICKER_SEARCH_LIMIT = 100
 
 register_contract(
     "admin_promos_list_route",
@@ -41,6 +44,13 @@ register_contract(
             },
         ),
         models=(PromoOut,),
+    ),
+)
+register_contract(
+    "admin_promo_options_route",
+    RouteContract(
+        response_schema=ok_envelope_for(PromoOptionOut, key="promos", many=True),
+        models=(PromoOptionOut,),
     ),
 )
 register_contract(
@@ -149,6 +159,43 @@ async def admin_promos_list_route(request: web.Request) -> web.Response:
             "page_size": page_size,
             "total": int(total or 0),
             "owned_total": int(owned_total or 0),
+        }
+    )
+
+
+async def admin_promo_options_route(request: web.Request) -> web.Response:
+    """Return bounded, searchable promo suggestions for message buttons."""
+
+    _require_admin_user_id(request)
+    search = str(request.query.get("query", "") or "").strip()[:58]
+    async_session_factory: sessionmaker = get_session_factory(request)
+    async with async_session_factory() as session:
+        if search:
+            promos = await promo_code_dal.get_usable_promo_codes_for_picker(
+                session,
+                search=search,
+                personal=None,
+                limit=_PROMO_PICKER_SEARCH_LIMIT,
+            )
+        else:
+            # Two bounded queries prevent a large run of personal codes from
+            # consuming every initial option before shared codes are seen.
+            shared = await promo_code_dal.get_usable_promo_codes_for_picker(
+                session,
+                personal=False,
+                limit=_PROMO_PICKER_GROUP_LIMIT,
+            )
+            personal = await promo_code_dal.get_usable_promo_codes_for_picker(
+                session,
+                personal=True,
+                limit=_PROMO_PICKER_GROUP_LIMIT,
+            )
+            promos = [*shared, *personal]
+    return _ok(
+        {
+            "promos": [
+                PromoOptionOut.from_orm_promo(promo).model_dump(mode="json") for promo in promos
+            ]
         }
     )
 

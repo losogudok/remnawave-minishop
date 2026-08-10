@@ -892,6 +892,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/admin/promos/options": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Promo Options */
+    get: operations["get_admin_promo_options_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/admin/promos/{promo_id}": {
     parameters: {
       query?: never;
@@ -5046,6 +5063,20 @@ export interface components {
        */
       valid_days: unknown;
     };
+    /** PromoOptionOut */
+    PromoOptionOut: {
+      /** Code */
+      code: string;
+      /** Current Activations */
+      current_activations: number;
+      /** Max Activations */
+      max_activations: number;
+      /**
+       * User Id
+       * @default null
+       */
+      user_id: number | null;
+    };
     /** PromoOut */
     PromoOut: {
       /** Applies To */
@@ -8038,6 +8069,30 @@ export interface operations {
             /** @constant */
             ok: true;
             promo: components["schemas"]["PromoOut"];
+          };
+        };
+      };
+    };
+  };
+  get_admin_promo_options_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            promos: components["schemas"]["PromoOptionOut"][];
           };
         };
       };

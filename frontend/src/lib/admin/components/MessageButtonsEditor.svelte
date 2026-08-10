@@ -2,7 +2,7 @@
   lang="ts"
   generics="Row extends { id: number; kind: string; label: string; url: string; promoCode: string; section: string; labels?: Record<string, string> }"
 >
-  import { AdminButton, AdminSelect } from "$components/patterns/admin/index.js";
+  import { AdminButton, AdminCombobox, AdminSelect } from "$components/patterns/admin/index.js";
   import { Input, Sortable } from "$components/ui/index.js";
   import { Plus, Trash2 } from "$components/ui/icons.js";
 
@@ -54,7 +54,7 @@
     onRemove: (index: number) => void;
     onUpdate: (index: number, fields: Partial<Row>) => void;
     onReorder: (from: number, to: number) => void;
-    onRequestPromoOptions?: () => void;
+    onRequestPromoOptions?: (query?: string) => void;
   } = $props();
 
   const kindOptions = $derived([
@@ -128,14 +128,22 @@
           onUpdate(index, captionPatch(button, (event.currentTarget as HTMLInputElement).value))}
       />
       {#if needsPromoCode(button.kind)}
-        <AdminSelect
+        <AdminCombobox
           value={button.promoCode}
           items={promoOptions}
-          placeholder={promoOptionsLoading
-            ? at("broadcast_button_promo_loading", {}, "Loading codes...")
-            : at("broadcast_button_promo_select", {}, "Select a code")}
+          placeholder={at("broadcast_button_promo_search", {}, "Search or enter a promo code")}
           ariaLabel={at("broadcast_button_promo_select", {}, "Select a code")}
-          onValueChange={(value) => onUpdate(index, { promoCode: value } as Partial<Row>)}
+          loading={promoOptionsLoading || !promoOptionsLoaded}
+          loadingMessage={at("broadcast_button_promo_loading", {}, "Loading codes...")}
+          emptyMessage={at(
+            "broadcast_button_promo_no_matches",
+            {},
+            "No matching active codes — enter the exact code"
+          )}
+          maxLength={58}
+          onValueChange={(value) =>
+            onUpdate(index, { promoCode: value.toUpperCase() } as Partial<Row>)}
+          onInputChange={(value) => onRequestPromoOptions?.(value)}
         />
       {:else if button.kind === "webapp_section"}
         <AdminSelect
@@ -171,16 +179,6 @@
     {/snippet}
   </Sortable>
 </div>
-
-{#if hasPromoButtons && promoOptionsLoaded && !promoOptions.length}
-  <small class="admin-muted">
-    {at(
-      "broadcast_no_promos_hint",
-      {},
-      "No active codes — create one in the Promo codes section first"
-    )}
-  </small>
-{/if}
 
 {#if buttons.length < max}
   <div>

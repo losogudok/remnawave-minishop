@@ -6453,6 +6453,41 @@
         "title": "PromoCreateBody",
         "type": "object"
       },
+      "PromoOptionOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "current_activations": {
+            "title": "Current Activations",
+            "type": "integer"
+          },
+          "max_activations": {
+            "title": "Max Activations",
+            "type": "integer"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "code",
+          "max_activations",
+          "current_activations"
+        ],
+        "title": "PromoOptionOut",
+        "type": "object"
+      },
       "PromoOut": {
         "properties": {
           "applies_to": {
@@ -12820,6 +12855,52 @@
           }
         ],
         "summary": "Admin Promo Create",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/promos/options": {
+      "get": {
+        "operationId": "get_admin_promo_options_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "promos": {
+                      "items": {
+                        "$ref": "#/components/schemas/PromoOptionOut"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "promos"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Promo Options",
         "tags": [
           "admin"
         ]

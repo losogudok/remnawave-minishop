@@ -2194,6 +2194,8 @@
   "admin_broadcast_button_reorder": "Перетащите, чтобы изменить порядок кнопок",
   "admin_broadcast_button_promo_select": "Выберите промокод",
   "admin_broadcast_button_promo_loading": "Загрузка промокодов...",
+  "admin_broadcast_button_promo_search": "Найдите или введите промокод",
+  "admin_broadcast_button_promo_no_matches": "Активные промокоды не найдены — введите точный код",
   "admin_broadcast_no_promos_hint": "Нет активных промокодов — создайте код в разделе «Промокоды»",
   "admin_error_no_channels": "Не выбран ни один канал доставки.",
   "admin_error_email_not_configured": "Email-канал недоступен: SMTP не настроен.",
