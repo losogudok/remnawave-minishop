@@ -271,6 +271,7 @@
     stripTopupQueryFromUrl,
     syncAppSectionPath,
     t,
+    termUnitLabel,
     telegramNotificationsResumeCooldownMs: TELEGRAM_NOTIFICATIONS_RESUME_REFRESH_COOLDOWN_MS,
     telegramSdk,
     tick,

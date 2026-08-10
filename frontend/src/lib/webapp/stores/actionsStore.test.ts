@@ -11,7 +11,11 @@ function makeActionsStore(overrides: TestOverrides = {}) {
     showToast: vi.fn(),
     startCheckoutPromo: vi.fn(),
     prefillCheckoutPromo: vi.fn(),
-    t: (key: string, _params?: Record<string, unknown>, fallback?: string) => fallback || key,
+    t: (key: string, params: Record<string, unknown> = {}, fallback = "") =>
+      String(fallback || key).replace(/\{(\w+)\}/g, (_, name) =>
+        String(params[name] ?? `{${name}}`)
+      ),
+    termUnitLabel: (value: number) => (value === 1 ? "day" : "days"),
     ...overrides,
   };
   return { deps, store: createActionsStore(deps) };
@@ -104,6 +108,7 @@ describe("actionsStore", () => {
         ok: true,
         status: "standalone",
         code: "GIFT7",
+        bonus_days: 7,
         effect_summary: "+7 days",
       })
       .mockResolvedValueOnce({ ok: true, end_date_text: "31.05.2026" });
@@ -121,6 +126,37 @@ describe("actionsStore", () => {
     });
     expect(deps.loadData).toHaveBeenCalledWith({ fresh: true });
     expect(deps.startCheckoutPromo).not.toHaveBeenCalled();
+  });
+
+  it("localizes all structured effects before showing the success dialog", async () => {
+    const api = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: "standalone",
+        code: "GIFT3",
+        bonus_days: 3,
+        regular_traffic_gb: 5.5,
+        premium_traffic_gb: 2,
+        effect_summary: "+3 days, +5.5 GB regular, +2 GB premium",
+      })
+      .mockResolvedValueOnce({ ok: true });
+    const translations: Record<string, string> = {
+      wa_promo_effect_bonus_days: "+{value} {unit}",
+      wa_promo_effect_regular_traffic: "+{value} ГБ обычного трафика",
+      wa_promo_effect_premium_traffic: "+{value} ГБ премиум-трафика",
+    };
+    const t = (key: string, params: Record<string, unknown> = {}, fallback = "") =>
+      String(translations[key] || fallback || key).replace(/\{(\w+)\}/g, (_, name) =>
+        String(params[name] ?? `{${name}}`)
+      );
+    const { store } = makeActionsStore({ api, t, termUnitLabel: () => "дня" });
+
+    await store.handlePromoDeeplink("gift3");
+
+    expect(store.promoDeeplinkEffectSummary).toBe(
+      "+3 дня, +5.5 ГБ обычного трафика, +2 ГБ премиум-трафика"
+    );
   });
 
   it("falls back to checkout when the code turns checkout-only during activation", async () => {
