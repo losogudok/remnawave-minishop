@@ -4,8 +4,6 @@ from typing import TYPE_CHECKING, Any
 
 from aiogram import Bot, F, Router, types
 from aiohttp import web
-from pydantic import Field, field_validator
-from pydantic_settings import SettingsConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
@@ -15,12 +13,10 @@ from db.dal import payment_dal
 
 from ..base import (
     PaymentProviderSpec,
-    ProviderEnvConfig,
     ServiceFactoryContext,
     WebAppPaymentContext,
     normalize_payment_currency_code,
     parse_supported_currency_codes,
-    provider_env_file,
     provider_runtime_enabled,
 )
 from ..shared import (
@@ -41,9 +37,16 @@ from ..shared import (
     run_webapp_payment,
 )
 from ..shared.app_context import app_required
+from .config import (
+    PlategaAllMethodsPresentation,
+    PlategaConfig,
+    PlategaCryptoPresentation,
+    PlategaInternationalPresentation,
+    PlategaSbpPresentation,
+    PlategaSubscriptionPresentation,
+)
 from .manifest import CONFIG_MANIFEST, platega_presentation_manifest
 from .subscriptions import (
-    DEFAULT_SUBSCRIPTION_METHOD,
     SUBSCRIPTION_STATUSES,
     PlategaSubscriptionMixin,
     callback_value,
@@ -61,99 +64,6 @@ else:
 logger = logging.getLogger(__name__)
 
 _LOG = "platega"
-
-
-class PlategaConfig(ProviderEnvConfig):
-    model_config = SettingsConfigDict(
-        env_file=provider_env_file(),
-        env_file_encoding="utf-8",
-        env_prefix="PLATEGA_",
-        extra="ignore",
-    )
-
-    ENABLED: bool = Field(default=False)
-    BASE_URL: str = Field(default="https://app.platega.io")
-    MERCHANT_ID: str | None = None
-    SECRET: str | None = None
-    PAYMENT_METHOD: int = Field(default=2)
-    SBP_ENABLED: bool = Field(default=False)
-    SBP_ADMIN_ONLY_ENABLED: bool = Field(default=False)
-    CRYPTO_ENABLED: bool = Field(default=False)
-    CRYPTO_ADMIN_ONLY_ENABLED: bool = Field(default=False)
-    SUBSCRIPTION_ENABLED: bool = Field(default=False)
-    SUBSCRIPTION_ADMIN_ONLY_ENABLED: bool = Field(default=False)
-    SBP_METHOD: int = Field(default=2)
-    CRYPTO_METHOD: int = Field(default=13)
-    SUBSCRIPTION_METHOD: int = Field(default=DEFAULT_SUBSCRIPTION_METHOD)
-    RETURN_URL: str | None = None
-    FAILED_URL: str | None = None
-    SUPPORTED_CURRENCIES: str = Field(default="RUB")
-
-    @field_validator("MERCHANT_ID", "SECRET", "RETURN_URL", "FAILED_URL", mode="before")
-    @classmethod
-    def _strip_optional(cls, v: Any) -> Any:
-        if isinstance(v, str) and not v.strip():
-            return None
-        return v
-
-    @property
-    def sbp_method_resolved(self) -> int:
-        """Falls back to the legacy ``PAYMENT_METHOD`` for backwards compat."""
-        if self.SBP_METHOD != 2:
-            return self.SBP_METHOD
-        return self.PAYMENT_METHOD or 2
-
-    @property
-    def webhook_path(self) -> str:
-        return "/webhook/platega"
-
-
-class PlategaSbpPresentation(ProviderEnvConfig):
-    model_config = SettingsConfigDict(
-        env_file=provider_env_file(),
-        env_file_encoding="utf-8",
-        env_prefix="PAYMENT_PLATEGA_SBP_",
-        extra="ignore",
-    )
-
-    WEBAPP_LABEL_RU: str | None = None
-    WEBAPP_LABEL_EN: str | None = None
-    WEBAPP_ICON: str | None = None
-    TELEGRAM_LABEL_RU: str | None = None
-    TELEGRAM_LABEL_EN: str | None = None
-    TELEGRAM_EMOJI: str | None = None
-
-
-class PlategaCryptoPresentation(ProviderEnvConfig):
-    model_config = SettingsConfigDict(
-        env_file=provider_env_file(),
-        env_file_encoding="utf-8",
-        env_prefix="PAYMENT_PLATEGA_CRYPTO_",
-        extra="ignore",
-    )
-
-    WEBAPP_LABEL_RU: str | None = None
-    WEBAPP_LABEL_EN: str | None = None
-    WEBAPP_ICON: str | None = None
-    TELEGRAM_LABEL_RU: str | None = None
-    TELEGRAM_LABEL_EN: str | None = None
-    TELEGRAM_EMOJI: str | None = None
-
-
-class PlategaSubscriptionPresentation(ProviderEnvConfig):
-    model_config = SettingsConfigDict(
-        env_file=provider_env_file(),
-        env_file_encoding="utf-8",
-        env_prefix="PAYMENT_PLATEGA_SUBSCRIPTION_",
-        extra="ignore",
-    )
-
-    WEBAPP_LABEL_RU: str | None = None
-    WEBAPP_LABEL_EN: str | None = None
-    WEBAPP_ICON: str | None = None
-    TELEGRAM_LABEL_RU: str | None = None
-    TELEGRAM_LABEL_EN: str | None = None
-    TELEGRAM_EMOJI: str | None = None
 
 
 class PlategaService(HttpClientMixin, PlategaSubscriptionMixin):
@@ -186,11 +96,15 @@ class PlategaService(HttpClientMixin, PlategaSubscriptionMixin):
         else:
             logger.info(
                 "PlategaService configured. SBP button: %s (method=%s), Crypto button: %s "
-                "(method=%s), Subscription button: %s (method=%s)",
+                "(method=%s), International button: %s (method=%s), Method chooser: %s, "
+                "Subscription button: %s (method=%s)",
                 "ON" if config.SBP_ENABLED else "OFF",
                 self.sbp_method,
                 "ON" if config.CRYPTO_ENABLED else "OFF",
                 self.crypto_method,
+                "ON" if config.INTERNATIONAL_ENABLED else "OFF",
+                self.international_method,
+                "ON" if config.ALL_METHODS_ENABLED else "OFF",
                 "ON" if config.SUBSCRIPTION_ENABLED else "OFF",
                 self.subscription_method,
             )
@@ -202,6 +116,8 @@ class PlategaService(HttpClientMixin, PlategaSubscriptionMixin):
                 self.config,
                 "SBP_ADMIN_ONLY_ENABLED",
                 "CRYPTO_ADMIN_ONLY_ENABLED",
+                "INTERNATIONAL_ADMIN_ONLY_ENABLED",
+                "ALL_METHODS_ADMIN_ONLY_ENABLED",
                 "SUBSCRIPTION_ADMIN_ONLY_ENABLED",
             )
             and self.merchant_id
@@ -233,6 +149,10 @@ class PlategaService(HttpClientMixin, PlategaSubscriptionMixin):
         return self.config.CRYPTO_METHOD
 
     @property
+    def international_method(self) -> int:
+        return self.config.INTERNATIONAL_METHOD
+
+    @property
     def return_url(self) -> str:
         return self.config.RETURN_URL or f"https://t.me/{self._default_return_url}"
 
@@ -257,6 +177,7 @@ class PlategaService(HttpClientMixin, PlategaSubscriptionMixin):
         payload: str | None = None,
         payment_method: int | None = None,
         interval: int | None = None,
+        allow_method_selection: bool = False,
     ) -> tuple[bool, dict[str, Any]]:
         if not self.configured:
             logger.error("PlategaService is not configured. Cannot create transaction.")
@@ -274,8 +195,8 @@ class PlategaService(HttpClientMixin, PlategaSubscriptionMixin):
             }
 
         session = await self._get_session()
-        url = f"{self.base_url}/transaction/process"
-        method_id = int(payment_method if payment_method is not None else self.payment_method)
+        endpoint = "/v2/transaction/process" if allow_method_selection else "/transaction/process"
+        url = f"{self.base_url}{endpoint}"
 
         payment_details: dict[str, Any] = {"amount": float(amount), "currency": currency_code}
         if interval is not None:
@@ -283,13 +204,16 @@ class PlategaService(HttpClientMixin, PlategaSubscriptionMixin):
             # ``interval`` only for the subscription payment method.
             payment_details["interval"] = int(interval)
         body: dict[str, Any] = {
-            "paymentMethod": method_id,
             "paymentDetails": payment_details,
             "description": description,
             "return": self.return_url,
             "failedUrl": self.failed_url,
             "payload": payload,
         }
+        if not allow_method_selection:
+            body["paymentMethod"] = int(
+                payment_method if payment_method is not None else self.payment_method
+            )
 
         # Remove optional keys with falsy values to avoid validation errors
         clean_body = {k: v for k, v in body.items() if v not in (None, "")}
@@ -357,7 +281,7 @@ class PlategaService(HttpClientMixin, PlategaSubscriptionMixin):
         success, data = await self.get_transaction(transaction_id)
         if not success or str(data.get("status") or "").upper() != "PENDING":
             return None
-        if str(data.get("id") or "") != transaction_id:
+        if str(first_value(data, "id", "transactionId") or "") != transaction_id:
             return None
 
         try:
@@ -535,6 +459,8 @@ router = Router(name="user_subscription_payments_platega_router")
 @router.callback_query(
     F.data.startswith("pay_platega_sbp:")
     | F.data.startswith("pay_platega_crypto:")
+    | F.data.startswith("pay_platega_international:")
+    | F.data.startswith("pay_platega_all_methods:")
     | F.data.startswith("pay_platega_sub:")
     | F.data.startswith("pay_platega:")
 )
@@ -581,6 +507,14 @@ async def create_crypto_webapp_payment(ctx: WebAppPaymentContext) -> web.Respons
     return await run_webapp_payment(_CRYPTO_DESCRIPTOR, ctx)
 
 
+async def create_international_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
+    return await run_webapp_payment(_INTERNATIONAL_DESCRIPTOR, ctx)
+
+
+async def create_all_methods_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
+    return await run_webapp_payment(_ALL_METHODS_DESCRIPTOR, ctx)
+
+
 async def create_subscription_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
     return await run_webapp_payment(_SUBSCRIPTION_DESCRIPTOR, ctx)
 
@@ -622,9 +556,13 @@ def _webapp_context_for_variant(variant: str) -> Any:
     return _webapp_context
 
 
-def _platega_method_id(service: PlategaService, variant: str) -> int:
+def _platega_method_id(service: PlategaService, variant: str) -> int | None:
     if variant == "crypto":
         return service.config.CRYPTO_METHOD
+    if variant == "international":
+        return service.config.INTERNATIONAL_METHOD
+    if variant == "all_methods":
+        return None
     if variant == "subscription":
         return service.subscription_method
     return service.config.sbp_method_resolved
@@ -670,6 +608,7 @@ async def _create_payment(
         description=request.description,
         payload=json.dumps(payload_data),
         payment_method=_platega_method_id(service, variant),
+        allow_method_selection=variant == "all_methods",
     )
 
 
@@ -707,6 +646,15 @@ def _platega_webapp_available(variant: str) -> Any:
             return False
         if variant == "crypto":
             return bool(service.config.CRYPTO_ENABLED or service.config.CRYPTO_ADMIN_ONLY_ENABLED)
+        if variant == "international":
+            return bool(
+                service.config.INTERNATIONAL_ENABLED
+                or service.config.INTERNATIONAL_ADMIN_ONLY_ENABLED
+            )
+        if variant == "all_methods":
+            return bool(
+                service.config.ALL_METHODS_ENABLED or service.config.ALL_METHODS_ADMIN_ONLY_ENABLED
+            )
         if variant == "subscription":
             return bool(service.subscriptions_enabled)
         return bool(service.config.SBP_ENABLED or service.config.SBP_ADMIN_ONLY_ENABLED)
@@ -719,6 +667,10 @@ def _platega_descriptor_for_callback_prefix(
 ) -> LinkPaymentDescriptor[PlategaService]:
     if callback_prefix == "pay_platega_crypto":
         return _CRYPTO_DESCRIPTOR
+    if callback_prefix == "pay_platega_international":
+        return _INTERNATIONAL_DESCRIPTOR
+    if callback_prefix == "pay_platega_all_methods":
+        return _ALL_METHODS_DESCRIPTOR
     if callback_prefix == "pay_platega_sub":
         return _SUBSCRIPTION_DESCRIPTOR
     return _SBP_DESCRIPTOR
@@ -802,6 +754,98 @@ CRYPTO_SPEC = PaymentProviderSpec(
     currency_support_url="https://docs.platega.io/",
 )
 
+INTERNATIONAL_SPEC = PaymentProviderSpec(
+    id="platega_international",
+    provider_key="platega",
+    label="Platega",
+    webapp_label="Platega · International",
+    webapp_labels={"ru": "International cards", "en": "International cards"},
+    webapp_icon="Globe2",
+    logo_url="/provider-logos/platega.png",
+    telegram_labels={
+        "ru": "Pay with an international card",
+        "en": "Pay with an international card",
+    },
+    telegram_emoji="🌍",
+    pending_status="pending_platega",
+    enabled=lambda config: bool(
+        getattr(config, "ENABLED", False) and getattr(config, "INTERNATIONAL_ENABLED", False)
+    ),
+    admin_only_enabled=lambda config: bool(
+        getattr(config, "INTERNATIONAL_ADMIN_ONLY_ENABLED", False)
+    ),
+    admin_only_config_attr="INTERNATIONAL_ADMIN_ONLY_ENABLED",
+    service_key="platega_service",
+    callback_prefix="pay_platega_international",
+    create_webapp_payment=create_international_webapp_payment,
+    reuse_webapp_payment=reuse_webapp_payment,
+    config_class=PlategaConfig,
+    presentation_class=PlategaInternationalPresentation,
+    manifest_fields=platega_presentation_manifest(
+        "Platega",
+        "Globe2",
+        "PLATEGA_INTERNATIONAL",
+    ),
+    supported_currencies_resolver=lambda config: getattr(config, "SUPPORTED_CURRENCIES", "RUB"),
+    currency_support_note=(
+        "Platega international-payment currencies depend on the merchant account; "
+        "configure the codes enabled for your account."
+    ),
+    info_url="https://platega.io/",
+    currency_support_url=(
+        "https://docs.platega.io/"
+        "%D1%81%D0%BE%D0%B7%D0%B4%D0%B0%D0%BD%D0%B8%D0%B5-"
+        "%D0%BF%D0%BB%D0%B0%D1%82%D0%B5%D0%B6%D0%BD%D0%BE%D0%B9-"
+        "%D1%81%D1%81%D1%8B%D0%BB%D0%BA%D0%B8-%D1%81-%D0%B7%D0%B0%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D0%BC-"
+        "%D0%BC%D0%B5%D1%82%D0%BE%D0%B4%D0%BE%D0%BC-29203843e0"
+    ),
+)
+
+ALL_METHODS_SPEC = PaymentProviderSpec(
+    id="platega_all_methods",
+    provider_key="platega",
+    label="Platega",
+    webapp_label="Platega · All methods",
+    webapp_labels={"ru": "All payment methods", "en": "All payment methods"},
+    webapp_icon="WalletCards",
+    logo_url="/provider-logos/platega.png",
+    telegram_labels={"ru": "Choose payment method", "en": "Choose payment method"},
+    telegram_emoji="💳",
+    pending_status="pending_platega",
+    enabled=lambda config: bool(
+        getattr(config, "ENABLED", False) and getattr(config, "ALL_METHODS_ENABLED", False)
+    ),
+    admin_only_enabled=lambda config: bool(
+        getattr(config, "ALL_METHODS_ADMIN_ONLY_ENABLED", False)
+    ),
+    admin_only_config_attr="ALL_METHODS_ADMIN_ONLY_ENABLED",
+    service_key="platega_service",
+    callback_prefix="pay_platega_all_methods",
+    create_webapp_payment=create_all_methods_webapp_payment,
+    reuse_webapp_payment=reuse_webapp_payment,
+    config_class=PlategaConfig,
+    presentation_class=PlategaAllMethodsPresentation,
+    manifest_fields=platega_presentation_manifest(
+        "Platega",
+        "WalletCards",
+        "PLATEGA_ALL_METHODS",
+    ),
+    supported_currencies_resolver=lambda config: getattr(config, "SUPPORTED_CURRENCIES", "RUB"),
+    currency_support_note=(
+        "The hosted Platega page shows the methods enabled for the merchant account; "
+        "configure every currency that those methods can accept."
+    ),
+    info_url="https://platega.io/",
+    currency_support_url=(
+        "https://docs.platega.io/"
+        "%D1%81%D0%BE%D0%B7%D0%B4%D0%B0%D0%BD%D0%B8%D0%B5-"
+        "%D0%BF%D0%BB%D0%B0%D1%82%D0%B5%D0%B6%D0%BD%D0%BE%D0%B9-"
+        "%D1%81%D1%81%D1%8B%D0%BB%D0%BA%D0%B8-%D0%B1%D0%B5%D0%B7-"
+        "%D0%B7%D0%B0%D0%B4%D0%B0%D0%BD%D0%BD%D0%BE%D0%B3%D0%BE-"
+        "%D0%BC%D0%B5%D1%82%D0%BE%D0%B4%D0%B0-33845703e0"
+    ),
+)
+
 SUBSCRIPTION_SPEC = PaymentProviderSpec(
     id="platega_subscription",
     provider_key="platega",
@@ -842,53 +886,47 @@ SUBSCRIPTION_SPEC = PaymentProviderSpec(
     currency_support_url="https://docs.platega.io/",
 )
 
-SPECS = (SBP_SPEC, CRYPTO_SPEC, SUBSCRIPTION_SPEC)
-
-_SBP_DESCRIPTOR: LinkPaymentDescriptor[PlategaService] = LinkPaymentDescriptor(
-    spec=SBP_SPEC,
-    provider_key="platega",
-    pending_status="pending_platega",
-    display_name="Platega",
-    log_prefix=_LOG,
-    service_app_key="platega_service",
-    service_type=PlategaService,
-    create=_create_payment,
-    reuse=lambda service, payment: service.try_reuse_pending_transaction(
-        payment,
-        user_id=getattr(payment, "user_id", 0),
-        sale_mode=str(getattr(payment, "sale_mode", "") or ""),
-        variant="sbp",
-    ),
-    reuse_with_context=_reuse_payment_with_context,
-    extract_url=_extract_payment_url,
-    extract_provider_id=_extract_provider_id,
-    callback_context=_context_for_variant("sbp"),
-    webapp_context=_webapp_context_for_variant("sbp"),
-    webapp_available=_platega_webapp_available("sbp"),
+SPECS = (
+    SBP_SPEC,
+    CRYPTO_SPEC,
+    INTERNATIONAL_SPEC,
+    ALL_METHODS_SPEC,
+    SUBSCRIPTION_SPEC,
 )
 
-_CRYPTO_DESCRIPTOR: LinkPaymentDescriptor[PlategaService] = LinkPaymentDescriptor(
-    spec=CRYPTO_SPEC,
-    provider_key="platega",
-    pending_status="pending_platega",
-    display_name="Platega",
-    log_prefix=_LOG,
-    service_app_key="platega_service",
-    service_type=PlategaService,
-    create=_create_payment,
-    reuse=lambda service, payment: service.try_reuse_pending_transaction(
-        payment,
-        user_id=getattr(payment, "user_id", 0),
-        sale_mode=str(getattr(payment, "sale_mode", "") or ""),
-        variant="crypto",
-    ),
-    reuse_with_context=_reuse_payment_with_context,
-    extract_url=_extract_payment_url,
-    extract_provider_id=_extract_provider_id,
-    callback_context=_context_for_variant("crypto"),
-    webapp_context=_webapp_context_for_variant("crypto"),
-    webapp_available=_platega_webapp_available("crypto"),
-)
+
+def _one_off_descriptor(
+    spec: PaymentProviderSpec,
+    variant: str,
+) -> LinkPaymentDescriptor[PlategaService]:
+    return LinkPaymentDescriptor(
+        spec=spec,
+        provider_key="platega",
+        pending_status="pending_platega",
+        display_name="Platega",
+        log_prefix=_LOG,
+        service_app_key="platega_service",
+        service_type=PlategaService,
+        create=_create_payment,
+        reuse=lambda service, payment: service.try_reuse_pending_transaction(
+            payment,
+            user_id=getattr(payment, "user_id", 0),
+            sale_mode=str(getattr(payment, "sale_mode", "") or ""),
+            variant=variant,
+        ),
+        reuse_with_context=_reuse_payment_with_context,
+        extract_url=_extract_payment_url,
+        extract_provider_id=_extract_provider_id,
+        callback_context=_context_for_variant(variant),
+        webapp_context=_webapp_context_for_variant(variant),
+        webapp_available=_platega_webapp_available(variant),
+    )
+
+
+_SBP_DESCRIPTOR = _one_off_descriptor(SBP_SPEC, "sbp")
+_CRYPTO_DESCRIPTOR = _one_off_descriptor(CRYPTO_SPEC, "crypto")
+_INTERNATIONAL_DESCRIPTOR = _one_off_descriptor(INTERNATIONAL_SPEC, "international")
+_ALL_METHODS_DESCRIPTOR = _one_off_descriptor(ALL_METHODS_SPEC, "all_methods")
 
 _SUBSCRIPTION_DESCRIPTOR: LinkPaymentDescriptor[PlategaService] = LinkPaymentDescriptor(
     spec=SUBSCRIPTION_SPEC,
@@ -912,6 +950,8 @@ _DESCRIPTORS_BY_METHOD: dict[str, LinkPaymentDescriptor[PlategaService]] = {
     "platega_sbp": _SBP_DESCRIPTOR,
     "platega": _SBP_DESCRIPTOR,
     "platega_crypto": _CRYPTO_DESCRIPTOR,
+    "platega_international": _INTERNATIONAL_DESCRIPTOR,
+    "platega_all_methods": _ALL_METHODS_DESCRIPTOR,
     "platega_subscription": _SUBSCRIPTION_DESCRIPTOR,
 }
 

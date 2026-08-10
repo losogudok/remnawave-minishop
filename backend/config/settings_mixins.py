@@ -714,6 +714,8 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
             "freekassa",
             "platega_sbp",
             "platega_crypto",
+            "platega_international",
+            "platega_all_methods",
             "severpay",
             "wata",
             "wata_crypto",
@@ -747,6 +749,10 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
                     methods.append("platega_sbp")
                 if "platega_crypto" not in methods:
                     methods.append("platega_crypto")
+                if "platega_international" not in methods:
+                    methods.append("platega_international")
+                if "platega_all_methods" not in methods:
+                    methods.append("platega_all_methods")
                 continue
             methods.append(slug)
         # Append any registered spec that the operator didn't list — keeps

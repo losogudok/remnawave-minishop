@@ -97,6 +97,12 @@ describe("tariffSettings", () => {
       providerSettingsPath({ provider_key: "platega_crypto" } as ProviderCurrencySupport)
     ).toEqual(["payments", "platega", "crypto"]);
     expect(
+      providerSettingsPath({ provider_key: "platega_international" } as ProviderCurrencySupport)
+    ).toEqual(["payments", "platega", "international"]);
+    expect(
+      providerSettingsPath({ provider_key: "platega_all_methods" } as ProviderCurrencySupport)
+    ).toEqual(["payments", "platega", "all-methods"]);
+    expect(
       providerSettingsPath({ provider_key: "custom_gateway" } as ProviderCurrencySupport)
     ).toEqual(["payments", "custom-gateway"]);
   });

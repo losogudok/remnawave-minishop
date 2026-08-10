@@ -58,7 +58,7 @@ reverse proxy должен прокидывать `X-Forwarded-For`, а его I
 | --- | --- | --- |
 | YooKassa | `WEBHOOK_BASE_URL` + `/webhook/yookassa` | Например `https://bot.example.com/webhook/yookassa`. |
 | FreeKassa | `WEBHOOK_BASE_URL` + `/webhook/freekassa` | Используйте как notification/webhook URL; при IP-фильтрации заполните `FREEKASSA_TRUSTED_IPS`. |
-| Platega | `WEBHOOK_BASE_URL` + `/webhook/platega` | Один общий webhook для основной, СБП/карты и crypto-кнопки Platega. |
+| Platega | `WEBHOOK_BASE_URL` + `/webhook/platega` | Один общий webhook для всех разовых методов и рекуррентной подписки Platega. |
 | SeverPay | `WEBHOOK_BASE_URL` + `/webhook/severpay` | Укажите как callback/webhook URL, если поле есть в кабинете мерчанта. |
 | Wata | `WEBHOOK_BASE_URL` + `/webhook/wata` | Если включена проверка подписи, настройте `WATA_WEBHOOK_VERIFY_SIGNATURE` и `WATA_PUBLIC_KEY`. |
 | CryptoPay | `WEBHOOK_BASE_URL` + `/webhook/cryptopay` | Указывается в настройках Crypto Bot / CryptoPay webhook. |
@@ -137,14 +137,20 @@ FreeKassa подключается как отдельный платежный 
 
 ## Platega
 
-Platega подключается как отдельный платежный провайдер. Внутри Minishop он может создавать несколько кнопок: основную legacy-кнопку, СБП/карту, crypto-кнопку и рекуррентную СБП-подписку.
+Platega подключается как отдельный платежный провайдер. Внутри Minishop он может создавать независимые кнопки: СБП/карту, криптовалюту, международные карты, единую страницу выбора способа и рекуррентную СБП-подписку. Новые варианты выключены по умолчанию и не меняют существующие кнопки после обновления.
 
 ### Настройка
 
 1. Включите `PLATEGA_ENABLED`.
-3. Укажите `PLATEGA_MERCHANT_ID` и `PLATEGA_SECRET`.
-2. Включите необходимые кнопки `PLATEGA_SBP_ENABLED`, `PLATEGA_CRYPTO_ENABLED`, `PLATEGA_SUBSCRIPTION_ENABLED`.
+2. Укажите `PLATEGA_MERCHANT_ID` и `PLATEGA_SECRET`.
+3. Включите нужные кнопки: `PLATEGA_SBP_ENABLED`, `PLATEGA_CRYPTO_ENABLED`, `PLATEGA_INTERNATIONAL_ENABLED`, `PLATEGA_ALL_METHODS_ENABLED` и/или `PLATEGA_SUBSCRIPTION_ENABLED`.
 4. Скопируйте URL вебхука из админ-панели и укажите его в кабинете Platega. Один и тот же URL принимает и разовые транзакции, и колбэки подписок.
+
+### Разовые способы оплаты
+
+- `PLATEGA_INTERNATIONAL_ENABLED` создаёт обычную транзакцию с `paymentMethod: 12`. При изменении ID метода в Platega его можно переопределить через `PLATEGA_INTERNATIONAL_METHOD`.
+- `PLATEGA_ALL_METHODS_ENABLED` использует `POST /v2/transaction/process` без поля `paymentMethod`. После перехода по ссылке плательщик выбирает среди способов, подключённых для мерчанта в Platega.
+- Обе кнопки используют общие `PLATEGA_RETURN_URL`, `PLATEGA_FAILED_URL`, webhook и `PLATEGA_SUPPORTED_CURRENCIES`. Если у международного метода или страницы выбора другой набор валют, перечислите объединение реально доступных кодов и ограничьте неподходящие кнопки на уровне тарифов.
 
 ### Рекуррентные СБП-подписки
 
@@ -167,7 +173,8 @@ Platega подключается как отдельный платежный п
 ### Справочник
 
 - [Platega](../configuration/env-vars.md#platega)
-- [Документация Platega](https://docs.platega.io/)
+- [Ссылка без заданного метода](https://docs.platega.io/создание-платежной-ссылки-без-заданного-метода-33845703e0)
+- [Ссылка с заданным методом](https://docs.platega.io/создание-платежной-ссылки-с-заданным-методом-29203843e0)
 
 ## SeverPay
 

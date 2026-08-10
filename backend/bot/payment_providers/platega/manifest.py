@@ -1,8 +1,8 @@
 """Admin settings manifest fragments declared by the Platega provider.
 
 Kept out of ``service.py`` so the service module stays about payment flow: the
-Platega package now carries three visible buttons (SBP, crypto, recurring SBP
-subscription) and their presentation overrides, which is a lot of static data.
+Platega package carries several independently configurable buttons and their
+presentation overrides, which is a lot of static data.
 """
 
 from __future__ import annotations
@@ -123,6 +123,33 @@ CONFIG_MANIFEST: tuple[ProviderManifestField, ...] = (
         "Crypto method ID",
         subsection="Platega",
         attr="CRYPTO_METHOD",
+    ),
+    ProviderManifestField(
+        "PLATEGA_INTERNATIONAL_ENABLED",
+        "bool",
+        "International card button",
+        description="Creates a one-off payment with Platega paymentMethod 12 by default.",
+        subsection="Platega",
+        attr="INTERNATIONAL_ENABLED",
+    ),
+    ProviderManifestField(
+        "PLATEGA_INTERNATIONAL_METHOD",
+        "int",
+        "International method ID",
+        description="Platega paymentMethod used for international card payments (12).",
+        subsection="Platega",
+        attr="INTERNATIONAL_METHOD",
+    ),
+    ProviderManifestField(
+        "PLATEGA_ALL_METHODS_ENABLED",
+        "bool",
+        "Payment method chooser button",
+        description=(
+            "Creates a v2 hosted payment link without paymentMethod so the payer "
+            "chooses from the methods enabled for the merchant account."
+        ),
+        subsection="Platega",
+        attr="ALL_METHODS_ENABLED",
     ),
     ProviderManifestField(
         "PLATEGA_SUBSCRIPTION_ENABLED",

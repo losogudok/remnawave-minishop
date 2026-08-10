@@ -37,6 +37,8 @@ PAYMENT_PROVIDER_SPECS: tuple[PaymentProviderSpec, ...] = (
     freekassa.SPEC,
     platega.SBP_SPEC,
     platega.CRYPTO_SPEC,
+    platega.INTERNATIONAL_SPEC,
+    platega.ALL_METHODS_SPEC,
     platega.SUBSCRIPTION_SPEC,
     severpay.SPEC,
     wata.SPEC,
@@ -267,7 +269,14 @@ def _localized_default(
 # locale files. Spec labels themselves stay English-only in code; providers
 # listed here resolve ``payment_provider_<id>_<kind>_label`` first.
 _LOCALE_LABEL_SPEC_IDS = frozenset(
-    {"freekassa", "platega_sbp", "platega_crypto", "platega_subscription"}
+    {
+        "freekassa",
+        "platega_sbp",
+        "platega_crypto",
+        "platega_international",
+        "platega_all_methods",
+        "platega_subscription",
+    }
 )
 
 

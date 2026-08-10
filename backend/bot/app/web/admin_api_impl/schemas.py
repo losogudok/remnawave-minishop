@@ -268,6 +268,10 @@ class ProviderCurrencySupportOut(HttpResponseModel):
             return "Platega SBP/card"
         if spec.id == "platega_crypto":
             return "Platega Crypto"
+        if spec.id == "platega_international":
+            return "Platega International"
+        if spec.id == "platega_all_methods":
+            return "Platega All methods"
         return str(spec.label or spec.id)
 
     @staticmethod
@@ -276,6 +280,10 @@ class ProviderCurrencySupportOut(HttpResponseModel):
             return ["payments", "platega", "sbp"]
         if spec.id == "platega_crypto":
             return ["payments", "platega", "crypto"]
+        if spec.id == "platega_international":
+            return ["payments", "platega", "international"]
+        if spec.id == "platega_all_methods":
+            return ["payments", "platega", "all-methods"]
         return ["payments", str(spec.provider_key or spec.id).replace("_", "-")]
 
 

@@ -238,6 +238,8 @@ def test_provider_labels_and_emojis_include_storage_keys_and_method_aliases():
     assert labels["platega"] == "Platega"
     assert labels["platega_sbp"] == "Platega"
     assert labels["platega_crypto"] == "Platega"
+    assert labels["platega_international"] == "Platega"
+    assert labels["platega_all_methods"] == "Platega"
     assert emojis["stars"] == get_provider_spec("stars").default_telegram_emoji
     assert emojis["telegram_stars"] == get_provider_spec("stars").default_telegram_emoji
     assert emojis["cryptopay"] == get_provider_spec("cryptopay").default_telegram_emoji
@@ -858,6 +860,14 @@ def test_admin_only_provider_toggle_pairs_are_declared():
     assert ("WATA_CRYPTO_ENABLED", "WATA_CRYPTO_ADMIN_ONLY_ENABLED") in pairs
     assert ("PLATEGA_SBP_ENABLED", "PLATEGA_SBP_ADMIN_ONLY_ENABLED") in pairs
     assert ("PLATEGA_CRYPTO_ENABLED", "PLATEGA_CRYPTO_ADMIN_ONLY_ENABLED") in pairs
+    assert (
+        "PLATEGA_INTERNATIONAL_ENABLED",
+        "PLATEGA_INTERNATIONAL_ADMIN_ONLY_ENABLED",
+    ) in pairs
+    assert (
+        "PLATEGA_ALL_METHODS_ENABLED",
+        "PLATEGA_ALL_METHODS_ADMIN_ONLY_ENABLED",
+    ) in pairs
     assert ("STARS_ENABLED", "STARS_ADMIN_ONLY_ENABLED") in pairs
 
 
