@@ -28,13 +28,13 @@
     <a class="minishop-feature-card" href="/features/promocodes/">
       <span class="minishop-feature-index">04</span>
       <h3>Промокоды, рефералы и уведомления</h3>
-      <p>Скидки и бонусные дни, приглашения пользователей, оповещения об окончании подписки и достижении лимита трафика.</p>
+      <p>Скидки, бонусные дни и постоянные обычные/premium GB, приглашения пользователей, оповещения об окончании подписки и достижении лимита трафика.</p>
       <span class="minishop-card-link">Настройка промокодов <span aria-hidden="true">→</span></span>
     </a>
     <a class="minishop-feature-card" href="/features/partner-program/">
       <span class="minishop-feature-index">05</span>
       <h3>Партнёрская программа</h3>
-      <p>Заявки и отдельные ссылки, закрепление клиентов, комиссии, раздельные балансы, ручные выплаты и продление подписки из баланса.</p>
+      <p>Заявки и отдельные ссылки, закрепление клиентов, комиссии, раздельные балансы, ручные выплаты и полная или частичная оплата покупок из баланса.</p>
       <span class="minishop-card-link">Настроить партнёрскую программу <span aria-hidden="true">→</span></span>
     </a>
     <a class="minishop-feature-card" href="/features/support/">
