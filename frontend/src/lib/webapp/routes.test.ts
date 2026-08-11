@@ -39,6 +39,18 @@ describe("adminSectionFromPath", () => {
 });
 
 describe("adminPartnersDeepLinkFromPath", () => {
+  it("preserves partner-program list routes", () => {
+    expect(adminPartnersDeepLinkFromPath("/admin/partners/partners")).toBe(
+      "/admin/partners/partners"
+    );
+    expect(
+      adminPartnersDeepLinkFromPath("/demo/runtime/admin/partners/applications/", "/demo/runtime")
+    ).toBe("/admin/partners/applications");
+    expect(adminPartnersDeepLinkFromPath("/admin/partners/withdrawals")).toBe(
+      "/admin/partners/withdrawals"
+    );
+  });
+
   it("preserves supported partner-program detail routes", () => {
     expect(adminPartnersDeepLinkFromPath("/admin/partners/partner/PT-104")).toBe(
       "/admin/partners/partner/PT-104"
@@ -54,7 +66,7 @@ describe("adminPartnersDeepLinkFromPath", () => {
     );
   });
 
-  it("rejects list routes, unknown detail kinds and nested identifiers", () => {
+  it("rejects the base route, unknown detail kinds and nested identifiers", () => {
     expect(adminPartnersDeepLinkFromPath("/admin/partners")).toBe("");
     expect(adminPartnersDeepLinkFromPath("/admin/partners/unknown/PT-104")).toBe("");
     expect(adminPartnersDeepLinkFromPath("/admin/partners/partner/PT-104/more")).toBe("");

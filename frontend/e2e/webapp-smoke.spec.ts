@@ -901,6 +901,44 @@ test("partner operations open their linked payment card", async ({ page }) => {
   await closeDialog(paymentDialog);
 });
 
+test("partner admin tabs keep stable routes and share the users page size", async ({ page }) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto(
+    "/demo/runtime/admin/partners/applications?partner_admin_scenario=populated&theme_preview=dark"
+  );
+
+  const partnerPage = page.locator(".partners-admin-page");
+  await expect(partnerPage.getByRole("tab", { name: /Заявки/ })).toHaveAttribute(
+    "data-state",
+    "active"
+  );
+  await expect(partnerPage.locator("tbody tr")).toHaveCount(4);
+
+  await partnerPage.getByRole("tab", { name: "Партнёры", exact: true }).click();
+  await expect(page).toHaveURL(/\/demo\/runtime\/admin\/partners\/partners\?/);
+  await expect(partnerPage.locator("tbody tr")).toHaveCount(6);
+
+  await partnerPage.getByRole("tab", { name: /Выводы/ }).click();
+  await expect(page).toHaveURL(/\/demo\/runtime\/admin\/partners\/withdrawals\?/);
+  await expect(partnerPage.locator("tbody tr")).toHaveCount(5);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/demo\/runtime\/admin\/partners\/partners\?/);
+  await expect(partnerPage.getByRole("tab", { name: "Партнёры", exact: true })).toHaveAttribute(
+    "data-state",
+    "active"
+  );
+
+  await adminSectionButton(page, "stats").click();
+  await expect(page).toHaveURL(/\/demo\/runtime\/admin\/stats\?/);
+  await adminSectionButton(page, "partners").click();
+  await expect(page).toHaveURL(/\/demo\/runtime\/admin\/partners\?/);
+  await expect(partnerPage.getByRole("tab", { name: "Сводка", exact: true })).toHaveAttribute(
+    "data-state",
+    "active"
+  );
+});
+
 test("partner referral mode blocks referral controls without hiding promo codes", async ({
   page,
 }) => {

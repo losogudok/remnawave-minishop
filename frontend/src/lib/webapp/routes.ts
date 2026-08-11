@@ -132,7 +132,7 @@ export function adminPartnersDeepLinkFromPath(
 ): string {
   const normalized = stripRoutePrefix(pathname, routePrefix).replace(/\/+$/, "");
   const match = normalized.match(
-    /^\/admin\/partners\/(?:partner|applications|withdrawals)\/[a-z0-9][a-z0-9_-]*$/i
+    /^\/admin\/partners\/(?:partners|applications|withdrawals|(?:partner|applications|withdrawals)\/[a-z0-9][a-z0-9_-]*)$/i
   );
   return match ? match[0] : "";
 }

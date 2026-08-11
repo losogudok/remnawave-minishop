@@ -317,6 +317,10 @@
         view: detailView[detailMatch[1].toLowerCase()] || "dashboard",
       };
     }
+    const listMatch = path.match(/^\/admin\/partners\/(partners|applications|withdrawals)$/i);
+    if (listMatch) {
+      return { id: "", view: listMatch[1].toLowerCase() as View };
+    }
     const queryView = new URLSearchParams(window.location.search).get("partner_admin_view");
     if (queryView === "partners" || queryView === "applications" || queryView === "withdrawals")
       return { id: "", view: queryView };
@@ -456,6 +460,8 @@
       suffix = `/applications/${encodeURIComponent(id || selectedApplication.id)}`;
     else if (next === "withdrawal_detail")
       suffix = `/withdrawals/${encodeURIComponent(id || selectedWithdrawal.id)}`;
+    else if (next === "partners" || next === "applications" || next === "withdrawals")
+      suffix = `/${next}`;
     const target = withRoutePrefix(`/admin/partners${suffix}`, routePrefix);
     const query = new URLSearchParams(window.location.search);
     query.delete("partner_admin_view");

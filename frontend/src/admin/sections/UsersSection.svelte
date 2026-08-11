@@ -5,6 +5,7 @@
   import { TableHandler } from "@vincjo/datatables";
   import UsersView from "./users/UsersView.svelte";
   import type { AdminUser } from "../../lib/admin/stores/usersStore";
+  import { USERS_PAGE_SIZE } from "../../lib/admin/stores/usersStoreState";
   import {
     normalizeUsersRouteFilters,
     type UsersRouteFilters,
@@ -76,7 +77,6 @@
     usersTable.setRows(users);
   });
 
-  const USERS_PAGE_SIZE = 25;
   let usersFilterSheetOpen = $state(false);
   const usersPageCount = $derived(
     Math.max(1, Math.ceil(Number(usersTotal || 0) / USERS_PAGE_SIZE))

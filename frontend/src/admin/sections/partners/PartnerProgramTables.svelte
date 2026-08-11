@@ -12,6 +12,7 @@
     AdminTable,
   } from "$components/patterns/admin/index.js";
   import { sortAdminRows, type AdminSortColumn } from "$lib/admin/tableSort.js";
+  import { USERS_PAGE_SIZE } from "$lib/admin/stores/usersStoreState.js";
   import type {
     ApplicationRow,
     PartnerRow,
@@ -61,7 +62,7 @@
   const openApplicationLabel = $derived(at("partners_open_application", {}, "Open application"));
   const openWithdrawalLabel = $derived(at("partners_open_withdrawal", {}, "Open withdrawal"));
 
-  const pageSize = 4;
+  const pageSize = USERS_PAGE_SIZE;
   let partnerSearch = $state("");
   let partnerStatus = $state("all");
   let partnerSort = $state("gross_desc");
