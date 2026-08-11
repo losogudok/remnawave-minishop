@@ -300,7 +300,9 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
     admin_ids = {int(x) for x in (settings.ADMIN_IDS or [])}
     is_admin = bool(db_user.telegram_id and int(db_user.telegram_id) in admin_ids)
     telegram_linked = _user_has_linked_telegram(db_user)
-    referral_welcome_days = max(0, int(referral_settings.welcome_bonus_days or 0))
+    referral_welcome_days = (
+        max(0, int(referral_settings.welcome_bonus_days or 0)) if referral_program_enabled else 0
+    )
     referral_welcome_telegram_required_reason = (
         _referral_welcome_telegram_required_reason(settings, db_user)
         if db_user.referred_by_id and not active and referral_welcome_days > 0

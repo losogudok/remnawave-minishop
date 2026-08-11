@@ -87,12 +87,8 @@
 </script>
 
 <main class="content with-nav">
-  <section class="referral-program-shell" class:is-disabled={!referralProgramEnabled}>
-    <div
-      class="referral-program-content"
-      aria-hidden={!referralProgramEnabled}
-      inert={!referralProgramEnabled}
-    >
+  <section class="referral-program-shell" hidden={!referralProgramEnabled}>
+    <div class="referral-program-content">
       <Card class="bonus-card">
         <div class="bonus-card-head">
           <Gift size={42} />
@@ -219,15 +215,6 @@
         {/if}
       </Card>
     </div>
-    {#if !referralProgramEnabled}
-      <div class="referral-program-disabled-overlay" role="status">
-        <Gift size={28} />
-        <div>
-          <strong>{t("wa_referral_partner_mode_title")}</strong>
-          <p>{t("wa_referral_partner_mode_hint")}</p>
-        </div>
-      </div>
-    {/if}
   </section>
   <Card>
     <h3 class="card-heading card-heading-accent promo-heading">

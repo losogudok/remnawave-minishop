@@ -29,6 +29,7 @@ from config.tariffs_config import TariffsConfig
 def _make_settings(**overrides: Any) -> SimpleNamespace:
     base = {
         "DEFAULT_LANGUAGE": "en",
+        "REFERRAL_PROGRAM_ENABLED": True,
         "REFERRAL_ONE_BONUS_PER_REFEREE": True,
         "user_traffic_limit_bytes": 0,
         "referral_bonus_inviter": {1: 7, 3: 21, 6: 45, 12: 90},
@@ -59,6 +60,30 @@ def _make_service(*, settings, subscription_service):
 
 
 class SkipPathTests(unittest.IsolatedAsyncioTestCase):
+    async def test_disabled_referral_program_skips_ordinary_payment_bonus(self):
+        settings = _make_settings(
+            REFERRAL_PROGRAM_ENABLED=False,
+            partner_settings=SimpleNamespace(enabled=False),
+        )
+        subscription_service = AsyncMock()
+        service, _bot = _make_service(settings=settings, subscription_service=subscription_service)
+
+        with patch(
+            "bot.services.referral_service.user_dal.get_user_by_id",
+            AsyncMock(return_value=_make_user(42, referred_by_id=7)),
+        ):
+            result = await service.apply_referral_bonuses_for_payment(
+                session=AsyncMock(),
+                referee_user_id=42,
+                purchased_subscription_months=1,
+            )
+
+        self.assertEqual(
+            result,
+            {"referee_bonus_applied_days": None, "referee_new_end_date": None},
+        )
+        subscription_service.extend_active_subscription_days.assert_not_called()
+
     async def test_no_inviter_returns_empty_payload(self):
         settings = _make_settings()
         subscription_service = AsyncMock()

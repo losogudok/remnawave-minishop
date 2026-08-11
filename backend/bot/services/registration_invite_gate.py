@@ -59,6 +59,13 @@ def registration_invite_only_enabled(settings: Settings) -> bool:
         return bool(settings.REGISTRATION_INVITE_ONLY_ENABLED)
 
 
+def referral_program_enabled(settings: Settings) -> bool:
+    try:
+        return bool(settings.referral_settings.enabled)
+    except AttributeError:
+        return bool(settings.REFERRAL_PROGRAM_ENABLED)
+
+
 def _remnashop_referral_compat_enabled(settings: Settings) -> bool:
     try:
         return bool(settings.compatibility_settings.remnashop_referral_code_compat_enabled)
@@ -235,6 +242,8 @@ async def _lookup_referrer(
     value = str(raw_referral_param or "").strip()
     if not value:
         return _ReferralLookupResult(RegistrationInviteStatus.MISSING)
+    if not referral_program_enabled(settings):
+        return _ReferralLookupResult(RegistrationInviteStatus.INVALID)
 
     remnashop_compat = _remnashop_referral_compat_enabled(settings)
     legacy_refs_enabled = _legacy_refs_enabled(settings)

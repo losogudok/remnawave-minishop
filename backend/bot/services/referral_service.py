@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.infra.event_payloads import ReferralBonusGrantedPayload
 from bot.middlewares.i18n import JsonI18n
 from bot.services.partner_program_service import PartnerProgramService
+from bot.services.registration_invite_gate import referral_program_enabled
 from bot.utils.referral_links import build_bot_referral_link
 from config.settings import Settings
 from db.dal import payment_dal, subscription_dal, user_dal
@@ -63,7 +64,11 @@ class ReferralService:
             if not referee_user_model:
                 return {"referee_bonus_applied_days": None, "referee_new_end_date": None}
 
-            inviter_user_id = referee_user_model.referred_by_id
+            inviter_user_id = (
+                referee_user_model.referred_by_id
+                if referral_program_enabled(self.settings)
+                else None
+            )
             partner_client_bonus = False
             if inviter_user_id is None:
                 partner_client_bonus = await PartnerProgramService(
@@ -305,6 +310,8 @@ class ReferralService:
     async def generate_referral_link(
         self, session: AsyncSession, bot_username: str, inviter_user_id: int
     ) -> str | None:
+        if not referral_program_enabled(self.settings):
+            return None
         try:
             user = await user_dal.get_user_by_id(session, inviter_user_id)
             if not user:

@@ -78,6 +78,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "PROFILE_SYNC_CACHE_TTL_SECONDS": 900,
     "REDIS_KEY_PREFIX": "tests",
     "REDIS_URL": None,
+    "REFERRAL_PROGRAM_ENABLED": True,
     "REFERRAL_ONE_BONUS_PER_REFEREE": False,
     "REFERRAL_WELCOME_BONUS_DAYS": 0,
     "REFERRAL_WELCOME_BONUS_WITHOUT_TELEGRAM_ENABLED": True,
@@ -279,6 +280,7 @@ class SettingsStub(SimpleNamespace):
     @property
     def referral_settings(self) -> ReferralSettings:
         return ReferralSettings(
+            enabled=bool(getattr(self, "REFERRAL_PROGRAM_ENABLED", True)),
             bonus_days_inviter_1_month=getattr(self, "REFERRAL_BONUS_DAYS_1_MONTH", 7),
             bonus_days_inviter_3_months=getattr(self, "REFERRAL_BONUS_DAYS_3_MONTHS", 7),
             bonus_days_inviter_6_months=getattr(self, "REFERRAL_BONUS_DAYS_6_MONTHS", 7),

@@ -16,6 +16,7 @@ from bot.infra.event_payloads import (
     PartnerStatusChangedPayload,
 )
 from bot.services.partner_common import PartnerError, as_utc, compact_json, safe_user_label
+from bot.services.registration_invite_gate import referral_program_enabled
 from config.settings import Settings
 from db.dal import partner_dal, user_dal
 from db.models import User
@@ -44,6 +45,8 @@ class PartnerProgramService:
         *,
         user_id: int,
     ) -> bool:
+        if not referral_program_enabled(self.settings):
+            return False
         if not bool(getattr(self.config, "enabled", False)) or not bool(
             getattr(self.config, "referral_program_disabled", False)
         ):

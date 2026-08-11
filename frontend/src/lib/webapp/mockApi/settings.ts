@@ -21,6 +21,10 @@ function demoSettingsValuesByKey(): Map<string, DemoSettingsField> {
 function demoRuntimeSettingValue(key: string): unknown {
   const values: DemoRecord = {
     TRIAL_WITHOUT_TELEGRAM_ENABLED: DEV_MOCK.config.trialWithoutTelegramEnabled ?? true,
+    REFERRAL_PROGRAM_ENABLED:
+      DEV_MOCK.config.referralProgramEnabled ??
+      DEV_MOCK.data.settings?.referral_program_enabled ??
+      true,
     REFERRAL_WELCOME_BONUS_DAYS:
       DEV_MOCK.config.referralWelcomeBonusDays ?? DEV_MOCK.data.referral?.welcome_bonus_days ?? 3,
     REFERRAL_WELCOME_BONUS_WITHOUT_TELEGRAM_ENABLED:
@@ -109,6 +113,11 @@ function applyDemoSettingToMock(key: string, value: unknown): void {
   if (key === "TRIAL_SQUAD_UUIDS") DEV_MOCK.config.trialSquadUuids = value || "";
   if (key === "TRIAL_PREMIUM_SQUAD_UUIDS") {
     DEV_MOCK.config.trialPremiumSquadUuids = value || "";
+  }
+  if (key === "REFERRAL_PROGRAM_ENABLED") {
+    const enabled = Boolean(value);
+    DEV_MOCK.config.referralProgramEnabled = enabled;
+    DEV_MOCK.data.settings.referral_program_enabled = enabled;
   }
   if (key === "REFERRAL_WELCOME_BONUS_DAYS") {
     DEV_MOCK.config.referralWelcomeBonusDays = Number(value || 0);

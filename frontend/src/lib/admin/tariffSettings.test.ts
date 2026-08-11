@@ -5,6 +5,7 @@ import {
   csvList,
   inputValueForKey,
   isLastEnabledReferralLink,
+  REFERRAL_SETTING_KEYS,
   providerDisplayName,
   providerSettingsPath,
   referralLinkResetViolatesRequirement,
@@ -23,6 +24,10 @@ const fields = new Map<string, SettingField>([
 ]);
 
 describe("tariffSettings", () => {
+  it("keeps the referral program switch first in the settings section", () => {
+    expect(REFERRAL_SETTING_KEYS[0]).toBe("REFERRAL_PROGRAM_ENABLED");
+  });
+
   it("resolves values through dirty state before saved fields", () => {
     const dirty: SettingsDirtyState = {
       ENABLED: { value: false, deleted: false },

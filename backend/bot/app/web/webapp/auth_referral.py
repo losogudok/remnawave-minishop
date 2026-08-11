@@ -17,6 +17,7 @@ from bot.services.partner_program_service import PartnerProgramService
 from bot.services.registration_invite_gate import (
     RegistrationInviteRequiredError,
     evaluate_registration_invite,
+    referral_program_enabled,
     resolve_referrer_user_id,
 )
 from bot.services.subscription_service_impl.core import SubscriptionService
@@ -134,7 +135,7 @@ async def _grant_referral_welcome_bonus_if_eligible(
         return None
 
     settings: Settings = get_settings(request)
-    eligible_source = bool(user.referred_by_id)
+    eligible_source = referral_program_enabled(settings) and bool(user.referred_by_id)
     if not eligible_source:
         eligible_source = await PartnerProgramService(settings).client_welcome_bonus_eligible(
             session,

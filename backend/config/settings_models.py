@@ -95,6 +95,7 @@ class SupportSettings(BaseModel):
 
 
 class ReferralSettings(BaseModel):
+    enabled: bool = True
     bonus_days_inviter_1_month: int | None
     bonus_days_inviter_3_months: int | None
     bonus_days_inviter_6_months: int | None

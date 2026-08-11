@@ -141,6 +141,7 @@ if TYPE_CHECKING:
         TARIFFS_CONFIG_PATH: str
         WEBAPP_DEFAULT_THEME: str | None
         WEBAPP_THEMES_DIR: str
+        REFERRAL_PROGRAM_ENABLED: bool
         REFERRAL_BONUS_DAYS_INVITER_1_MONTH: int | None
         REFERRAL_BONUS_DAYS_INVITER_3_MONTHS: int | None
         REFERRAL_BONUS_DAYS_INVITER_6_MONTHS: int | None
@@ -285,6 +286,7 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
     @property
     def referral_settings(self) -> ReferralSettings:
         return ReferralSettings(
+            enabled=self.REFERRAL_PROGRAM_ENABLED,
             bonus_days_inviter_1_month=self.REFERRAL_BONUS_DAYS_INVITER_1_MONTH,
             bonus_days_inviter_3_months=self.REFERRAL_BONUS_DAYS_INVITER_3_MONTHS,
             bonus_days_inviter_6_months=self.REFERRAL_BONUS_DAYS_INVITER_6_MONTHS,

@@ -321,6 +321,7 @@ class SettingsTests(unittest.TestCase):
             BOT_TOKEN="token",
             POSTGRES_USER="app_user",
             POSTGRES_PASSWORD="app_password",
+            REFERRAL_PROGRAM_ENABLED=False,
             REFERRAL_BONUS_DAYS_1_MONTH=5,
             REFEREE_BONUS_DAYS_12_MONTHS=11,
             REFERRAL_ONE_BONUS_PER_REFEREE=False,
@@ -333,6 +334,7 @@ class SettingsTests(unittest.TestCase):
 
         referral_settings = settings.referral_settings
 
+        self.assertFalse(referral_settings.enabled)
         self.assertEqual(referral_settings.bonus_days_inviter_1_month, 5)
         self.assertEqual(referral_settings.bonus_days_inviter_3_months, 7)
         self.assertEqual(referral_settings.bonus_days_referee_12_months, 11)

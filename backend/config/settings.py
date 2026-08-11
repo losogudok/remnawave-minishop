@@ -439,8 +439,8 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
     REFERRAL_BONUS_DAYS_REFEREE_12_MONTHS: int | None = Field(
         default=15, alias="REFEREE_BONUS_DAYS_12_MONTHS"
     )
-
     # Referral program configuration
+    REFERRAL_PROGRAM_ENABLED: bool = True
     REFERRAL_ONE_BONUS_PER_REFEREE: bool = Field(
         default=True,
         description="When true, referral payment bonuses are applied only on the invited user's first successful payment.",  # noqa: E501

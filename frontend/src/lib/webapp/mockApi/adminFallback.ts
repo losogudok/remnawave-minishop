@@ -374,6 +374,10 @@ export function adminFallbackResponse(
           updates.REFERRAL_WELCOME_BONUS_WITHOUT_TELEGRAM_ENABLED
         );
       }
+      if (Object.prototype.hasOwnProperty.call(updates, "REFERRAL_PROGRAM_ENABLED")) {
+        DEV_MOCK.config.referralProgramEnabled = Boolean(updates.REFERRAL_PROGRAM_ENABLED);
+        DEV_MOCK.data.settings.referral_program_enabled = Boolean(updates.REFERRAL_PROGRAM_ENABLED);
+      }
       if (Object.prototype.hasOwnProperty.call(updates, "REFERRAL_ONE_BONUS_PER_REFEREE")) {
         DEV_MOCK.config.referralOneBonusPerReferee = Boolean(
           updates.REFERRAL_ONE_BONUS_PER_REFEREE
@@ -609,6 +613,16 @@ export function adminFallbackResponse(
               subsection: "trial",
               label: "Premium Internal Squads for trial",
               value: DEV_MOCK.config.trialPremiumSquadUuids || "",
+            },
+            {
+              key: "REFERRAL_PROGRAM_ENABLED",
+              type: "bool",
+              section: "pricing",
+              subsection: "referral",
+              label: "Реферальная программа",
+              description:
+                "Отключает реферальные ссылки, атрибуцию и бонусы, но оставляет доступными промокоды.",
+              value: DEV_MOCK.config.referralProgramEnabled ?? true,
             },
             {
               key: "REFERRAL_WELCOME_BONUS_DAYS",

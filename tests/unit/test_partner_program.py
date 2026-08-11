@@ -399,18 +399,27 @@ def test_partner_client_benefits_stay_disabled_by_default(monkeypatch: pytest.Mo
 
 
 @pytest.mark.parametrize(
-    ("program_enabled", "referrals_disabled", "profile", "expected", "queried"),
+    (
+        "referral_enabled",
+        "program_enabled",
+        "referrals_disabled",
+        "profile",
+        "expected",
+        "queried",
+    ),
     [
-        (False, True, SimpleNamespace(status="active"), True, False),
-        (True, False, SimpleNamespace(status="active"), True, False),
-        (True, True, None, True, True),
-        (True, True, SimpleNamespace(status="active"), False, True),
-        (True, True, SimpleNamespace(status="paused"), False, True),
-        (True, True, SimpleNamespace(status="closed"), False, True),
+        (False, False, False, None, False, False),
+        (True, False, True, SimpleNamespace(status="active"), True, False),
+        (True, True, False, SimpleNamespace(status="active"), True, False),
+        (True, True, True, None, True, True),
+        (True, True, True, SimpleNamespace(status="active"), False, True),
+        (True, True, True, SimpleNamespace(status="paused"), False, True),
+        (True, True, True, SimpleNamespace(status="closed"), False, True),
     ],
 )
 def test_partner_profile_controls_referral_program_visibility(
     monkeypatch: pytest.MonkeyPatch,
+    referral_enabled: bool,
     program_enabled: bool,
     referrals_disabled: bool,
     profile: object | None,
@@ -424,10 +433,12 @@ def test_partner_profile_controls_referral_program_visibility(
     )
     service = PartnerProgramService(
         SimpleNamespace(
+            REFERRAL_PROGRAM_ENABLED=referral_enabled,
+            referral_settings=SimpleNamespace(enabled=referral_enabled),
             partner_settings=_partner_settings(
                 enabled=program_enabled,
                 referral_program_disabled=referrals_disabled,
-            )
+            ),
         )  # type: ignore[arg-type]
     )
 

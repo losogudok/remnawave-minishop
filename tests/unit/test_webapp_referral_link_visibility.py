@@ -3,12 +3,13 @@ from config.settings import Settings
 from config.settings_models import ReferralSettings
 
 
-def _referral_settings(*, webapp: bool, telegram: bool) -> ReferralSettings:
+def _referral_settings(*, webapp: bool, telegram: bool, enabled: bool = True) -> ReferralSettings:
     return Settings(
         _env_file=None,
         BOT_TOKEN="token",
         POSTGRES_USER="app_user",
         POSTGRES_PASSWORD="app_password",
+        REFERRAL_PROGRAM_ENABLED=enabled,
         REFERRAL_WEBAPP_LINK_ENABLED=webapp,
         REFERRAL_TELEGRAM_LINK_ENABLED=telegram,
     ).referral_settings
@@ -41,3 +42,13 @@ def test_visible_referral_links_hide_each_disabled_channel() -> None:
 
     assert bot_only == ("https://t.me/bot?start=ref_abc", None)
     assert webapp_only == (None, "https://app.example/ref/abc")
+
+
+def test_visible_referral_links_hide_all_links_when_program_is_disabled() -> None:
+    links = visible_referral_links(
+        _referral_settings(webapp=True, telegram=True, enabled=False),
+        bot_link="https://t.me/bot?start=ref_abc",
+        webapp_link="https://app.example/ref/abc",
+    )
+
+    assert links == (None, None)

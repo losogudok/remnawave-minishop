@@ -15,7 +15,10 @@ from bot.middlewares.i18n import JsonI18n
 from bot.services.behavior_events import BotStartedSource, emit_bot_started
 from bot.services.partner_program_service import PartnerProgramService
 from bot.services.referral_service import ReferralService
-from bot.services.registration_invite_gate import evaluate_registration_invite
+from bot.services.registration_invite_gate import (
+    evaluate_registration_invite,
+    referral_program_enabled,
+)
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.services.telegram_notifications import TELEGRAM_NOTIFICATIONS_ENABLED
 from bot.utils.callback_answer import (
@@ -324,7 +327,11 @@ async def start_command_handler(
                 if (referred_by_user_id or partner_code) and referral_welcome_days > 0:
                     try:
                         locked_user = await user_dal.lock_user_by_id(session, user_id)
-                        eligible_source = bool(locked_user and locked_user.referred_by_id)
+                        eligible_source = bool(
+                            referral_program_enabled(settings)
+                            and locked_user
+                            and locked_user.referred_by_id
+                        )
                         if locked_user and not eligible_source:
                             eligible_source = await PartnerProgramService(
                                 settings

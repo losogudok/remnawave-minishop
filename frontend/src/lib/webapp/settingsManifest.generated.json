@@ -10998,6 +10998,25 @@
         "updated_at": null
       },
       {
+        "key": "REFERRAL_PROGRAM_ENABLED",
+        "type": "bool",
+        "section": "pricing",
+        "section_order": 11,
+        "subsection": "referral",
+        "label": "Referral program",
+        "description": "Enable ordinary referral links, attribution, welcome bonuses and payment bonuses. Promo codes and the partner program remain available.",
+        "i18n_label_key": "admin_settings_field_referral_program_enabled_label",
+        "i18n_description_key": "admin_settings_field_referral_program_enabled_description",
+        "i18n_subsection_key": "admin_settings_subsection_referral",
+        "i18n_placeholder_key": null,
+        "placeholder": "",
+        "optional": true,
+        "secret": false,
+        "value": "",
+        "overridden": false,
+        "updated_at": null
+      },
+      {
         "key": "REFERRAL_ONE_BONUS_PER_REFEREE",
         "type": "bool",
         "section": "pricing",

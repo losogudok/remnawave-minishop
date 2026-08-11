@@ -17,7 +17,6 @@
     isLastEnabledReferralLink as resolveIsLastEnabledReferralLink,
     referralLinkResetViolatesRequirement as resolveReferralLinkResetViolatesRequirement,
     textValueForKey as resolveTextValueForKey,
-    valueForKey as resolveValueForKey,
     type SettingsDirtyState,
   } from "$lib/admin/tariffSettings";
   import type { SettingField } from "$lib/admin/stores/settingsStore";
@@ -71,19 +70,11 @@
     REFERRAL_SETTING_KEYS.filter((key) => Boolean(settingsDirty[key])).length
   );
   const referralEnabled = $derived(
-    Number(valueForKey("REFERRAL_WELCOME_BONUS_DAYS", settingsDirty, settingsFieldMap) || 0) > 0
+    boolValue("REFERRAL_PROGRAM_ENABLED", settingsDirty, settingsFieldMap)
   );
 
   function tariffLabel(tariff: Tariff | undefined): string {
     return tariff?.names?.ru || tariff?.names?.en || tariff?.key || "—";
-  }
-
-  function valueForKey(
-    key: string,
-    dirty: SettingsDirtyState = settingsDirty,
-    fieldMap = settingsFieldMap
-  ): unknown {
-    return resolveValueForKey(key, dirty, fieldMap);
   }
 
   function boolValue(
@@ -141,16 +132,63 @@
 
 {#snippet referralBody()}
   <div class="admin-card-body admin-trial-settings-body">
-    <!-- No Save here: the settings screen header owns the single Save
-             for the whole page. Only the pending-change count is surfaced. -->
-    {#if referralDirtyCount}
-      <div class="admin-editor-section-actions admin-tariff-settings-save-row">
-        <AdminBadge variant="warning">
-          {at("settings_dirty_count", { count: referralDirtyCount }, "Changes: {count}")}
-        </AdminBadge>
-      </div>
-    {/if}
     <div class="admin-settings-field-groups admin-trial-settings-groups">
+      <section
+        class="admin-settings-field-group"
+        class:is-dirty={isSettingDirty("REFERRAL_PROGRAM_ENABLED", settingsDirty)}
+      >
+        <div class="admin-settings-field-group-body">
+          <div
+            class="admin-setting admin-trial-setting-row"
+            class:is-dirty={isSettingDirty("REFERRAL_PROGRAM_ENABLED", settingsDirty)}
+          >
+            <div class="admin-setting-meta">
+              <strong>
+                {at("tariffs_referral_enabled", {}, "Referral program")}
+                {#if isSettingDirty("REFERRAL_PROGRAM_ENABLED", settingsDirty)}
+                  <AdminBadge variant="warning"
+                    >{at("settings_badge_dirty", {}, "Changed")}</AdminBadge
+                  >
+                {/if}
+              </strong>
+              <code>REFERRAL_PROGRAM_ENABLED</code>
+              <small>
+                {at(
+                  "tariffs_referral_enabled_hint",
+                  {},
+                  "Disable referral links, attribution and bonuses while keeping promo codes available."
+                )}
+              </small>
+            </div>
+            <div class="admin-setting-control">
+              <div class="admin-setting-switch">
+                <Switch.Root
+                  aria-label={at("tariffs_referral_enabled", {}, "Referral program")}
+                  checked={referralEnabled}
+                  onCheckedChange={(checked) => setSetting("REFERRAL_PROGRAM_ENABLED", checked)}
+                  class="admin-switch-root"
+                >
+                  <Switch.Thumb class="admin-switch-thumb" />
+                </Switch.Root>
+                <span>
+                  {referralEnabled ? at("enabled", {}, "Enabled") : at("disabled", {}, "Disabled")}
+                </span>
+              </div>
+              {#if isSettingDirty("REFERRAL_PROGRAM_ENABLED", settingsDirty)}
+                <AdminButton
+                  size="sm"
+                  variant="ghost"
+                  onclick={() => resetSetting("REFERRAL_PROGRAM_ENABLED")}
+                >
+                  <X size={12} />
+                  {at("reset", {}, "Reset")}
+                </AdminButton>
+              {/if}
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section
         class="admin-settings-field-group"
         class:is-dirty={dirtyCount(REFERRAL_LINK_KEYS, settingsDirty)}

@@ -499,6 +499,17 @@ SETTINGS_MANIFEST: list[SettingField] = [
         subsection="trial",
     ),
     SettingField(
+        "REFERRAL_PROGRAM_ENABLED",
+        "bool",
+        "pricing",
+        "Referral program",
+        (
+            "Enable ordinary referral links, attribution, welcome bonuses and payment bonuses. "
+            "Promo codes and the partner program remain available."
+        ),
+        subsection="referral",
+    ),
+    SettingField(
         "REFERRAL_ONE_BONUS_PER_REFEREE",
         "bool",
         "pricing",

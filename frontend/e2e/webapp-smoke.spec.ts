@@ -939,18 +939,12 @@ test("partner admin tabs keep stable routes and share the users page size", asyn
   );
 });
 
-test("partner referral mode blocks referral controls without hiding promo codes", async ({
+test("disabled referral mode hides referral controls without hiding promo codes", async ({
   page,
 }) => {
   await page.goto("/demo/runtime/invite?mock=partner-referral-disabled&theme_preview=dark");
 
-  const referralShell = page.locator(".referral-program-shell.is-disabled");
-  await expect(referralShell).toBeVisible();
-  await expect(referralShell.locator(".referral-program-disabled-overlay")).toContainText(
-    "Для вас действует партнёрская программа"
-  );
-  await expect(referralShell.locator(".referral-program-content")).toHaveAttribute("inert", "");
-  await expect(referralShell.locator(".referral-link-item")).toHaveCount(2);
+  await expect(page.locator(".referral-program-shell")).toBeHidden();
   await expect(page.locator(".promo-code-input")).toBeEditable();
 });
 
