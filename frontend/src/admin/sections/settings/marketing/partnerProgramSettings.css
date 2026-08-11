@@ -337,3 +337,13 @@
   justify-self: start;
   margin-top: 2px;
 }
+
+@media (max-width: 640px) {
+  .partner-methods-section .admin-settings-field-group-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .partner-method-add {
+    grid-column: 1;
+    margin-top: 4px;
+  }
+}

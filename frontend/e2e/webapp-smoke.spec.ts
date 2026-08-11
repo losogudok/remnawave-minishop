@@ -1007,6 +1007,49 @@ test("partner encryption diagnostic explains safe initial key setup", async ({ p
   await expect(page.locator("[data-partner-encryption-command]")).toHaveCount(0);
 });
 
+test("partner withdrawal method actions stay clear of section copy", async ({ page }) => {
+  const route =
+    "/demo/runtime/admin/settings/partner?partner_settings_scenario=program_on&theme_preview=dark";
+
+  await page.setViewportSize(MOBILE_VIEWPORT);
+  await page.goto(route);
+  const section = page.locator(".partner-methods-section");
+  const mobileGeometry = await section.evaluate((element) => {
+    const copy = element.querySelector<HTMLElement>(".admin-settings-field-group-head-copy");
+    const actions = element.querySelector<HTMLElement>(".partner-method-add");
+    if (!copy || !actions) throw new Error("Partner withdrawal method header is incomplete");
+    const copyRect = copy.getBoundingClientRect();
+    const actionsRect = actions.getBoundingClientRect();
+    return {
+      actionsTop: actionsRect.top,
+      actionsWidth: actionsRect.width,
+      buttonWidths: Array.from(
+        actions.querySelectorAll<HTMLElement>(".admin-btn"),
+        (button) => button.getBoundingClientRect().width
+      ),
+      copyBottom: copyRect.bottom,
+      copyWidth: copyRect.width,
+    };
+  });
+  expect(mobileGeometry.actionsTop).toBeGreaterThan(mobileGeometry.copyBottom + 10);
+  expect(Math.abs(mobileGeometry.actionsWidth - mobileGeometry.copyWidth)).toBeLessThanOrEqual(1);
+  expect(mobileGeometry.buttonWidths).toHaveLength(3);
+  for (const width of mobileGeometry.buttonWidths) {
+    expect(Math.abs(width - mobileGeometry.actionsWidth)).toBeLessThanOrEqual(1);
+  }
+
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  const desktopGeometry = await section.evaluate((element) => {
+    const copy = element.querySelector<HTMLElement>(".admin-settings-field-group-head-copy");
+    const actions = element.querySelector<HTMLElement>(".partner-method-add");
+    if (!copy || !actions) throw new Error("Partner withdrawal method header is incomplete");
+    const copyRect = copy.getBoundingClientRect();
+    const actionsRect = actions.getBoundingClientRect();
+    return { actionsLeft: actionsRect.left, copyRight: copyRect.right };
+  });
+  expect(desktopGeometry.actionsLeft).toBeGreaterThanOrEqual(desktopGeometry.copyRight + 10);
+});
+
 test("partner automatic enrollment requires confirmation", async ({ page }) => {
   await page.goto(
     "/demo/runtime/admin/settings/partner?partner_settings_scenario=program_on&theme_preview=dark"

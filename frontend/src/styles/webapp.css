@@ -1116,6 +1116,11 @@ a {
   font-weight: 900;
 }
 
+.payment-submit-button .promo-price-pair s,
+.payment-submit-button .promo-price-pair b {
+  color: inherit;
+}
+
 .period-card em {
   color: var(--muted);
   font-size: 10px;
