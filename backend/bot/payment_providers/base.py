@@ -140,6 +140,10 @@ class WebAppPaymentContext:
     checkout_charged_months: int | None = None
     checkout_charged_gb: float | None = None
     checkout_quoted_at: Any | None = None
+    checkout_total_amount: float | None = None
+    partner_balance_partner_id: int | None = None
+    partner_balance_amount_minor: int | None = None
+    partner_balance_currency_scale: int | None = None
     tariff_change_quote_snapshot: str | None = None
     entitlement_context_snapshot: str | None = None
 

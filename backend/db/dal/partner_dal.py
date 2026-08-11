@@ -8,11 +8,10 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import String, and_, case, cast, delete, desc, func, or_, select, update
+from sqlalchemy import and_, case, delete, desc, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
 
 from db.models import Payment, User
 from db.partner_models import (
@@ -982,43 +981,3 @@ async def purge_expired_partner_data(
         "audit": int(getattr(audit_result, "rowcount", 0) or 0),
         "requisites": int(getattr(requisites_result, "rowcount", 0) or 0),
     }
-
-
-async def list_stale_partner_balance_payments(
-    session: AsyncSession,
-    *,
-    older_than: datetime,
-    limit: int,
-) -> list[Payment]:
-    last_activity = func.coalesce(Payment.updated_at, Payment.created_at)
-    spend = aliased(PartnerLedgerEntry, name="partner_spend")
-    release = aliased(PartnerLedgerEntry, name="partner_spend_release")
-    result = await session.execute(
-        select(Payment)
-        .join(
-            spend,
-            and_(
-                spend.reference_type == "payment",
-                spend.reference_id == cast(Payment.payment_id, String),
-                spend.kind == "subscription_spend",
-            ),
-        )
-        .outerjoin(
-            release,
-            and_(
-                release.reference_type == "payment",
-                release.reference_id == cast(Payment.payment_id, String),
-                release.kind == "subscription_spend_release",
-            ),
-        )
-        .where(
-            Payment.provider == "partner_balance",
-            Payment.status == "succeeded_pending_finalization",
-            last_activity < older_than,
-            release.entry_id.is_(None),
-        )
-        .order_by(last_activity, Payment.payment_id)
-        .limit(limit)
-        .with_for_update(skip_locked=True, of=Payment)
-    )
-    return list(result.scalars().all())

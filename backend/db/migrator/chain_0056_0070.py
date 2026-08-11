@@ -320,6 +320,45 @@ def _migration_0060_add_promo_traffic_grants(connection: Connection) -> None:
                 )
 
 
+def _migration_0061_add_partner_checkout_balance(connection: Connection) -> None:
+    """Persist mixed checkout funding and general partner-balance ledger kinds."""
+
+    inspector = inspect(connection)
+    table_names = set(inspector.get_table_names())
+    if "payments" in table_names:
+        columns = {column["name"] for column in inspector.get_columns("payments")}
+        additions = {
+            "checkout_total_amount": "DOUBLE PRECISION",
+            "partner_balance_amount_minor": "BIGINT",
+            "partner_balance_currency_scale": "INTEGER",
+        }
+        for column, definition in additions.items():
+            if column not in columns:
+                connection.execute(text(f"ALTER TABLE payments ADD COLUMN {column} {definition}"))
+
+    if "partner_ledger_entries" not in table_names:
+        return
+    constraints = {
+        str(item.get("name") or ""): str(item.get("sqltext") or "")
+        for item in inspector.get_check_constraints("partner_ledger_entries")
+    }
+    kind_constraint = constraints.get("ck_partner_ledger_kind", "")
+    if "checkout_spend" in kind_constraint:
+        return
+    connection.execute(
+        text("ALTER TABLE partner_ledger_entries DROP CONSTRAINT IF EXISTS ck_partner_ledger_kind")
+    )
+    connection.execute(
+        text(
+            "ALTER TABLE partner_ledger_entries ADD CONSTRAINT ck_partner_ledger_kind "
+            "CHECK (kind IN ('commission_credit', 'manual_adjustment', "
+            "'withdrawal_reserve', 'withdrawal_release', 'subscription_spend', "
+            "'subscription_spend_release', 'checkout_spend', "
+            "'checkout_spend_release', 'commission_reversal'))"
+        )
+    )
+
+
 CHAIN_0056_0070: list[Migration] = [
     Migration(
         id="0056_add_tariff_binding_audit",
@@ -345,5 +384,10 @@ CHAIN_0056_0070: list[Migration] = [
         id="0060_add_promo_traffic_grants",
         description="Persist fixed regular and premium traffic promo grants and snapshots",
         upgrade=_migration_0060_add_promo_traffic_grants,
+    ),
+    Migration(
+        id="0061_add_partner_checkout_balance",
+        description="Persist mixed partner-balance checkout funding and ledger entries",
+        upgrade=_migration_0061_add_partner_checkout_balance,
     ),
 ]

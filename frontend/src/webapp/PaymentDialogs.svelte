@@ -20,10 +20,10 @@
     display_name?: string | null;
     index?: number | string | null;
   };
+  type BalancePaymentAction = (options?: { usePartnerBalance?: boolean }) => unknown;
 
   let {
     api,
-    refreshData = async () => {},
     createPayment = () => {},
     deviceConfirmOpen = false,
     deviceDisconnectBusy = false,
@@ -95,8 +95,7 @@
     confirmSetPassword = () => {},
   }: {
     api: ApiClient["api"];
-    refreshData?: () => Promise<unknown>;
-    createPayment?: VoidAction;
+    createPayment?: BalancePaymentAction;
     deviceConfirmOpen?: boolean;
     deviceDisconnectBusy?: boolean;
     deviceToDisconnect?: DeviceToDisconnect | null;
@@ -170,7 +169,6 @@
 
 <PaymentCheckoutDialog
   {api}
-  {refreshData}
   {createPayment}
   {hasMultipleTariffs}
   {methods}

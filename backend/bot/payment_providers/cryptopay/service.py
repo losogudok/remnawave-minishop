@@ -20,6 +20,12 @@ if TYPE_CHECKING:
 else:
     ReferralService = object
     SubscriptionService = object
+
+from bot.services.partner_checkout_balance import (
+    PartnerCheckoutBalanceAllocation,
+    PartnerCheckoutBalanceService,
+)
+from bot.services.partner_common import amount_to_minor
 from config.settings import Settings
 from config.tariffs_config import (
     default_currency_key_for_settings,
@@ -221,6 +227,10 @@ class CryptoPayService(BaseProviderService):
         currency: str | None = None,
         entitlement_context_snapshot: str | None = None,
         checkout_promo: CheckoutPromoResult | None = None,
+        checkout_total_amount: float | None = None,
+        partner_balance_partner_id: int | None = None,
+        partner_balance_amount_minor: int | None = None,
+        partner_balance_currency_scale: int | None = None,
     ) -> str | None:
         client = self.client
         if not self.configured or not client:
@@ -269,6 +279,9 @@ class CryptoPayService(BaseProviderService):
                 hwid_quote.get("traffic_bonus_bytes") if hwid_quote else None
             ),
             "entitlement_context_snapshot": entitlement_context_snapshot,
+            "checkout_total_amount": checkout_total_amount,
+            "partner_balance_amount_minor": partner_balance_amount_minor,
+            "partner_balance_currency_scale": partner_balance_currency_scale,
         }
         payment_record_data.update(checkout_promo_payment_fields(checkout_promo))
         try:
@@ -276,6 +289,27 @@ class CryptoPayService(BaseProviderService):
                 session,
                 payment_record_data,
             )
+            if partner_balance_amount_minor:
+                if (
+                    checkout_total_amount is None
+                    or partner_balance_partner_id is None
+                    or partner_balance_currency_scale is None
+                ):
+                    raise ValueError("Incomplete partner balance allocation")
+                await PartnerCheckoutBalanceService.reserve(
+                    session,
+                    payment_id=int(payment_record.payment_id),
+                    allocation=PartnerCheckoutBalanceAllocation(
+                        partner_id=partner_balance_partner_id,
+                        currency=currency_code,
+                        currency_scale=partner_balance_currency_scale,
+                        checkout_total_minor=amount_to_minor(
+                            checkout_total_amount,
+                            scale=partner_balance_currency_scale,
+                        ),
+                        applied_minor=partner_balance_amount_minor,
+                    ),
+                )
             await session.commit()
         except Exception:
             await session.rollback()
@@ -310,6 +344,8 @@ class CryptoPayService(BaseProviderService):
                 if url_kind == "web"
                 else invoice.bot_invoice_url
             )
+            if not invoice_url:
+                raise ValueError("CryptoPay invoice response has no payment URL")
             try:
                 await payment_dal.update_provider_payment_and_status(
                     session,
@@ -328,10 +364,36 @@ class CryptoPayService(BaseProviderService):
                     "Failed to update cryptopay payment record %s.",
                     payment_record.payment_id,
                 )
+                try:
+                    await payment_dal.update_payment_status_by_db_id(
+                        session,
+                        int(payment_record.payment_id),
+                        "failed_creation",
+                    )
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    logger.exception(
+                        "Failed to release CryptoPay checkout %s after persistence error.",
+                        payment_record.payment_id,
+                    )
                 return None
             return str(invoice_url)
         except Exception:
             logger.exception("CryptoPay invoice creation failed.")
+            try:
+                await payment_dal.update_payment_status_by_db_id(
+                    session,
+                    int(payment_record.payment_id),
+                    "failed_creation",
+                )
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                logger.exception(
+                    "Failed to release CryptoPay checkout %s after invoice creation error.",
+                    payment_record.payment_id,
+                )
             return None
 
     async def get_invoice(self, invoice_id: str) -> CryptoPayInvoice | None:
@@ -630,6 +692,10 @@ async def create_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
         else None,
         hwid_device_count=ctx.hwid_device_count,
         entitlement_context_snapshot=ctx.entitlement_context_snapshot,
+        checkout_total_amount=ctx.checkout_total_amount,
+        partner_balance_partner_id=ctx.partner_balance_partner_id,
+        partner_balance_amount_minor=ctx.partner_balance_amount_minor,
+        partner_balance_currency_scale=ctx.partner_balance_currency_scale,
     )
     if not url:
         return payment_failed()

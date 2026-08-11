@@ -125,7 +125,7 @@ describe("billingStore", () => {
     store.setCheckoutPromoInput("SAVE10");
 
     await store.applyCheckoutPromo();
-    await store.createPayment();
+    await store.createPayment({ usePartnerBalance: true });
 
     expect(billing.quotePromo).toHaveBeenCalledWith({
       plan: { id: "plan-1", tariff_key: "pro" },
@@ -147,6 +147,7 @@ describe("billingStore", () => {
       {
         promoCode: "SAVE10",
         renewHwidDevices: false,
+        usePartnerBalance: true,
       }
     );
     expect(deps.loadData).toHaveBeenCalledWith({ fresh: true, preserveView: true });

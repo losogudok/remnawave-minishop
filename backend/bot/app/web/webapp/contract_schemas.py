@@ -151,6 +151,7 @@ PAYMENT_PROVIDER_SCHEMA: dict[str, Any] = {
 }
 PAYMENT_RESPONSE_SCHEMA: dict[str, Any] = ok_envelope_with(
     {
+        "action": STRING_SCHEMA,
         "payment_id": INTEGER_SCHEMA,
         "status": STRING_SCHEMA,
         "paid": BOOLEAN_SCHEMA,
@@ -191,6 +192,9 @@ PENDING_PAYMENT_SCHEMA: dict[str, Any] = {
         "currency",
         "discount_amount",
         "discount_percent",
+        "partner_balance_amount",
+        "partner_balance_amount_minor",
+        "partner_balance_currency_scale",
         "months",
         "purchased_gb",
         "purchased_hwid_devices",
@@ -210,6 +214,9 @@ PENDING_PAYMENT_SCHEMA: dict[str, Any] = {
         "currency": STRING_SCHEMA,
         "discount_amount": NUMBER_SCHEMA,
         "discount_percent": NUMBER_SCHEMA,
+        "partner_balance_amount": NUMBER_SCHEMA,
+        "partner_balance_amount_minor": INTEGER_SCHEMA,
+        "partner_balance_currency_scale": INTEGER_SCHEMA,
         "months": NULLABLE_INTEGER_SCHEMA,
         "purchased_gb": NULLABLE_NUMBER_SCHEMA,
         "purchased_hwid_devices": NULLABLE_INTEGER_SCHEMA,

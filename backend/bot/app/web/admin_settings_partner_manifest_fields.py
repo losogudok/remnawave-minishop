@@ -45,8 +45,8 @@ PARTNER_SETTINGS_FIELDS: tuple[SettingField, ...] = (
         "PARTNER_BALANCE_PAYMENT_ENABLED",
         "bool",
         "pricing",
-        "Partner balance subscription payment",
-        "Allow full subscription renewal from the partner balance.",
+        "Partner balance payments",
+        "Allow full or partial purchase payments from the partner balance.",
         subsection="partner",
     ),
     SettingField(

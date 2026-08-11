@@ -192,7 +192,7 @@ class PartnerLedgerEntry(Base):
         CheckConstraint(
             "kind IN ('commission_credit', 'manual_adjustment', 'withdrawal_reserve', "
             "'withdrawal_release', 'subscription_spend', 'subscription_spend_release', "
-            "'commission_reversal')",
+            "'checkout_spend', 'checkout_spend_release', 'commission_reversal')",
             name="ck_partner_ledger_kind",
         ),
         Index("ix_partner_ledger_partner_currency", "partner_id", "currency", "created_at"),

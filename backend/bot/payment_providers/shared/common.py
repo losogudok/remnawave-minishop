@@ -371,6 +371,11 @@ async def create_base_payment_record(
     checkout_charged_months: int | None = None,
     checkout_charged_gb: float | None = None,
     checkout_quoted_at: Any | None = None,
+    checkout_total_amount: float | None = None,
+    partner_balance_partner_id: int | None = None,
+    partner_balance_amount_minor: int | None = None,
+    partner_balance_currency_scale: int | None = None,
+    funding_source: str = "external",
     tariff_change_quote_snapshot: str | None = None,
     entitlement_context_snapshot: str | None = None,
 ) -> Payment:
@@ -384,6 +389,7 @@ async def create_base_payment_record(
             "description": description,
             "subscription_duration_months": months,
             "provider": provider,
+            "funding_source": funding_source,
             "sale_mode": sale_mode,
             "tariff_key": tariff_key,
             "purchased_gb": purchased_gb,
@@ -410,10 +416,41 @@ async def create_base_payment_record(
             "checkout_charged_months": checkout_charged_months,
             "checkout_charged_gb": checkout_charged_gb,
             "checkout_quoted_at": checkout_quoted_at,
+            "checkout_total_amount": checkout_total_amount,
+            "partner_balance_amount_minor": partner_balance_amount_minor,
+            "partner_balance_currency_scale": partner_balance_currency_scale,
             "tariff_change_quote_snapshot": tariff_change_quote_snapshot,
             "entitlement_context_snapshot": entitlement_context_snapshot,
         },
     )
+    if partner_balance_amount_minor:
+        if (
+            partner_balance_partner_id is None
+            or partner_balance_currency_scale is None
+            or checkout_total_amount is None
+        ):
+            raise ValueError("Incomplete partner balance allocation")
+        from bot.services.partner_checkout_balance import (
+            PartnerCheckoutBalanceAllocation,
+            PartnerCheckoutBalanceService,
+        )
+        from bot.services.partner_common import amount_to_minor
+
+        allocation = PartnerCheckoutBalanceAllocation(
+            partner_id=partner_balance_partner_id,
+            currency=currency.upper(),
+            currency_scale=partner_balance_currency_scale,
+            checkout_total_minor=amount_to_minor(
+                checkout_total_amount,
+                scale=partner_balance_currency_scale,
+            ),
+            applied_minor=partner_balance_amount_minor,
+        )
+        await PartnerCheckoutBalanceService.reserve(
+            session,
+            payment_id=int(payment.payment_id),
+            allocation=allocation,
+        )
     await session.commit()
     return payment
 
@@ -425,6 +462,7 @@ async def create_webapp_payment_record(
     currency: str,
     status: str,
     provider: str,
+    funding_source: str = "external",
 ) -> Payment:
     amounts = payment_record_amounts(
         months=ctx.months,
@@ -467,6 +505,11 @@ async def create_webapp_payment_record(
         checkout_charged_months=ctx.checkout_charged_months,
         checkout_charged_gb=ctx.checkout_charged_gb,
         checkout_quoted_at=ctx.checkout_quoted_at,
+        checkout_total_amount=ctx.checkout_total_amount,
+        partner_balance_partner_id=ctx.partner_balance_partner_id,
+        partner_balance_amount_minor=ctx.partner_balance_amount_minor,
+        partner_balance_currency_scale=ctx.partner_balance_currency_scale,
+        funding_source=funding_source,
         tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
         entitlement_context_snapshot=ctx.entitlement_context_snapshot,
     )
@@ -478,6 +521,11 @@ async def reusable_webapp_payment_response(
     *,
     since_minutes: int | None = None,
 ) -> web.Response | None:
+    if int(ctx.partner_balance_amount_minor or 0) > 0:
+        # The existing invoice already owns its balance reservation.  A new
+        # quote sees the reduced available balance, so generic amount-based
+        # reuse cannot prove that both requests represent the same allocation.
+        return None
     resolver = getattr(provider_spec, "reuse_webapp_payment", None)
     if resolver is None:
         return None

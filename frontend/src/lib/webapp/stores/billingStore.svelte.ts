@@ -1,5 +1,5 @@
 import type { LoadDataOptions } from "../dataClient";
-import type { BillingActions } from "../billingActions";
+import type { BillingActions, PartnerBalancePaymentOptions } from "../billingActions";
 import {
   createPaymentResponseHandler,
   createPendingPaymentResume,
@@ -23,7 +23,6 @@ import type {
   TariffView,
   WebappRecord,
 } from "../types";
-
 type BillingRecord = WebappRecord & {
   action?: string;
   actions?: BillingRecord[];
@@ -91,7 +90,7 @@ export type BillingStore = BillingState & {
   selectTariff(tariff: TariffView, plans?: PlanView[]): void;
   continueWithSelectedTariff(selectedTariffPlans?: PlanView[]): void;
   backToTariffList(subscription: SubscriptionView, tariffCatalog?: TariffView[]): void;
-  createPayment(): Promise<void>;
+  createPayment(options?: PartnerBalancePaymentOptions): Promise<void>;
   resumePendingPayment(payment: PendingPaymentView): Promise<void>;
   setCheckoutPromoInput(value: string): void;
   applyCheckoutPromo(): Promise<void>;
@@ -99,18 +98,18 @@ export type BillingStore = BillingState & {
   openTopupModal(kind?: string, defaultMethod?: string): void;
   closeTopupModal(): void;
   loadTopupOptions(kind: string): Promise<void>;
-  createTopupPayment(): Promise<void>;
+  createTopupPayment(options?: PartnerBalancePaymentOptions): Promise<void>;
   openTariffChangeModal(defaultMethod?: string): void;
   closeTariffChangeModal(): void;
   openTariffChangeConfirm(): void;
   closeTariffChangeConfirm(): void;
   loadTariffChangeOptions(): Promise<void>;
-  applyTariffChange(): Promise<void>;
-  createTariffChangePayment(): Promise<void>;
+  applyTariffChange(options?: PartnerBalancePaymentOptions): Promise<void>;
+  createTariffChangePayment(options?: PartnerBalancePaymentOptions): Promise<void>;
   openDeviceTopupModal(defaultMethod?: string): void;
   closeDeviceTopupModal(): void;
   loadDeviceTopupOptions(): Promise<void>;
-  createDeviceTopupPayment(): Promise<void>;
+  createDeviceTopupPayment(options?: PartnerBalancePaymentOptions): Promise<void>;
 };
 
 export function createBillingStore({
@@ -792,7 +791,7 @@ export function createBillingStore({
     })();
   }
 
-  async function createPayment() {
+  async function createPayment(options: PartnerBalancePaymentOptions = {}) {
     const s = state;
     if (!s.selectedPlan || !s.selectedMethod || s.payBusy) return;
     updateState((s) => ({ ...s, payBusy: true }));
@@ -801,6 +800,7 @@ export function createBillingStore({
         billing.planPaymentBody(s.selectedPlan, s.selectedMethod, {
           renewHwidDevices: s.renewHwidDevices && Boolean(s.selectedPlan?.hwid_renewal?.available),
           promoCode: checkoutPromoCode(),
+          usePartnerBalance: options.usePartnerBalance,
         })
       );
       const successContext = paymentSuccessContext(s, response);
@@ -846,7 +846,7 @@ export function createBillingStore({
     }
   }
 
-  async function createTopupPayment() {
+  async function createTopupPayment(options: PartnerBalancePaymentOptions = {}) {
     const s = state;
     if (!s.selectedTopupPlan || !s.selectedMethod || s.payBusy) return;
     updateState((s) => ({ ...s, payBusy: true }));
@@ -856,7 +856,8 @@ export function createBillingStore({
           s.selectedTopupPlan,
           s.selectedMethod,
           stringField(s.topupOptions?.tariff_key),
-          checkoutPromoCode()
+          checkoutPromoCode(),
+          options.usePartnerBalance
         )
       );
       await handlePaymentResponse(response, {}, () => {
@@ -893,11 +894,11 @@ export function createBillingStore({
     }
   }
 
-  async function applyTariffChange() {
+  async function applyTariffChange(options: PartnerBalancePaymentOptions = {}) {
     const s = state;
     if (!s.selectedChangeTarget || !s.selectedChangeAction || s.tariffActionBusy) return;
     if (s.selectedChangeAction.kind === "payment") {
-      await createTariffChangePayment();
+      await createTariffChangePayment(options);
       return;
     }
     updateState((s) => ({ ...s, tariffActionBusy: true }));
@@ -923,7 +924,7 @@ export function createBillingStore({
     }
   }
 
-  async function createTariffChangePayment() {
+  async function createTariffChangePayment(options: PartnerBalancePaymentOptions = {}) {
     const s = state;
     if (!s.selectedChangeTarget || !s.selectedChangeAction || !s.selectedMethod || s.payBusy)
       return;
@@ -932,7 +933,8 @@ export function createBillingStore({
       const body = billing.changePaymentBody(
         s.selectedChangeAction,
         s.selectedChangeTarget,
-        s.selectedMethod
+        s.selectedMethod,
+        options.usePartnerBalance
       );
       const response =
         s.selectedChangeAction.mode === "buy_package" ||
@@ -970,7 +972,7 @@ export function createBillingStore({
     }
   }
 
-  async function createDeviceTopupPayment() {
+  async function createDeviceTopupPayment(options: PartnerBalancePaymentOptions = {}) {
     const s = state;
     if (!s.selectedDeviceTopupPlan || !s.selectedMethod || s.payBusy) return;
     updateState((s) => ({ ...s, payBusy: true }));
@@ -980,7 +982,8 @@ export function createBillingStore({
           s.selectedDeviceTopupPlan,
           s.selectedMethod,
           stringField(s.deviceTopupOptions?.tariff_key),
-          checkoutPromoCode()
+          checkoutPromoCode(),
+          options.usePartnerBalance
         )
       );
       await handlePaymentResponse(response, {}, () => {

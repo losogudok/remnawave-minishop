@@ -667,7 +667,10 @@ async def get_latest_resumable_promo_payment(
         select(Payment)
         .where(
             Payment.user_id == user_id,
-            Payment.promo_code_id.isnot(None),
+            or_(
+                Payment.promo_code_id.isnot(None),
+                Payment.partner_balance_amount_minor > 0,
+            ),
             Payment.provider_payment_url.isnot(None),
             func.length(func.trim(Payment.provider_payment_url)) > 0,
             or_(
@@ -716,6 +719,39 @@ async def update_payment_status_by_db_id(
         else:
             payment.status = new_status
             payment.updated_at = func.now()
+            normalized_new_status = _normalize_payment_status(new_status)
+            if normalized_new_status == _PAYMENT_STATUS_SUCCEEDED:
+                from bot.services.partner_checkout_balance import (
+                    PartnerCheckoutBalanceService,
+                )
+
+                await PartnerCheckoutBalanceService.ensure_consumed(
+                    session,
+                    payment_id=payment_db_id,
+                )
+            try:
+                balance_savepoint = await session.begin_nested()
+                try:
+                    from bot.services.partner_checkout_balance import (
+                        PartnerCheckoutBalanceService,
+                    )
+
+                    await PartnerCheckoutBalanceService.release_if_terminal(
+                        session,
+                        payment_id=payment_db_id,
+                        status=new_status,
+                    )
+                except Exception:
+                    await balance_savepoint.rollback()
+                    raise
+                else:
+                    await balance_savepoint.commit()
+            except Exception:
+                logger.exception(
+                    "Partner checkout balance release failed for payment %s; "
+                    "the reconciler will retry it.",
+                    payment_db_id,
+                )
             if (
                 previous_status == "succeeded"
                 and _normalize_payment_status(new_status) == "refunded"

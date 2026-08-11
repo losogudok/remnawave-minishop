@@ -307,6 +307,7 @@ async def tariff_change_payment_route(request: web.Request) -> web.Response:
             lang=db_user.language_code or settings.DEFAULT_LANGUAGE,
             sale_mode=f"tariff_upgrade@{target.key}",
             tariff_change_quote_snapshot=quote_snapshot,
+            use_partner_balance=bool(getattr(payment_payload, "use_partner_balance", False)),
         )
 
 

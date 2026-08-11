@@ -6279,6 +6279,11 @@ export interface components {
        * @default null
        */
       traffic_gb: unknown;
+      /**
+       * Use Partner Balance
+       * @default false
+       */
+      use_partner_balance: boolean;
     };
     /** WebAppPlansViewedPayload */
     WebAppPlansViewedPayload: {
@@ -6355,6 +6360,11 @@ export interface components {
        * @default null
        */
       traffic_gb: unknown;
+      /**
+       * Use Partner Balance
+       * @default false
+       */
+      use_partner_balance: boolean;
     };
     /** WebAppSetPasswordPayload */
     WebAppSetPasswordPayload: {
@@ -9912,6 +9922,9 @@ export interface operations {
               discount_amount: number;
               discount_percent: number;
               months: number | null;
+              partner_balance_amount: number;
+              partner_balance_amount_minor: number;
+              partner_balance_currency_scale: number;
               payment_id: number;
               payment_url: string;
               promo_code: string;
@@ -10376,6 +10389,7 @@ export interface operations {
         };
         content: {
           "application/json": {
+            action?: string;
             confirmation_url?: string | null;
             /** @constant */
             ok: true;
@@ -10410,6 +10424,7 @@ export interface operations {
         };
         content: {
           "application/json": {
+            action?: string;
             confirmation_url?: string | null;
             /** @constant */
             ok: true;
@@ -10998,6 +11013,7 @@ export interface operations {
         };
         content: {
           "application/json": {
+            action?: string;
             confirmation_url?: string | null;
             /** @constant */
             ok: true;

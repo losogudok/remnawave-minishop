@@ -68,6 +68,7 @@ from .serializers_billing_options import (
     _serialize_topup_packages,
     _traffic_percent,
 )
+from .serializers_payments import _serialize_pending_promo_payment
 
 logger = logging.getLogger(__name__)
 _MAX_PENDING_PROMO_REFRESHES = 10
@@ -81,45 +82,6 @@ __all__ = [
     "_serialize_topup_packages",
     "_traffic_percent",
 ]
-
-
-def _serialize_pending_promo_payment(payment: Any | None) -> dict[str, Any] | None:
-    if payment is None:
-        return None
-
-    promo = getattr(payment, "promo_code_used", None)
-    promo_code = str(
-        getattr(promo, "archived_code", None) or getattr(promo, "code", None) or ""
-    ).strip()
-    amount = float(getattr(payment, "amount", 0) or 0)
-    discount_amount = max(
-        0.0,
-        float(getattr(payment, "checkout_discount_amount", 0) or 0),
-    )
-    base_amount_raw = getattr(payment, "checkout_base_amount", None)
-    base_amount = (
-        float(base_amount_raw) if base_amount_raw is not None else amount + discount_amount
-    )
-    created_at = getattr(payment, "created_at", None)
-    return {
-        "payment_id": int(payment.payment_id),
-        "payment_url": str(payment.provider_payment_url),
-        "provider": str(payment.provider or ""),
-        "status": str(payment.status or ""),
-        "amount": amount,
-        "base_amount": max(amount, base_amount),
-        "currency": str(payment.currency or ""),
-        "discount_amount": discount_amount,
-        "discount_percent": float(getattr(payment, "promo_discount_percent", 0) or 0),
-        "months": getattr(payment, "subscription_duration_months", None),
-        "purchased_gb": getattr(payment, "purchased_gb", None),
-        "purchased_hwid_devices": getattr(payment, "purchased_hwid_devices", None),
-        "sale_mode": str(getattr(payment, "sale_mode", None) or ""),
-        "tariff_key": getattr(payment, "tariff_key", None),
-        "promo_code": promo_code,
-        "promo_effect_summary": str(getattr(payment, "promo_effect_summary", None) or ""),
-        "created_at": created_at.isoformat() if created_at is not None else "",
-    }
 
 
 async def _suggested_checkout_promo(

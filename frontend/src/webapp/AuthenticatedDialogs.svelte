@@ -58,7 +58,6 @@
     termUnitLabel: TermUnitLabel;
     trafficMode?: boolean;
     user?: UserProfile;
-    refreshData?: () => Promise<unknown>;
   };
 
   let {
@@ -96,7 +95,6 @@
     termUnitLabel,
     trafficMode = false,
     user = {},
-    refreshData = async () => {},
   }: Props = $props();
 
   const promoDeeplinkOpen = $derived(actionsStore.promoDeeplinkOpen);
@@ -120,7 +118,6 @@
 
 <PaymentDialogs
   {api}
-  {refreshData}
   bind:linkEmailCode={accountStore.linkEmailCode}
   bind:linkEmailFieldError={accountStore.linkEmailFieldError}
   bind:linkEmailValue={accountStore.linkEmailValue}
@@ -202,6 +199,7 @@
 />
 
 <TariffDialogs
+  {api}
   bind:changeConfirmOpen={billingStore.changeConfirmOpen}
   bind:changeModalOpen={billingStore.changeModalOpen}
   bind:deviceTopupModalOpen={billingStore.deviceTopupModalOpen}
@@ -221,6 +219,7 @@
   checkoutPromoAppliedCode={billingStore.checkoutPromoAppliedCode}
   checkoutPromoIsError={billingStore.checkoutPromoIsError}
   checkoutPromoPriceText={billingStore.checkoutPromoPriceText}
+  checkoutPromoEffectiveAmount={billingStore.checkoutPromoEffectiveAmount}
   checkoutPromoStatus={billingStore.checkoutPromoStatus}
   checkoutPromoDiscountPercent={billingStore.checkoutPromoDiscountPercent}
   checkoutPromoAppliesTo={billingStore.checkoutPromoAppliesTo}

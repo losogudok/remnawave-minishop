@@ -22,12 +22,14 @@ from bot.app.web.webapp.payloads import (
     WebAppPaymentCreatePayload,
 )
 from bot.middlewares.i18n import JsonI18n, get_i18n_instance
+from bot.payment_providers.base import WebAppPaymentContext
 from bot.payment_providers.shared.entitlement_context import (
     EntitlementContextError,
     build_entitlement_context_snapshot_from_values,
     snapshot_current_entitlement_context,
 )
 from bot.services.device_topup_availability import resolve_device_topup_availability
+from bot.services.partner_common import PartnerError
 from bot.services.subscription_service_impl.core import SubscriptionService
 from config.settings import Settings
 from config.tariffs_config import (
@@ -38,11 +40,16 @@ from config.tariffs_config import (
 from db.dal import subscription_dal, user_dal
 
 from .billing_checkout_adjustments import (
-    CheckoutPromoError,
     CheckoutPromoResult,
     _resolve_checkout_promo,
 )
 from .billing_common import _parse_positive_int_units
+from .billing_partner_checkout import (
+    allocate_partner_checkout_balance,
+    create_fully_partner_funded_payment,
+    partner_checkout_context_fields,
+)
+from .billing_payment_policy import _active_tribute_recurrence, _payment_promo_error
 from .billing_sale_modes import (
     _sale_mode_base,
     _sale_mode_is_hwid_devices,
@@ -54,14 +61,6 @@ from .common import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _active_tribute_recurrence(subscription: Any | None) -> bool:
-    return bool(
-        subscription is not None
-        and str(subscription.provider or "").strip().lower() == "tribute"
-        and bool(subscription.auto_renew_enabled)
-    )
 
 
 @dataclass(frozen=True)
@@ -125,35 +124,6 @@ def _localized_payment_description(
         make_translator(effective_i18n, lang),
         months=description_units,
         sale_mode=sale_mode,
-    )
-
-
-def _payment_promo_error(
-    *,
-    settings: Settings,
-    method: str,
-    months: Any,
-    sale_mode: str,
-    promo_result: CheckoutPromoResult | None,
-) -> CheckoutPromoError | None:
-    if promo_result is None:
-        return None
-    from bot.payment_providers import get_provider_spec
-
-    provider_spec = get_provider_spec(method)
-    if provider_spec is None or not provider_spec.create_webapp_payment:
-        return CheckoutPromoError(400, "payment_unavailable", "Payment method unavailable")
-    if provider_spec.is_checkout_promo_supported(
-        settings,
-        months,
-        sale_mode,
-        promo_result,
-    ):
-        return None
-    return CheckoutPromoError(
-        400,
-        "promo_not_supported_by_payment_method",
-        "Promo code is not supported by this payment method",
     )
 
 
@@ -779,6 +749,7 @@ async def create_payment_route(request: web.Request) -> web.Response:
             promo_code_id=promo_result.promo_code_id if promo_result else None,
             promo_result=promo_result,
             entitlement_context_snapshot=quoted_entitlement_context_snapshot,
+            use_partner_balance=payment_payload.use_partner_balance,
         )
 
 
@@ -801,6 +772,7 @@ async def _create_subscription_payment(
     promo_result: CheckoutPromoResult | None = None,
     tariff_change_quote_snapshot: str | None = None,
     entitlement_context_snapshot: str | None = None,
+    use_partner_balance: bool = False,
 ) -> web.Response:
     settings: Settings = get_settings(request)
     payment_currency = (currency or default_payment_currency_code_for_settings(settings)).upper()
@@ -844,7 +816,7 @@ async def _create_subscription_payment(
         traffic_gb=traffic_gb,
     )
 
-    from bot.payment_providers import WebAppPaymentContext, get_provider_spec
+    from bot.payment_providers import get_provider_spec
 
     provider_spec = get_provider_spec(method)
     if provider_spec and provider_spec.create_webapp_payment:
@@ -867,22 +839,22 @@ async def _create_subscription_payment(
                 "unsupported_currency",
                 "Payment method does not support this currency",
             )
-        if not provider_spec.is_usable_for_payment_amount(
-            settings,
-            payment_currency,
-            price,
-        ):
-            logger.warning(
-                "WebApp payment method does not support amount: method=%s amount=%s currency=%s",
-                method,
-                price,
-                payment_currency,
+        try:
+            partner_allocation = await allocate_partner_checkout_balance(
+                requested=use_partner_balance,
+                settings=settings,
+                session=session,
+                user_id=user_id,
+                payment_currency=payment_currency,
+                checkout_total=price,
+                provider_spec=provider_spec,
+                months=months,
+                sale_mode=sale_mode,
             )
-            return _json_error(
-                400,
-                "payment_amount_below_minimum",
-                "Payment amount is below the provider minimum",
-            )
+        except PartnerError as exc:
+            return _json_error(exc.status, exc.code, exc.message or str(exc))
+        if partner_allocation is not None:
+            price = partner_allocation.external_amount
         if not provider_spec.is_usable_for_payment_context(settings, months, sale_mode):
             logger.warning(
                 "WebApp payment method does not support checkout context: "
@@ -955,14 +927,39 @@ async def _create_subscription_payment(
             if promo_result
             else None,
             promo_min_traffic_gb=promo_result.effects.min_traffic_gb if promo_result else None,
-            checkout_base_amount=promo_result.base_amount if promo_result else None,
             checkout_discount_amount=promo_result.discount_amount if promo_result else None,
             checkout_charged_months=promo_result.charged_months if promo_result else None,
             checkout_charged_gb=promo_result.charged_gb if promo_result else None,
             checkout_quoted_at=promo_result.quoted_at if promo_result else None,
             tariff_change_quote_snapshot=tariff_change_quote_snapshot,
             entitlement_context_snapshot=entitlement_context_snapshot,
+            **partner_checkout_context_fields(
+                partner_allocation,
+                promo_base_amount=promo_result.base_amount if promo_result else None,
+            ),
         )
+        if partner_allocation is not None and partner_allocation.external_minor == 0:
+            return await create_fully_partner_funded_payment(
+                request=request,
+                payment_context=payment_context,
+                allocation=partner_allocation,
+            )
+        if not provider_spec.is_usable_for_payment_amount(
+            settings,
+            payment_currency,
+            price,
+        ):
+            logger.warning(
+                "WebApp payment method does not support amount: method=%s amount=%s currency=%s",
+                method,
+                price,
+                payment_currency,
+            )
+            return _json_error(
+                400,
+                "payment_amount_below_minimum",
+                "Payment amount is below the provider minimum",
+            )
         if provider_spec.reuse_webapp_payment:
             from bot.payment_providers.shared import reusable_webapp_payment_response
 

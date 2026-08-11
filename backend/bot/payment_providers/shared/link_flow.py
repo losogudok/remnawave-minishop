@@ -51,6 +51,7 @@ from .common import (
     create_webapp_payment_record,
     detached_payment_snapshot,
     make_translator,
+    mark_payment_failed_creation,
     payment_failed,
     payment_record_amounts,
     payment_unavailable,
@@ -396,6 +397,7 @@ async def run_webapp_payment[ServiceT: LinkFlowService](
     provider_context = (
         descriptor.webapp_context(ctx) if descriptor.webapp_context is not None else None
     )
+    payment = None
     try:
         payment = await create_webapp_payment_record(
             ctx,
@@ -428,6 +430,16 @@ async def run_webapp_payment[ServiceT: LinkFlowService](
         )
     except Exception:
         await ctx.session.rollback()
+        if payment is not None:
+            try:
+                await mark_payment_failed_creation(ctx.session, int(payment.payment_id))
+            except Exception:
+                await ctx.session.rollback()
+                logger.exception(
+                    "%s: failed to release checkout after provider creation error for payment %s",
+                    descriptor.display_name,
+                    payment.payment_id,
+                )
         logger.exception("%s WebApp payment failed", descriptor.display_name)
         return payment_failed()
 

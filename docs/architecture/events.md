@@ -142,7 +142,7 @@ Core reactions: none
 
 Payload model: `PartnerBalanceSpentPayload`
 
-Emitters: `backend/bot/services/partner_commission_service.py`
+Emitters: `backend/bot/services/partner_checkout_balance.py`, `backend/bot/services/partner_commission_service.py`
 
 Core reactions: none
 

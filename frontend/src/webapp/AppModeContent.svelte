@@ -503,7 +503,6 @@
 
     <AuthenticatedDialogs
       api={stores.api}
-      refreshData={() => stores.dataClient.loadData({ fresh: true })}
       {accountStore}
       {actionsStore}
       {activationSuccessDialogOpen}

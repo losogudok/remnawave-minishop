@@ -9152,6 +9152,11 @@
           "traffic_gb": {
             "default": null,
             "title": "Traffic Gb"
+          },
+          "use_partner_balance": {
+            "default": false,
+            "title": "Use Partner Balance",
+            "type": "boolean"
           }
         },
         "title": "WebAppPaymentCreatePayload",
@@ -9292,6 +9297,11 @@
           "traffic_gb": {
             "default": null,
             "title": "Traffic Gb"
+          },
+          "use_partner_balance": {
+            "default": false,
+            "title": "Use Partner Balance",
+            "type": "boolean"
           }
         },
         "required": [
@@ -16937,6 +16947,15 @@
                                 "null"
                               ]
                             },
+                            "partner_balance_amount": {
+                              "type": "number"
+                            },
+                            "partner_balance_amount_minor": {
+                              "type": "integer"
+                            },
+                            "partner_balance_currency_scale": {
+                              "type": "integer"
+                            },
                             "payment_id": {
                               "type": "integer"
                             },
@@ -16987,6 +17006,9 @@
                             "currency",
                             "discount_amount",
                             "discount_percent",
+                            "partner_balance_amount",
+                            "partner_balance_amount_minor",
+                            "partner_balance_currency_scale",
                             "months",
                             "purchased_gb",
                             "purchased_hwid_devices",
@@ -18273,6 +18295,9 @@
                 "schema": {
                   "additionalProperties": false,
                   "properties": {
+                    "action": {
+                      "type": "string"
+                    },
                     "confirmation_url": {
                       "type": [
                         "string",
@@ -18349,6 +18374,9 @@
                 "schema": {
                   "additionalProperties": false,
                   "properties": {
+                    "action": {
+                      "type": "string"
+                    },
                     "confirmation_url": {
                       "type": [
                         "string",
@@ -19640,6 +19668,9 @@
                 "schema": {
                   "additionalProperties": false,
                   "properties": {
+                    "action": {
+                      "type": "string"
+                    },
                     "confirmation_url": {
                       "type": [
                         "string",

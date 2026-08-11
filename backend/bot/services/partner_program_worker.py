@@ -13,9 +13,13 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.orm import sessionmaker
 
 from bot.infra.redis import redis_lock
+from bot.services.partner_checkout_balance import (
+    TERMINAL_CHECKOUT_STATUSES,
+    PartnerCheckoutBalanceService,
+)
 from bot.services.partner_commission_service import PartnerCommissionService
 from config.settings import Settings
-from db.dal import partner_dal
+from db.dal import partner_checkout_dal, partner_dal
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +85,8 @@ class PartnerProgramWorker:
                 limit=PARTNER_RECONCILIATION_BATCH,
             )
             recovered = await self._recover_stale_internal_spends(session, service)
+            recovered += await self._recover_stale_checkout_spends(session)
+            recovered += await self._release_terminal_checkout_spends(session)
             purged = await partner_dal.purge_expired_partner_data(
                 session,
                 audit_before=datetime.now(UTC)
@@ -107,7 +113,7 @@ class PartnerProgramWorker:
         session,
         service: PartnerCommissionService,
     ) -> int:
-        payments = await partner_dal.list_stale_partner_balance_payments(
+        payments = await partner_checkout_dal.list_stale_partner_balance_payments(
             session,
             older_than=datetime.now(UTC)
             - timedelta(minutes=PARTNER_INTERNAL_SPEND_RECOVERY_MINUTES),
@@ -117,6 +123,37 @@ class PartnerProgramWorker:
             await service.release_subscription_spend(
                 session,
                 payment_id=int(payment.payment_id),
+            )
+            payment.status = "activation_failed"
+            payment.updated_at = datetime.now(UTC)
+        return len(payments)
+
+    async def _release_terminal_checkout_spends(self, session) -> int:
+        payments = await partner_checkout_dal.list_terminal_partner_checkout_payments(
+            session,
+            statuses=TERMINAL_CHECKOUT_STATUSES,
+            limit=PARTNER_RECONCILIATION_BATCH,
+        )
+        for payment in payments:
+            await PartnerCheckoutBalanceService.release_if_terminal(
+                session,
+                payment_id=int(payment.payment_id),
+                status=payment.status,
+            )
+        return len(payments)
+
+    async def _recover_stale_checkout_spends(self, session) -> int:
+        payments = await partner_checkout_dal.list_stale_partner_checkout_payments(
+            session,
+            older_than=datetime.now(UTC)
+            - timedelta(minutes=PARTNER_INTERNAL_SPEND_RECOVERY_MINUTES),
+            limit=PARTNER_RECONCILIATION_BATCH,
+        )
+        for payment in payments:
+            await PartnerCheckoutBalanceService.release(
+                session,
+                payment_id=int(payment.payment_id),
+                reason="partner-funded checkout finalization timed out",
             )
             payment.status = "activation_failed"
             payment.updated_at = datetime.now(UTC)
