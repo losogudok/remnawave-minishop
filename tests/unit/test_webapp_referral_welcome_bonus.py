@@ -12,6 +12,7 @@ class WebAppReferralWelcomeBonusTests(IsolatedAsyncioTestCase):
     async def test_partner_link_registration_can_receive_shared_welcome_bonus_once(self):
         end_date = datetime(2026, 1, 9, 3, 4, tzinfo=UTC)
         settings = settings_stub(
+            REFERRAL_PROGRAM_ENABLED=False,
             PARTNER_PROGRAM_ENABLED=True,
             PARTNER_CLIENT_WELCOME_BONUS_ENABLED=True,
             REFERRAL_WELCOME_BONUS_DAYS=3,

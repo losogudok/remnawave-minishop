@@ -17,7 +17,6 @@ from bot.app.web.context import (
     get_subscription_service,
 )
 from bot.app.web.webapp.auth import (
-    _referral_welcome_telegram_required_reason,
     _trial_telegram_required_reason,
     _user_has_linked_telegram,
 )
@@ -59,6 +58,7 @@ from .common import (
     _telegram_avatar_url,
 )
 from .referral_links import visible_referral_links
+from .referral_welcome_state import resolve_referral_welcome_state
 from .serializers_auto_renew import resolve_auto_renew_capabilities
 from .serializers_billing_options import (
     _attach_payment_methods_to_plans,
@@ -216,6 +216,10 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             session,
             user_id=user_id,
         )
+        partner_client_welcome_eligible = await partner_program.client_welcome_bonus_eligible(
+            session,
+            user_id=user_id,
+        )
         referral_code = await user_dal.ensure_referral_code(session, db_user)
         referral_service: ReferralService | None = get_referral_service(request)
         bot_username = get_bot_username(request)
@@ -300,13 +304,14 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
     admin_ids = {int(x) for x in (settings.ADMIN_IDS or [])}
     is_admin = bool(db_user.telegram_id and int(db_user.telegram_id) in admin_ids)
     telegram_linked = _user_has_linked_telegram(db_user)
-    referral_welcome_days = (
-        max(0, int(referral_settings.welcome_bonus_days or 0)) if referral_program_enabled else 0
-    )
-    referral_welcome_telegram_required_reason = (
-        _referral_welcome_telegram_required_reason(settings, db_user)
-        if db_user.referred_by_id and not active and referral_welcome_days > 0
-        else None
+    referral_welcome_days, referral_welcome_telegram_required_reason = (
+        resolve_referral_welcome_state(
+            settings,
+            db_user,
+            ordinary_referral_enabled_for_user=referral_program_enabled,
+            partner_client_eligible=partner_client_welcome_eligible,
+            has_active_subscription=bool(active),
+        )
     )
     telegram_notifications_status = normalize_telegram_notification_status(
         getattr(db_user, "telegram_notifications_status", None)

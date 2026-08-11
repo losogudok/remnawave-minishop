@@ -106,6 +106,7 @@ class SkipPathTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_partner_client_with_prior_payment_uses_independent_first_payment_rule(self):
         settings = _make_settings(
+            REFERRAL_PROGRAM_ENABLED=False,
             REFERRAL_ONE_BONUS_PER_REFEREE=False,
             partner_settings=SimpleNamespace(
                 enabled=True,
@@ -118,7 +119,7 @@ class SkipPathTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch(
                 "bot.services.referral_service.user_dal.get_user_by_id",
-                AsyncMock(return_value=_make_user(42, referred_by_id=None)),
+                AsyncMock(return_value=_make_user(42, referred_by_id=7)),
             ),
             patch(
                 "bot.services.partner_program_service.partner_dal.get_client_with_profile_for_user",
@@ -362,6 +363,7 @@ class InviterBonusTests(unittest.IsolatedAsyncioTestCase):
 class RefereeBonusTests(unittest.IsolatedAsyncioTestCase):
     async def test_partner_client_gets_only_referee_tariff_bonus(self):
         settings = _make_settings(
+            REFERRAL_PROGRAM_ENABLED=False,
             REFERRAL_ONE_BONUS_PER_REFEREE=True,
             partner_settings=SimpleNamespace(
                 enabled=True,
@@ -379,7 +381,7 @@ class RefereeBonusTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch(
                 "bot.services.referral_service.user_dal.get_user_by_id",
-                AsyncMock(return_value=_make_user(42, referred_by_id=None)),
+                AsyncMock(return_value=_make_user(42, referred_by_id=7)),
             ),
             patch(
                 "bot.services.partner_program_service.partner_dal.get_client_with_profile_for_user",
