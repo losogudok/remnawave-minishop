@@ -3,6 +3,7 @@
   import uPlot from "uplot";
   import "uplot/dist/uPlot.min.css";
   import Plate from "$components/ui/plate.svelte";
+  import { revenueChartGradientFallbacks } from "$lib/admin/revenueChartColors.js";
 
   type RevenuePoint = { date: string; amount: number };
   type RevenueGranularity = "day" | "week" | "month" | "year";
@@ -378,9 +379,10 @@
     const border = readCssColor("--admin-border", "rgba(255,255,255,0.12)");
     const accent = readCssColor("--accent", "#00fe7a");
     const lineStroke = readCssColor("--admin-chart-stroke", accent);
-    const configuredFill = readCssColor("--admin-chart-fill", "rgba(0, 254, 122, 0.38)");
-    const gradientStart = readCssColor("--admin-chart-gradient-start", configuredFill);
-    const gradientEnd = readCssColor("--admin-chart-gradient-end", "rgba(0, 254, 122, 0)");
+    const configuredFill = readCssColor("--admin-chart-fill", "");
+    const gradientFallbacks = revenueChartGradientFallbacks(lineStroke, configuredFill);
+    const gradientStart = readCssColor("--admin-chart-gradient-start", gradientFallbacks.start);
+    const gradientEnd = readCssColor("--admin-chart-gradient-end", gradientFallbacks.end);
     const chartFill = (plotInstance: uPlot): CanvasGradient => {
       const gradient = plotInstance.ctx.createLinearGradient(
         0,
