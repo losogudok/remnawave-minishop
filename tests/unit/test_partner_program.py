@@ -34,6 +34,7 @@ from config.settings_models import (
     PartnerWithdrawalNetwork,
 )
 from db.models import Payment
+from db.partner_models import PartnerProfile
 
 
 @pytest.mark.parametrize(
@@ -177,6 +178,50 @@ def _partner_settings(**overrides: object) -> SimpleNamespace:
     }
     values.update(overrides)
     return SimpleNamespace(**values)
+
+
+def test_partner_web_link_uses_mini_app_url() -> None:
+    service = PartnerProgramService(
+        cast(
+            Settings,
+            SimpleNamespace(
+                WEBHOOK_BASE_URL="https://webhooks.website.com",
+                SUBSCRIPTION_MINI_APP_URL="https://subdomain.website.com/app?lang=ru#partner",
+                partner_settings=_partner_settings(
+                    telegram_link_enabled=True,
+                    webapp_link_enabled=True,
+                ),
+            ),
+        )
+    )
+
+    links = service.links(
+        cast(PartnerProfile, SimpleNamespace(partner_code="code")),
+        bot_username="@mini_shop_bot",
+    )
+
+    assert links["telegram"] == "https://t.me/mini_shop_bot?start=p_code"
+    assert links["web"] == ("https://subdomain.website.com/app?lang=ru&partner=code#partner")
+
+
+def test_partner_web_link_is_unavailable_without_mini_app_url() -> None:
+    service = PartnerProgramService(
+        cast(
+            Settings,
+            SimpleNamespace(
+                WEBHOOK_BASE_URL="https://webhooks.website.com",
+                SUBSCRIPTION_MINI_APP_URL=None,
+                partner_settings=_partner_settings(
+                    telegram_link_enabled=False,
+                    webapp_link_enabled=True,
+                ),
+            ),
+        )
+    )
+
+    links = service.links(cast(PartnerProfile, SimpleNamespace(partner_code="code")))
+
+    assert links["web"] is None
 
 
 def _commission_service(**overrides: object) -> PartnerCommissionService:

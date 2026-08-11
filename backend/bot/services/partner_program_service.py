@@ -3,7 +3,7 @@ from __future__ import annotations
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from urllib.parse import quote, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -497,13 +497,21 @@ class PartnerProgramService:
         telegram = None
         if self.config.telegram_link_enabled and username:
             telegram = f"https://t.me/{quote(username, safe='')}?start=p_{quote(code, safe='')}"
-        base_url = str(self.settings.WEBHOOK_BASE_URL or "").strip()
+        base_url = str(self.settings.SUBSCRIPTION_MINI_APP_URL or "").strip()
         web_link = None
         if self.config.webapp_link_enabled and base_url:
             parts = urlsplit(base_url)
-            query: dict[str, str] = {}
+            query = dict(parse_qsl(parts.query, keep_blank_values=True))
             query["partner"] = code
-            web_link = urlunsplit((parts.scheme, parts.netloc, "/", urlencode(query), ""))
+            web_link = urlunsplit(
+                (
+                    parts.scheme,
+                    parts.netloc,
+                    parts.path or "/",
+                    urlencode(query),
+                    parts.fragment,
+                )
+            )
         return {
             "telegram": telegram,
             "web": web_link,
