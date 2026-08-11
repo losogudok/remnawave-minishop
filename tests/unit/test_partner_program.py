@@ -673,3 +673,140 @@ def test_partner_self_attribution_is_rejected(monkeypatch: pytest.MonkeyPatch) -
 
     with pytest.raises(PartnerError, match="partner_self_attribution"):
         asyncio.run(run())
+
+
+def test_all_referrals_import_preview_counts_every_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first_partner = SimpleNamespace(partner_id=1, user_id=10)
+    second_partner = SimpleNamespace(partner_id=2, user_id=20)
+    candidates = [
+        (first_partner, SimpleNamespace(user_id=11), None, 2),
+        (
+            first_partner,
+            SimpleNamespace(user_id=12),
+            SimpleNamespace(partner_id=1),
+            1,
+        ),
+        (
+            first_partner,
+            SimpleNamespace(user_id=13),
+            SimpleNamespace(partner_id=2),
+            3,
+        ),
+        (second_partner, SimpleNamespace(user_id=20), None, 0),
+    ]
+    list_candidates = AsyncMock(return_value=candidates)
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_reporting_dal.all_referral_import_candidates",
+        list_candidates,
+    )
+    service = PartnerProgramService(cast(Settings, SimpleNamespace(REFERRAL_PROGRAM_ENABLED=False)))
+
+    result = asyncio.run(service.bulk_referral_import_preview(AsyncMock()))
+
+    assert result == {
+        "partners": 2,
+        "found": 4,
+        "importable": 1,
+        "already_this_partner": 1,
+        "other_partner": 1,
+        "self_conflict": 1,
+        "historical_payments": 6,
+    }
+    list_candidates.assert_awaited_once()
+
+
+def test_all_referrals_import_requires_disabled_referral_program(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    list_candidates = AsyncMock()
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_reporting_dal.all_referral_import_candidates",
+        list_candidates,
+    )
+    service = PartnerProgramService(cast(Settings, SimpleNamespace(REFERRAL_PROGRAM_ENABLED=True)))
+
+    with pytest.raises(PartnerError, match="referral_program_enabled"):
+        asyncio.run(service.bulk_referral_import_preview(AsyncMock()))
+
+    list_candidates.assert_not_awaited()
+
+
+def test_execute_all_referrals_import_creates_clients_and_partner_audits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first_partner = SimpleNamespace(partner_id=1, user_id=10)
+    second_partner = SimpleNamespace(partner_id=2, user_id=20)
+    candidates = [
+        (
+            first_partner,
+            SimpleNamespace(
+                user_id=11,
+                first_name="First",
+                last_name=None,
+                username=None,
+                email=None,
+            ),
+            None,
+            0,
+        ),
+        (
+            first_partner,
+            SimpleNamespace(user_id=12),
+            SimpleNamespace(partner_id=1),
+            0,
+        ),
+        (
+            first_partner,
+            SimpleNamespace(user_id=13),
+            SimpleNamespace(partner_id=2),
+            0,
+        ),
+        (
+            second_partner,
+            SimpleNamespace(
+                user_id=21,
+                first_name="Second",
+                last_name=None,
+                username=None,
+                email=None,
+            ),
+            None,
+            0,
+        ),
+    ]
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_reporting_dal.all_referral_import_candidates",
+        AsyncMock(return_value=candidates),
+    )
+    create_attribution = AsyncMock()
+    create_audit = AsyncMock()
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.create_client_attribution",
+        create_attribution,
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.create_audit_event",
+        create_audit,
+    )
+    service = PartnerProgramService(cast(Settings, SimpleNamespace(REFERRAL_PROGRAM_ENABLED=False)))
+    session = AsyncMock(spec=AsyncSession)
+    session.begin_nested.return_value = AsyncMock()
+
+    result = asyncio.run(
+        service.execute_bulk_referral_import(
+            session,
+            actor_admin_id=99,
+        )
+    )
+
+    assert result == {
+        "partners_updated": 2,
+        "imported": 2,
+        "existing": 1,
+        "conflicts": 1,
+    }
+    assert create_attribution.await_count == 2
+    assert create_audit.await_count == 2
+    assert {call.kwargs["partner_id"] for call in create_audit.await_args_list} == {1, 2}

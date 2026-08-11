@@ -1286,6 +1286,79 @@
         "title": "AdminPartnerBalanceAdjustmentIn",
         "type": "object"
       },
+      "AdminPartnerBulkReferralImportPreviewOut": {
+        "additionalProperties": false,
+        "properties": {
+          "already_this_partner": {
+            "title": "Already This Partner",
+            "type": "integer"
+          },
+          "found": {
+            "title": "Found",
+            "type": "integer"
+          },
+          "historical_payments": {
+            "title": "Historical Payments",
+            "type": "integer"
+          },
+          "importable": {
+            "title": "Importable",
+            "type": "integer"
+          },
+          "other_partner": {
+            "title": "Other Partner",
+            "type": "integer"
+          },
+          "partners": {
+            "title": "Partners",
+            "type": "integer"
+          },
+          "self_conflict": {
+            "title": "Self Conflict",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "found",
+          "importable",
+          "already_this_partner",
+          "other_partner",
+          "self_conflict",
+          "historical_payments",
+          "partners"
+        ],
+        "title": "AdminPartnerBulkReferralImportPreviewOut",
+        "type": "object"
+      },
+      "AdminPartnerBulkReferralImportResultOut": {
+        "additionalProperties": false,
+        "properties": {
+          "conflicts": {
+            "title": "Conflicts",
+            "type": "integer"
+          },
+          "existing": {
+            "title": "Existing",
+            "type": "integer"
+          },
+          "imported": {
+            "title": "Imported",
+            "type": "integer"
+          },
+          "partners_updated": {
+            "title": "Partners Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "imported",
+          "existing",
+          "conflicts",
+          "partners_updated"
+        ],
+        "title": "AdminPartnerBulkReferralImportResultOut",
+        "type": "object"
+      },
       "AdminPartnerCreateIn": {
         "additionalProperties": false,
         "properties": {
@@ -12081,6 +12154,100 @@
           }
         ],
         "summary": "Admin Partner Overview",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partners/referral-import": {
+      "get": {
+        "operationId": "get_admin_partner_bulk_referral_import_preview_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "preview": {
+                      "$ref": "#/components/schemas/AdminPartnerBulkReferralImportPreviewOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "preview"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Bulk Referral Import Preview",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "post_admin_partner_bulk_referral_import_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerReferralImportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "result": {
+                      "$ref": "#/components/schemas/AdminPartnerBulkReferralImportResultOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "result"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Bulk Referral Import",
         "tags": [
           "admin"
         ]

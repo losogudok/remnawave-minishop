@@ -939,6 +939,33 @@ test("partner admin tabs keep stable routes and share the users page size", asyn
   );
 });
 
+test("partner dashboard converts referrals when the referral system is disabled", async ({
+  page,
+}) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto(
+    "/demo/runtime/admin/partners?partner_admin_scenario=populated&theme_preview=dark"
+  );
+  await expect(page.locator(".partners-referral-import-banner")).toHaveCount(0);
+
+  await page.goto(
+    "/demo/runtime/admin/partners?partner_admin_scenario=populated&mock=partner-referral-disabled&theme_preview=dark"
+  );
+  const banner = page.locator(".partners-referral-import-banner");
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText(/12\s+пользователей к конвертации/);
+
+  await banner.getByRole("button", { name: "Конвертировать рефералов", exact: true }).click();
+  const dialog = page.locator(".dialog-card.admin-partners-dialog");
+  await expect(dialog).toContainText("Конвертировать всех доступных рефералов?");
+  await expect(dialog).toContainText("У найденных рефералов исторических платежей: 9");
+  await dialog.getByRole("button", { name: "Подтвердить", exact: true }).click();
+
+  await expect(dialog).toBeHidden();
+  await expect(banner).toContainText("Конвертировано пользователей: 12");
+  await expect(banner).toContainText("Все доступные рефералы уже являются клиентами");
+});
+
 test("disabled referral mode hides referral controls without hiding promo codes", async ({
   page,
 }) => {

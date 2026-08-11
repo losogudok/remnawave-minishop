@@ -18,7 +18,7 @@ from bot.infra.event_payloads import (
 from bot.services.partner_common import PartnerError, as_utc, compact_json, safe_user_label
 from bot.services.registration_invite_gate import referral_program_enabled
 from config.settings import Settings
-from db.dal import partner_dal, user_dal
+from db.dal import partner_dal, partner_reporting_dal, user_dal
 from db.models import User
 from db.partner_models import PartnerApplication, PartnerClient, PartnerProfile
 
@@ -674,3 +674,94 @@ class PartnerProgramService:
             new_values_json=compact_json(result),
         )
         return result
+
+    async def bulk_referral_import_preview(self, session: AsyncSession) -> dict[str, int]:
+        if referral_program_enabled(self.settings):
+            raise PartnerError("referral_program_enabled", 409)
+        candidates = await partner_reporting_dal.all_referral_import_candidates(session)
+        counts = {
+            "partners": len({int(profile.partner_id) for profile, *_rest in candidates}),
+            "found": len(candidates),
+            "importable": 0,
+            "already_this_partner": 0,
+            "other_partner": 0,
+            "self_conflict": 0,
+            "historical_payments": 0,
+        }
+        for profile, user, attribution, payments in candidates:
+            partner_id = int(profile.partner_id)
+            counts["historical_payments"] += payments
+            if int(user.user_id) == int(profile.user_id):
+                counts["self_conflict"] += 1
+            elif attribution is None:
+                counts["importable"] += 1
+            elif int(attribution.partner_id) == partner_id:
+                counts["already_this_partner"] += 1
+            else:
+                counts["other_partner"] += 1
+        return counts
+
+    async def execute_bulk_referral_import(
+        self,
+        session: AsyncSession,
+        *,
+        actor_admin_id: int,
+    ) -> dict[str, int]:
+        if referral_program_enabled(self.settings):
+            raise PartnerError("referral_program_enabled", 409)
+        candidates = await partner_reporting_dal.all_referral_import_candidates(session)
+        imported = conflicts = existing = 0
+        now = datetime.now(UTC)
+        partner_results: dict[int, dict[str, int]] = {}
+        for profile, user, attribution, _payments in candidates:
+            partner_id = int(profile.partner_id)
+            result = partner_results.setdefault(
+                partner_id,
+                {"imported": 0, "existing": 0, "conflicts": 0},
+            )
+            if attribution is not None:
+                if int(attribution.partner_id) == partner_id:
+                    existing += 1
+                    result["existing"] += 1
+                else:
+                    conflicts += 1
+                    result["conflicts"] += 1
+                continue
+            if int(user.user_id) == int(profile.user_id):
+                conflicts += 1
+                result["conflicts"] += 1
+                continue
+            try:
+                async with session.begin_nested():
+                    await partner_dal.create_client_attribution(
+                        session,
+                        partner_id=partner_id,
+                        client_user_id=int(user.user_id),
+                        public_client_id=_public_client_id(),
+                        public_label=safe_user_label(user, "Client"),
+                        source="referral_import",
+                        attributed_by_admin_id=actor_admin_id,
+                        eligible_from=now,
+                    )
+                imported += 1
+                result["imported"] += 1
+            except IntegrityError:
+                conflicts += 1
+                result["conflicts"] += 1
+        for partner_id, result in partner_results.items():
+            if not result["imported"]:
+                continue
+            await partner_dal.create_audit_event(
+                session,
+                event_type="referrals_imported",
+                actor_type="admin",
+                partner_id=partner_id,
+                actor_user_id=actor_admin_id,
+                new_values_json=compact_json({**result, "bulk": True}),
+            )
+        return {
+            "partners_updated": sum(1 for result in partner_results.values() if result["imported"]),
+            "imported": imported,
+            "existing": existing,
+            "conflicts": conflicts,
+        }

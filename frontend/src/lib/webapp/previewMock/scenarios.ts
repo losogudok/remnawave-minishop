@@ -210,6 +210,7 @@ export function applyPreviewMock(kind: unknown): void {
   if (mode === "partner-referral-disabled" || mode === "partner_referral_disabled") {
     DEV_MOCK.data.settings.partner_program_enabled = true;
     DEV_MOCK.data.settings.referral_program_enabled = false;
+    DEV_MOCK.config.referralProgramEnabled = false;
     return;
   }
 

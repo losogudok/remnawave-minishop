@@ -25,6 +25,7 @@
   } from "$components/patterns/admin/index.js";
   import { formatPartnerMoney, partnerStatusVariant } from "$lib/admin/partnerProgramUi.js";
   import { stripRoutePrefix, withRoutePrefix } from "$lib/webapp/routes.js";
+  import { getSettingsStore } from "$lib/admin/context.js";
   import {
     applications as previewApplications,
     partnerAudit as previewPartnerAudit,
@@ -58,6 +59,7 @@
   import PartnerProgramTables from "./partners/PartnerProgramTables.svelte";
   import PartnerActionDialog from "./partners/PartnerActionDialog.svelte";
   import PartnerOperationDetails from "./partners/PartnerOperationDetails.svelte";
+  import PartnerReferralImportBanner from "./partners/PartnerReferralImportBanner.svelte";
   import "./partnersSection.css";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
@@ -91,6 +93,13 @@
   const adminScenario = initialScenario();
   const previewMode = Boolean(adminScenario);
   const emptyChartsPreview = adminScenario === "empty_charts";
+  const settingsStore = getSettingsStore();
+  const referralProgramEnabled = $derived.by(() => {
+    const field = settingsStore.settingsSections
+      .flatMap((section) => section.fields || [])
+      .find((item) => item.key === "REFERRAL_PROGRAM_ENABLED");
+    return field ? Boolean(field.value) : true;
+  });
   let currency = $state("RUB");
   let partners = $state<PartnerRow[]>(
     previewMode ? previewPartners.map((item) => ({ ...item })) : []
@@ -723,6 +732,10 @@
       </AdminButton>
     </AdminEmptyState>
   {:else if view === "dashboard"}
+    {#if !referralProgramEnabled}
+      <PartnerReferralImportBanner {at} {api} {previewMode} onImported={refreshAll} />
+    {/if}
+
     <section
       class="partners-kpi-grid"
       aria-label={at("partners_kpi_title", {}, "Partner program summary")}

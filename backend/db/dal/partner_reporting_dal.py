@@ -110,6 +110,28 @@ async def referral_import_candidates(
     return [(row[0], row[1], int(row[2] or 0)) for row in rows]
 
 
+async def all_referral_import_candidates(
+    session: AsyncSession,
+) -> list[tuple[PartnerProfile, User, PartnerClient | None, int]]:
+    payment_count = (
+        select(func.count(Payment.payment_id))
+        .where(Payment.user_id == User.user_id, Payment.status == "succeeded")
+        .correlate(User)
+        .scalar_subquery()
+    )
+    rows = (
+        await session.execute(
+            select(PartnerProfile, User, PartnerClient, payment_count)
+            .select_from(PartnerProfile)
+            .join(User, User.referred_by_id == PartnerProfile.user_id)
+            .outerjoin(PartnerClient, PartnerClient.client_user_id == User.user_id)
+            .where(PartnerProfile.user_id.is_not(None))
+            .order_by(PartnerProfile.partner_id, User.user_id)
+        )
+    ).all()
+    return [(row[0], row[1], row[2], int(row[3] or 0)) for row in rows]
+
+
 async def overview_metrics(session: AsyncSession, *, currency: str) -> dict[str, int]:
     active = int(
         (
@@ -289,6 +311,7 @@ async def overview_series(
 
 
 __all__ = [
+    "all_referral_import_candidates",
     "attention_counts",
     "list_profiles",
     "overview_metrics",

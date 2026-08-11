@@ -686,6 +686,24 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/admin/partners/referral-import": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Partner Bulk Referral Import Preview */
+    get: operations["get_admin_partner_bulk_referral_import_preview_route"];
+    put?: never;
+    /** Admin Partner Bulk Referral Import */
+    post: operations["post_admin_partner_bulk_referral_import_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/admin/partners/{id}": {
     parameters: {
       query?: never;
@@ -2837,6 +2855,34 @@ export interface components {
       mode: "add" | "subtract" | "set";
       /** Reason */
       reason: string;
+    };
+    /** AdminPartnerBulkReferralImportPreviewOut */
+    AdminPartnerBulkReferralImportPreviewOut: {
+      /** Already This Partner */
+      already_this_partner: number;
+      /** Found */
+      found: number;
+      /** Historical Payments */
+      historical_payments: number;
+      /** Importable */
+      importable: number;
+      /** Other Partner */
+      other_partner: number;
+      /** Partners */
+      partners: number;
+      /** Self Conflict */
+      self_conflict: number;
+    };
+    /** AdminPartnerBulkReferralImportResultOut */
+    AdminPartnerBulkReferralImportResultOut: {
+      /** Conflicts */
+      conflicts: number;
+      /** Existing */
+      existing: number;
+      /** Imported */
+      imported: number;
+      /** Partners Updated */
+      partners_updated: number;
     };
     /** AdminPartnerCreateIn */
     AdminPartnerCreateIn: {
@@ -7688,6 +7734,58 @@ export interface operations {
           "application/json": {
             /** @constant */
             ok: true;
+          };
+        };
+      };
+    };
+  };
+  get_admin_partner_bulk_referral_import_preview_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            preview: components["schemas"]["AdminPartnerBulkReferralImportPreviewOut"];
+          };
+        };
+      };
+    };
+  };
+  post_admin_partner_bulk_referral_import_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminPartnerReferralImportIn"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+            result: components["schemas"]["AdminPartnerBulkReferralImportResultOut"];
           };
         };
       };

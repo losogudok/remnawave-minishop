@@ -37,6 +37,8 @@ from .partners import (
     admin_partner_applications_route,
     admin_partner_attention_route,
     admin_partner_balance_adjustment_route,
+    admin_partner_bulk_referral_import_preview_route,
+    admin_partner_bulk_referral_import_route,
     admin_partner_close_route,
     admin_partner_create_route,
     admin_partner_detail_route,
@@ -142,6 +144,14 @@ def setup_admin_routes(app: web.Application) -> None:
     router.add_get("/api/admin/partners/overview", admin_partner_overview_route)
     router.add_get("/api/admin/partners", admin_partners_list_route)
     router.add_post("/api/admin/partners", admin_partner_create_route)
+    router.add_get(
+        "/api/admin/partners/referral-import",
+        admin_partner_bulk_referral_import_preview_route,
+    )
+    router.add_post(
+        "/api/admin/partners/referral-import",
+        admin_partner_bulk_referral_import_route,
+    )
     router.add_get("/api/admin/partners/{id:\\d+}", admin_partner_detail_route)
     router.add_get(
         "/api/admin/partners/{id:\\d+}/referral-import",

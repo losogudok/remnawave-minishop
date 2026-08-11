@@ -304,6 +304,38 @@ async def admin_partner_referral_import_route(request: web.Request) -> web.Respo
     return _ok({"result": result})
 
 
+async def admin_partner_bulk_referral_import_preview_route(request: web.Request) -> web.Response:
+    _require_admin_user_id(request)
+    async_session_factory: sessionmaker = get_session_factory(request)
+    try:
+        async with async_session_factory() as session:
+            preview = await PartnerProgramService(
+                get_settings(request)
+            ).bulk_referral_import_preview(session)
+    except PartnerError as exc:
+        return _partner_error(exc)
+    return _ok({"preview": preview})
+
+
+async def admin_partner_bulk_referral_import_route(request: web.Request) -> web.Response:
+    actor_id = _require_admin_user_id(request)
+    body = await parse_body_or_400(request, AdminPartnerReferralImportIn)
+    if not body.confirm_without_retroactive_commission:
+        return _error(400, "confirmation_required")
+    async_session_factory: sessionmaker = get_session_factory(request)
+    try:
+        async with async_session_factory() as session, session.begin():
+            result = await PartnerProgramService(
+                get_settings(request)
+            ).execute_bulk_referral_import(
+                session,
+                actor_admin_id=actor_id,
+            )
+    except PartnerError as exc:
+        return _partner_error(exc)
+    return _ok({"result": result})
+
+
 async def admin_partner_rate_route(request: web.Request) -> web.Response:
     actor_id = _require_admin_user_id(request)
     body = await parse_body_or_400(request, AdminPartnerRateIn)

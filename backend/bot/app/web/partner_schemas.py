@@ -208,6 +208,14 @@ class AdminPartnerReferralImportResultOut(PartnerModel):
     conflicts: int
 
 
+class AdminPartnerBulkReferralImportPreviewOut(AdminPartnerReferralImportPreviewOut):
+    partners: int
+
+
+class AdminPartnerBulkReferralImportResultOut(AdminPartnerReferralImportResultOut):
+    partners_updated: int
+
+
 class AdminPartnerRequisitesOut(RootModel[dict[str, str]]):
     pass
 
