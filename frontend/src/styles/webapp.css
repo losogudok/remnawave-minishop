@@ -3778,11 +3778,11 @@ a {
     font-size: 13px;
   }
 
-  /* Empty/inactive states: full width turns them into a thin banner, so give
-     them the footprint of a single card instead. */
+  /* Empty/inactive states keep their generous vertical spacing while spanning
+     the same desktop content width as the surrounding device cards. */
   .devices-empty-card {
-    width: min(100%, 440px);
-    margin-inline: auto;
+    width: 100%;
+    margin-inline: 0;
     padding: 30px 22px;
     gap: 10px;
   }

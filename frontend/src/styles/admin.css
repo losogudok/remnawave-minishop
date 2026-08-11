@@ -2773,6 +2773,14 @@
   border-bottom: 0;
 }
 
+.admin-settings-field-group-note {
+  display: block;
+  margin: 0;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--admin-border);
+  line-height: 1.4;
+}
+
 .admin-setting:last-child {
   border-bottom: 0;
 }
@@ -4518,6 +4526,10 @@
   }
 
   .admin-settings-field-group-body .admin-setting {
+    padding-inline: 12px;
+  }
+
+  .admin-settings-field-group-note {
     padding-inline: 12px;
   }
 

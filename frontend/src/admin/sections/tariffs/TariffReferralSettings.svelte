@@ -291,7 +291,7 @@
               {/if}
             </div>
           </div>
-          <small class="admin-muted">
+          <small class="admin-muted admin-settings-field-group-note">
             {at(
               "tariffs_referral_link_required_hint",
               {},
