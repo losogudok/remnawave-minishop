@@ -156,6 +156,7 @@ if TYPE_CHECKING:
         REFERRAL_WEBAPP_LINK_ENABLED: bool
         REFERRAL_TELEGRAM_LINK_ENABLED: bool
         PARTNER_PROGRAM_ENABLED: bool
+        PARTNER_AUTO_ENROLLMENT_ENABLED: bool
         PARTNER_REFERRAL_PROGRAM_DISABLED: bool
         PARTNER_WITHDRAWALS_ENABLED: bool
         PARTNER_BALANCE_PAYMENT_ENABLED: bool
@@ -316,6 +317,7 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
 
         return PartnerSettings(
             enabled=self.PARTNER_PROGRAM_ENABLED,
+            auto_enrollment_enabled=self.PARTNER_AUTO_ENROLLMENT_ENABLED,
             referral_program_disabled=self.PARTNER_REFERRAL_PROGRAM_DISABLED,
             withdrawals_enabled=self.PARTNER_WITHDRAWALS_ENABLED,
             balance_payment_enabled=self.PARTNER_BALANCE_PAYMENT_ENABLED,

@@ -11132,6 +11132,25 @@
         "updated_at": null
       },
       {
+        "key": "PARTNER_AUTO_ENROLLMENT_ENABLED",
+        "type": "bool",
+        "section": "pricing",
+        "section_order": 11,
+        "subsection": "partner",
+        "label": "Automatic partner enrollment",
+        "description": "Activate partner profiles for all current and future users without applications. Existing paused or closed profiles keep their status.",
+        "i18n_label_key": "admin_settings_field_partner_auto_enrollment_enabled_label",
+        "i18n_description_key": "admin_settings_field_partner_auto_enrollment_enabled_description",
+        "i18n_subsection_key": "admin_settings_subsection_partner",
+        "i18n_placeholder_key": null,
+        "placeholder": "",
+        "optional": true,
+        "secret": false,
+        "value": "",
+        "overridden": false,
+        "updated_at": null
+      },
+      {
         "key": "PARTNER_REFERRAL_PROGRAM_DISABLED",
         "type": "bool",
         "section": "pricing",

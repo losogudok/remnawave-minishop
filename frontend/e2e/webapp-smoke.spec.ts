@@ -980,6 +980,26 @@ test("partner encryption diagnostic explains safe initial key setup", async ({ p
   await expect(page.locator("[data-partner-encryption-command]")).toHaveCount(0);
 });
 
+test("partner automatic enrollment requires confirmation", async ({ page }) => {
+  await page.goto(
+    "/demo/runtime/admin/settings/partner?partner_settings_scenario=program_on&theme_preview=dark"
+  );
+
+  const setting = page.locator(".admin-setting").filter({
+    hasText: "Автоматически подключать всех пользователей",
+  });
+  const toggle = setting.getByRole("switch");
+  await expect(toggle).not.toBeChecked();
+  await toggle.click();
+
+  const dialog = page.getByRole("dialog", {
+    name: "Включить автоматическое подключение?",
+  });
+  await expect(dialog).toContainText("для каждого подходящего пользователя");
+  await dialog.getByRole("button", { name: "Подтвердить" }).click();
+  await expect(toggle).toBeChecked();
+});
+
 test("partner account stays compact, table-driven, and keeps the tour ring local", async ({
   page,
 }) => {

@@ -51,6 +51,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "PANEL_USER_CACHE_TTL_SECONDS": 5,
     "PANEL_WRITE_MODE": "auto",
     "PARTNER_PROGRAM_ENABLED": False,
+    "PARTNER_AUTO_ENROLLMENT_ENABLED": False,
     "PARTNER_REFERRAL_PROGRAM_DISABLED": False,
     "PARTNER_WITHDRAWALS_ENABLED": True,
     "PARTNER_BALANCE_PAYMENT_ENABLED": True,
@@ -311,6 +312,7 @@ class SettingsStub(SimpleNamespace):
 
         return PartnerSettings(
             enabled=bool(self.PARTNER_PROGRAM_ENABLED),
+            auto_enrollment_enabled=bool(self.PARTNER_AUTO_ENROLLMENT_ENABLED),
             referral_program_disabled=bool(self.PARTNER_REFERRAL_PROGRAM_DISABLED),
             withdrawals_enabled=bool(self.PARTNER_WITHDRAWALS_ENABLED),
             balance_payment_enabled=bool(self.PARTNER_BALANCE_PAYMENT_ENABLED),

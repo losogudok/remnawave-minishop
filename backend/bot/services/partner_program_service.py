@@ -31,6 +31,9 @@ def _public_client_id() -> str:
     return secrets.token_hex(8)
 
 
+AUTO_ENROLLMENT_BATCH_SIZE = 500
+
+
 class PartnerProgramService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -38,6 +41,93 @@ class PartnerProgramService:
     @property
     def config(self):
         return self.settings.partner_settings
+
+    @property
+    def automatic_enrollment_active(self) -> bool:
+        config = getattr(self.settings, "partner_settings", None)
+        return bool(config and config.enabled and config.auto_enrollment_enabled)
+
+    async def auto_enroll_user(
+        self,
+        session: AsyncSession,
+        *,
+        user: User,
+        actor_admin_id: int | None = None,
+    ) -> PartnerProfile | None:
+        """Materialize the automatic entitlement without overriding moderation state."""
+
+        if not self.automatic_enrollment_active or bool(user.is_banned):
+            return None
+        existing = await partner_dal.get_profile_by_user_id(session, int(user.user_id))
+        if existing is not None:
+            if existing.status == "active":
+                await partner_dal.approve_pending_applications_for_users(
+                    session,
+                    user_ids=[int(user.user_id)],
+                    actor_user_id=actor_admin_id,
+                )
+            return existing
+        profile = await self.create_profile_for_user(
+            session,
+            user=user,
+            actor_admin_id=actor_admin_id,
+            emit_status_event=False,
+            audit_reason="automatic_enrollment",
+        )
+        if profile.status == "active":
+            await partner_dal.approve_pending_applications_for_users(
+                session,
+                user_ids=[int(user.user_id)],
+                actor_user_id=actor_admin_id,
+            )
+        return profile
+
+    async def auto_enroll_all_users(
+        self,
+        session: AsyncSession,
+        *,
+        actor_admin_id: int | None = None,
+    ) -> int:
+        """Activate every eligible account in bounded, idempotent batches."""
+
+        if not self.automatic_enrollment_active:
+            return 0
+        enrolled = 0
+        stalled_batches = 0
+        while True:
+            users = await partner_dal.list_users_without_partner_profile(
+                session,
+                limit=AUTO_ENROLLMENT_BATCH_SIZE,
+            )
+            if not users:
+                return enrolled
+            now = datetime.now(UTC)
+            created = await partner_dal.create_profiles_bulk(
+                session,
+                profiles=[
+                    {
+                        "user_id": int(user.user_id),
+                        "status": "active",
+                        "commission_bps": int(self.config.default_commission_bps),
+                        "partner_code": _profile_code(),
+                        "display_label_snapshot": safe_user_label(user),
+                        "activated_at": now,
+                        "created_at": now,
+                        "updated_at": now,
+                    }
+                    for user in users
+                ],
+                actor_user_id=actor_admin_id,
+            )
+            await partner_dal.approve_pending_applications_for_users(
+                session,
+                user_ids=[int(user.user_id) for user in users],
+                actor_user_id=actor_admin_id,
+            )
+            enrolled += len(created)
+            stalled_batches = stalled_batches + 1 if not created else 0
+            if stalled_batches >= 5:  # pragma: no cover - collision/concurrency defence
+                raise PartnerError("partner_auto_enrollment_failed", 500)
 
     async def referral_program_enabled_for_user(
         self,
@@ -63,6 +153,8 @@ class PartnerProgramService:
     ) -> PartnerApplication:
         if not self.config.enabled:
             raise PartnerError("partner_program_disabled", 403)
+        if self.config.auto_enrollment_enabled:
+            raise PartnerError("partner_application_not_required", 409)
         normalized = message.strip()
         if len(normalized) < 10:
             raise PartnerError("application_message_too_short", 400)
@@ -135,6 +227,8 @@ class PartnerProgramService:
         welcome_message: str | None = None,
         actor_admin_id: int | None = None,
         application_id: int | None = None,
+        emit_status_event: bool = True,
+        audit_reason: str | None = None,
     ) -> PartnerProfile:
         existing = await partner_dal.get_profile_by_user_id(
             session,
@@ -170,6 +264,12 @@ class PartnerProgramService:
                     return existing
         else:  # pragma: no cover - cryptographic collision defence
             raise PartnerError("partner_code_generation_failed", 500)
+        audit_values: dict[str, Any] = {
+            "status": "active",
+            "commission_bps": int(profile.commission_bps),
+        }
+        if audit_reason:
+            audit_values["source"] = audit_reason
         await partner_dal.create_audit_event(
             session,
             event_type="partner_created",
@@ -177,11 +277,10 @@ class PartnerProgramService:
             partner_id=int(profile.partner_id),
             application_id=application_id,
             actor_user_id=actor_admin_id,
-            new_values_json=compact_json(
-                {"status": "active", "commission_bps": int(profile.commission_bps)}
-            ),
+            new_values_json=compact_json(audit_values),
+            reason=audit_reason,
         )
-        if application_id is None:
+        if application_id is None and emit_status_event:
             await events.emit_model(
                 PartnerStatusChangedPayload(
                     partner_id=int(profile.partner_id),

@@ -464,10 +464,8 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
         default=True,
         description="Show the Telegram bot referral link in the user Web App bonus section.",
     )
-    PARTNER_PROGRAM_ENABLED: bool = Field(
-        default=False,
-        description="Enable partner applications, attribution, commissions and user actions.",
-    )
+    PARTNER_PROGRAM_ENABLED: bool = False
+    PARTNER_AUTO_ENROLLMENT_ENABLED: bool = Field(default=False)
     PARTNER_REFERRAL_PROGRAM_DISABLED: bool = Field(default=False)
     PARTNER_WITHDRAWALS_ENABLED: bool = Field(
         default=True,

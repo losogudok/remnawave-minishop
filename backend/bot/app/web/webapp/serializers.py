@@ -210,9 +210,9 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             )
 
         active = await subscription_service.get_active_subscription_details(session, user_id)
-        referral_program_enabled = await PartnerProgramService(
-            settings
-        ).referral_program_enabled_for_user(
+        partner_program = PartnerProgramService(settings)
+        await partner_program.auto_enroll_user(session, user=db_user)
+        referral_program_enabled = await partner_program.referral_program_enabled_for_user(
             session,
             user_id=user_id,
         )

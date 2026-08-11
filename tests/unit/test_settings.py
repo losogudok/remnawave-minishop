@@ -360,7 +360,7 @@ class SettingsTests(unittest.TestCase):
                 REFERRAL_TELEGRAM_LINK_ENABLED=False,
             )
 
-    def test_partner_referral_program_gate_is_opt_in(self):
+    def test_partner_program_optional_modes_are_opt_in(self):
         defaults = Settings(
             _env_file=None,
             BOT_TOKEN="token",
@@ -372,10 +372,13 @@ class SettingsTests(unittest.TestCase):
             BOT_TOKEN="token",
             POSTGRES_USER="app_user",
             POSTGRES_PASSWORD="app_password",
+            PARTNER_AUTO_ENROLLMENT_ENABLED=True,
             PARTNER_REFERRAL_PROGRAM_DISABLED=True,
         )
 
+        self.assertFalse(defaults.partner_settings.auto_enrollment_enabled)
         self.assertFalse(defaults.partner_settings.referral_program_disabled)
+        self.assertTrue(enabled.partner_settings.auto_enrollment_enabled)
         self.assertTrue(enabled.partner_settings.referral_program_disabled)
 
     def test_webapp_auth_providers_describe_available_login_methods(self):

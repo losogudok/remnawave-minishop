@@ -12,6 +12,17 @@ PARTNER_SETTINGS_FIELDS: tuple[SettingField, ...] = (
         subsection="partner",
     ),
     SettingField(
+        "PARTNER_AUTO_ENROLLMENT_ENABLED",
+        "bool",
+        "pricing",
+        "Automatic partner enrollment",
+        (
+            "Activate partner profiles for all current and future users without applications. "
+            "Existing paused or closed profiles keep their status."
+        ),
+        subsection="partner",
+    ),
+    SettingField(
         "PARTNER_REFERRAL_PROGRAM_DISABLED",
         "bool",
         "pricing",

@@ -192,6 +192,7 @@ class PartnerWithdrawalMethod(BaseModel):
 
 class PartnerSettings(BaseModel):
     enabled: bool = False
+    auto_enrollment_enabled: bool = False
     referral_program_disabled: bool = False
     withdrawals_enabled: bool = True
     balance_payment_enabled: bool = True

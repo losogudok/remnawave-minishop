@@ -2,7 +2,6 @@
   import "./partnerProgramSettings.css";
   import { ArrowRight, ShieldCheck, TriangleAlert } from "$components/ui/icons.js";
   import { Checkbox, Input } from "$components/ui/index.js";
-  import Dialog from "$components/ui/dialog.svelte";
   import { Switch } from "$components/ui/primitives.js";
   import { AdminBadge, AdminButton } from "$components/patterns/admin/index.js";
   import type { Snippet } from "svelte";
@@ -11,6 +10,7 @@
   import { valueForKey, type SettingsDirtyState } from "$lib/admin/tariffSettings.js";
   import PartnerClientBonusSettings from "./PartnerClientBonusSettings.svelte";
   import PartnerEncryptionDiagnostic from "./PartnerEncryptionDiagnostic.svelte";
+  import PartnerSettingsDialogs from "./PartnerSettingsDialogs.svelte";
   import PartnerWithdrawalMethods from "./PartnerWithdrawalMethods.svelte";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
@@ -84,6 +84,7 @@
     enabled: previewMode
       ? settingsScenario === "program_on" || settingsScenario === "dirty"
       : settingBoolean("PARTNER_PROGRAM_ENABLED", false),
+    autoEnrollment: settingBoolean("PARTNER_AUTO_ENROLLMENT_ENABLED", false),
     referralProgramDisabled: settingBoolean("PARTNER_REFERRAL_PROGRAM_DISABLED", false),
     withdrawalsEnabled: settingBoolean("PARTNER_WITHDRAWALS_ENABLED", true),
     balancePaymentEnabled: settingBoolean("PARTNER_BALANCE_PAYMENT_ENABLED", true),
@@ -180,6 +181,7 @@
   );
   let methodEditor = $state<number | null>(null);
   let pendingToggle = $state<"enabled" | "withdrawalsEnabled" | "balancePaymentEnabled" | "">("");
+  let autoEnrollmentConfirmation = $state(false);
 
   const linksValid = $derived(config.telegramLinks || config.webLinks);
   const duplicateMethodIds = $derived(
@@ -194,14 +196,6 @@
   );
   const cryptoInvalid = $derived(methods.some((method) => networkConfigurationInvalid(method)));
   const enabledMethods = $derived(methods.filter((method) => method.enabled));
-  const pendingToggleLocaleKey = $derived(
-    pendingToggle === "withdrawalsEnabled"
-      ? "withdrawals"
-      : pendingToggle === "balancePaymentEnabled"
-        ? "balance_payment"
-        : "program"
-  );
-
   function initialSettingsScenario(): string {
     if (typeof window === "undefined") return "";
     return String(
@@ -212,6 +206,7 @@
   function settingsPayload(): Record<string, unknown> {
     return {
       PARTNER_PROGRAM_ENABLED: config.enabled,
+      PARTNER_AUTO_ENROLLMENT_ENABLED: config.autoEnrollment,
       PARTNER_REFERRAL_PROGRAM_DISABLED: config.referralProgramDisabled,
       PARTNER_WITHDRAWALS_ENABLED: config.withdrawalsEnabled,
       PARTNER_BALANCE_PAYMENT_ENABLED: config.balancePaymentEnabled,
@@ -285,6 +280,20 @@
     if (!pendingToggle) return;
     config[pendingToggle] = false;
     pendingToggle = "";
+  }
+
+  function requestAutoEnrollment(checked: boolean): void {
+    if (checked && !config.autoEnrollment) {
+      autoEnrollmentConfirmation = true;
+      return;
+    }
+    config.autoEnrollment = false;
+  }
+
+  function confirmAutoEnrollment(): void {
+    config.enabled = true;
+    config.autoEnrollment = true;
+    autoEnrollmentConfirmation = false;
   }
 
   function setLinkChannel(channel: "telegramLinks" | "webLinks", enabled: boolean): void {
@@ -451,6 +460,29 @@
         "PARTNER_PROGRAM_ENABLED",
         enabledControl
       )}
+
+      <div class="admin-setting">
+        <div class="admin-setting-meta">
+          <strong>
+            {at("partner_settings_auto_enrollment", {}, "Automatic enrollment for all users")}
+          </strong>
+          <code>PARTNER_AUTO_ENROLLMENT_ENABLED</code>
+          <small>
+            {at(
+              "partner_settings_auto_enrollment_hint",
+              {},
+              "Creates active profiles without applications. Paused and closed profiles keep their status."
+            )}
+          </small>
+        </div>
+        <div class="admin-setting-control">
+          {@render switchControl(
+            config.autoEnrollment,
+            at("partner_settings_auto_enrollment", {}, "Automatic enrollment for all users"),
+            requestAutoEnrollment
+          )}
+        </div>
+      </div>
 
       {#snippet withdrawalsControl()}
         {@render switchControl(
@@ -733,9 +765,13 @@
       <strong>{at("partner_settings_applications_title", {}, "Applications")}</strong>
       <small>
         {at(
-          "partner_settings_applications_hint",
+          config.autoEnrollment
+            ? "partner_settings_applications_auto_hint"
+            : "partner_settings_applications_hint",
           {},
-          "Conservative defaults reduce repeated submissions and queue abuse."
+          config.autoEnrollment
+            ? "Automatic enrollment is active; these limits are preserved for manual mode."
+            : "Conservative defaults reduce repeated submissions and queue abuse."
         )}
       </small>
     </header>
@@ -922,31 +958,12 @@
   </div>
 </div>
 
-<Dialog
-  open={Boolean(pendingToggle)}
-  title={at(
-    `partner_settings_confirm_${pendingToggleLocaleKey}_title`,
-    {},
-    "Disable this feature?"
-  )}
-  closeLabel={at("close", {}, "Close")}
-  onclose={() => (pendingToggle = "")}
-  class="admin-dialog admin-dialog-compact admin-partner-settings-dialog"
->
-  {#snippet titleIcon()}<TriangleAlert size={22} />{/snippet}
-  <div class="admin-form" data-dialog-content>
-    <p class="partner-settings-confirm-text">
-      {at(
-        `partner_settings_confirm_${pendingToggleLocaleKey}_text`,
-        {},
-        "Existing history and obligations remain available. Only new user actions are stopped."
-      )}
-    </p>
-    <div class="admin-dialog-actions">
-      <AdminButton onclick={() => (pendingToggle = "")}>{at("cancel", {}, "Cancel")}</AdminButton>
-      <AdminButton variant="danger" onclick={confirmToggle}
-        >{at("confirm", {}, "Confirm")}</AdminButton
-      >
-    </div>
-  </div>
-</Dialog>
+<PartnerSettingsDialogs
+  {at}
+  {pendingToggle}
+  {autoEnrollmentConfirmation}
+  oncloseToggle={() => (pendingToggle = "")}
+  onconfirmToggle={confirmToggle}
+  oncloseAutoEnrollment={() => (autoEnrollmentConfirmation = false)}
+  onconfirmAutoEnrollment={confirmAutoEnrollment}
+/>

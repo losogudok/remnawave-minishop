@@ -41,6 +41,7 @@ REFERRAL_LINK_VISIBILITY_KEYS = (
 )
 PARTNER_SETTING_KEYS = {
     "PARTNER_PROGRAM_ENABLED",
+    "PARTNER_AUTO_ENROLLMENT_ENABLED",
     "PARTNER_REFERRAL_PROGRAM_DISABLED",
     "PARTNER_WITHDRAWALS_ENABLED",
     "PARTNER_BALANCE_PAYMENT_ENABLED",
@@ -231,6 +232,21 @@ def _referral_link_visibility_errors(
     return dict.fromkeys(sorted(touched), "at least one referral link must remain enabled")
 
 
+def _partner_settings_candidate(
+    settings: Settings,
+    updates: dict[str, Any],
+    deletes: list[str],
+) -> Settings:
+    candidate = settings.model_copy(deep=True)
+    if deletes:
+        env_only = Settings()
+        for key in PARTNER_SETTING_KEYS.intersection(deletes):
+            setattr(candidate, key, getattr(env_only, key))
+    for key in PARTNER_SETTING_KEYS.intersection(updates):
+        setattr(candidate, key, updates[key])
+    return candidate
+
+
 def _partner_settings_errors(
     settings: Settings,
     updates: dict[str, Any],
@@ -239,17 +255,8 @@ def _partner_settings_errors(
     touched = PARTNER_SETTING_KEYS.intersection((*updates, *deletes))
     if not touched:
         return {}
-    candidate = settings.model_copy(deep=True)
-    if deletes:
-        try:
-            env_only = Settings()
-        except Exception:
-            return dict.fromkeys(sorted(touched), "could not resolve the environment default")
-        for key in PARTNER_SETTING_KEYS.intersection(deletes):
-            setattr(candidate, key, getattr(env_only, key))
-    for key in PARTNER_SETTING_KEYS.intersection(updates):
-        setattr(candidate, key, updates[key])
     try:
+        candidate = _partner_settings_candidate(settings, updates, deletes)
         _ = candidate.partner_settings
     except Exception as exc:
         return dict.fromkeys(sorted(touched), str(exc))
@@ -438,6 +445,23 @@ async def update_overrides(
     if errors:
         return {"ok": False, "errors": errors}
 
+    partner_candidate: Settings | None = None
+    activate_all_partners = False
+    touched_partner_keys = PARTNER_SETTING_KEYS.intersection((*coerced_updates, *valid_deletes))
+    if touched_partner_keys:
+        partner_candidate = _partner_settings_candidate(
+            settings,
+            coerced_updates,
+            valid_deletes,
+        )
+        current_partner = settings.partner_settings
+        next_partner = partner_candidate.partner_settings
+        activate_all_partners = bool(
+            next_partner.enabled
+            and next_partner.auto_enrollment_enabled
+            and not (current_partner.enabled and current_partner.auto_enrollment_enabled)
+        )
+
     removed_partner_method_ids: set[str] = set()
     methods_key = "PARTNER_WITHDRAWAL_METHODS_JSON"
     if methods_key in coerced_updates or methods_key in valid_deletes:
@@ -450,6 +474,7 @@ async def update_overrides(
         next_method_ids = {method.id for method in candidate.partner_settings.withdrawal_methods}
         removed_partner_method_ids = current_method_ids - next_method_ids
 
+    auto_enrolled = 0
     async with async_session_factory() as raw_session:
         session: AsyncSession = raw_session
         async with session.begin():
@@ -471,6 +496,15 @@ async def update_overrides(
                 )
             for key in valid_deletes:
                 await app_settings_dal.delete_override(session, key)
+            if activate_all_partners and partner_candidate is not None:
+                from bot.services.partner_program_service import PartnerProgramService
+
+                auto_enrolled = await PartnerProgramService(
+                    partner_candidate
+                ).auto_enroll_all_users(
+                    session,
+                    actor_admin_id=actor_id,
+                )
 
     # Apply locally; deletes need an env-default fallback. We re-read the env
     # default by instantiating a fresh Settings() / provider-config model
@@ -536,6 +570,7 @@ async def update_overrides(
         "applied": len(coerced_updates),
         "reverted": len(valid_deletes),
         "not_applied": sorted(not_applied),
+        "auto_enrolled": auto_enrolled,
     }
 
 

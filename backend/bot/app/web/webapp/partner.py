@@ -23,7 +23,7 @@ from bot.services.partner_common import PartnerError, currency_scale
 from bot.services.partner_program_service import PartnerProgramService
 from bot.services.partner_withdrawal_service import PartnerWithdrawalService
 from config.settings import Settings
-from db.dal import partner_dal
+from db.dal import partner_dal, user_dal
 
 from ..partner_serialization import (
     application_out,
@@ -60,8 +60,11 @@ async def partner_overview_route(request: web.Request) -> web.Response:
     program = PartnerProgramService(settings)
     withdrawals = PartnerWithdrawalService(settings)
     async_session_factory: sessionmaker = get_session_factory(request)
-    async with async_session_factory() as session:
-        profile = await partner_dal.get_profile_by_user_id(session, user_id)
+    async with async_session_factory() as session, session.begin():
+        user = await user_dal.get_user_by_id(session, user_id)
+        profile = await program.auto_enroll_user(session, user=user) if user is not None else None
+        if profile is None:
+            profile = await partner_dal.get_profile_by_user_id(session, user_id)
         application = await partner_dal.latest_application_for_user(session, user_id)
         raw_balances = (
             await partner_dal.balance_summaries(session, int(profile.partner_id)) if profile else []

@@ -456,6 +456,125 @@ def test_partner_profile_controls_referral_program_visibility(
         get_profile.assert_not_awaited()
 
 
+def test_automatic_partner_enrollment_batches_existing_users(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    users = [
+        SimpleNamespace(
+            user_id=5,
+            is_banned=False,
+            first_name="Alice",
+            last_name=None,
+            username="alice",
+            email=None,
+        ),
+        SimpleNamespace(
+            user_id=6,
+            is_banned=False,
+            first_name=None,
+            last_name=None,
+            username=None,
+            email="bo@example.test",
+        ),
+    ]
+    list_users = AsyncMock(side_effect=[users, []])
+    create_profiles = AsyncMock(return_value={5: 15, 6: 16})
+    approve_pending = AsyncMock(return_value=1)
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.list_users_without_partner_profile",
+        list_users,
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.create_profiles_bulk",
+        create_profiles,
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.approve_pending_applications_for_users",
+        approve_pending,
+    )
+    service = PartnerProgramService(
+        SimpleNamespace(
+            partner_settings=_partner_settings(
+                auto_enrollment_enabled=True,
+                default_commission_bps=2500,
+            )
+        )  # type: ignore[arg-type]
+    )
+
+    enrolled = asyncio.run(
+        service.auto_enroll_all_users(
+            AsyncMock(spec=AsyncSession),
+            actor_admin_id=7,
+        )
+    )
+
+    assert enrolled == 2
+    assert list_users.await_count == 2
+    create_call = create_profiles.await_args
+    assert create_call is not None
+    payloads = create_call.kwargs["profiles"]
+    assert [payload["user_id"] for payload in payloads] == [5, 6]
+    assert [payload["commission_bps"] for payload in payloads] == [2500, 2500]
+    assert [payload["display_label_snapshot"] for payload in payloads] == [
+        "Alice",
+        "bo***@example.test",
+    ]
+    assert len({payload["partner_code"] for payload in payloads}) == 2
+    assert create_call.kwargs["actor_user_id"] == 7
+    approve_pending.assert_awaited_once()
+    approve_call = approve_pending.await_args
+    assert approve_call is not None
+    assert approve_call.kwargs == {
+        "user_ids": [5, 6],
+        "actor_user_id": 7,
+    }
+
+
+def test_automatic_partner_enrollment_preserves_paused_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = SimpleNamespace(partner_id=15, user_id=5, status="paused")
+    get_profile = AsyncMock(return_value=profile)
+    approve_pending = AsyncMock()
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.get_profile_by_user_id",
+        get_profile,
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.approve_pending_applications_for_users",
+        approve_pending,
+    )
+    service = PartnerProgramService(
+        SimpleNamespace(partner_settings=_partner_settings(auto_enrollment_enabled=True))  # type: ignore[arg-type]
+    )
+    user = SimpleNamespace(user_id=5, is_banned=False)
+
+    result = asyncio.run(
+        service.auto_enroll_user(
+            AsyncMock(spec=AsyncSession),
+            user=user,  # type: ignore[arg-type]
+        )
+    )
+
+    assert result is profile
+    approve_pending.assert_not_awaited()
+
+
+def test_automatic_partner_enrollment_rejects_new_applications() -> None:
+    service = PartnerProgramService(
+        SimpleNamespace(partner_settings=_partner_settings(auto_enrollment_enabled=True))  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(PartnerError, match="partner_application_not_required"):
+        asyncio.run(
+            service.submit_application(
+                AsyncMock(spec=AsyncSession),
+                user_id=5,
+                message="A valid application message",
+            )
+        )
+
+
 @pytest.mark.parametrize(("application_id", "emitted"), [(None, True), (17, False)])
 def test_direct_partner_activation_emits_status_event_once(
     monkeypatch: pytest.MonkeyPatch,

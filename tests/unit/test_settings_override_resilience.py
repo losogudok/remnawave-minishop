@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import model_validator
@@ -20,6 +21,7 @@ from bot.payment_providers import registry
 from bot.payment_providers.base import ProviderEnvConfig
 from bot.payment_providers.tribute.config import TributeConfig
 from bot.services import settings_override_service as svc
+from bot.services.partner_program_service import PartnerProgramService
 from config.settings import Settings
 
 
@@ -208,3 +210,41 @@ def test_referral_link_visibility_allows_an_atomic_link_switch() -> None:
     )
 
     assert errors == {}
+
+
+def test_enabling_automatic_partner_enrollment_materializes_existing_users(
+    monkeypatch,
+    _memory_overrides,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        BOT_TOKEN="token",
+        POSTGRES_USER="app_user",
+        POSTGRES_PASSWORD="app_password",
+    )
+    auto_enroll = AsyncMock(return_value=3)
+    monkeypatch.setattr(PartnerProgramService, "auto_enroll_all_users", auto_enroll)
+
+    result = asyncio.run(
+        svc.update_overrides(
+            settings,
+            lambda: _FakeSession(),
+            updates={
+                "PARTNER_PROGRAM_ENABLED": True,
+                "PARTNER_AUTO_ENROLLMENT_ENABLED": True,
+            },
+            deletes=[],
+            actor_id=7,
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["auto_enrolled"] == 3
+    assert _memory_overrides == {
+        "PARTNER_PROGRAM_ENABLED": True,
+        "PARTNER_AUTO_ENROLLMENT_ENABLED": True,
+    }
+    auto_enroll.assert_awaited_once()
+    auto_enroll_call = auto_enroll.await_args
+    assert auto_enroll_call is not None
+    assert auto_enroll_call.kwargs == {"actor_admin_id": 7}

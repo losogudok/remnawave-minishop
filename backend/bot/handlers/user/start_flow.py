@@ -308,6 +308,10 @@ async def start_command_handler(
                         source="partner_telegram_link",
                         registered_via_partner_link=True,
                     )
+                await PartnerProgramService(settings).auto_enroll_user(
+                    session,
+                    user=db_user,
+                )
                 try:
                     await session.commit()
                 except Exception as commit_error:

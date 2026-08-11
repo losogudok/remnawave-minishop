@@ -4,14 +4,17 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import String, and_, case, cast, delete, desc, func, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from db.models import Payment
+from db.models import Payment, User
 from db.partner_models import (
     PartnerApplication,
     PartnerAuditEvent,
@@ -100,6 +103,130 @@ async def create_profile(
     session.add(profile)
     await session.flush()
     return profile
+
+
+async def list_users_without_partner_profile(
+    session: AsyncSession,
+    *,
+    limit: int,
+) -> list[User]:
+    statement = (
+        select(User)
+        .outerjoin(PartnerProfile, PartnerProfile.user_id == User.user_id)
+        .where(
+            PartnerProfile.partner_id.is_(None),
+            User.is_banned.is_not(True),
+        )
+        .order_by(User.user_id)
+        .limit(limit)
+    )
+    rows = await session.execute(statement)
+    return list(rows.scalars().all())
+
+
+async def create_profiles_bulk(
+    session: AsyncSession,
+    *,
+    profiles: list[dict[str, Any]],
+    actor_user_id: int | None,
+) -> dict[int, int]:
+    """Insert profile rows without replacing concurrent or moderated profiles."""
+
+    if not profiles:
+        return {}
+    bind = session.get_bind()
+    insert_factory = sqlite_insert if bind.dialect.name == "sqlite" else postgresql_insert
+    statement = (
+        insert_factory(PartnerProfile)
+        .values(profiles)
+        .on_conflict_do_nothing()
+        .returning(
+            PartnerProfile.partner_id,
+            PartnerProfile.user_id,
+            PartnerProfile.commission_bps,
+        )
+    )
+    result = await session.execute(statement)
+    created: list[tuple[int, int, int]] = [
+        (int(partner_id), int(user_id), int(commission_bps))
+        for partner_id, user_id, commission_bps in result.all()
+        if user_id is not None
+    ]
+    actor_type = "admin" if actor_user_id is not None else "system"
+    session.add_all(
+        [
+            PartnerAuditEvent(
+                partner_id=partner_id,
+                event_type="partner_created",
+                actor_type=actor_type,
+                actor_user_id=actor_user_id,
+                new_values_json=json.dumps(
+                    {
+                        "commission_bps": commission_bps,
+                        "source": "automatic_enrollment",
+                        "status": "active",
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                reason="automatic_enrollment",
+            )
+            for partner_id, _user_id, commission_bps in created
+        ]
+    )
+    await session.flush()
+    return {user_id: partner_id for partner_id, user_id, _commission_bps in created}
+
+
+async def approve_pending_applications_for_users(
+    session: AsyncSession,
+    *,
+    user_ids: list[int],
+    actor_user_id: int | None,
+) -> int:
+    """Close stale pending applications when automatic enrollment created a profile."""
+
+    if not user_ids:
+        return 0
+    result = await session.execute(
+        select(
+            PartnerApplication,
+            PartnerProfile.partner_id,
+            PartnerProfile.commission_bps,
+        )
+        .join(PartnerProfile, PartnerProfile.user_id == PartnerApplication.user_id)
+        .where(
+            PartnerApplication.user_id.in_(user_ids),
+            PartnerApplication.status == "pending",
+            PartnerProfile.status == "active",
+        )
+    )
+    rows = list(result.all())
+    if not rows:
+        return 0
+    now = utcnow()
+    actor_type = "admin" if actor_user_id is not None else "system"
+    for application, partner_id, commission_bps in rows:
+        application.status = "approved"
+        application.decided_at = now
+        application.decided_by_admin_id = actor_user_id
+        application.approved_commission_bps = int(commission_bps)
+        application.reapply_allowed_at = None
+        session.add(
+            PartnerAuditEvent(
+                partner_id=int(partner_id),
+                application_id=int(application.application_id),
+                event_type="application_decided",
+                actor_type=actor_type,
+                actor_user_id=actor_user_id,
+                old_values_json='{"status":"pending"}',
+                new_values_json='{"source":"automatic_enrollment","status":"approved"}',
+                reason="automatic_enrollment",
+            )
+        )
+    await session.flush()
+    return len(rows)
 
 
 async def latest_application_for_user(
