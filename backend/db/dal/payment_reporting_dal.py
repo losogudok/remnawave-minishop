@@ -9,22 +9,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.models import Payment, User
 
 
-async def _daily_revenue_series_utc(session: AsyncSession, days: int = 14) -> list[dict[str, Any]]:
-    """Succeeded external-payment totals per UTC calendar day."""
+async def _daily_revenue_series_utc(
+    session: AsyncSession,
+    days: int | None = 14,
+) -> list[dict[str, Any]]:
+    """Succeeded external-payment totals per UTC calendar day.
+
+    ``days=None`` returns the complete series beginning with the first matching
+    payment. The result remains dense so calendar presets and KPI slices keep
+    their exact day semantics.
+    """
 
     now = datetime.now(UTC)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    range_start = today_start - timedelta(days=days - 1)
+    range_start = today_start - timedelta(days=days - 1) if days is not None else None
     day_col = cast(func.date_trunc("day", Payment.created_at), Date).label("d")
+    filters = [
+        Payment.status == "succeeded",
+        Payment.funding_source == "external",
+    ]
+    if range_start is not None:
+        filters.append(Payment.created_at >= range_start)
     result = await session.execute(
         select(day_col, func.coalesce(func.sum(Payment.amount), 0.0))
-        .where(
-            and_(
-                Payment.status == "succeeded",
-                Payment.funding_source == "external",
-                Payment.created_at >= range_start,
-            )
-        )
+        .where(and_(*filters))
         .group_by(day_col)
         .order_by(day_col)
     )
@@ -34,6 +42,12 @@ async def _daily_revenue_series_utc(session: AsyncSession, days: int = 14) -> li
         if isinstance(day, datetime):
             day = day.date()
         by_day[day] = float(row[1] or 0)
+    if range_start is None:
+        first_day = min(by_day, default=today_start.date())
+        first_day = min(first_day, today_start.date())
+        range_start = datetime.combine(first_day, datetime.min.time(), tzinfo=UTC)
+        days = (today_start.date() - first_day).days + 1
+    assert days is not None
     return [
         {
             "date": (range_start + timedelta(days=index)).date().isoformat(),
@@ -76,7 +90,7 @@ async def get_financial_statistics(session: AsyncSession) -> dict[str, Any]:
         "month_revenue": float(revenue_row[2] or 0),
         "all_time_revenue": float(revenue_row[3] or 0),
         "today_payments_count": int(revenue_row[4] or 0),
-        "daily_series": await _daily_revenue_series_utc(session, days=730),
+        "daily_series": await _daily_revenue_series_utc(session, days=None),
     }
 
 

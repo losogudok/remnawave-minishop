@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AdminApi } from "../../admin/adminStores.js";
 import {
   DEFAULT_PARTNER_LIST_QUERY,
+  loadPartnerDashboard,
   loadPartnerPage,
   PARTNER_LIST_PAGE_SIZE,
 } from "./partnerProgramApi.js";
@@ -44,5 +45,13 @@ describe("partner program admin API", () => {
 
   it("shows partners with clients first by default", () => {
     expect(DEFAULT_PARTNER_LIST_QUERY.sort).toBe("clients_desc");
+  });
+
+  it("loads the complete partner chart history", async () => {
+    const request = vi.fn().mockResolvedValue({ metrics: {}, series: [], currency_scale: 2 });
+
+    await loadPartnerDashboard(request as unknown as AdminApi, "RUB");
+
+    expect(String(request.mock.calls[0][0])).toContain("days=all");
   });
 });

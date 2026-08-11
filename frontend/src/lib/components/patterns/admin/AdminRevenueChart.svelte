@@ -5,6 +5,7 @@
   import Plate from "$components/ui/plate.svelte";
 
   type RevenuePoint = { date: string; amount: number };
+  type RevenueGranularity = "day" | "week" | "month" | "year";
   type TooltipGeometry = {
     left: number;
     arrowLeft: number;
@@ -24,6 +25,8 @@
     plotHeight?: number;
     fmtMoney?: (value: number, currency: string) => string;
     currency?: string;
+    locale?: string;
+    granularity?: RevenueGranularity;
     /** Readout: column header for the time (x) series */
     legendTimeLabel?: string;
     /** Readout: column header for the value (y) series */
@@ -39,6 +42,8 @@
     plotHeight = 204,
     fmtMoney = (v, _currency) => String(v),
     currency = "RUB",
+    locale = "en",
+    granularity = "day",
     legendTimeLabel = "Time",
     legendValueLabel = "Value",
     legendDeltaLabel = "Change",
@@ -106,7 +111,14 @@
   function formatReadoutDate(iso: string): string {
     const parsed = new Date(iso.includes("T") ? iso : `${iso}T12:00:00Z`);
     if (Number.isNaN(parsed.getTime())) return iso;
-    return new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short" }).format(parsed);
+    let options: Intl.DateTimeFormatOptions = {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    };
+    if (granularity === "month") options = { month: "short", year: "numeric" };
+    if (granularity === "year") options = { year: "numeric" };
+    return new Intl.DateTimeFormat(locale.replaceAll("_", "-") || "en", options).format(parsed);
   }
 
   function formatDelta(value: number): string {

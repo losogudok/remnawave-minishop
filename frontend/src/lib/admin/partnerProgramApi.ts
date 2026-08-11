@@ -147,7 +147,7 @@ export async function loadPartnerDashboard(
   currency: string
 ): Promise<AdminPartnerDashboard> {
   const payload = record(
-    await api(`/admin/partners/overview?currency=${encodeURIComponent(currency)}&days=365`)
+    await api(`/admin/partners/overview?currency=${encodeURIComponent(currency)}&days=all`)
   );
   const metrics = record(payload.metrics);
   const scale = number(payload.currency_scale || 2);

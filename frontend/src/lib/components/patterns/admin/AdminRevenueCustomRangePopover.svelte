@@ -15,6 +15,7 @@
     title?: string;
     applyLabel?: string;
     triggerLabel?: string;
+    locale?: string;
     isActive?: boolean;
     onApply?: (range: AppliedRange) => void;
   };
@@ -28,6 +29,7 @@
     title = "",
     applyLabel = "",
     triggerLabel = "",
+    locale = "en",
     isActive = false,
     onApply = () => {},
   }: Props = $props();
@@ -107,6 +109,7 @@
           weekdayFormat="short"
           fixedWeeks={true}
           weekStartsOn={1}
+          locale={locale.replaceAll("_", "-") || "en"}
         >
           {#snippet children({ months, weekdays })}
             <RangeCalendar.Header class="admin-revenue-rcal__header">

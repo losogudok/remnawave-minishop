@@ -330,8 +330,14 @@ async def overview_series(
     session: AsyncSession,
     *,
     currency: str,
-    since: datetime,
+    since: datetime | None,
 ) -> list[dict[str, Any]]:
+    commission_filters = [
+        func.upper(PartnerCommission.currency) == currency.upper(),
+        PartnerCommission.status != "excluded",
+    ]
+    if since is not None:
+        commission_filters.append(PartnerCommission.created_at >= since)
     rows = (
         await session.execute(
             select(
@@ -350,26 +356,24 @@ async def overview_series(
                     0,
                 ).label("commission"),
             )
-            .where(
-                func.upper(PartnerCommission.currency) == currency.upper(),
-                PartnerCommission.created_at >= since,
-                PartnerCommission.status != "excluded",
-            )
+            .where(*commission_filters)
             .group_by(func.date(PartnerCommission.created_at))
             .order_by(func.date(PartnerCommission.created_at))
         )
     ).all()
+    payout_filters = [
+        func.upper(PartnerWithdrawal.debit_currency) == currency.upper(),
+        PartnerWithdrawal.status == "paid",
+    ]
+    if since is not None:
+        payout_filters.append(PartnerWithdrawal.paid_at >= since)
     payout_rows = (
         await session.execute(
             select(
                 func.date(PartnerWithdrawal.paid_at).label("day"),
                 func.coalesce(func.sum(PartnerWithdrawal.debit_amount_minor), 0).label("paid"),
             )
-            .where(
-                func.upper(PartnerWithdrawal.debit_currency) == currency.upper(),
-                PartnerWithdrawal.status == "paid",
-                PartnerWithdrawal.paid_at >= since,
-            )
+            .where(*payout_filters)
             .group_by(func.date(PartnerWithdrawal.paid_at))
             .order_by(func.date(PartnerWithdrawal.paid_at))
         )

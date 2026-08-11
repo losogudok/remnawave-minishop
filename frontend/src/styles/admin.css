@@ -863,7 +863,7 @@
 
 .admin-revenue-rcal__cell {
   flex: 1;
-  padding: 0;
+  padding: 2px 0;
   text-align: center;
   min-width: 0;
 }

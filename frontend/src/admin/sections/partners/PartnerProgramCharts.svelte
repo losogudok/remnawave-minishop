@@ -7,39 +7,56 @@
   } from "$components/patterns/admin/index.js";
   import {
     aggregateRevenueSeries,
+    filterRevenueByPreset,
     hasChartValues,
-    sliceLastDays,
+    isRevenueGranularity,
+    isRevenuePreset,
+    REVENUE_GRANULARITIES,
+    REVENUE_PRESETS,
+    type RevenueGranularity,
+    type RevenuePreset,
   } from "$lib/admin/revenueSeriesAgg.js";
   import type { PartnerChartPoint } from "$lib/admin/previewMock/partnerProgram.js";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
-  type Granularity = "day" | "week" | "month";
-
   let {
     at,
+    currentLang = "en",
     currency,
     money,
     partnerRevenueDaily,
     partnerPayoutsDaily,
   }: {
     at: TranslateFn;
+    currentLang?: string;
     currency: string;
     money: (value: number) => string;
     partnerRevenueDaily: PartnerChartPoint[];
     partnerPayoutsDaily: PartnerChartPoint[];
   } = $props();
 
-  const RANGES = [7, 14, 30, 90, 180, 365];
   const PLOT_HEIGHT = 208;
 
-  let range = $state("30");
-  let granularity = $state<Granularity>("day");
+  let range = $state<RevenuePreset>(30);
+  let granularity = $state<RevenueGranularity>("day");
+  const rangeEndIso = $derived(
+    [...partnerRevenueDaily, ...partnerPayoutsDaily].reduce(
+      (latest, point) => (point.date > latest ? point.date : latest),
+      ""
+    )
+  );
 
   const revenueSeries = $derived(
-    aggregateRevenueSeries(sliceLastDays(partnerRevenueDaily, Number(range)), granularity)
+    aggregateRevenueSeries(
+      filterRevenueByPreset(partnerRevenueDaily, range, rangeEndIso),
+      granularity
+    )
   );
   const payoutSeries = $derived(
-    aggregateRevenueSeries(sliceLastDays(partnerPayoutsDaily, Number(range)), granularity)
+    aggregateRevenueSeries(
+      filterRevenueByPreset(partnerPayoutsDaily, range, rangeEndIso),
+      granularity
+    )
   );
   const revenueTotal = $derived(revenueSeries.reduce((sum, point) => sum + point.amount, 0));
   const payoutTotal = $derived(payoutSeries.reduce((sum, point) => sum + point.amount, 0));
@@ -57,27 +74,34 @@
     </div>
     <div class="admin-revenue-chart-toolbar">
       <AdminRevenueTabs
-        value={range}
-        items={RANGES.map((days) => ({
-          value: String(days),
-          label: at(`stats_revenue_period_${days}`, {}, `${days}d`),
+        value={String(range)}
+        items={REVENUE_PRESETS.map((preset) => ({
+          value: String(preset),
+          label: at(
+            `stats_revenue_period_${preset}`,
+            {},
+            preset === "all" ? "All time" : `${preset}d`
+          ),
         }))}
         ariaLabel={at("partners_range", {}, "Chart range")}
-        onValueChange={(value) => (range = value)}
+        onValueChange={(value) => {
+          const next = value === "all" ? "all" : Number(value);
+          if (isRevenuePreset(next)) range = next;
+        }}
       />
     </div>
   </div>
 
   <AdminRevenueTabs
     value={granularity}
-    items={["day", "week", "month"].map((value) => ({
+    items={REVENUE_GRANULARITIES.map((value) => ({
       value,
       label: at(`stats_revenue_granularity_${value}`, {}, value),
     }))}
     ariaLabel={at("partners_granularity", {}, "Chart granularity")}
     variant="granularity"
     onValueChange={(value) => {
-      if (value === "day" || value === "week" || value === "month") granularity = value;
+      if (isRevenueGranularity(value)) granularity = value;
     }}
   />
 
@@ -95,6 +119,8 @@
             plotHeight={PLOT_HEIGHT}
             fmtMoney={(value) => money(value)}
             {currency}
+            locale={currentLang}
+            {granularity}
             legendTimeLabel={at("partners_chart_time", {}, "Time")}
             legendValueLabel={at("partners_chart_revenue_value", {}, "Revenue")}
             legendDeltaLabel={at("partners_chart_delta", {}, "Change")}
@@ -121,6 +147,8 @@
             plotHeight={PLOT_HEIGHT}
             fmtMoney={(value) => money(value)}
             {currency}
+            locale={currentLang}
+            {granularity}
             legendTimeLabel={at("partners_chart_time", {}, "Time")}
             legendValueLabel={at("partners_chart_payout_value", {}, "Withdrawals")}
             legendDeltaLabel={at("partners_chart_delta", {}, "Change")}

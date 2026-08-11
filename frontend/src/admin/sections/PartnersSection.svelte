@@ -80,6 +80,7 @@
   let {
     api,
     at,
+    currentLang = "en",
     routePrefix = "",
     onOpenSettingsPath = () => {},
     onOpenUserCard = () => {},
@@ -87,6 +88,7 @@
   }: {
     api: AdminApi;
     at: TranslateFn;
+    currentLang?: string;
     routePrefix?: string;
     onOpenSettingsPath?: (path?: unknown) => void;
     onOpenUserCard?: (userId: number) => void;
@@ -796,7 +798,14 @@
         </AdminButton>
       </AdminEmptyState>
     {:else}
-      <PartnerProgramCharts {at} {currency} {money} {partnerRevenueDaily} {partnerPayoutsDaily} />
+      <PartnerProgramCharts
+        {at}
+        {currentLang}
+        {currency}
+        {money}
+        {partnerRevenueDaily}
+        {partnerPayoutsDaily}
+      />
 
       <section class="partners-preview-grid">
         <article class="admin-card partners-preview-card">

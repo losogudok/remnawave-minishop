@@ -103,17 +103,23 @@ async def admin_partner_attention_route(request: web.Request) -> web.Response:
 async def admin_partner_overview_route(request: web.Request) -> web.Response:
     _require_admin_user_id(request)
     currency = str(request.query.get("currency") or "RUB").strip().upper()
-    try:
-        days = max(7, min(366, int(request.query.get("days", 30) or 30)))
-    except (TypeError, ValueError):
-        return _error(400, "invalid_range")
+    raw_days = str(request.query.get("days", 30) or 30).strip().lower()
+    if raw_days == "all":
+        since = None
+    else:
+        try:
+            days = max(7, min(1095, int(raw_days)))
+        except (TypeError, ValueError):
+            return _error(400, "invalid_range")
+        today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        since = today_start - timedelta(days=days - 1)
     async_session_factory: sessionmaker = get_session_factory(request)
     async with async_session_factory() as session:
         metrics = await partner_dal.overview_metrics(session, currency=currency)
         series = await partner_dal.overview_series(
             session,
             currency=currency,
-            since=datetime.now(UTC) - timedelta(days=days),
+            since=since,
         )
     return _ok(
         {
