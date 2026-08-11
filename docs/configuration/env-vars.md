@@ -253,7 +253,7 @@ Trust-all вариант записывается как
 | --- | --- |
 | `PANEL_API_URL` | URL API панели, например `https://panel.example.com/api`. |
 | `PANEL_API_KEY` | API-ключ панели. |
-| `PANEL_API_COOKIE` | Необязательный Cookie header для панелей, защищённых `eGamesAPI/remnawave-reverse-proxy`. |
+| `PANEL_API_COOKIE` | Необязательное содержимое Cookie header (`name=value`) для панелей, защищённых `eGamesAPI/remnawave-reverse-proxy`. Install wizard также принимает строку `Cookie:`/`Set-Cookie:` или полный eGames access URL с одной query-парой и сохраняет каноническое значение. Cookie не заменяет `PANEL_API_KEY`. |
 | `APP_RUNTIME_MODE` | Профиль запуска: `production`, `development`, `staging`, `test`. |
 | `PANEL_WRITE_MODE` | `auto`, `live` или `dry_run`. В `dry_run` приложение читает живую Remnawave Panel, но мутации пользователей только валидируются и логируются. `auto` включает dry-run для `development`/`test`, а в production остается live. |
 | `PANEL_DRY_RUN_VALIDATE_REMOTE` | При dry-run проверять ссылки на panel users/internal squads через live `GET`. |

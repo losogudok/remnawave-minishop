@@ -110,6 +110,7 @@ Wizard старается предлагать безопасные значен
 | `Название Web App` | Название приложения в интерфейсе. | Можно оставить `remnawave-minishop` и позже поменять в настройках. |
 | `URL API Remnawave Panel` | Адрес API панели, обычно `https://panel.example.com/api`. | Укажите публичный URL панели с `/api` в конце. |
 | `API-ключ Remnawave Panel` | Token из Remnawave Panel для чтения/изменения пользователей. | Вставьте API token с нужными правами. Если панель закрыта cookie-proxy, заполните и вопрос про Cookie. |
+| `Способ доступа к Remnawave Panel` | Прямой Panel API или удалённая Panel за eGames reverse proxy. Этот выбор не зависит от профиля публикации самого Minishop. | Для Panel на другом сервере, установленной скриптом eGames, выберите второй вариант и вставьте access-cookie либо полный access URL. |
 | `Webhook-секрет Remnawave Panel` | Секрет, которым панель подписывает webhook в Minishop. | Можно принять сгенерированный секрет, но тот же секрет нужно указать в Remnawave Panel. |
 | `Telegram OAuth client secret` | Секрет BotFather Web Login для входа через браузер вне Telegram. | Можно оставить пустым, если нужен только Telegram Mini App. |
 | `WEBHOOK_HOST` / `MINIAPP_HOST` | Публичные домены без `https://`, пути и порта. | Например `webhooks.example.com` и `app.example.com`. Для Caddy/Angie/Nginx/eGames DNS должен указывать на сервер или на прокси перед ним. |
@@ -126,10 +127,18 @@ Minishop запустится, но синхронизация, выдача п�
 недоступны до настройки.
 
 Если параметры введены, wizard делает безопасный запрос к `/system/stats` и проверяет HTTP-статус,
-`Content-Type: application/json` и структуру ответа. `PANEL_API_COOKIE` должен быть пустым либо
-иметь вид `name=value`; JWT без имени cookie обычно относится к `PANEL_API_KEY`. После неуспешной
-проверки по умолчанию предлагается пропустить интеграцию. Сохранить непроверенные значения можно
-только отдельным явным выбором — это полезно, когда Panel временно недоступна во время установки.
+`Content-Type: application/json` и структуру ответа. Для удалённой Panel за eGames можно вставить
+каноническое `name=value`, строку `Cookie: name=value`, `Set-Cookie: name=value; ...` или полный
+access URL вида `https://panel.example.com/auth/login?name=value`. Wizard извлекает и сохраняет
+только Cookie header; URL с несколькими query-параметрами, управляющие символы и JWT вместо cookie
+отклоняются. Access-cookie проходит внешний reverse proxy, но не заменяет `PANEL_API_KEY`.
+
+Профиль `Уже установленная Remnawave через eGames` нужен только тогда, когда Minishop встраивается
+в eGames Nginx на том же сервере. Для Panel на отдельном сервере можно выбрать любой подходящий
+профиль публикации Minishop, а eGames-защиту указать позже на отдельном шаге подключения Panel API.
+После неуспешной проверки по умолчанию предлагается пропустить интеграцию. Сохранить непроверенные
+значения можно только отдельным явным выбором — это полезно, когда Panel временно недоступна во
+время установки.
 
 Формат bind-полей (`HTTP_BIND`, `HTTPS_BIND`, `WEB_SERVER_BIND`,
 `FRONTEND_BIND`) особенно важен: используйте `PORT` или `IP:PORT`, например

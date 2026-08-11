@@ -403,7 +403,21 @@ prompt_value() {
         else
             printf '%s: ' "$label"
         fi
-        if ! read -r raw_value; then
+        read_failed=0
+        prompt_tty_state=""
+        if [ "$secret" = "1" ] && [ -t 0 ] && command -v stty >/dev/null 2>&1; then
+            prompt_tty_state=$(stty -g 2>/dev/null || true)
+        fi
+        if [ -n "$prompt_tty_state" ] && stty -echo 2>/dev/null; then
+            trap 'stty "$prompt_tty_state" 2>/dev/null || true; exit 130' HUP INT TERM
+            read -r raw_value || read_failed=1
+            stty "$prompt_tty_state" 2>/dev/null || true
+            trap - HUP INT TERM
+            printf '\n'
+        else
+            read -r raw_value || read_failed=1
+        fi
+        if [ "$read_failed" = "1" ]; then
             if [ "$required" = "1" ] && [ -z "$default_value" ]; then
                 fail "Ввод завершился во время чтения обязательного значения: $label"
                 return 1
@@ -921,6 +935,94 @@ panel_configuration_looks_configured() {
     ! panel_value_is_placeholder "$2"
 }
 
+panel_api_cookie_is_valid() {
+    panel_cookie_candidate="$1"
+    [ -n "$panel_cookie_candidate" ] || return 1
+    printf '%s\n' "$panel_cookie_candidate" | awk '
+        NR != 1 { exit 1 }
+        {
+            count = split($0, parts, ";")
+            for (i = 1; i <= count; i++) {
+                item = parts[i]
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", item)
+                equals = index(item, "=")
+                if (equals <= 1) {
+                    exit 1
+                }
+                name = substr(item, 1, equals - 1)
+                value = substr(item, equals + 1)
+                lower_name = tolower(name)
+                if (i > 1 && (lower_name == "path" || lower_name == "domain" || lower_name == "expires" || lower_name == "max-age" || lower_name == "samesite")) {
+                    exit 1
+                }
+                if (name !~ /^[A-Za-z0-9!#%&*+.^_~-]+$/ || value == "" || value !~ /^[A-Za-z0-9._~%+\/:=@-]+$/) {
+                    exit 1
+                }
+            }
+        }
+    '
+}
+
+normalize_panel_api_cookie() {
+    panel_cookie_input=$(printf '%s' "$1" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    [ -n "$panel_cookie_input" ] || return 1
+
+    case "$panel_cookie_input" in
+        [Cc][Oo][Oo][Kk][Ii][Ee]:*)
+            panel_cookie_input=${panel_cookie_input#*:}
+            ;;
+        [Ss][Ee][Tt]-[Cc][Oo][Oo][Kk][Ii][Ee]:*)
+            panel_cookie_input=${panel_cookie_input#*:}
+            panel_cookie_input=${panel_cookie_input%%;*}
+            ;;
+        http://*|https://*)
+            case "$panel_cookie_input" in
+                *\?*) panel_cookie_input=${panel_cookie_input#*\?} ;;
+                *) return 1 ;;
+            esac
+            panel_cookie_input=${panel_cookie_input%%\#*}
+            case "$panel_cookie_input" in
+                ""|*\&*|*\;*) return 1 ;;
+            esac
+            ;;
+    esac
+
+    panel_cookie_input=$(printf '%s' "$panel_cookie_input" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    panel_api_cookie_is_valid "$panel_cookie_input" || return 1
+    printf '%s' "$panel_cookie_input"
+}
+
+prompt_panel_access_cookie() {
+    panel_access_default=1
+    if [ -n "$detected_panel_api_cookie" ]; then
+        panel_access_default=2
+    fi
+    choose "Способ доступа к Remnawave Panel" "$panel_access_default" "1|2" \
+        "1. Прямой доступ к Panel API без дополнительной cookie-защиты." \
+        "2. Удалённая Panel за eGames reverse proxy (нужен access-cookie)." || return 1
+    if [ "$CHOICE_VALUE" = "1" ]; then
+        PANEL_API_COOKIE_VALUE=""
+        detected_panel_api_cookie=""
+        detected_panel_api_cookie_prefilled=0
+        return 0
+    fi
+
+    info "Access-cookie eGames только открывает reverse proxy и не заменяет API-ключ Remnawave Panel."
+    info "Можно вставить name=value, строку Cookie:/Set-Cookie: или полный eGames access URL с одной парой ?name=value."
+    while :; do
+        prompt_value "Access-cookie или access URL удалённой eGames Panel" "$detected_panel_api_cookie" 1 1 "" "$detected_panel_api_cookie_prefilled" || return 1
+        if panel_cookie_normalized=$(normalize_panel_api_cookie "$PROMPT_VALUE"); then
+            PANEL_API_COOKIE_VALUE="$panel_cookie_normalized"
+            return 0
+        fi
+        warn "Не удалось распознать access-cookie eGames."
+        info "Допустимы name=value, Cookie: name=value, Set-Cookie: name=value; ... или https://panel.example.com/auth/login?name=value."
+        info "JWT/API-ключ, URL без query-пары, несколько query-параметров и управляющие символы не принимаются."
+        detected_panel_api_cookie="$PROMPT_VALUE"
+        detected_panel_api_cookie_prefilled=1
+    done
+}
+
 clear_panel_configuration() {
     PANEL_API_URL_VALUE=""
     PANEL_API_KEY_VALUE=""
@@ -945,18 +1047,22 @@ panel_configuration_shape_ready() {
     fi
 
     if [ -n "$PANEL_API_COOKIE_VALUE" ]; then
-        case "$PANEL_API_COOKIE_VALUE" in
-            *=*) ;;
-            *.*.*)
-                warn "PANEL_API_COOKIE похож на JWT/API-ключ, а не на Cookie header."
-                info "Cookie должен иметь формат name=value. Возможно, это значение нужно перенести в PANEL_API_KEY."
-                panel_shape_valid=0
-                ;;
-            *)
-                warn "PANEL_API_COOKIE должен быть пустым или иметь формат name=value."
-                panel_shape_valid=0
-                ;;
-        esac
+        if panel_cookie_normalized=$(normalize_panel_api_cookie "$PANEL_API_COOKIE_VALUE"); then
+            PANEL_API_COOKIE_VALUE="$panel_cookie_normalized"
+        else
+            case "$PANEL_API_COOKIE_VALUE" in
+                *.*.*)
+                    warn "PANEL_API_COOKIE похож на JWT/API-ключ, а не на Cookie header."
+                    info "Cookie должен иметь формат name=value. Возможно, это значение нужно перенести в PANEL_API_KEY."
+                    panel_shape_valid=0
+                    ;;
+                *)
+                    warn "PANEL_API_COOKIE должен быть пустым или содержать корректный Cookie header."
+                    info "Используйте name=value; eGames access URL можно вставить в wizard, он сохранит только cookie-пару."
+                    panel_shape_valid=0
+                    ;;
+            esac
+        fi
     fi
 
     [ "$panel_shape_valid" = "1" ]
@@ -1004,6 +1110,16 @@ probe_panel_api_configuration() {
             return 1
             ;;
         2??) ;;
+        404)
+            rm -f "$panel_probe_body"
+            warn "Panel API вернул HTTP 404."
+            if [ -n "$PANEL_API_COOKIE_VALUE" ]; then
+                info "Проверьте access-cookie/access URL eGames и PANEL_API_URL: cookie могла не пройти защиту reverse proxy."
+            else
+                info "Если удалённая Panel скрыта eGames reverse proxy, выберите доступ с access-cookie в wizard."
+            fi
+            return 1
+            ;;
         *)
             rm -f "$panel_probe_body"
             warn "Panel API вернул неожиданный HTTP-статус: ${panel_probe_status:-неизвестно}."
@@ -1129,8 +1245,7 @@ configure_panel_integration() {
         if [ -n "$detected_panel_api_cookie" ]; then
             info "Использую найденный Cookie header reverse proxy как значение по умолчанию."
         fi
-        prompt_value "Cookie header reverse proxy Remnawave (пусто, если не нужен; формат name=value)" "$detected_panel_api_cookie" 0 1 "" "$detected_panel_api_cookie_prefilled"
-        PANEL_API_COOKIE_VALUE="$PROMPT_VALUE"
+        prompt_panel_access_cookie || return 1
 
         if panel_configuration_shape_ready && probe_panel_api_configuration; then
             prompt_panel_webhook_secret || return 1

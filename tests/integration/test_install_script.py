@@ -734,6 +734,9 @@ def test_shell_installer_validates_panel_cookie_and_live_json_response():
     script = INSTALL_SCRIPT.read_text(encoding="utf-8")
 
     assert "panel_configuration_shape_ready" in script
+    assert 'choose "Способ доступа к Remnawave Panel"' in script
+    assert "Удалённая Panel за eGames reverse proxy" in script
+    assert "normalize_panel_api_cookie" in script
     assert "PANEL_API_COOKIE похож на JWT/API-ключ" in script
     assert "Cookie должен иметь формат name=value" in script
     assert "probe_panel_api_configuration" in script
@@ -773,6 +776,116 @@ PANEL_API_URL_VALUE=https://panel.local/api
 PANEL_API_KEY_VALUE=valid-key
 PANEL_API_COOKIE_VALUE=rw_session=session-value
 panel_configuration_shape_ready
+""",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    ("provided_value", "expected_cookie"),
+    [
+        ("access_key=access_value", "access_key=access_value"),
+        ("Cookie: access_key=access_value", "access_key=access_value"),
+        (
+            "Cookie: access_key=access_value; session_id=session_value",
+            "access_key=access_value; session_id=session_value",
+        ),
+        (
+            "Set-Cookie: access_key=access_value; Path=/; HttpOnly",
+            "access_key=access_value",
+        ),
+        (
+            "https://panel.remote.invalid/auth/login?access_key=access_value",
+            "access_key=access_value",
+        ),
+    ],
+)
+def test_shell_installer_normalizes_remote_panel_cookie_inputs(
+    tmp_path: Path,
+    provided_value: str,
+    expected_cookie: str,
+):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    result = _run_installer_function(
+        tmp_path,
+        f"""
+provided_value={shlex.quote(provided_value)}
+expected_cookie={shlex.quote(expected_cookie)}
+normalized=$(normalize_panel_api_cookie "$provided_value") || exit 20
+[ "$normalized" = "$expected_cookie" ] || exit 21
+""",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    "provided_value",
+    [
+        "header.payload.signature",
+        "https://panel.remote.invalid/auth/login",
+        "https://panel.remote.invalid/auth/login?access_key=access_value&next=dashboard",
+        "access_key=",
+        "=access_value",
+        "access_key=access_value; Path=/",
+        "access_key=value$HOME",
+        "Cookie: access_key=access_value\nInjected=header",
+    ],
+)
+def test_shell_installer_rejects_ambiguous_or_unsafe_panel_cookie_inputs(
+    tmp_path: Path,
+    provided_value: str,
+):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    result = _run_installer_function(
+        tmp_path,
+        f"""
+provided_value={shlex.quote(provided_value)}
+if normalize_panel_api_cookie "$provided_value" >/dev/null; then exit 20; fi
+""",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_shell_installer_remote_panel_access_mode_extracts_cookie_from_access_url(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    result = _run_installer_function(
+        tmp_path,
+        """
+detected_panel_api_cookie=
+detected_panel_api_cookie_prefilled=0
+choose() { CHOICE_VALUE=2; }
+prompt_value() { PROMPT_VALUE=https://panel.remote.invalid/auth/login?access_key=access_value; }
+prompt_panel_access_cookie || exit 20
+[ "$PANEL_API_COOKIE_VALUE" = access_key=access_value ] || exit 21
+""",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_shell_installer_direct_panel_access_mode_clears_a_saved_cookie(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    result = _run_installer_function(
+        tmp_path,
+        """
+detected_panel_api_cookie=access_key=stale_value
+detected_panel_api_cookie_prefilled=1
+PANEL_API_COOKIE_VALUE=access_key=stale_value
+choose() { CHOICE_VALUE=1; }
+prompt_panel_access_cookie || exit 20
+[ -z "$PANEL_API_COOKIE_VALUE" ] || exit 21
+[ -z "$detected_panel_api_cookie" ] || exit 22
 """,
     )
 
