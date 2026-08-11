@@ -3081,17 +3081,236 @@ bind_port() {
     esac
 }
 
-first_nginx_value() {
-    key="$1"
-    file="$2"
-    awk -v key="$key" '
-        $1 == key {
-            value = $2
-            gsub(/[";]/, "", value)
-            print value
-            exit
+egames_nginx_tls_mode() {
+    file="$1"
+    awk '
+        /^# BEGIN remnawave-minishop managed by install.sh$/ { managed = 1; next }
+        /^# END remnawave-minishop managed by install.sh$/ { managed = 0; next }
+        managed { next }
+        $1 == "listen" && $0 ~ /(^|[[:space:]])ssl([[:space:];]|$)/ {
+            endpoint = $2
+            gsub(/;/, "", endpoint)
+            if (endpoint ~ /^unix:/) {
+                unix_listener = 1
+            } else if (endpoint == "443" || endpoint ~ /:443$/) {
+                tcp_listener = 1
+            }
+        }
+        END {
+            if (unix_listener && tcp_listener) {
+                print "mixed"
+                exit 1
+            }
+            if (unix_listener) {
+                print "unix"
+                exit 0
+            }
+            if (tcp_listener) {
+                print "tcp"
+                exit 0
+            }
+            exit 1
         }
     ' "$file"
+}
+
+egames_nginx_listen_directives() {
+    mode="$1"
+    file="$2"
+    awk -v mode="$mode" '
+        /^# BEGIN remnawave-minishop managed by install.sh$/ { managed = 1; next }
+        /^# END remnawave-minishop managed by install.sh$/ { managed = 0; next }
+        managed { next }
+        $1 == "listen" && $0 ~ /(^|[[:space:]])ssl([[:space:];]|$)/ {
+            endpoint = $2
+            gsub(/;/, "", endpoint)
+            is_unix = endpoint ~ /^unix:/
+            is_tcp_443 = endpoint == "443" || endpoint ~ /:443$/
+            if ((mode == "unix" && !is_unix) || (mode == "tcp" && !is_tcp_443)) {
+                next
+            }
+            has_proxy_protocol = $0 ~ /(^|[[:space:]])proxy_protocol([[:space:];]|$)/
+            if (has_proxy_protocol) {
+                proxy_listener = 1
+            } else {
+                direct_listener = 1
+            }
+            key = endpoint SUBSEP has_proxy_protocol
+            if (!seen[key]) {
+                seen[key] = 1
+                count += 1
+                endpoints[count] = endpoint
+                proxy_protocol[count] = has_proxy_protocol
+            }
+        }
+        END {
+            if (proxy_listener && direct_listener) {
+                exit 1
+            }
+            for (i = 1; i <= count; i++) {
+                printf "    listen %s ssl%s;\n", endpoints[i], proxy_protocol[i] ? " proxy_protocol" : ""
+            }
+            if (!count) {
+                exit 1
+            }
+        }
+    ' "$file"
+}
+
+nginx_certificate_pairs() {
+    file="$1"
+    awk '
+        function clean(value) {
+            gsub(/[";]/, "", value)
+            return value
+        }
+        /^# BEGIN remnawave-minishop managed by install.sh$/ { managed = 1; next }
+        /^# END remnawave-minishop managed by install.sh$/ { managed = 0; next }
+        managed { next }
+        !capture && $0 ~ /^[[:space:]]*server[[:space:]]*\{/ {
+            capture = 1
+            depth = 0
+            certificate = ""
+            certificate_key = ""
+            trusted_certificate = ""
+        }
+        capture {
+            if ($1 == "ssl_certificate") {
+                certificate = clean($2)
+            } else if ($1 == "ssl_certificate_key") {
+                certificate_key = clean($2)
+            } else if ($1 == "ssl_trusted_certificate") {
+                trusted_certificate = clean($2)
+            }
+            open_line = $0
+            close_line = $0
+            opens = gsub(/\{/, "", open_line)
+            closes = gsub(/\}/, "", close_line)
+            depth += opens - closes
+            if (depth == 0) {
+                if (certificate != "" && certificate_key != "") {
+                    if (trusted_certificate == "") {
+                        trusted_certificate = certificate
+                    }
+                    pair = certificate "|" certificate_key "|" trusted_certificate
+                    if (!seen[pair]) {
+                        print pair
+                        seen[pair] = 1
+                    }
+                }
+                capture = 0
+            }
+        }
+    ' "$file"
+}
+
+container_certificate_covers_host() {
+    container="$1"
+    certificate="$2"
+    host="$3"
+    if docker exec "$container" sh -c '
+        command -v openssl >/dev/null 2>&1 || exit 127
+        openssl x509 -in "$1" -noout -checkhost "$2"
+    ' sh "$certificate" "$host" >/dev/null 2>&1; then
+        return 0
+    fi
+    command -v openssl >/dev/null 2>&1 || return 1
+    docker exec "$container" cat "$certificate" 2>/dev/null |
+        openssl x509 -noout -checkhost "$host" >/dev/null 2>&1
+}
+
+egames_certificate_pair_for_host() {
+    container="$1"
+    nginx_conf="$2"
+    host="$3"
+    pairs=$(nginx_certificate_pairs "$nginx_conf")
+    while IFS='|' read -r certificate certificate_key trusted_certificate; do
+        [ -n "$certificate" ] && [ -n "$certificate_key" ] || continue
+        if container_certificate_covers_host "$container" "$certificate" "$host"; then
+            printf '%s|%s|%s\n' "$certificate" "$certificate_key" "${trusted_certificate:-$certificate}"
+            return 0
+        fi
+    done <<EOF
+$pairs
+EOF
+    return 1
+}
+
+resolve_egames_certificate_pair() {
+    container="$1"
+    nginx_conf="$2"
+    host="$3"
+    pair=$(egames_certificate_pair_for_host "$container" "$nginx_conf" "$host" || true)
+    if [ -n "$pair" ]; then
+        EGAMES_CERT_PATH=${pair%%|*}
+        pair_rest=${pair#*|}
+        EGAMES_KEY_PATH=${pair_rest%%|*}
+        EGAMES_TRUSTED_PATH=${pair_rest#*|}
+        ok "Сертификат $EGAMES_CERT_PATH покрывает $host."
+        return 0
+    fi
+
+    warn "Ни один сертификат из $nginx_conf не подтвержден для $host."
+    prompt_value "Путь к fullchain.pem для $host внутри контейнера $container (пусто = остановить)" "" 0 0 ""
+    EGAMES_CERT_PATH="$PROMPT_VALUE"
+    if [ -z "$EGAMES_CERT_PATH" ]; then
+        fail "Настройка остановлена: нужен сертификат, SAN которого покрывает $host."
+        info "Сначала выпустите и смонтируйте сертификат в $container, затем повторите настройку reverse proxy."
+        return 1
+    fi
+    prompt_value "Путь к privkey.pem для $host внутри контейнера $container" "" 1 0 ""
+    EGAMES_KEY_PATH="$PROMPT_VALUE"
+    prompt_value "Путь к trusted/fullchain.pem для $host внутри контейнера $container" "$EGAMES_CERT_PATH" 1 0 ""
+    EGAMES_TRUSTED_PATH="$PROMPT_VALUE"
+
+    if ! docker exec "$container" sh -c '
+        [ -r "$1" ] && [ -r "$2" ] && [ -r "$3" ]
+    ' sh "$EGAMES_CERT_PATH" "$EGAMES_KEY_PATH" "$EGAMES_TRUSTED_PATH" >/dev/null 2>&1; then
+        fail "Указанные файлы сертификата для $host недоступны внутри контейнера $container."
+        return 1
+    fi
+    if ! container_certificate_covers_host "$container" "$EGAMES_CERT_PATH" "$host"; then
+        fail "Сертификат $EGAMES_CERT_PATH не прошел проверку SAN для $host."
+        return 1
+    fi
+    ok "Сертификат $EGAMES_CERT_PATH покрывает $host."
+}
+
+render_egames_server_block() {
+    server_host="$1"
+    upstream_port="$2"
+    listen_directives="$3"
+    certificate="$4"
+    certificate_key="$5"
+    trusted_certificate="$6"
+    real_ip_source="$7"
+    forwarded_for_source="$8"
+    cat <<EOF
+server {
+    server_name $server_host;
+$listen_directives
+    http2 on;
+
+    ssl_certificate "$certificate";
+    ssl_certificate_key "$certificate_key";
+    ssl_trusted_certificate "$trusted_certificate";
+
+    client_max_body_size 20m;
+
+    location / {
+        proxy_http_version 1.1;
+        proxy_pass http://127.0.0.1:$upstream_port;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP $real_ip_source;
+        proxy_set_header X-Forwarded-For $forwarded_for_source;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$host;
+        proxy_set_header X-Forwarded-Port \$server_port;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}
+EOF
 }
 
 egames_container_has_routes() {
@@ -3130,6 +3349,10 @@ configure_egames_reverse_proxy() {
     [ -n "$detected_nginx_container" ] || detected_nginx_container="remnawave-nginx"
     prompt_value "Имя Nginx контейнера eGames" "$detected_nginx_container" 1 0 ""
     nginx_container="$PROMPT_VALUE"
+    if ! docker inspect "$nginx_container" >/dev/null 2>&1; then
+        fail "Nginx контейнер eGames не найден: $nginx_container"
+        return 1
+    fi
 
     webhook_host="${WEBHOOK_HOST_VALUE:-$(env_get WEBHOOK_HOST '')}"
     miniapp_host="${MINIAPP_HOST_VALUE:-$(env_get MINIAPP_HOST '')}"
@@ -3138,14 +3361,48 @@ configure_egames_reverse_proxy() {
         return 1
     fi
 
-    cert_path=$(first_nginx_value ssl_certificate "$nginx_conf")
-    key_path=$(first_nginx_value ssl_certificate_key "$nginx_conf")
-    trusted_path=$(first_nginx_value ssl_trusted_certificate "$nginx_conf")
-    [ -n "$trusted_path" ] || trusted_path="$cert_path"
-    if [ -z "$cert_path" ] || [ -z "$key_path" ]; then
-        fail "Не удалось найти ssl_certificate и ssl_certificate_key в $nginx_conf"
+    nginx_tls_mode=$(egames_nginx_tls_mode "$nginx_conf" || true)
+    case "$nginx_tls_mode" in
+        unix)
+            info "Обнаружена схема eGames с TLS через Unix socket."
+            ;;
+        tcp)
+            info "Обнаружена схема eGames с прямым TLS на TCP/443."
+            ;;
+        mixed)
+            fail "В $nginx_conf одновременно найдены TLS-listener на TCP/443 и Unix socket."
+            info "Выберите универсальное подключение к reverse proxy или настройте listener вручную."
+            return 1
+            ;;
+        *)
+            fail "Не удалось определить TLS-listener eGames в $nginx_conf."
+            return 1
+            ;;
+    esac
+    listen_directives=$(egames_nginx_listen_directives "$nginx_tls_mode" "$nginx_conf" || true)
+    if [ -z "$listen_directives" ]; then
+        fail "Не удалось безопасно воспроизвести listen-директивы из $nginx_conf."
         return 1
     fi
+    case "$listen_directives" in
+        *" proxy_protocol;"*)
+            real_ip_source='$proxy_protocol_addr'
+            forwarded_for_source='$proxy_protocol_addr'
+            ;;
+        *)
+            real_ip_source='$remote_addr'
+            forwarded_for_source='$proxy_add_x_forwarded_for'
+            ;;
+    esac
+
+    resolve_egames_certificate_pair "$nginx_container" "$nginx_conf" "$webhook_host" || return 1
+    webhook_cert_path="$EGAMES_CERT_PATH"
+    webhook_key_path="$EGAMES_KEY_PATH"
+    webhook_trusted_path="$EGAMES_TRUSTED_PATH"
+    resolve_egames_certificate_pair "$nginx_container" "$nginx_conf" "$miniapp_host" || return 1
+    miniapp_cert_path="$EGAMES_CERT_PATH"
+    miniapp_key_path="$EGAMES_KEY_PATH"
+    miniapp_trusted_path="$EGAMES_TRUSTED_PATH"
 
     backend_port=$(bind_port "${WEB_SERVER_BIND_VALUE:-$(env_get WEB_SERVER_BIND '127.0.0.1:8080')}")
     frontend_port=$(bind_port "${FRONTEND_BIND_VALUE:-$(env_get FRONTEND_BIND '127.0.0.1:8082')}")
@@ -3157,60 +3414,20 @@ configure_egames_reverse_proxy() {
         return 1
     }
 
-    cat >> "$tmp" <<EOF
-
-# BEGIN remnawave-minishop managed by install.sh
-server {
-    server_name $webhook_host;
-    listen unix:/dev/shm/nginx.sock ssl proxy_protocol;
-    http2 on;
-
-    ssl_certificate "$cert_path";
-    ssl_certificate_key "$key_path";
-    ssl_trusted_certificate "$trusted_path";
-
-    client_max_body_size 20m;
-
-    location / {
-        proxy_http_version 1.1;
-        proxy_pass http://127.0.0.1:$backend_port;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$proxy_protocol_addr;
-        proxy_set_header X-Forwarded-For \$proxy_protocol_addr;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header X-Forwarded-Host \$host;
-        proxy_set_header X-Forwarded-Port \$server_port;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
+    {
+        printf '\n# BEGIN remnawave-minishop managed by install.sh\n'
+        render_egames_server_block "$webhook_host" "$backend_port" "$listen_directives" \
+            "$webhook_cert_path" "$webhook_key_path" "$webhook_trusted_path" \
+            "$real_ip_source" "$forwarded_for_source"
+        printf '\n'
+        render_egames_server_block "$miniapp_host" "$frontend_port" "$listen_directives" \
+            "$miniapp_cert_path" "$miniapp_key_path" "$miniapp_trusted_path" \
+            "$real_ip_source" "$forwarded_for_source"
+        printf '# END remnawave-minishop managed by install.sh\n'
+    } >> "$tmp" || {
+        rm -f "$tmp"
+        return 1
     }
-}
-
-server {
-    server_name $miniapp_host;
-    listen unix:/dev/shm/nginx.sock ssl proxy_protocol;
-    http2 on;
-
-    ssl_certificate "$cert_path";
-    ssl_certificate_key "$key_path";
-    ssl_trusted_certificate "$trusted_path";
-
-    client_max_body_size 20m;
-
-    location / {
-        proxy_http_version 1.1;
-        proxy_pass http://127.0.0.1:$frontend_port;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$proxy_protocol_addr;
-        proxy_set_header X-Forwarded-For \$proxy_protocol_addr;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header X-Forwarded-Host \$host;
-        proxy_set_header X-Forwarded-Port \$server_port;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
-    }
-}
-# END remnawave-minishop managed by install.sh
-EOF
 
     if ! cat "$tmp" > "$nginx_conf"; then
         rm -f "$tmp"
@@ -3757,7 +3974,7 @@ configure_existing_reverse_proxy() {
         default_proxy_mode="1"
     fi
     choose "Подключение к существующему reverse proxy" "$default_proxy_mode" "1|2|3" \
-        "1. Remnawave/eGames Nginx - правка nginx.conf по схеме eGames (unix socket)." \
+        "1. Remnawave/eGames Nginx - определение фактической схемы TLS (TCP/443 или Unix socket)." \
         "2. Другой запущенный Nginx, Angie или Caddy - универсальное подключение к контейнеру." \
         "3. Пропустить - настрою reverse proxy вручную." || return 1
     case "$CHOICE_VALUE" in

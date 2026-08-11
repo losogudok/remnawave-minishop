@@ -440,9 +440,283 @@ def test_shell_installer_supports_egames_reverse_proxy_profile():
     assert "TELEGRAM_OAUTH_CLIENT_SECRET" in script
     assert 'cat "$tmp" > "$nginx_conf"' in script
     assert 'mv "$tmp" "$nginx_conf"' not in script
+    assert "egames_nginx_tls_mode" in script
+    assert "egames_nginx_listen_directives" in script
+    assert "container_certificate_covers_host" in script
+    assert "render_egames_server_block" in script
     assert "egames_container_has_routes" in script
     assert 'docker restart "$nginx_container" >/dev/null' in script
     assert 'docker exec "$nginx_container" nginx -s reload' in script
+
+
+def test_shell_installer_detects_supported_egames_tls_listener_modes(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    tcp_config = tmp_path / "tcp.conf"
+    tcp_config.write_text(
+        """
+server {
+    server_name control.example.test;
+    listen 443 ssl;
+}
+server {
+    listen 443 ssl default_server;
+    server_name _;
+}
+""",
+        encoding="utf-8",
+    )
+    unix_config = tmp_path / "unix.conf"
+    unix_config.write_text(
+        """
+server {
+    server_name control.example.test;
+    listen unix:/run/edge/tls.sock ssl proxy_protocol;
+}
+""",
+        encoding="utf-8",
+    )
+    mixed_config = tmp_path / "mixed.conf"
+    mixed_config.write_text(
+        tcp_config.read_text(encoding="utf-8") + unix_config.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    managed_config = tmp_path / "managed.conf"
+    managed_config.write_text(
+        tcp_config.read_text(encoding="utf-8")
+        + """
+# BEGIN remnawave-minishop managed by install.sh
+server {
+    server_name old-route.example.test;
+    listen unix:/run/edge/tls.sock ssl proxy_protocol;
+}
+# END remnawave-minishop managed by install.sh
+""",
+        encoding="utf-8",
+    )
+
+    shell_body = f"""
+tcp_config={shlex.quote(tcp_config.as_posix())}
+unix_config={shlex.quote(unix_config.as_posix())}
+mixed_config={shlex.quote(mixed_config.as_posix())}
+managed_config={shlex.quote(managed_config.as_posix())}
+
+[ "$(egames_nginx_tls_mode "$tcp_config")" = tcp ] || exit 30
+[ "$(egames_nginx_listen_directives tcp "$tcp_config")" = "    listen 443 ssl;" ] || exit 31
+[ "$(egames_nginx_tls_mode "$unix_config")" = unix ] || exit 32
+[ "$(egames_nginx_listen_directives unix "$unix_config")" = \
+    "    listen unix:/run/edge/tls.sock ssl proxy_protocol;" ] || exit 33
+mixed_mode=$(egames_nginx_tls_mode "$mixed_config" 2>/dev/null || true)
+[ "$mixed_mode" = mixed ] || exit 34
+[ "$(egames_nginx_tls_mode "$managed_config")" = tcp ] || exit 35
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_shell_installer_selects_a_certificate_pair_by_hostname(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    nginx_config = tmp_path / "nginx.conf"
+    nginx_config.write_text(
+        """
+server {
+    server_name control.example.test;
+    listen 443 ssl;
+    ssl_certificate "/tls/control.pem";
+    ssl_certificate_key "/tls/control.key";
+}
+server {
+    server_name services.example.test;
+    listen 443 ssl;
+    ssl_certificate "/tls/services.pem";
+    ssl_certificate_key "/tls/services.key";
+    ssl_trusted_certificate "/tls/services-chain.pem";
+}
+""",
+        encoding="utf-8",
+    )
+
+    config_path = shlex.quote(nginx_config.as_posix())
+    shell_body = f"""
+container_certificate_covers_host() {{
+    [ "$2" = /tls/services.pem ] && [ "$3" = events.example.test ]
+}}
+pair=$(egames_certificate_pair_for_host edge-nginx \
+    {config_path} events.example.test)
+[ "$pair" = "/tls/services.pem|/tls/services.key|/tls/services-chain.pem" ] || exit 40
+if egames_certificate_pair_for_host edge-nginx \
+    {config_path} missing.example.test; then
+    exit 41
+fi
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_shell_installer_validates_certificate_san_with_openssl(tmp_path: Path):
+    if not shutil.which("sh") or not shutil.which("openssl"):
+        pytest.skip("sh and openssl are required")
+
+    certificate = tmp_path / "certificate.pem"
+    private_key = tmp_path / "private-key.pem"
+    openssl_config = tmp_path / "openssl.cnf"
+    openssl_config.write_text("[req]\ndistinguished_name=dn\n[dn]\n", encoding="utf-8")
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-config",
+            str(openssl_config),
+            "-keyout",
+            str(private_key),
+            "-out",
+            str(certificate),
+            "-days",
+            "1",
+            "-subj",
+            "/CN=control.example.test",
+            "-addext",
+            "subjectAltName=DNS:services.example.test",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    shell_body = f"""
+certificate_path={shlex.quote(certificate.as_posix())}
+docker() {{
+    if [ "$1" = exec ] && [ "$3" = sh ]; then
+        return 127
+    fi
+    if [ "$1" = exec ] && [ "$3" = cat ] && [ "$4" = /tls/certificate.pem ]; then
+        cat "$certificate_path"
+        return 0
+    fi
+    return 1
+}}
+container_certificate_covers_host edge-nginx /tls/certificate.pem services.example.test || exit 45
+if container_certificate_covers_host edge-nginx /tls/certificate.pem control.example.test; then
+    exit 46
+fi
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    ("listen_line", "expected_real_ip", "expected_forwarded_for", "unexpected_ip"),
+    [
+        ("listen 443 ssl;", "$remote_addr", "$proxy_add_x_forwarded_for", "$proxy_protocol_addr"),
+        (
+            "listen unix:/run/edge/tls.sock ssl proxy_protocol;",
+            "$proxy_protocol_addr",
+            "$proxy_protocol_addr",
+            "$remote_addr",
+        ),
+    ],
+)
+def test_shell_installer_renders_egames_routes_for_detected_tls_listener(
+    tmp_path: Path,
+    listen_line: str,
+    expected_real_ip: str,
+    expected_forwarded_for: str,
+    unexpected_ip: str,
+):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    nginx_config = tmp_path / "nginx.conf"
+    nginx_config.write_text(
+        f"""
+server {{
+    server_name control.example.test;
+    {listen_line}
+    ssl_certificate "/tls/shared.pem";
+    ssl_certificate_key "/tls/shared.key";
+    ssl_trusted_certificate "/tls/shared.pem";
+}}
+""",
+        encoding="utf-8",
+    )
+
+    shell_body = f"""
+PROFILE_KEY=egames
+WEBHOOK_HOST_VALUE=events.example.test
+MINIAPP_HOST_VALUE=workspace.example.test
+WEB_SERVER_BIND_VALUE=127.0.0.1:8080
+FRONTEND_BIND_VALUE=127.0.0.1:8082
+detect_egames_nginx_conf() {{ printf '%s' {shlex.quote(nginx_config.as_posix())}; }}
+detect_egames_nginx_container() {{ printf '%s' edge-nginx; }}
+prompt_value() {{ PROMPT_VALUE="$2"; }}
+require_docker() {{ return 0; }}
+container_certificate_covers_host() {{ return 0; }}
+egames_container_has_routes() {{ return 0; }}
+docker() {{ return 0; }}
+configure_egames_reverse_proxy
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    rendered = nginx_config.read_text(encoding="utf-8").split(
+        "# BEGIN remnawave-minishop managed by install.sh", 1
+    )[1]
+    assert listen_line in rendered
+    assert "server_name events.example.test;" in rendered
+    assert "server_name workspace.example.test;" in rendered
+    assert f"proxy_set_header X-Real-IP {expected_real_ip};" in rendered
+    assert f"proxy_set_header X-Forwarded-For {expected_forwarded_for};" in rendered
+    assert f"proxy_set_header X-Real-IP {unexpected_ip};" not in rendered
+
+
+def test_shell_installer_keeps_egames_config_when_certificate_is_unverified(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    nginx_config = tmp_path / "nginx.conf"
+    original_config = """
+server {
+    server_name control.example.test;
+    listen 443 ssl;
+    ssl_certificate "/tls/control.pem";
+    ssl_certificate_key "/tls/control.key";
+}
+"""
+    nginx_config.write_text(original_config, encoding="utf-8")
+
+    shell_body = f"""
+PROFILE_KEY=egames
+WEBHOOK_HOST_VALUE=events.example.test
+MINIAPP_HOST_VALUE=workspace.example.test
+detect_egames_nginx_conf() {{ printf '%s' {shlex.quote(nginx_config.as_posix())}; }}
+detect_egames_nginx_container() {{ printf '%s' edge-nginx; }}
+prompt_value() {{ PROMPT_VALUE="$2"; }}
+require_docker() {{ return 0; }}
+container_certificate_covers_host() {{ return 1; }}
+docker() {{ return 0; }}
+if configure_egames_reverse_proxy; then
+    exit 50
+fi
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert nginx_config.read_text(encoding="utf-8") == original_config
 
 
 def test_shell_installer_requires_an_explicit_choice_for_unverified_panel_settings():
