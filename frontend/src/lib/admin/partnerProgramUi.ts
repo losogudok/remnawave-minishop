@@ -14,3 +14,11 @@ export function partnerStatusVariant(status: string): PartnerStatusVariant {
   if (status === "rejected" || status === "closed") return "danger";
   return "muted";
 }
+
+export function shouldShowPartnerReferralImport(
+  importable: number,
+  conflicts: number,
+  previewMode = false
+): boolean {
+  return previewMode || importable > 0 || conflicts > 0;
+}

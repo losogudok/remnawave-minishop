@@ -354,6 +354,31 @@ async def create_client_attribution(
     return attribution
 
 
+async def create_client_attributions_bulk(
+    session: AsyncSession,
+    *,
+    clients: list[dict[str, Any]],
+) -> dict[int, int]:
+    """Insert client attribution rows without blocking on per-row savepoints."""
+
+    if not clients:
+        return {}
+    bind = session.get_bind()
+    insert_factory = sqlite_insert if bind.dialect.name == "sqlite" else postgresql_insert
+    statement = (
+        insert_factory(PartnerClient)
+        .values(clients)
+        .on_conflict_do_nothing()
+        .returning(PartnerClient.client_user_id, PartnerClient.partner_id)
+    )
+    result = await session.execute(statement)
+    return {
+        int(client_user_id): int(partner_id)
+        for client_user_id, partner_id in result.all()
+        if client_user_id is not None
+    }
+
+
 async def get_client_by_user_id(
     session: AsyncSession,
     user_id: int,

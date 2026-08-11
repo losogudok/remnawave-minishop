@@ -134,12 +134,15 @@ async def admin_partners_list_route(request: web.Request) -> web.Response:
     status = str(request.query.get("status") or "").strip().lower() or None
     search = str(request.query.get("search") or "").strip() or None
     currency = str(request.query.get("currency") or "RUB").strip().upper()
+    sort = str(request.query.get("sort") or "clients_desc").strip().lower()
     async_session_factory: sessionmaker = get_session_factory(request)
     async with async_session_factory() as session:
         profiles, total = await partner_dal.list_profiles(
             session,
             status=status,
             search=search,
+            currency=currency,
+            sort=sort,
             limit=limit,
             offset=offset,
         )

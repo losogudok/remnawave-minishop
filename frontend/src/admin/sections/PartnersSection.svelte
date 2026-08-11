@@ -48,9 +48,12 @@
   } from "$lib/admin/previewMock/partnerProgram.js";
   import type { AdminApi } from "../adminStores.js";
   import {
+    DEFAULT_PARTNER_LIST_QUERY,
     loadPartnerDashboard,
     loadPartnerDetail,
     loadPartnerLists,
+    loadPartnerPage,
+    type AdminPartnerListQuery,
     type AdminPartnerDashboard,
     type PartnerLinkRow,
   } from "$lib/admin/partnerProgramApi.js";
@@ -104,6 +107,9 @@
   let partners = $state<PartnerRow[]>(
     previewMode ? previewPartners.map((item) => ({ ...item })) : []
   );
+  let partnerTotal = $state(previewMode ? previewPartners.length : 0);
+  let partnerQuery = $state<AdminPartnerListQuery>({ ...DEFAULT_PARTNER_LIST_QUERY });
+  let partnerListRequestId = 0;
   let applications = $state<ApplicationRow[]>(
     previewMode ? previewApplications.map((item) => ({ ...item })) : []
   );
@@ -416,21 +422,25 @@
 
   async function refreshAll(): Promise<void> {
     if (previewMode) return;
+    const partnerRequestId = ++partnerListRequestId;
     loading = true;
     loadError = false;
     try {
       const [nextDashboard, lists] = await Promise.all([
         loadPartnerDashboard(api, currency),
-        loadPartnerLists(api, currency),
+        loadPartnerLists(api, currency, partnerQuery),
       ]);
       dashboard = nextDashboard;
       partnerRevenueDaily = nextDashboard.revenue;
       partnerPayoutsDaily = nextDashboard.payouts;
-      partners = lists.partners;
+      if (partnerRequestId === partnerListRequestId) {
+        partners = lists.partners;
+        partnerTotal = lists.partnerTotal;
+        selectedPartner =
+          partners.find((item) => item.id === selectedPartner.id) || partners[0] || emptyPartner;
+      }
       applications = lists.applications;
       withdrawals = lists.withdrawals;
-      selectedPartner =
-        partners.find((item) => item.id === selectedPartner.id) || partners[0] || emptyPartner;
       selectedApplication =
         applications.find((item) => item.id === selectedApplication.id) ||
         applications[0] ||
@@ -446,6 +456,23 @@
       loadError = true;
     } finally {
       loading = false;
+    }
+  }
+
+  async function updatePartnerQuery(next: AdminPartnerListQuery): Promise<void> {
+    const query = { ...next };
+    const requestId = ++partnerListRequestId;
+    partnerQuery = query;
+    if (previewMode) return;
+    try {
+      const page = await loadPartnerPage(api, currency, query);
+      if (requestId !== partnerListRequestId) return;
+      partners = page.partners;
+      partnerTotal = page.total;
+      selectedPartner =
+        partners.find((item) => item.id === selectedPartner.id) || partners[0] || emptyPartner;
+    } catch {
+      loadError = true;
     }
   }
 
@@ -854,6 +881,8 @@
     <PartnerProgramTables
       {at}
       {partners}
+      {partnerTotal}
+      {partnerQuery}
       {applications}
       {withdrawals}
       {view}
@@ -862,6 +891,7 @@
       onOpenPartner={openPartner}
       onOpenApplication={openApplication}
       onOpenWithdrawal={openWithdrawal}
+      onPartnerQueryChange={updatePartnerQuery}
       {onOpenUserCard}
     />
   {:else}

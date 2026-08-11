@@ -3,6 +3,7 @@
   import { CheckCircle2, RefreshCw, TriangleAlert, UserPlus } from "$components/ui/icons.js";
   import Dialog from "$components/ui/dialog.svelte";
   import { AdminBadge, AdminButton } from "$components/patterns/admin/index.js";
+  import { shouldShowPartnerReferralImport } from "$lib/admin/partnerProgramUi.js";
   import type { AdminApi } from "../../adminStores.js";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
@@ -46,6 +47,7 @@
   let busy = $state(false);
   let error = $state("");
   let confirmOpen = $state(false);
+  let visible = $state(false);
 
   type RequestOptions = {
     method?: string;
@@ -89,7 +91,9 @@
           historicalPayments: Number(value.historical_payments || 0),
         };
       }
+      visible = shouldShowPartnerReferralImport(preview.importable, preview.conflicts, previewMode);
     } catch (reason) {
+      visible = true;
       error =
         reason instanceof Error
           ? reason.message
@@ -141,7 +145,11 @@
   onMount(() => void loadPreview());
 </script>
 
-<section class="partners-referral-import-banner" aria-labelledby="partners-referral-import-title">
+<section
+  class="partners-referral-import-banner"
+  aria-labelledby="partners-referral-import-title"
+  hidden={!visible}
+>
   <span class="partners-referral-import-icon"><UserPlus size={22} /></span>
   <div class="partners-referral-import-content">
     <header>
@@ -223,7 +231,7 @@
 </section>
 
 <Dialog
-  open={confirmOpen}
+  open={visible && confirmOpen}
   title={at("partners_bulk_import_confirm_title", {}, "Convert all available referrals?")}
   description={at(
     "partners_bulk_import_confirm_description",

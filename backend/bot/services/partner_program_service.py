@@ -710,9 +710,11 @@ class PartnerProgramService:
         if referral_program_enabled(self.settings):
             raise PartnerError("referral_program_enabled", 409)
         candidates = await partner_reporting_dal.all_referral_import_candidates(session)
-        imported = conflicts = existing = 0
+        conflicts = existing = 0
         now = datetime.now(UTC)
         partner_results: dict[int, dict[str, int]] = {}
+        pending_clients: list[dict[str, Any]] = []
+        pending_partner_by_user: dict[int, int] = {}
         for profile, user, attribution, _payments in candidates:
             partner_id = int(profile.partner_id)
             result = partner_results.setdefault(
@@ -731,23 +733,32 @@ class PartnerProgramService:
                 conflicts += 1
                 result["conflicts"] += 1
                 continue
-            try:
-                async with session.begin_nested():
-                    await partner_dal.create_client_attribution(
-                        session,
-                        partner_id=partner_id,
-                        client_user_id=int(user.user_id),
-                        public_client_id=_public_client_id(),
-                        public_label=safe_user_label(user, "Client"),
-                        source="referral_import",
-                        attributed_by_admin_id=actor_admin_id,
-                        eligible_from=now,
-                    )
-                imported += 1
+            client_user_id = int(user.user_id)
+            pending_clients.append(
+                {
+                    "partner_id": partner_id,
+                    "client_user_id": client_user_id,
+                    "public_client_id": _public_client_id(),
+                    "public_label_snapshot": safe_user_label(user, "Client"),
+                    "source": "referral_import",
+                    "attributed_at": now,
+                    "eligible_from": now,
+                    "attributed_by_admin_id": actor_admin_id,
+                }
+            )
+            pending_partner_by_user[client_user_id] = partner_id
+        created = await partner_dal.create_client_attributions_bulk(
+            session,
+            clients=pending_clients,
+        )
+        for client_user_id, partner_id in pending_partner_by_user.items():
+            result = partner_results[partner_id]
+            if created.get(client_user_id) == partner_id:
                 result["imported"] += 1
-            except IntegrityError:
+            else:
                 conflicts += 1
                 result["conflicts"] += 1
+        imported = len(created)
         for partner_id, result in partner_results.items():
             if not result["imported"]:
                 continue

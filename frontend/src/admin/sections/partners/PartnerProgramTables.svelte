@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { FileText, Plus, Search, UsersRound, WalletCards } from "$components/ui/icons.js";
   import { Input } from "$components/ui/index.js";
   import {
@@ -19,6 +20,7 @@
     WithdrawalRow,
   } from "$lib/admin/previewMock/partnerProgram.js";
   import { partnerStatusVariant } from "$lib/admin/partnerProgramUi.js";
+  import type { AdminPartnerListQuery } from "$lib/admin/partnerProgramApi.js";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
   type View = "partners" | "applications" | "withdrawals";
@@ -29,6 +31,8 @@
   let {
     at,
     partners,
+    partnerTotal,
+    partnerQuery,
     applications,
     withdrawals,
     view,
@@ -38,9 +42,12 @@
     onOpenApplication,
     onOpenWithdrawal,
     onOpenUserCard,
+    onPartnerQueryChange,
   }: {
     at: TranslateFn;
     partners: PartnerRow[];
+    partnerTotal: number;
+    partnerQuery: AdminPartnerListQuery;
     applications: ApplicationRow[];
     withdrawals: WithdrawalRow[];
     view: View;
@@ -50,6 +57,7 @@
     onOpenApplication: (application: Application) => void;
     onOpenWithdrawal: (withdrawal: Withdrawal) => void;
     onOpenUserCard: (userId: number) => void;
+    onPartnerQueryChange: (query: AdminPartnerListQuery) => Promise<void>;
   } = $props();
 
   function openPartnerById(partnerId: string): void {
@@ -63,10 +71,14 @@
   const openWithdrawalLabel = $derived(at("partners_open_withdrawal", {}, "Open withdrawal"));
 
   const pageSize = USERS_PAGE_SIZE;
-  let partnerSearch = $state("");
-  let partnerStatus = $state("all");
-  let partnerSort = $state("gross_desc");
-  let partnerPage = $state(0);
+  function initialPartnerQuery(): AdminPartnerListQuery {
+    return partnerQuery;
+  }
+  let partnerSearch = $state(initialPartnerQuery().search);
+  let partnerStatus = $state(initialPartnerQuery().status);
+  let partnerSort = $state(initialPartnerQuery().sort);
+  let partnerPage = $state(initialPartnerQuery().page);
+  let partnerSearchTimer: ReturnType<typeof setTimeout> | undefined;
   let applicationSearch = $state("");
   let applicationStatus = $state("all");
   let applicationSort = $state("submitted_desc");
@@ -171,20 +183,9 @@
     },
   ];
 
-  const filteredPartners = $derived(
-    partners.filter((partner) => {
-      const query = partnerSearch.trim().toLocaleLowerCase();
-      const matchesQuery =
-        !query ||
-        `${partner.name} ${partner.handle} ${partner.id}`.toLocaleLowerCase().includes(query);
-      return matchesQuery && (partnerStatus === "all" || partner.status === partnerStatus);
-    })
-  );
-  const sortedPartners = $derived(sortAdminRows(filteredPartners, partnerSort, partnerSortColumns));
-  const partnerPageCount = $derived(Math.max(1, Math.ceil(sortedPartners.length / pageSize)));
-  const pagedPartners = $derived(
-    sortedPartners.slice(partnerPage * pageSize, (partnerPage + 1) * pageSize)
-  );
+  const sortedPartners = $derived(partners);
+  const partnerPageCount = $derived(Math.max(1, Math.ceil(partnerTotal / pageSize)));
+  const pagedPartners = $derived(partners);
 
   const filteredApplications = $derived(
     applications.filter((application) => {
@@ -242,9 +243,43 @@
     return at(`partners_status_${status}`, {}, status);
   }
 
+  function partnerQueryValue(): AdminPartnerListQuery {
+    return {
+      page: partnerPage,
+      search: partnerSearch,
+      status: partnerStatus,
+      sort: partnerSort,
+    };
+  }
+
+  function loadPartnerQuery(): void {
+    if (partnerSearchTimer) clearTimeout(partnerSearchTimer);
+    partnerSearchTimer = undefined;
+    void onPartnerQueryChange(partnerQueryValue());
+  }
+
+  function updatePartnerSearch(next: string): void {
+    partnerSearch = next;
+    partnerPage = 0;
+    if (partnerSearchTimer) clearTimeout(partnerSearchTimer);
+    partnerSearchTimer = setTimeout(loadPartnerQuery, 250);
+  }
+
   function resetPartnerFilter(next: string): void {
     partnerStatus = next;
     partnerPage = 0;
+    loadPartnerQuery();
+  }
+
+  function updatePartnerSort(next: string): void {
+    partnerSort = next;
+    partnerPage = 0;
+    loadPartnerQuery();
+  }
+
+  function updatePartnerPage(next: number): void {
+    partnerPage = next;
+    loadPartnerQuery();
   }
 
   function resetApplicationFilter(next: string): void {
@@ -259,7 +294,10 @@
 
   function resetPartnerFilters(): void {
     partnerSearch = "";
-    resetPartnerFilter("all");
+    partnerStatus = "all";
+    partnerPage = 0;
+    if (partnerSearchTimer) clearTimeout(partnerSearchTimer);
+    loadPartnerQuery();
   }
 
   function resetApplicationFilters(): void {
@@ -271,6 +309,10 @@
     withdrawalSearch = "";
     resetWithdrawalFilter("all");
   }
+
+  onDestroy(() => {
+    if (partnerSearchTimer) clearTimeout(partnerSearchTimer);
+  });
 </script>
 
 {#if view === "partners"}
@@ -298,10 +340,7 @@
           class="input"
           type="search"
           value={partnerSearch}
-          oninput={(event) => {
-            partnerSearch = event.currentTarget.value;
-            partnerPage = 0;
-          }}
+          oninput={(event) => updatePartnerSearch(event.currentTarget.value)}
           placeholder={at("partners_search", {}, "Search by user or partner ID")}
         />
       </label>
@@ -324,70 +363,49 @@
             column={partnerSortColumns[0]}
             currentSort={partnerSort}
             {at}
-            onSort={(sort) => {
-              partnerSort = sort;
-              partnerPage = 0;
-            }}
+            onSort={updatePartnerSort}
           />
           <AdminSortableHeader
             label={at("partners_col_status", {}, "Status")}
             column={partnerSortColumns[1]}
             currentSort={partnerSort}
             {at}
-            onSort={(sort) => {
-              partnerSort = sort;
-              partnerPage = 0;
-            }}
+            onSort={updatePartnerSort}
           />
           <AdminSortableHeader
             label={at("partners_col_rate", {}, "Rate")}
             column={partnerSortColumns[2]}
             currentSort={partnerSort}
             {at}
-            onSort={(sort) => {
-              partnerSort = sort;
-              partnerPage = 0;
-            }}
+            onSort={updatePartnerSort}
           />
           <AdminSortableHeader
             label={at("partners_col_clients", {}, "Clients")}
             column={partnerSortColumns[3]}
             currentSort={partnerSort}
             {at}
-            onSort={(sort) => {
-              partnerSort = sort;
-              partnerPage = 0;
-            }}
+            onSort={updatePartnerSort}
           />
           <AdminSortableHeader
             label={at("partners_col_gross", {}, "Gross")}
             column={partnerSortColumns[4]}
             currentSort={partnerSort}
             {at}
-            onSort={(sort) => {
-              partnerSort = sort;
-              partnerPage = 0;
-            }}
+            onSort={updatePartnerSort}
           />
           <AdminSortableHeader
             label={at("partners_col_earned", {}, "Net commission")}
             column={partnerSortColumns[5]}
             currentSort={partnerSort}
             {at}
-            onSort={(sort) => {
-              partnerSort = sort;
-              partnerPage = 0;
-            }}
+            onSort={updatePartnerSort}
           />
           <AdminSortableHeader
             label={at("partners_col_available", {}, "Available")}
             column={partnerSortColumns[6]}
             currentSort={partnerSort}
             {at}
-            onSort={(sort) => {
-              partnerSort = sort;
-              partnerPage = 0;
-            }}
+            onSort={updatePartnerSort}
           />
           <th>{at("actions", {}, "Actions")}</th>
         </tr></thead
@@ -444,7 +462,7 @@
       <AdminPagination
         page={partnerPage}
         pageCount={partnerPageCount}
-        total={filteredPartners.length}
+        total={partnerTotal}
         pageLabel={paginationLabels.page}
         ofLabel={paginationLabels.of}
         totalLabel={paginationLabels.total}
@@ -453,7 +471,7 @@
         goLabel={paginationLabels.go}
         prevLabel={paginationLabels.back}
         nextLabel={paginationLabels.next}
-        onPageChange={(page) => (partnerPage = page)}
+        onPageChange={updatePartnerPage}
       />
     {/if}
   </section>

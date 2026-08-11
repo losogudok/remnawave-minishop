@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import secrets
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -780,11 +781,11 @@ def test_execute_all_referrals_import_creates_clients_and_partner_audits(
         "bot.services.partner_program_service.partner_reporting_dal.all_referral_import_candidates",
         AsyncMock(return_value=candidates),
     )
-    create_attribution = AsyncMock()
+    create_attributions = AsyncMock(return_value={11: 1, 21: 2})
     create_audit = AsyncMock()
     monkeypatch.setattr(
-        "bot.services.partner_program_service.partner_dal.create_client_attribution",
-        create_attribution,
+        "bot.services.partner_program_service.partner_dal.create_client_attributions_bulk",
+        create_attributions,
     )
     monkeypatch.setattr(
         "bot.services.partner_program_service.partner_dal.create_audit_event",
@@ -792,7 +793,6 @@ def test_execute_all_referrals_import_creates_clients_and_partner_audits(
     )
     service = PartnerProgramService(cast(Settings, SimpleNamespace(REFERRAL_PROGRAM_ENABLED=False)))
     session = AsyncMock(spec=AsyncSession)
-    session.begin_nested.return_value = AsyncMock()
 
     result = asyncio.run(
         service.execute_bulk_referral_import(
@@ -807,6 +807,69 @@ def test_execute_all_referrals_import_creates_clients_and_partner_audits(
         "existing": 1,
         "conflicts": 1,
     }
-    assert create_attribution.await_count == 2
+    create_attributions.assert_awaited_once()
+    create_attributions_call = create_attributions.await_args
+    assert create_attributions_call is not None
+    clients = create_attributions_call.kwargs["clients"]
+    assert {client["client_user_id"] for client in clients} == {11, 21}
+    assert {client["partner_id"] for client in clients} == {1, 2}
     assert create_audit.await_count == 2
     assert {call.kwargs["partner_id"] for call in create_audit.await_args_list} == {1, 2}
+
+
+def test_execute_all_referrals_import_counts_concurrent_bulk_conflicts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = SimpleNamespace(partner_id=1, user_id=10)
+    candidates = [
+        (
+            profile,
+            SimpleNamespace(
+                user_id=user_id,
+                first_name=f"Client {user_id}",
+                last_name=None,
+                username=None,
+                email=None,
+            ),
+            None,
+            0,
+        )
+        for user_id in (11, 12)
+    ]
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_reporting_dal.all_referral_import_candidates",
+        AsyncMock(return_value=candidates),
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.create_client_attributions_bulk",
+        AsyncMock(return_value={11: 1}),
+    )
+    create_audit = AsyncMock()
+    monkeypatch.setattr(
+        "bot.services.partner_program_service.partner_dal.create_audit_event",
+        create_audit,
+    )
+    service = PartnerProgramService(cast(Settings, SimpleNamespace(REFERRAL_PROGRAM_ENABLED=False)))
+
+    result = asyncio.run(
+        service.execute_bulk_referral_import(
+            AsyncMock(spec=AsyncSession),
+            actor_admin_id=99,
+        )
+    )
+
+    assert result == {
+        "partners_updated": 1,
+        "imported": 1,
+        "existing": 0,
+        "conflicts": 1,
+    }
+    create_audit.assert_awaited_once()
+    create_audit_call = create_audit.await_args
+    assert create_audit_call is not None
+    assert json.loads(create_audit_call.kwargs["new_values_json"]) == {
+        "bulk": True,
+        "conflicts": 1,
+        "existing": 0,
+        "imported": 1,
+    }

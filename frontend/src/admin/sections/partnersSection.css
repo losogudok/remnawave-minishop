@@ -81,6 +81,9 @@
     var(--admin-card-bg);
   box-shadow: var(--admin-card-shadow);
 }
+.partners-referral-import-banner[hidden] {
+  display: none;
+}
 .partners-referral-import-icon {
   width: 42px;
   height: 42px;

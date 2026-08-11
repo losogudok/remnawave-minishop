@@ -13,6 +13,21 @@ import type {
 type JsonRecord = Record<string, unknown>;
 
 export type PartnerLinkRow = { id: "telegram" | "web"; labelKey: string; url: string };
+export const PARTNER_LIST_PAGE_SIZE = 25;
+
+export type AdminPartnerListQuery = {
+  page: number;
+  search: string;
+  status: string;
+  sort: string;
+};
+
+export const DEFAULT_PARTNER_LIST_QUERY: AdminPartnerListQuery = {
+  page: 0,
+  search: "",
+  status: "all",
+  sort: "clients_desc",
+};
 
 export type AdminPartnerDashboard = {
   active: number;
@@ -160,29 +175,51 @@ export async function loadPartnerDashboard(
 
 export async function loadPartnerLists(
   api: AdminApi,
-  currency: string
+  currency: string,
+  query: AdminPartnerListQuery = DEFAULT_PARTNER_LIST_QUERY
 ): Promise<{
   partners: PartnerRow[];
+  partnerTotal: number;
   applications: ApplicationRow[];
   withdrawals: WithdrawalRow[];
 }> {
-  const [partnersPayload, applicationsPayload] = await Promise.all([
-    api(`/admin/partners?currency=${encodeURIComponent(currency)}&limit=200`),
+  const [partnerPage, applicationsPayload] = await Promise.all([
+    loadPartnerPage(api, currency, query),
     api("/admin/partner-applications?limit=200"),
   ]);
-  const partners = records(record(partnersPayload).partners).map((item) =>
-    mapPartner(item, currency)
-  );
-  const partnerMap = new Map(partners.map((partner) => [partner.id, partner]));
+  const partnerMap = new Map(partnerPage.partners.map((partner) => [partner.id, partner]));
   const withdrawalPayload = await api(
     `/admin/partner-withdrawals?currency=${encodeURIComponent(currency)}&limit=200`
   );
   return {
-    partners,
+    partners: partnerPage.partners,
+    partnerTotal: partnerPage.total,
     applications: records(record(applicationsPayload).applications).map(mapApplication),
     withdrawals: records(record(withdrawalPayload).withdrawals).map((item) =>
       mapWithdrawal(item, partnerMap)
     ),
+  };
+}
+
+export async function loadPartnerPage(
+  api: AdminApi,
+  currency: string,
+  query: AdminPartnerListQuery
+): Promise<{ partners: PartnerRow[]; total: number }> {
+  const partnerQuery = new URLSearchParams({
+    currency,
+    limit: String(PARTNER_LIST_PAGE_SIZE),
+    offset: String(Math.max(0, query.page) * PARTNER_LIST_PAGE_SIZE),
+    sort: query.sort || "created_desc",
+  });
+  if (query.search.trim()) partnerQuery.set("search", query.search.trim());
+  if (query.status && query.status !== "all") partnerQuery.set("status", query.status);
+  const partnersPayload = await api(`/admin/partners?${partnerQuery.toString()}`);
+  const partnerPayload = record(partnersPayload);
+  const partners = records(partnerPayload.partners).map((item) => mapPartner(item, currency));
+  return {
+    partners,
+    total: number(partnerPayload.total),
   };
 }
 

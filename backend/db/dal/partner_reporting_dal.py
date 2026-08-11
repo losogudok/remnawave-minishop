@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, case, desc, func, or_, select, true
+from sqlalchemy import and_, case, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import Payment, User
@@ -50,6 +50,8 @@ async def list_profiles(
     *,
     status: str | None,
     search: str | None,
+    currency: str,
+    sort: str,
     limit: int,
     offset: int,
 ) -> tuple[list[PartnerProfile], int]:
@@ -78,10 +80,90 @@ async def list_profiles(
         ).scalar_one()
         or 0
     )
+    client_metrics = (
+        select(
+            PartnerClient.partner_id.label("partner_id"),
+            func.count(PartnerClient.partner_client_id).label("clients_count"),
+        )
+        .group_by(PartnerClient.partner_id)
+        .subquery()
+    )
+    commission_metrics = (
+        select(
+            PartnerCommission.partner_id.label("partner_id"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            PartnerCommission.status != "excluded",
+                            PartnerCommission.gross_amount_minor,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("gross_minor"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            PartnerCommission.status == "reversed",
+                            -PartnerCommission.commission_amount_minor,
+                        ),
+                        (
+                            PartnerCommission.status != "excluded",
+                            PartnerCommission.commission_amount_minor,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("earned_minor"),
+        )
+        .where(func.upper(PartnerCommission.currency) == currency.upper())
+        .group_by(PartnerCommission.partner_id)
+        .subquery()
+    )
+    balance_metrics = (
+        select(
+            PartnerLedgerEntry.partner_id.label("partner_id"),
+            func.coalesce(func.sum(PartnerLedgerEntry.amount_minor), 0).label("available_minor"),
+        )
+        .where(
+            func.upper(PartnerLedgerEntry.currency) == currency.upper(),
+            PartnerLedgerEntry.state == "posted",
+        )
+        .group_by(PartnerLedgerEntry.partner_id)
+        .subquery()
+    )
+    sort_key, separator, direction = str(sort or "clients_desc").lower().rpartition("_")
+    if not separator or direction not in {"asc", "desc"}:
+        sort_key, direction = "clients", "desc"
+    sort_expressions = {
+        "user": func.lower(PartnerProfile.display_label_snapshot),
+        "status": PartnerProfile.status,
+        "rate": PartnerProfile.commission_bps,
+        "clients": func.coalesce(client_metrics.c.clients_count, 0),
+        "gross": func.coalesce(commission_metrics.c.gross_minor, 0),
+        "earned": func.coalesce(commission_metrics.c.earned_minor, 0),
+        "available": func.coalesce(balance_metrics.c.available_minor, 0),
+        "created": PartnerProfile.created_at,
+    }
+    sort_expression = sort_expressions.get(sort_key, sort_expressions["clients"])
+    ordered = sort_expression.asc() if direction == "asc" else sort_expression.desc()
+    tie_breaker = (
+        PartnerProfile.partner_id.asc() if direction == "asc" else PartnerProfile.partner_id.desc()
+    )
     result = await session.execute(
         select(PartnerProfile)
+        .outerjoin(client_metrics, client_metrics.c.partner_id == PartnerProfile.partner_id)
+        .outerjoin(
+            commission_metrics,
+            commission_metrics.c.partner_id == PartnerProfile.partner_id,
+        )
+        .outerjoin(balance_metrics, balance_metrics.c.partner_id == PartnerProfile.partner_id)
         .where(where)
-        .order_by(desc(PartnerProfile.created_at), desc(PartnerProfile.partner_id))
+        .order_by(ordered, tie_breaker)
         .limit(limit)
         .offset(offset)
     )
