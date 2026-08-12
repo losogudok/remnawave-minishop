@@ -24,7 +24,7 @@ from bot.app.web.admin_settings_manifest import (
     manifest_keys,
 )
 from config.settings import Settings
-from db.dal import app_settings_dal
+from db.dal import app_settings_dal, partner_dal
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,36 @@ APPEARANCE_OVERRIDE_KEYS = {
     "WEBAPP_FAVICON_URL",
     "WEBAPP_LOGO_FAVICON_URL",
     "WEBAPP_PRIMARY_COLOR",
+}
+REFERRAL_LINK_VISIBILITY_KEYS = (
+    "REFERRAL_WEBAPP_LINK_ENABLED",
+    "REFERRAL_TELEGRAM_LINK_ENABLED",
+)
+PARTNER_SETTING_KEYS = {
+    "PARTNER_PROGRAM_ENABLED",
+    "PARTNER_AUTO_ENROLLMENT_ENABLED",
+    "PARTNER_REFERRAL_PROGRAM_DISABLED",
+    "PARTNER_WITHDRAWALS_ENABLED",
+    "PARTNER_BALANCE_PAYMENT_ENABLED",
+    "PARTNER_CLIENT_WELCOME_BONUS_ENABLED",
+    "PARTNER_CLIENT_PAYMENT_BONUS_ENABLED",
+    "PARTNER_ONE_BONUS_PER_CLIENT",
+    "PARTNER_DEFAULT_COMMISSION_BPS",
+    "PARTNER_COMMISSION_HOLD_DAYS",
+    "PARTNER_ELIGIBLE_CURRENCIES",
+    "PARTNER_EXCLUDED_SALE_MODES",
+    "PARTNER_WITHDRAWAL_METHODS_JSON",
+    "PARTNER_TELEGRAM_LINK_ENABLED",
+    "PARTNER_WEBAPP_LINK_ENABLED",
+    "PARTNER_APPLICATION_MESSAGE_MAX_LENGTH",
+    "PARTNER_MAX_ACTIVE_WITHDRAWALS",
+    "PARTNER_REAPPLICATION_ENABLED",
+    "PARTNER_REAPPLICATION_COOLDOWN_DAYS",
+    "PARTNER_LIST_PAGE_LIMIT",
+    "PARTNER_APPLICATION_RATE_LIMIT_HOURS",
+    "PARTNER_WITHDRAWAL_RATE_LIMIT_SECONDS",
+    "PARTNER_AUDIT_RETENTION_DAYS",
+    "PARTNER_REQUISITES_RETENTION_DAYS",
 }
 APP_ROOT = Path(__file__).resolve().parents[3]
 APPEARANCE_OVERRIDES_BACKUP_PATH = APP_ROOT / "data" / "webapp-logo" / "appearance-settings.json"
@@ -170,6 +200,67 @@ def _normalize_exclusive_provider_toggles(
         normalized[opposite] = False
         normalized_deletes = [item for item in normalized_deletes if item != opposite]
     return normalized, normalized_deletes
+
+
+def _referral_link_visibility_errors(
+    settings: Settings,
+    updates: dict[str, Any],
+    deletes: list[str],
+) -> dict[str, str]:
+    touched = set(REFERRAL_LINK_VISIBILITY_KEYS).intersection((*updates, *deletes))
+    if not touched:
+        return {}
+
+    values = {key: bool(getattr(settings, key)) for key in REFERRAL_LINK_VISIBILITY_KEYS}
+    deleted_visibility_keys = set(deletes).intersection(REFERRAL_LINK_VISIBILITY_KEYS)
+    if deleted_visibility_keys:
+        try:
+            env_only = Settings()
+        except Exception:
+            return dict.fromkeys(
+                sorted(deleted_visibility_keys),
+                "could not resolve the environment default",
+            )
+        for key in deleted_visibility_keys:
+            values[key] = bool(getattr(env_only, key))
+    for key in REFERRAL_LINK_VISIBILITY_KEYS:
+        if key in updates:
+            values[key] = bool(updates[key])
+
+    if any(values.values()):
+        return {}
+    return dict.fromkeys(sorted(touched), "at least one referral link must remain enabled")
+
+
+def _partner_settings_candidate(
+    settings: Settings,
+    updates: dict[str, Any],
+    deletes: list[str],
+) -> Settings:
+    candidate = settings.model_copy(deep=True)
+    if deletes:
+        env_only = Settings()
+        for key in PARTNER_SETTING_KEYS.intersection(deletes):
+            setattr(candidate, key, getattr(env_only, key))
+    for key in PARTNER_SETTING_KEYS.intersection(updates):
+        setattr(candidate, key, updates[key])
+    return candidate
+
+
+def _partner_settings_errors(
+    settings: Settings,
+    updates: dict[str, Any],
+    deletes: list[str],
+) -> dict[str, str]:
+    touched = PARTNER_SETTING_KEYS.intersection((*updates, *deletes))
+    if not touched:
+        return {}
+    try:
+        candidate = _partner_settings_candidate(settings, updates, deletes)
+        _ = candidate.partner_settings
+    except Exception as exc:
+        return dict.fromkeys(sorted(touched), str(exc))
+    return {}
 
 
 def _appearance_snapshot(settings: Settings) -> dict[str, Any]:
@@ -343,16 +434,77 @@ async def update_overrides(
         coerced_updates,
         valid_deletes,
     )
+    errors.update(
+        _referral_link_visibility_errors(
+            settings,
+            coerced_updates,
+            valid_deletes,
+        )
+    )
+    errors.update(_partner_settings_errors(settings, coerced_updates, valid_deletes))
+    if errors:
+        return {"ok": False, "errors": errors}
 
+    partner_candidate: Settings | None = None
+    activate_all_partners = False
+    touched_partner_keys = PARTNER_SETTING_KEYS.intersection((*coerced_updates, *valid_deletes))
+    if touched_partner_keys:
+        partner_candidate = _partner_settings_candidate(
+            settings,
+            coerced_updates,
+            valid_deletes,
+        )
+        current_partner = settings.partner_settings
+        next_partner = partner_candidate.partner_settings
+        activate_all_partners = bool(
+            next_partner.enabled
+            and next_partner.auto_enrollment_enabled
+            and not (current_partner.enabled and current_partner.auto_enrollment_enabled)
+        )
+
+    removed_partner_method_ids: set[str] = set()
+    methods_key = "PARTNER_WITHDRAWAL_METHODS_JSON"
+    if methods_key in coerced_updates or methods_key in valid_deletes:
+        current_method_ids = {method.id for method in settings.partner_settings.withdrawal_methods}
+        candidate = settings.model_copy(deep=True)
+        if methods_key in coerced_updates:
+            candidate.PARTNER_WITHDRAWAL_METHODS_JSON = coerced_updates[methods_key]
+        else:
+            candidate.PARTNER_WITHDRAWAL_METHODS_JSON = Settings().PARTNER_WITHDRAWAL_METHODS_JSON
+        next_method_ids = {method.id for method in candidate.partner_settings.withdrawal_methods}
+        removed_partner_method_ids = current_method_ids - next_method_ids
+
+    auto_enrolled = 0
     async with async_session_factory() as raw_session:
         session: AsyncSession = raw_session
         async with session.begin():
+            methods_in_use = await partner_dal.active_withdrawal_methods_in_use(
+                session,
+                removed_partner_method_ids,
+            )
+            if methods_in_use:
+                return {
+                    "ok": False,
+                    "errors": {
+                        methods_key: "active withdrawals use methods: "
+                        + ", ".join(sorted(methods_in_use))
+                    },
+                }
             for key, value in coerced_updates.items():
                 await app_settings_dal.upsert_override(
                     session, key=key, value=value, updated_by=actor_id
                 )
             for key in valid_deletes:
                 await app_settings_dal.delete_override(session, key)
+            if activate_all_partners and partner_candidate is not None:
+                from bot.services.partner_program_service import PartnerProgramService
+
+                auto_enrolled = await PartnerProgramService(
+                    partner_candidate
+                ).auto_enroll_all_users(
+                    session,
+                    actor_admin_id=actor_id,
+                )
 
     # Apply locally; deletes need an env-default fallback. We re-read the env
     # default by instantiating a fresh Settings() / provider-config model
@@ -418,6 +570,7 @@ async def update_overrides(
         "applied": len(coerced_updates),
         "reverted": len(valid_deletes),
         "not_applied": sorted(not_applied),
+        "auto_enrolled": auto_enrolled,
     }
 
 

@@ -91,6 +91,195 @@ Core reactions: none
 | `panel_user_uuid` | `str | None` | `None` |
 | `telegram_id` | `int | str | None` | `None` |
 
+## `partner.application_decided`
+
+Payload model: `PartnerApplicationDecidedPayload`
+
+Emitters: `backend/bot/services/partner_program_service.py`
+
+Core reactions: `CoreEventReactions.on_partner_application_decided`
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `application_id` | `int` | required |
+| `partner_id` | `int | None` | `None` |
+| `user_id` | `int | None` | `None` |
+| `status` | `str` | required |
+| `decided_at` | `datetime` | required |
+
+## `partner.application_submitted`
+
+Payload model: `PartnerApplicationSubmittedPayload`
+
+Emitters: `backend/bot/services/partner_program_service.py`
+
+Core reactions: `CoreEventReactions.on_partner_application_submitted`
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `application_id` | `int` | required |
+| `user_id` | `int` | required |
+| `status` | `str` | required |
+| `submitted_at` | `datetime` | required |
+
+## `partner.balance_adjusted`
+
+Payload model: `PartnerBalanceAdjustedPayload`
+
+Emitters: `backend/bot/services/partner_commission_service.py`
+
+Core reactions: none
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `partner_id` | `int` | required |
+| `currency` | `str` | required |
+| `amount_minor` | `int` | required |
+| `balance_minor` | `int` | required |
+| `adjusted_at` | `datetime` | required |
+
+## `partner.balance_spent`
+
+Payload model: `PartnerBalanceSpentPayload`
+
+Emitters: `backend/bot/services/partner_checkout_balance.py`, `backend/bot/services/partner_commission_service.py`
+
+Core reactions: none
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `partner_id` | `int` | required |
+| `payment_db_id` | `int` | required |
+| `currency` | `str` | required |
+| `amount_minor` | `int` | required |
+| `spent_at` | `datetime` | required |
+
+## `partner.client_attributed`
+
+Payload model: `PartnerClientAttributedPayload`
+
+Emitters: `backend/bot/services/partner_program_service.py`
+
+Core reactions: none
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `partner_id` | `int` | required |
+| `partner_client_id` | `int` | required |
+| `client_user_id` | `int` | required |
+| `source` | `str` | required |
+| `attributed_at` | `datetime` | required |
+
+## `partner.commission_available`
+
+Payload model: `PartnerCommissionAvailablePayload`
+
+Emitters: `backend/bot/services/partner_commission_service.py`
+
+Core reactions: none
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `partner_id` | `int` | required |
+| `commission_id` | `int` | required |
+| `currency` | `str` | required |
+| `commission_amount_minor` | `int` | required |
+| `available_at` | `datetime` | required |
+
+## `partner.commission_recorded`
+
+Payload model: `PartnerCommissionRecordedPayload`
+
+Emitters: `backend/bot/services/partner_commission_service.py`
+
+Core reactions: none
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `partner_id` | `int` | required |
+| `commission_id` | `int` | required |
+| `payment_db_id` | `int` | required |
+| `status` | `str` | required |
+| `currency` | `str` | required |
+| `gross_amount_minor` | `int` | required |
+| `commission_amount_minor` | `int` | required |
+| `available_at` | `datetime` | required |
+
+## `partner.commission_reversed`
+
+Payload model: `PartnerCommissionReversedPayload`
+
+Emitters: `backend/bot/services/partner_commission_service.py`
+
+Core reactions: none
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `partner_id` | `int` | required |
+| `commission_id` | `int` | required |
+| `payment_db_id` | `int | None` | `None` |
+| `currency` | `str` | required |
+| `commission_amount_minor` | `int` | required |
+| `reversed_at` | `datetime` | required |
+
+## `partner.status_changed`
+
+Payload model: `PartnerStatusChangedPayload`
+
+Emitters: `backend/bot/services/partner_program_service.py`
+
+Core reactions: `CoreEventReactions.on_partner_status_changed`
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `partner_id` | `int` | required |
+| `user_id` | `int | None` | `None` |
+| `old_status` | `str` | required |
+| `status` | `str` | required |
+| `changed_at` | `datetime` | required |
+
+## `partner.withdrawal_requested`
+
+Payload model: `PartnerWithdrawalRequestedPayload`
+
+Emitters: `backend/bot/services/partner_withdrawal_service.py`
+
+Core reactions: `CoreEventReactions.on_partner_withdrawal_requested`
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `partner_id` | `int` | required |
+| `user_id` | `int` | required |
+| `withdrawal_id` | `int` | required |
+| `status` | `str` | required |
+| `currency` | `str` | required |
+| `currency_scale` | `int` | required |
+| `amount_minor` | `int` | required |
+| `requested_at` | `datetime` | required |
+
+## `partner.withdrawal_status_changed`
+
+Payload model: `PartnerWithdrawalStatusChangedPayload`
+
+Emitters: `backend/bot/services/partner_withdrawal_service.py`
+
+Core reactions: `CoreEventReactions.on_partner_withdrawal_status_changed`
+
+| Field | Type | Default |
+| --- | --- | --- |
+| `partner_id` | `int` | required |
+| `user_id` | `int | None` | `None` |
+| `withdrawal_id` | `int` | required |
+| `old_status` | `str` | required |
+| `status` | `str` | required |
+| `status_version` | `int` | required |
+| `currency` | `str` | required |
+| `currency_scale` | `int` | required |
+| `amount_minor` | `int` | required |
+| `settlement_amount` | `str | None` | `None` |
+| `external_reference` | `str | None` | `None` |
+| `changed_at` | `datetime` | required |
+
 ## `payment.canceled`
 
 Payload model: `PaymentCanceledPayload`
@@ -169,6 +358,8 @@ Core reactions: `CoreEventReactions.on_promo_code_applied`
 | `user_id` | `int` | required |
 | `code` | `str` | required |
 | `bonus_days` | `int` | required |
+| `regular_traffic_gb` | `float` | `0` |
+| `premium_traffic_gb` | `float` | `0` |
 | `new_end_date` | `datetime | None` | `None` |
 
 ## `referral.bonus_granted`

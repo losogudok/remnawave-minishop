@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,9 +9,112 @@ from pydantic import ValidationError
 
 from bot.services import settings_override_service
 from config.settings import Settings
+from config.telegram_proxy import redact_telegram_proxy_credentials
 
 
 class SettingsTests(unittest.TestCase):
+    def _settings(self, **overrides) -> Settings:
+        values = {
+            "_env_file": None,
+            "BOT_TOKEN": "token",
+            "POSTGRES_USER": "app_user",
+            "POSTGRES_PASSWORD": "app_password",
+        }
+        values.update(overrides)
+        return Settings(**values)
+
+    def test_telegram_bot_proxy_defaults_to_none_and_normalizes_blank(self):
+        self.assertIsNone(self._settings().TELEGRAM_BOT_PROXY_URL)
+        self.assertIsNone(self._settings(TELEGRAM_BOT_PROXY_URL="  ").TELEGRAM_BOT_PROXY_URL)
+
+    def test_telegram_bot_proxy_accepts_supported_endpoint_forms(self):
+        valid_urls = (
+            "socks5://proxy.example.com:1080",
+            "socks5://192.0.2.10:1080",
+            "socks5://[2001:db8::10]:1080",
+            "socks5://user%40example:p%3A%2F%23@proxy.example.com:1080",
+        )
+
+        for proxy_url in valid_urls:
+            with self.subTest(proxy_url=proxy_url):
+                configured = self._settings(TELEGRAM_BOT_PROXY_URL=proxy_url)
+                assert configured.TELEGRAM_BOT_PROXY_URL is not None
+                self.assertEqual(
+                    configured.TELEGRAM_BOT_PROXY_URL.get_secret_value(),
+                    proxy_url,
+                )
+
+    def test_telegram_bot_proxy_rejects_unsupported_or_ambiguous_urls(self):
+        invalid_urls = (
+            "http://proxy.example.com:1080",
+            "https://proxy.example.com:1080",
+            "socks4://proxy.example.com:1080",
+            "socks5h://proxy.example.com:1080",
+            "SOCKS5://proxy.example.com:1080",
+            "socks5://proxy.example.com",
+            "socks5://proxy.example.com:0",
+            "socks5://proxy.example.com:65536",
+            "socks5://:1080",
+            "socks5://proxy.example.com:1080/",
+            "socks5://proxy.example.com:1080/path",
+            "socks5://proxy.example.com:1080?mode=test",
+            "socks5://proxy.example.com:1080?",
+            "socks5://proxy.example.com:1080#fragment",
+            "socks5://proxy.example.com:1080#",
+            "socks5://user@proxy.example.com:1080",
+            "socks5://user:@proxy.example.com:1080",
+            "socks5://:password@proxy.example.com:1080",
+            "socks5://user:raw/password@proxy.example.com:1080",
+            "socks5://user:bad%2@proxy.example.com:1080",
+            "socks5://2001:db8::10:1080",
+        )
+
+        for proxy_url in invalid_urls:
+            with self.subTest(proxy_url=proxy_url), self.assertRaises(ValidationError):
+                self._settings(TELEGRAM_BOT_PROXY_URL=proxy_url)
+
+    def test_common_proxy_environment_variables_do_not_enable_telegram_proxy(self):
+        proxy_url = "socks5://user:password@proxy.example.com:1080"
+        with patch.dict(
+            os.environ,
+            {
+                "PROXY_URL": proxy_url,
+                "ALL_PROXY": proxy_url,
+                "HTTPS_PROXY": proxy_url,
+            },
+            clear=True,
+        ):
+            settings = self._settings()
+
+        self.assertIsNone(settings.TELEGRAM_BOT_PROXY_URL)
+
+    def test_telegram_bot_proxy_credentials_are_redacted_from_errors_and_logs(self):
+        password = "never-log-this-password"
+        proxy_url = f"socks5://user:{password}@proxy.example.com:1080/path"
+
+        with self.assertRaises(ValidationError) as error:
+            self._settings(TELEGRAM_BOT_PROXY_URL=proxy_url)
+
+        self.assertNotIn(password, str(error.exception))
+        redacted = redact_telegram_proxy_credentials(
+            f"Cannot connect through {proxy_url}: authentication failed"
+        )
+        self.assertNotIn(password, redacted)
+        self.assertIn("socks5://***:***@proxy.example.com:1080/path", redacted)
+
+    def test_telegram_oauth_reuses_configured_bot_proxy_by_default(self):
+        self.assertIs(self._settings().TELEGRAM_OAUTH_USE_BOT_PROXY, True)
+        configured = self._settings(
+            TELEGRAM_BOT_PROXY_URL="socks5://proxy.example.com:1080",
+        )
+        self.assertIs(configured.TELEGRAM_OAUTH_USE_BOT_PROXY, True)
+
+        opted_out = self._settings(
+            TELEGRAM_BOT_PROXY_URL="socks5://proxy.example.com:1080",
+            TELEGRAM_OAUTH_USE_BOT_PROXY=False,
+        )
+        self.assertIs(opted_out.TELEGRAM_OAUTH_USE_BOT_PROXY, False)
+
     def test_blank_postgres_password_is_rejected(self):
         with self.assertRaises(ValidationError):
             Settings(
@@ -217,16 +321,20 @@ class SettingsTests(unittest.TestCase):
             BOT_TOKEN="token",
             POSTGRES_USER="app_user",
             POSTGRES_PASSWORD="app_password",
+            REFERRAL_PROGRAM_ENABLED=False,
             REFERRAL_BONUS_DAYS_1_MONTH=5,
             REFEREE_BONUS_DAYS_12_MONTHS=11,
             REFERRAL_ONE_BONUS_PER_REFEREE=False,
             REFERRAL_WELCOME_BONUS_DAYS=9,
             REFERRAL_WELCOME_BONUS_WITHOUT_TELEGRAM_ENABLED=False,
+            REFERRAL_WEBAPP_LINK_ENABLED=False,
+            REFERRAL_TELEGRAM_LINK_ENABLED=True,
             LEGACY_REFS=False,
         )
 
         referral_settings = settings.referral_settings
 
+        self.assertFalse(referral_settings.enabled)
         self.assertEqual(referral_settings.bonus_days_inviter_1_month, 5)
         self.assertEqual(referral_settings.bonus_days_inviter_3_months, 7)
         self.assertEqual(referral_settings.bonus_days_referee_12_months, 11)
@@ -234,7 +342,63 @@ class SettingsTests(unittest.TestCase):
         self.assertFalse(referral_settings.one_bonus_per_referee)
         self.assertEqual(referral_settings.welcome_bonus_days, 9)
         self.assertFalse(referral_settings.welcome_bonus_without_telegram_enabled)
+        self.assertFalse(referral_settings.webapp_link_enabled)
+        self.assertTrue(referral_settings.telegram_link_enabled)
         self.assertFalse(referral_settings.legacy_refs_enabled)
+
+    def test_referral_settings_require_at_least_one_visible_link(self):
+        with self.assertRaisesRegex(
+            ValidationError,
+            "at least one referral link must remain enabled",
+        ):
+            Settings(
+                _env_file=None,
+                BOT_TOKEN="token",
+                POSTGRES_USER="app_user",
+                POSTGRES_PASSWORD="app_password",
+                REFERRAL_WEBAPP_LINK_ENABLED=False,
+                REFERRAL_TELEGRAM_LINK_ENABLED=False,
+            )
+
+    def test_partner_program_optional_modes_are_opt_in(self):
+        defaults = Settings(
+            _env_file=None,
+            BOT_TOKEN="token",
+            POSTGRES_USER="app_user",
+            POSTGRES_PASSWORD="app_password",
+        )
+        enabled = Settings(
+            _env_file=None,
+            BOT_TOKEN="token",
+            POSTGRES_USER="app_user",
+            POSTGRES_PASSWORD="app_password",
+            PARTNER_AUTO_ENROLLMENT_ENABLED=True,
+            PARTNER_REFERRAL_PROGRAM_DISABLED=True,
+        )
+
+        self.assertFalse(defaults.partner_settings.auto_enrollment_enabled)
+        self.assertFalse(defaults.partner_settings.referral_program_disabled)
+        self.assertTrue(enabled.partner_settings.auto_enrollment_enabled)
+        self.assertTrue(enabled.partner_settings.referral_program_disabled)
+
+    def test_webapp_auth_providers_describe_available_login_methods(self):
+        telegram_only = Settings(
+            _env_file=None,
+            BOT_TOKEN="token",
+            POSTGRES_USER="app_user",
+            POSTGRES_PASSWORD="app_password",
+        )
+        email_enabled = Settings(
+            _env_file=None,
+            BOT_TOKEN="token",
+            POSTGRES_USER="app_user",
+            POSTGRES_PASSWORD="app_password",
+            APP_RUNTIME_MODE="test",
+            QA_AUTH_ENABLED=True,
+        )
+
+        self.assertEqual(telegram_only.webapp_auth_providers, ["telegram"])
+        self.assertEqual(email_enabled.webapp_auth_providers, ["telegram", "email"])
 
     def test_registration_settings_view_reflects_invite_only_flag(self):
         default_settings = Settings(

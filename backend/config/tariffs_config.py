@@ -64,6 +64,18 @@ def default_payment_currency_code_for_settings(settings: Any) -> str:
     return payment_currency_code(default_currency_key_for_settings(settings))
 
 
+def referral_welcome_bonus_tariff_key_for_settings(settings: Any) -> str | None:
+    config = settings.tariffs_config
+    if config is None:
+        return None
+    resolved_key = str(getattr(config, "referral_welcome_bonus_tariff_key", "") or "").strip()
+    if resolved_key:
+        return resolved_key
+    configured_key = str(getattr(config, "referral_welcome_bonus_tariff", "") or "").strip()
+    default_key = str(getattr(config, "default_tariff", "") or "").strip()
+    return configured_key or default_key or None
+
+
 class TrafficPackage(BaseModel):
     gb: float
     price: float
@@ -505,6 +517,14 @@ class Tariff(BaseModel):
     hwid_device_packages: HwidDevicePackageSet | None = None
     premium_squad_uuids: list[str] = Field(default_factory=list)
     premium_monthly_gb: float | None = None
+    # Premium traffic is quota-controlled by default, including an explicit
+    # zero-byte quota. Unlimited premium access must be enabled separately so
+    # zero can represent a top-up-only tariff without granting premium squads.
+    premium_unlimited: bool = False
+    # None means that premium traffic follows the effective regular-traffic
+    # strategy. This includes a per-user Remnawave override for period tariffs;
+    # traffic tariffs therefore inherit their fixed NO_RESET behavior.
+    premium_traffic_limit_strategy: TrafficLimitStrategy | None = None
     premium_topup_packages: PackageSet | None = None
     # Same toggle as topup_always_available, scoped to premium-squad traffic.
     premium_topup_always_available: bool = False
@@ -769,19 +789,17 @@ class Tariff(BaseModel):
 
     @property
     def premium_monthly_bytes(self) -> int:
-        if self.premium_monthly_gb is None or self.premium_monthly_gb <= 0:
+        if self.premium_unlimited or self.premium_monthly_gb is None:
             return 0
-        return int(float(self.premium_monthly_gb) * (1024**3))
+        return max(0, int(float(self.premium_monthly_gb) * (1024**3)))
 
     def has_premium_squad_limit(self) -> bool:
-        return bool(
-            self.premium_squad_uuids
-            and (self.premium_monthly_bytes > 0 or self.premium_topup_packages)
-        )
+        return bool(self.premium_squad_uuids and not self.premium_unlimited)
 
 
 class TariffsConfig(BaseModel):
     default_tariff: str
+    referral_welcome_bonus_tariff: str | None = None
     default_currency: str = DEFAULT_TARIFF_CURRENCY
     topup_packages_default: PackageSet | None = None
     tariffs: list[Tariff]
@@ -849,7 +867,21 @@ class TariffsConfig(BaseModel):
         active_keys = {tariff.key for tariff in active}
         if self.default_tariff not in active_keys:
             raise ValueError("default_tariff must reference an enabled tariff")
+        welcome_tariff_key = str(self.referral_welcome_bonus_tariff or "").strip()
+        if welcome_tariff_key:
+            welcome_tariff = self.get(welcome_tariff_key)
+            if welcome_tariff is None or not welcome_tariff.enabled:
+                raise ValueError("referral_welcome_bonus_tariff must reference an enabled tariff")
+            if welcome_tariff.billing_model != "period":
+                raise ValueError("referral_welcome_bonus_tariff must reference a period tariff")
+            self.referral_welcome_bonus_tariff = welcome_tariff.key
+        else:
+            self.referral_welcome_bonus_tariff = None
         return self
+
+    @property
+    def referral_welcome_bonus_tariff_key(self) -> str:
+        return self.referral_welcome_bonus_tariff or self.default_tariff
 
     @property
     def enabled_tariffs(self) -> list[Tariff]:

@@ -271,6 +271,7 @@
     stripTopupQueryFromUrl,
     syncAppSectionPath,
     t,
+    termUnitLabel,
     telegramNotificationsResumeCooldownMs: TELEGRAM_NOTIFICATIONS_RESUME_REFRESH_COOLDOWN_MS,
     telegramSdk,
     tick,
@@ -360,6 +361,9 @@
   const faviconBrand = $derived(shellView.appDataView.faviconBrand);
   const installGuidesEnabled = $derived(shellView.appDataView.installGuidesEnabled);
   const methods = $derived(shellView.appDataView.methods);
+  const partnerProgramEnabled = $derived(
+    shellView.appDataView.partnerProgramEnabled || query.has("partner_scenario")
+  );
   const plans = $derived(shellView.appDataView.plans);
   const subscription = $derived(shellView.appDataView.subscription);
   const supportEnabled = $derived(shellView.appDataView.supportEnabled);
@@ -475,6 +479,7 @@
     getDevicesEnabled: () => devicesEnabled,
     getFallbackAdminSection: initialAdminSectionFromLocation,
     getIsAdmin: () => isAdmin,
+    getPartnerProgramEnabled: () => partnerProgramEnabled,
     getSupportEnabled: () => supportEnabled,
     isDocsDemo,
     loadDevices: () => {

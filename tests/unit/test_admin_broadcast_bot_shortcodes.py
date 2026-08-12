@@ -51,6 +51,17 @@ class BotShortcodeHelperTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(username, "demo_bot")
         bot.get_me.assert_awaited_once()
 
+    async def test_bot_username_resolved_for_partner_link(self):
+        bot = SimpleNamespace(get_me=AsyncMock(return_value=SimpleNamespace(username="demo_bot")))
+
+        username = await helper.bot_username_for_shortcodes(
+            cast(Bot, bot),
+            {"partner_bot_link"},
+        )
+
+        self.assertEqual(username, "demo_bot")
+        bot.get_me.assert_awaited_once()
+
     async def test_context_loader_uses_panel_only_for_config_link(self):
         settings = settings_stub()
         load = AsyncMock(return_value={})

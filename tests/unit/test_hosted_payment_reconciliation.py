@@ -13,7 +13,7 @@ from bot.payment_providers.shared.reconciliation import (
     _inspect_provider_payment,
     refresh_hosted_payment_status,
 )
-from db.dal import payment_dal, payment_reconciliation_dal
+from db.dal import payment_checkout_dal, payment_dal, payment_reconciliation_dal
 
 
 def _payment(provider: str, *, provider_payment_id: str = "provider-1") -> SimpleNamespace:
@@ -25,6 +25,7 @@ def _payment(provider: str, *, provider_payment_id: str = "provider-1") -> Simpl
         yookassa_payment_id=None,
         status=f"pending_{provider}",
         checkout_expires_at=None,
+        created_at=datetime.now(UTC),
     )
 
 
@@ -253,7 +254,14 @@ def test_confirmed_terminal_failure_releases_checkout_and_notifies(
     result = asyncio.run(refresh_hosted_payment_status(session, payment, service))
 
     assert result.status == "failed"
-    transition.assert_awaited_once_with(session, 17, "provider-1", "failed")
+    transition.assert_awaited_once_with(
+        session,
+        17,
+        "provider-1",
+        "failed",
+        failure_kind="provider_payment_failed",
+        failure_provider_code="expired",
+    )
     notify.assert_awaited_once()
 
 
@@ -289,3 +297,173 @@ def test_expired_local_timestamp_does_not_override_provider_pending_status(
     assert result.status == "pending_lava"
     transition.assert_not_awaited()
     mark_checked.assert_awaited_once()
+
+
+def test_pally_new_bill_is_canceled_after_equivalent_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payment = _payment("pally")
+    payment.created_at = datetime(2026, 8, 12, 8, 0, tzinfo=UTC)
+    payment.sale_mode = "subscription@standard"
+    payment.subscription_duration_months = 1
+    service = SimpleNamespace(
+        get_bill_status=AsyncMock(
+            return_value=(
+                True,
+                {"id": "provider-1", "order_id": "17", "status": "NEW"},
+            )
+        ),
+        cancel_pending_bill=AsyncMock(return_value=(True, {"activity": False})),
+    )
+    successful = SimpleNamespace(payment_id=18)
+    canceled = SimpleNamespace(**{**vars(payment), "status": "canceled"})
+    find_success = AsyncMock(return_value=successful)
+    transition = AsyncMock(return_value=(canceled, True))
+    reload_payment = AsyncMock(return_value=canceled)
+    monkeypatch.setattr(
+        payment_checkout_dal,
+        "find_later_equivalent_succeeded_payment",
+        find_success,
+    )
+    monkeypatch.setattr(payment_dal, "transition_provider_payment_to_terminal", transition)
+    monkeypatch.setattr(payment_dal, "get_payment_by_db_id", reload_payment)
+    session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
+
+    result = asyncio.run(refresh_hosted_payment_status(session, payment, service))
+
+    assert result.status == "canceled"
+    service.cancel_pending_bill.assert_awaited_once_with("provider-1")
+    transition.assert_awaited_once_with(
+        session,
+        17,
+        "provider-1",
+        "canceled",
+        failure_kind="superseded_checkout",
+        provider_cancellation_party="merchant",
+        provider_cancellation_reason="superseded_by_payment_18",
+        suppress_failure_notification=True,
+    )
+
+
+def test_pally_failure_records_processing_error_code() -> None:
+    service = SimpleNamespace(
+        get_bill_status=AsyncMock(
+            return_value=(
+                True,
+                {"id": "provider-1", "order_id": "17", "status": "FAIL"},
+            )
+        ),
+        get_bill_payments=AsyncMock(
+            return_value=(
+                True,
+                {"data": [{"status": "FAIL", "error_code": 666}]},
+            )
+        ),
+    )
+
+    lifecycle = asyncio.run(_inspect_provider_payment(service, _payment("pally")))
+
+    assert lifecycle.state == "failed"
+    assert lifecycle.failure_provider_code == "666"
+
+
+def test_expired_pally_bill_is_canceled_before_checkout_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payment = _payment("pally")
+    payment.created_at = datetime.now(UTC) - timedelta(hours=1)
+    service = SimpleNamespace(
+        ttl_seconds=1800,
+        get_bill_status=AsyncMock(
+            return_value=(
+                True,
+                {"id": "provider-1", "order_id": "17", "status": "NEW", "active": True},
+            )
+        ),
+        cancel_pending_bill=AsyncMock(return_value=(True, {"activity": False})),
+    )
+    canceled = SimpleNamespace(**{**vars(payment), "status": "canceled"})
+    transition = AsyncMock(return_value=(canceled, True))
+    reload_payment = AsyncMock(return_value=canceled)
+    find_success = AsyncMock()
+    mark_checked = AsyncMock()
+    monkeypatch.setattr(
+        payment_checkout_dal,
+        "find_later_equivalent_succeeded_payment",
+        find_success,
+    )
+    monkeypatch.setattr(payment_dal, "transition_provider_payment_to_terminal", transition)
+    monkeypatch.setattr(payment_dal, "get_payment_by_db_id", reload_payment)
+    monkeypatch.setattr(
+        payment_reconciliation_dal,
+        "mark_provider_payment_checked",
+        mark_checked,
+    )
+    session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
+
+    result = asyncio.run(
+        refresh_hosted_payment_status(
+            session,
+            payment,
+            service,
+            expiration_grace_seconds=0,
+        )
+    )
+
+    assert result.status == "canceled"
+    service.cancel_pending_bill.assert_awaited_once_with("provider-1")
+    find_success.assert_not_awaited()
+    transition.assert_awaited_once_with(
+        session,
+        17,
+        "provider-1",
+        "canceled",
+        failure_kind="checkout_expired",
+        provider_cancellation_party="merchant",
+        provider_cancellation_reason="checkout_ttl_1800s",
+        suppress_failure_notification=False,
+    )
+    mark_checked.assert_not_awaited()
+
+
+def test_pally_cancel_failure_keeps_checkout_reservations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payment = _payment("pally")
+    payment.created_at = datetime.now(UTC) - timedelta(hours=1)
+    service = SimpleNamespace(
+        ttl_seconds=1800,
+        get_bill_status=AsyncMock(
+            return_value=(
+                True,
+                {"id": "provider-1", "order_id": "17", "status": "NEW", "active": True},
+            )
+        ),
+        cancel_pending_bill=AsyncMock(return_value=(False, {"message": "provider_error"})),
+    )
+    transition = AsyncMock()
+    mark_checked = AsyncMock(return_value=payment)
+    monkeypatch.setattr(payment_dal, "transition_provider_payment_to_terminal", transition)
+    monkeypatch.setattr(
+        payment_reconciliation_dal,
+        "mark_provider_payment_checked",
+        mark_checked,
+    )
+    session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
+
+    result = asyncio.run(
+        refresh_hosted_payment_status(
+            session,
+            payment,
+            service,
+            expiration_grace_seconds=0,
+        )
+    )
+
+    assert result.status == "pending_pally"
+    transition.assert_not_awaited()
+    mark_checked.assert_awaited_once_with(
+        session,
+        17,
+        checkout_expires_at=payment.created_at + timedelta(seconds=1800),
+    )

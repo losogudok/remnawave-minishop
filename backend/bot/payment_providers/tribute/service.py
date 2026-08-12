@@ -659,6 +659,8 @@ async def create_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
         and sale_mode_base(str(ctx.sale_mode)) == "subscription"
         and (
             int(ctx.promo_bonus_days or 0) > 0
+            or float(ctx.promo_regular_traffic_gb or 0) > 0
+            or float(ctx.promo_premium_traffic_gb or 0) > 0
             or ctx.promo_duration_multiplier is not None
             or ctx.promo_traffic_multiplier is not None
         )
@@ -738,6 +740,7 @@ async def pay_tribute_callback_handler(
         parts=parts,
         subscription_service=tribute_service.subscription_service,
         settings=settings,
+        provider_spec=SPEC,
     )
     if quoted_parts is None or hwid_quote:
         await notify_service_unavailable(callback, translator)

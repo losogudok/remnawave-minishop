@@ -6,6 +6,7 @@ from collections.abc import Coroutine
 from typing import Any
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramNetworkError
 from dotenv import load_dotenv
 from startup_banner import print_startup_banner
 
@@ -48,6 +49,7 @@ from bot.services.auto_renew_retry_worker import AutoRenewRetryWorker
 from bot.services.backup_worker import BackupWorker
 from bot.services.event_reactions import register_core_reactions
 from bot.services.message_log_notifier import configure_message_log_notifier
+from bot.services.partner_program_worker import PartnerProgramWorker
 from bot.services.payment_reconciliation_worker import PaymentReconciliationWorker
 from bot.services.settings_override_service import refresh_overrides_from_db
 from bot.services.subscription_notification_worker import SubscriptionNotificationWorker
@@ -57,6 +59,7 @@ from bot.services.wata_reconciliation_worker import WataReconciliationWorker
 from bot.services.yookassa_reconciliation_worker import YooKassaReconciliationWorker
 from bot.utils.message_queue import init_queue_manager
 from config.settings import Settings, get_settings
+from config.telegram_proxy import safe_telegram_network_error_detail
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +79,11 @@ async def _build_worker_context(settings: Settings) -> PluginContext:
     try:
         bot_info = await runtime.bot.get_me()
         bot_username = bot_info.username or bot_username
+    except TelegramNetworkError as exc:
+        logger.warning(
+            "Worker failed to resolve bot username due to a Telegram network error: %s",
+            safe_telegram_network_error_detail(exc),
+        )
     except Exception:
         logger.exception("Worker failed to resolve bot username")
     init_queue_manager(runtime.bot)
@@ -418,6 +426,13 @@ async def _payment_reconciliation_task(ctx: PluginContext) -> None:
     ).run()
 
 
+async def _partner_program_task(ctx: PluginContext) -> None:
+    await PartnerProgramWorker(
+        ctx.settings,
+        ctx.require_session_factory(),
+    ).run()
+
+
 def _backup_worker_task(ctx: PluginContext) -> Coroutine[Any, Any, None]:
     return BackupWorker(
         ctx.settings,
@@ -455,6 +470,10 @@ def _core_worker_tasks() -> list[WorkerTaskSpec]:
         WorkerTaskSpec(
             name="PaymentReconciliationWorker",
             factory=_payment_reconciliation_task,
+        ),
+        WorkerTaskSpec(
+            name="PartnerProgramWorker",
+            factory=_partner_program_task,
         ),
         WorkerTaskSpec(name="BackupWorker", factory=_backup_worker_task),
         WorkerTaskSpec(name="PanelSyncLoop", factory=_panel_sync_loop),

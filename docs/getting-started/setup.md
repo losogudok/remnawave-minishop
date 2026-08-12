@@ -2,6 +2,9 @@
 
 Начните с `.env`, затем поднимите Compose-стек и проверьте backend, worker и frontend.
 
+Перед началом проверьте [системные требования](system-requirements.md). Если подходящего сервера
+еще нет, его можно выбрать у [друзей проекта — wCloud](https://wcloud.host/?from=yKyhIg2jXbNdWZsFzd_tyxLVBYiicNjK).
+
 ## Минимальный запуск
 
 Для нового сервера удобнее начать с интерактивного install wizard: он скачает

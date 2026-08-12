@@ -48,7 +48,7 @@ export function createPaymentResponseHandler({
       if (!response.payment_url) throw response;
       const opened = await openTelegramInvoice(response.payment_url, successContext);
       if (!opened) return false;
-    } else if (response.action === "invoice_sent") {
+    } else if (response.action === "invoice_sent" || response.action === "completed") {
       startPaymentStatusPolling(response.payment_id, successContext);
       closeModal();
       refreshSnapshot();

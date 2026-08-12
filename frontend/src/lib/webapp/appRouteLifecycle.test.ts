@@ -84,5 +84,23 @@ describe("resolvePopstateRoute", () => {
       loadDevices: false,
       section: "home",
     });
+
+    expect(
+      resolvePopstateRoute({
+        fallbackAdminSection: "stats",
+        mode: "app",
+        partnerProgramEnabled: false,
+        pathname: "/partner",
+      })
+    ).toMatchObject({ section: "home" });
+
+    expect(
+      resolvePopstateRoute({
+        fallbackAdminSection: "stats",
+        mode: "app",
+        partnerProgramEnabled: true,
+        pathname: "/partner",
+      })
+    ).toMatchObject({ section: "partner" });
   });
 });

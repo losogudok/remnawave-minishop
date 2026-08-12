@@ -15,9 +15,12 @@ from bot.keyboards.inline.user_keyboards import (
     get_payment_url_keyboard,
     payment_methods_back_callback,
     sale_mode_has_token,
+    sale_mode_promo_code_id,
 )
 from bot.middlewares.i18n import JsonI18n
+from bot.services.checkout_promos import CheckoutPromoResult, resolve_checkout_promo
 from bot.utils.callback_answer import callback_message_or_none
+from config.tariffs_config import default_payment_currency_code_for_settings
 from db.dal import payment_dal, subscription_dal
 from db.models import Payment
 
@@ -27,6 +30,7 @@ from .common import (
     format_human_units,
     mark_payment_failed_creation,
     parse_positive_int_units,
+    payment_creation_failure_metadata,
     sale_mode_base,
     sale_mode_is_hwid_devices,
     sale_mode_tariff_key,
@@ -47,6 +51,7 @@ class PaymentCallbackParts:
     price: float
     sale_mode: str
     entitlement_context_snapshot: str | None = None
+    checkout_promo: CheckoutPromoResult | None = None
 
     @property
     def human_value(self) -> str:
@@ -144,6 +149,7 @@ async def quote_hwid_callback_parts(
     subscription_service: Any,
     currency: str = "rub",
     settings: Any | None = None,
+    provider_spec: Any | None = None,
 ) -> tuple[PaymentCallbackParts | None, dict[str, Any] | None]:
     if sale_mode_base(parts.sale_mode) in {"subscription", "tariff_upgrade"}:
         active_subscription = await subscription_dal.get_active_subscription_by_user_id(
@@ -175,6 +181,52 @@ async def quote_hwid_callback_parts(
             return None, None
         parts = quoted_parts
 
+    promo_code_id = sale_mode_promo_code_id(parts.sale_mode)
+    if promo_code_id is not None:
+        if settings is None or sale_mode_base(parts.sale_mode) != "subscription":
+            return None, None
+        normalized_currency = str(currency or "rub").strip().lower()
+        promo, promo_error = await resolve_checkout_promo(
+            session=session,
+            settings=settings,
+            user_id=int(user_id),
+            promo_code_id=promo_code_id,
+            sale_mode=parts.sale_mode,
+            payment_units=parts.months,
+            traffic_gb=None,
+            method="stars" if normalized_currency == "stars" else "telegram",
+            base_amount=float(parts.price),
+            base_stars=int(parts.price) if normalized_currency == "stars" else None,
+            lock_for_checkout=True,
+        )
+        if (
+            promo_error is not None
+            or promo is None
+            or promo.discount_amount <= 0
+            or (
+                normalized_currency == "stars"
+                and (promo.effective_stars is None or promo.effective_stars <= 0)
+            )
+            or (normalized_currency != "stars" and promo.effective_amount <= 0)
+        ):
+            return None, None
+        if provider_spec is not None and not provider_spec.is_checkout_promo_supported(
+            settings,
+            parts.months,
+            parts.sale_mode,
+            promo,
+        ):
+            return None, None
+        parts = replace(
+            parts,
+            price=(
+                float(promo.effective_stars)
+                if normalized_currency == "stars"
+                else promo.effective_amount
+            ),
+            checkout_promo=promo,
+        )
+
     base = sale_mode_base(parts.sale_mode)
     if base == "subscription" and sale_mode_has_token(parts.sale_mode, HWID_RENEWAL_TOKEN):
         try:
@@ -189,17 +241,26 @@ async def quote_hwid_callback_parts(
             currency=currency,
         )
         if not quote:
+            if not _provider_accepts_amount(provider_spec, settings, currency, parts.price):
+                return None, None
             return await _attach_entitlement_context(
                 session=session,
                 user_id=user_id,
                 parts=parts,
                 quote=None,
             )
-        quoted_parts = PaymentCallbackParts(
+        quoted_parts = replace(
+            parts,
             months=months,
             price=float(parts.price or 0) + float(quote.get("price") or 0),
-            sale_mode=parts.sale_mode,
         )
+        if not _provider_accepts_amount(
+            provider_spec,
+            settings,
+            currency,
+            quoted_parts.price,
+        ):
+            return None, None
         return await _attach_entitlement_context(
             session=session,
             user_id=user_id,
@@ -207,6 +268,8 @@ async def quote_hwid_callback_parts(
             quote=quote,
         )
     if not sale_mode_is_hwid_devices(parts.sale_mode):
+        if not _provider_accepts_amount(provider_spec, settings, currency, parts.price):
+            return None, None
         return await _attach_entitlement_context(
             session=session,
             user_id=user_id,
@@ -226,17 +289,41 @@ async def quote_hwid_callback_parts(
     )
     if not quote:
         return None, None
-    quoted_parts = PaymentCallbackParts(
+    quoted_parts = replace(
+        parts,
         months=device_count,
         price=float(quote.get("price") or 0),
-        sale_mode=parts.sale_mode,
     )
+    if not _provider_accepts_amount(
+        provider_spec,
+        settings,
+        currency,
+        quoted_parts.price,
+    ):
+        return None, None
     return await _attach_entitlement_context(
         session=session,
         user_id=user_id,
         parts=quoted_parts,
         quote=quote,
     )
+
+
+def _provider_accepts_amount(
+    provider_spec: Any | None,
+    settings: Any | None,
+    currency: str,
+    amount: float,
+) -> bool:
+    if provider_spec is None or settings is None:
+        return True
+    normalized_currency = str(currency or "rub").strip().lower()
+    currency_code = (
+        "XTR"
+        if normalized_currency == "stars"
+        else default_payment_currency_code_for_settings(settings)
+    )
+    return bool(provider_spec.is_usable_for_payment_amount(settings, currency_code, amount))
 
 
 async def _attach_entitlement_context(
@@ -586,10 +673,15 @@ async def safe_mark_failed_creation(
     payment: Payment,
     *,
     log_prefix: str,
+    failure_metadata: dict[str, Any] | None = None,
 ) -> None:
     """Mark the payment as ``failed_creation``; swallow + log on failure."""
     try:
-        await mark_payment_failed_creation(session, payment.payment_id)
+        await mark_payment_failed_creation(
+            session,
+            payment.payment_id,
+            **dict(failure_metadata or {}),
+        )
     except Exception:
         await session.rollback()
         logger.exception(
@@ -661,5 +753,16 @@ async def render_link_or_fail(
         bool(provider_payment_id),
         _short_repr(provider_response),
     )
-    await safe_mark_failed_creation(session, payment, log_prefix=log_prefix)
+    failure_metadata = payment_creation_failure_metadata(
+        provider_response,
+        api_success=api_success,
+    )
+    if not provider_id_stored:
+        failure_metadata["failure_kind"] = "provider_correlation_persist_failed"
+    await safe_mark_failed_creation(
+        session,
+        payment,
+        log_prefix=log_prefix,
+        failure_metadata=failure_metadata,
+    )
     await notify_payment_gateway_failure(callback, translator)

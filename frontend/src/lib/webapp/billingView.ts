@@ -20,6 +20,7 @@ type BillingSubscription = BillingPlan & {
   can_topup_traffic?: boolean;
   premium_limit_bytes?: number | string;
   premium_topup_always_available?: boolean;
+  premium_traffic_limited?: boolean;
   premium_unlimited_override?: boolean;
   premium_used_bytes?: number | string;
   regular_unlimited_override?: boolean;
@@ -106,7 +107,10 @@ export function computeBillingView({
     : topupUnlockPercent;
   const premiumEffectiveUnlockPercent = subscription?.premium_topup_always_available
     ? 0
-    : topupUnlockPercent;
+    : premiumTrafficLimitVisible(subscription) &&
+        Number(subscription?.premium_limit_bytes || 0) <= 0
+      ? 0
+      : topupUnlockPercent;
   const regularTrafficTopupUnlocked = Boolean(
     canOpenRegularTopupModal && regularTrafficUsagePercent >= regularEffectiveUnlockPercent
   );

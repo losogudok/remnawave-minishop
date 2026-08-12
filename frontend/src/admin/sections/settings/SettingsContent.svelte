@@ -18,6 +18,7 @@
     AdminSelect,
   } from "$components/patterns/admin/index.js";
   import SettingsDisclosureTrigger from "./SettingsDisclosureTrigger.svelte";
+  import ProgramSettingsSections from "./marketing/ProgramSettingsSections.svelte";
   import {
     groupSectionFields,
     semanticFieldGroups,
@@ -51,6 +52,7 @@
   let {
     at,
     settingsLoading,
+    extraDirtyCount = 0,
     visibleSettingsSections,
     settingsDirty,
     settingsSaving,
@@ -96,9 +98,11 @@
     jsonFileHandler,
     markFieldDirty,
     resetField,
+    onNavigateSection = () => {},
   }: {
     at: TranslateFn;
     settingsLoading: boolean;
+    extraDirtyCount?: number;
     visibleSettingsSections: AdminSettingsSection[];
     settingsDirty: SettingsDirtyState;
     settingsSaving: boolean;
@@ -144,6 +148,7 @@
     jsonFileHandler: (field: AdminSettingField) => (event: Event) => void;
     markFieldDirty: (key: string, value: unknown) => void;
     resetField: (field: AdminSettingField) => void;
+    onNavigateSection?: (section: string) => void;
   } = $props();
 
   let settingsSearchOpen = $state(false);
@@ -582,7 +587,7 @@
           ? at("collapse_all", {}, "Collapse all")
           : at("expand_all", {}, "Expand all")}
       </AdminButton>
-      {#if Object.keys(settingsDirty).length > 0}
+      {#if Object.keys(settingsDirty).length > 0 || extraDirtyCount > 0}
         <AdminButton size="sm" variant="primary" onclick={saveSettings} disabled={settingsSaving}>
           {settingsSaving ? at("saving", {}, "Saving...") : at("save", {}, "Save")}
         </AdminButton>
@@ -590,6 +595,12 @@
     </div>
   </div>
   <div class="admin-accordion">
+    <ProgramSettingsSections
+      {at}
+      {settingsOpenSections}
+      {toggleSettingsSection}
+      {onNavigateSection}
+    />
     {#each visibleSettingsSections as section}
       {@const dirtyInSection = section.fields.filter((f) => Boolean(settingsDirty[f.key])).length}
       {@const overriddenInSection = section.fields.filter((f) => isOverridden(f)).length}

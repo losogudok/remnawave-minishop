@@ -77,6 +77,11 @@ EXPECTED_CORE_MIGRATION_IDS = [
     "0054_add_payment_checkout_lifecycle",
     "0055_add_auto_renew_retry_state",
     "0056_add_tariff_binding_audit",
+    "0057_add_platega_subscriptions",
+    "0058_add_partner_program",
+    "0059_add_partner_client_welcome_eligibility",
+    "0060_add_promo_traffic_grants",
+    "0061_add_partner_checkout_balance",
 ]
 
 

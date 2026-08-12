@@ -23,6 +23,7 @@ from ..base import (
 )
 from ..shared import (
     create_webapp_payment_record,
+    mark_payment_failed_creation,
     payment_amount_and_currency_match,
     payment_link_response,
     payment_unavailable,
@@ -292,6 +293,7 @@ async def create_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
     if not service or not service.configured:
         return payment_unavailable()
 
+    payment = None
     try:
         payment = await create_webapp_payment_record(
             ctx,
@@ -313,6 +315,15 @@ async def create_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
         return payment_link_response(payment_url=payment_url, payment_id=payment.payment_id)
     except Exception:
         await ctx.session.rollback()
+        if payment is not None:
+            try:
+                await mark_payment_failed_creation(ctx.session, int(payment.payment_id))
+            except Exception:
+                await ctx.session.rollback()
+                logger.exception(
+                    "QA failed to release checkout after provider creation error for payment %s",
+                    payment.payment_id,
+                )
         logger.exception("QA WebApp payment failed")
         return web.json_response(
             {"ok": False, "error": "payment_failed", "message": "Failed to create payment"},

@@ -158,6 +158,24 @@ describe("broadcastStore", () => {
     ]);
   });
 
+  it("uses the first localized draft when previewing before a language is selected", async () => {
+    const api = vi.fn().mockResolvedValue({
+      ok: true,
+      rendered_text: "Привет",
+      rendered_subject: null,
+      unknown_shortcodes: [],
+      length: 6,
+      sent: true,
+    });
+    const store = makeStore(api);
+    store.updateField({ broadcastTexts: { ru: "Привет" } });
+
+    await store.sendPreview("send_telegram");
+
+    const payload = JSON.parse(api.mock.calls[0][1].body);
+    expect(payload.text).toBe("Привет");
+  });
+
   it("keeps codes owned by a customer in their own dropdown group, below the shared ones", async () => {
     const api = vi.fn().mockResolvedValue({
       ok: true,
@@ -166,8 +184,6 @@ describe("broadcastStore", () => {
         { code: "SALE10", is_active: true, max_activations: 100, current_activations: 5 },
         // One allowed activation without an owner is an ordinary shared code.
         { code: "ONCE", is_active: true, max_activations: 1, current_activations: 0 },
-        { code: "SPENT", is_active: true, max_activations: 1, current_activations: 1 },
-        { code: "OFF", is_active: false, max_activations: 50, current_activations: 0 },
       ],
     });
     const store = makeStore(api);
@@ -179,5 +195,71 @@ describe("broadcastStore", () => {
       { value: "ONCE", label: "ONCE · 0/1", group: "Shared codes" },
       { value: "SOLO", label: "SOLO · 0/1", group: "Personal codes" },
     ]);
+    expect(api).toHaveBeenCalledWith("/admin/promos/options");
+  });
+
+  it("keeps shared suggestions before personal suggestions while searching", async () => {
+    const api = vi.fn().mockResolvedValue({
+      ok: true,
+      promos: [
+        { code: "PERSONAL", max_activations: 1, current_activations: 0, user_id: 42 },
+        { code: "PERSONAL-SHARED", max_activations: 20, current_activations: 0, user_id: null },
+      ],
+    });
+    const store = makeStore(api);
+
+    await store.loadPromoOptions("personal");
+
+    expect(api).toHaveBeenCalledWith("/admin/promos/options?query=personal");
+    expect(store.broadcastPromoOptions.map((option) => option.value)).toEqual([
+      "PERSONAL-SHARED",
+      "PERSONAL",
+    ]);
+  });
+
+  it("ignores suggestions from an older search that finishes last", async () => {
+    let resolveOld: (value: unknown) => void = () => {};
+    let resolveNew: (value: unknown) => void = () => {};
+    const api = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOld = resolve;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveNew = resolve;
+          })
+      );
+    const store = makeStore(api);
+
+    const oldSearch = store.loadPromoOptions("old");
+    const newSearch = store.loadPromoOptions("new");
+    resolveNew({
+      ok: true,
+      promos: [{ code: "NEW", max_activations: 10, current_activations: 0, user_id: null }],
+    });
+    await newSearch;
+    resolveOld({
+      ok: true,
+      promos: [{ code: "OLD", max_activations: 10, current_activations: 0, user_id: null }],
+    });
+    await oldSearch;
+
+    expect(store.broadcastPromoOptions.map((option) => option.value)).toEqual(["NEW"]);
+  });
+
+  it("keeps manual promo entry available when suggestions fail", async () => {
+    const api = vi.fn().mockResolvedValue({ ok: false, error: "unavailable" });
+    const store = makeStore(api);
+
+    await store.loadPromoOptions("manual");
+
+    expect(store.broadcastPromoOptions).toEqual([]);
+    expect(store.broadcastPromoOptionsLoaded).toBe(true);
+    expect(store.broadcastPromoOptionsLoading).toBe(false);
   });
 });

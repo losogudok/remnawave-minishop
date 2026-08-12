@@ -8,7 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.infra.grants import GrantContext, resolve_effective_grant
 from bot.services.panel_activity import record_subscription_panel_activity
-from bot.services.payment_promo import consume_payment_promo, load_payment_promo_effects
+from bot.services.payment_promo import (
+    PaymentPromoRedemptionError,
+    consume_payment_promo,
+    load_payment_promo_effects,
+)
 from bot.utils.date_utils import add_months
 from db.dal import (
     payment_dal,
@@ -268,6 +272,8 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
         base_period_days = (end_after_months - period_start_date).days
         duration_days_total = base_period_days
         applied_promo_bonus_days = 0
+        applied_promo_regular_traffic_gb = 0.0
+        applied_promo_premium_traffic_gb = 0.0
 
         if promo_code_id_from_payment:
             promo_model, promo_effects = await load_payment_promo_effects(
@@ -275,6 +281,12 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                 payment or promo_code_id_from_payment,
             )
             if promo_model is not None and promo_effects is not None:
+                if promo_effects.premium_traffic_gb > 0 and (
+                    tariff is None or not tariff.premium_squad_uuids
+                ):
+                    raise PaymentPromoRedemptionError(
+                        "Premium promo traffic requires a premium-enabled tariff"
+                    )
                 grant = resolve_effective_grant(
                     GrantContext(
                         sale_mode_base="subscription",
@@ -299,9 +311,13 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                     months=months_int,
                     traffic_gb=None,
                     granted_days=grant.extra_days,
+                    granted_regular_traffic_gb=promo_effects.regular_traffic_gb or None,
+                    granted_premium_traffic_gb=promo_effects.premium_traffic_gb or None,
                 )
                 if consumed:
                     applied_promo_bonus_days = grant.extra_days
+                    applied_promo_regular_traffic_gb = promo_effects.regular_traffic_gb
+                    applied_promo_premium_traffic_gb = promo_effects.premium_traffic_gb
                     duration_days_total += applied_promo_bonus_days
                 else:
                     logger.warning(
@@ -373,6 +389,8 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             )
         else:
             topup_balance_bytes = int(getattr(current_active_sub, "topup_balance_bytes", 0) or 0)
+        promo_regular_traffic_bytes = self.gb_to_bytes(applied_promo_regular_traffic_gb)
+        topup_balance_bytes += promo_regular_traffic_bytes
         extra_hwid_devices = 0
         hwid_traffic_bonus_bytes = 0
         hwid_devices_valid_until = None
@@ -395,6 +413,8 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
         premium_topup_balance_bytes = int(
             getattr(current_active_sub, "premium_topup_balance_bytes", 0) or 0
         )
+        promo_premium_traffic_bytes = self.gb_to_bytes(applied_promo_premium_traffic_gb)
+        premium_topup_balance_bytes += promo_premium_traffic_bytes
         premium_topup_used_bytes = int(
             getattr(current_active_sub, "premium_topup_used_bytes", 0) or 0
         )
@@ -404,15 +424,29 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             tariff.monthly_bytes if tariff else self.settings.user_traffic_limit_bytes
         )
         premium_baseline_bytes = tariff.premium_monthly_bytes if tariff else 0
+        premium_bonus_carry = int(getattr(current_active_sub, "premium_bonus_bytes", 0) or 0)
+        if promo_premium_traffic_bytes > 0:
+            premium_overflow_to_cover = max(
+                0,
+                premium_used_bytes
+                - premium_baseline_bytes
+                - premium_topup_used_bytes
+                - premium_bonus_carry,
+            )
+            premium_consume_now = min(premium_topup_balance_bytes, premium_overflow_to_cover)
+            premium_topup_balance_bytes -= premium_consume_now
+            premium_topup_used_bytes += premium_consume_now
         premium_limit_bytes = self._premium_effective_limit_bytes(
             premium_baseline_bytes,
             premium_topup_balance_bytes,
             premium_topup_used_bytes,
+            premium_bonus_carry,
         )
         subscription_amount_for_pricing = max(0.0, float(payment_amount) - hwid_renewal_price)
         effective_monthly_price = subscription_amount_for_pricing / max(1, months_int)
         regular_bonus_carry = int(getattr(current_active_sub, "regular_bonus_bytes", 0) or 0)
         regular_unl_carry = bool(getattr(current_active_sub, "regular_unlimited_override", False))
+        premium_unl_carry = bool(getattr(current_active_sub, "premium_unlimited_override", False))
         traffic_limit_bytes = self._traffic_limit_for_period_tariff(
             tariff,
             topup_balance_bytes,
@@ -423,8 +457,11 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
         )
         base_hwid_limit = self._base_hwid_limit_for_tariff(tariff)
         effective_hwid_limit = self._effective_hwid_limit(base_hwid_limit, extra_hwid_devices)
-        premium_is_limited = bool(
-            premium_limit_bytes > 0 and premium_used_bytes >= premium_limit_bytes
+        premium_is_limited = self._premium_access_should_be_limited(
+            tariff,
+            premium_limit_bytes=premium_limit_bytes,
+            premium_used_bytes=premium_used_bytes,
+            premium_unlimited_override=premium_unl_carry,
         )
         managed_squads = self._panel_squads_for_tariff(
             tariff,
@@ -499,6 +536,8 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             "premium_topup_balance_bytes": premium_topup_balance_bytes,
             "premium_topup_used_bytes": premium_topup_used_bytes,
             "premium_used_bytes": premium_used_bytes,
+            "premium_bonus_bytes": premium_bonus_carry,
+            "premium_unlimited_override": premium_unl_carry,
             "premium_is_limited": premium_is_limited,
             "premium_period_start_at": premium_period_start_at,
             "period_start_at": None,
@@ -603,6 +642,23 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             )
             return None
 
+        if promo_regular_traffic_bytes > 0:
+            await entitlement_helpers.record_traffic_topup_best_effort(
+                session,
+                subscription_id=new_or_updated_sub.subscription_id,
+                payment_id=payment_db_id,
+                purchased_bytes=promo_regular_traffic_bytes,
+                kind="promo_topup",
+            )
+        if promo_premium_traffic_bytes > 0:
+            await entitlement_helpers.record_traffic_topup_best_effort(
+                session,
+                subscription_id=new_or_updated_sub.subscription_id,
+                payment_id=payment_db_id,
+                purchased_bytes=promo_premium_traffic_bytes,
+                kind="promo_premium_topup",
+            )
+
         final_subscription_url = updated_panel_user.get("subscriptionUrl")
         final_panel_short_uuid = updated_panel_user.get("shortUuid", panel_short_uuid)
         await self._send_payment_success_email(
@@ -623,6 +679,8 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             "panel_short_uuid": final_panel_short_uuid,
             "subscription_url": final_subscription_url,
             "applied_promo_bonus_days": applied_promo_bonus_days,
+            "applied_promo_regular_traffic_gb": applied_promo_regular_traffic_gb,
+            "applied_promo_premium_traffic_gb": applied_promo_premium_traffic_gb,
             "tariff_key": tariff.key if tariff else None,
             "was_extension": current_active_sub is not None,
             "hwid_devices_renewal_recommended_count": 0

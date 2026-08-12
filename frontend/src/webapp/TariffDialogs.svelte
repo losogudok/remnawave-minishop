@@ -12,7 +12,7 @@
     methodsForPlan,
   } from "../lib/webapp/tariffs.js";
   import { premiumTitle as premiumTitleFn } from "../lib/webapp/traffic.js";
-  import { formatCompactNumber } from "../lib/webapp/formatters.js";
+  import { formatCompactNumber, formatMoney } from "../lib/webapp/formatters.js";
 
   import Card from "$components/ui/card.svelte";
   import Dialog from "$components/ui/dialog.svelte";
@@ -22,6 +22,8 @@
     PaymentMethodGrid,
   } from "$components/patterns/webapp/index.js";
   import CheckoutPromoRow from "./CheckoutPromoRow.svelte";
+  import PartnerBalanceDiscount from "./payment-dialogs/PartnerBalanceDiscount.svelte";
+  import type { ApiClient } from "$lib/webapp/publicApi.js";
   import type {
     BillingOptionsResponse,
     DeviceTopupOptions,
@@ -36,8 +38,10 @@
   } from "$lib/webapp/types.js";
 
   type CheckoutPlan = PlanView | TariffChangeAction;
+  type BalancePaymentAction = (options?: { usePartnerBalance?: boolean }) => unknown;
 
   let {
+    api,
     applyTariffChange = () => {},
     changeConfirmOpen = $bindable(false),
     changeModalOpen = $bindable(false),
@@ -50,6 +54,7 @@
     checkoutPromoInput = $bindable(""),
     checkoutPromoIsError = false,
     checkoutPromoPriceText = "",
+    checkoutPromoEffectiveAmount = 0,
     checkoutPromoStatus = "",
     checkoutPromoDiscountPercent = 0,
     checkoutPromoAppliesTo = "all",
@@ -78,7 +83,8 @@
     trafficMode = false,
     t = (key) => key,
   }: {
-    applyTariffChange?: VoidAction;
+    api: ApiClient["api"];
+    applyTariffChange?: BalancePaymentAction;
     changeConfirmOpen?: boolean;
     changeModalOpen?: boolean;
     changeOptions?: TariffChangeOptions | null;
@@ -90,6 +96,7 @@
     checkoutPromoInput?: string;
     checkoutPromoIsError?: boolean;
     checkoutPromoPriceText?: string;
+    checkoutPromoEffectiveAmount?: number;
     checkoutPromoStatus?: string;
     checkoutPromoDiscountPercent?: number;
     checkoutPromoAppliesTo?: string;
@@ -97,8 +104,8 @@
     checkoutPromoMinTrafficGb?: number | null;
     applyCheckoutPromo?: VoidAction;
     clearCheckoutPromo?: VoidAction;
-    createDeviceTopupPayment?: VoidAction;
-    createTopupPayment?: VoidAction;
+    createDeviceTopupPayment?: BalancePaymentAction;
+    createTopupPayment?: BalancePaymentAction;
     deviceTopupModalOpen?: boolean;
     deviceTopupOptions?: DeviceTopupOptions | null;
     methods?: PaymentMethodView[];
@@ -354,6 +361,69 @@
   function checkoutPromoBlock(plan: unknown | null) {
     return Boolean(plan || checkoutPromoAppliedCode || checkoutPromoStatus);
   }
+
+  let changeUsePartnerBalance = $state(false);
+  let changePartnerBalanceDiscount = $state(0);
+  let topupUsePartnerBalance = $state(false);
+  let topupPartnerBalanceDiscount = $state(0);
+  let deviceUsePartnerBalance = $state(false);
+  let devicePartnerBalanceDiscount = $state(0);
+
+  function checkoutAmount(plan: CheckoutPlan | null) {
+    const quotedPromoAmount = Number(checkoutPromoEffectiveAmount || 0);
+    if (checkoutPromoAppliedCode && quotedPromoAmount > 0) return quotedPromoAmount;
+    return Number(plan?.price || 0);
+  }
+
+  function selectedMethodMinimum() {
+    const method = methods.find(
+      (item) => String(item.id || "").toLowerCase() === String(selectedMethod || "").toLowerCase()
+    );
+    return Math.max(
+      0,
+      Number(method?.minimum_amount || method?.min_amount || method?.shop_min_amount || 0)
+    );
+  }
+
+  function providerManagesPrice(plan: CheckoutPlan | null) {
+    const normalizedMethod = String(selectedMethod || "").toLowerCase();
+    if (
+      plan?.externally_managed_price_method_ids?.some(
+        (methodId) => String(methodId).toLowerCase() === normalizedMethod
+      )
+    ) {
+      return true;
+    }
+    return Boolean(
+      methods.find((method) => String(method.id || "").toLowerCase() === normalizedMethod)
+        ?.price_managed_externally
+    );
+  }
+
+  function partnerBalanceEligible(plan: CheckoutPlan | null) {
+    return Boolean(
+      plan &&
+      selectedMethod &&
+      checkoutAmount(plan) > 0 &&
+      !String(selectedMethod).toLowerCase().includes("stars") &&
+      !providerManagesPrice(plan)
+    );
+  }
+
+  function partnerCheckoutPriceParts(
+    plan: CheckoutPlan | null,
+    selected: boolean,
+    discount: number
+  ) {
+    if (!selected || discount <= 0 || !plan) return null;
+    return {
+      base: checkoutPlanPriceLabel(plan),
+      discounted: formatMoney(
+        Math.max(0, checkoutAmount(plan) - discount),
+        String(plan.currency || "")
+      ),
+    };
+  }
 </script>
 
 <Dialog
@@ -474,9 +544,22 @@
         <p>{row}</p>
       {/each}
     </Card>
+    {#if selectedChangeAction?.kind === "payment"}
+      <PartnerBalanceDiscount
+        {api}
+        open={changeConfirmOpen}
+        amount={checkoutAmount(selectedChangeAction)}
+        currency={String(selectedChangeAction.currency || "")}
+        eligible={partnerBalanceEligible(selectedChangeAction)}
+        minimumExternalAmount={selectedMethodMinimum()}
+        bind:selected={changeUsePartnerBalance}
+        bind:discount={changePartnerBalanceDiscount}
+        {t}
+      />
+    {/if}
     <Button
       class="wide bottom-action payment-submit-button"
-      onclick={applyTariffChange}
+      onclick={() => applyTariffChange({ usePartnerBalance: changeUsePartnerBalance })}
       disabled={tariffActionBusy ||
         payBusy ||
         (selectedChangeAction?.kind === "payment" && !changePaymentMethodSelected)}
@@ -484,6 +567,17 @@
       {selectedChangeAction?.kind === "payment"
         ? t("wa_confirm_and_pay")
         : t("wa_confirm_and_apply")}
+      {#if partnerCheckoutPriceParts(selectedChangeAction, changeUsePartnerBalance, changePartnerBalanceDiscount)}
+        {@const changeBalancePrice = partnerCheckoutPriceParts(
+          selectedChangeAction,
+          changeUsePartnerBalance,
+          changePartnerBalanceDiscount
+        )}
+        <span class="promo-price-pair">
+          <s>{changeBalancePrice?.base}</s>
+          <b>{changeBalancePrice?.discounted}</b>
+        </span>
+      {/if}
       <ArrowRight size={17} />
     </Button>
     <Button
@@ -567,13 +661,36 @@
           {t}
         />
       {/if}
+      <PartnerBalanceDiscount
+        {api}
+        open={topupModalOpen}
+        amount={checkoutAmount(selectedTopupPlan)}
+        currency={String(selectedTopupPlan?.currency || "")}
+        eligible={partnerBalanceEligible(selectedTopupPlan)}
+        minimumExternalAmount={selectedMethodMinimum()}
+        bind:selected={topupUsePartnerBalance}
+        bind:discount={topupPartnerBalanceDiscount}
+        {t}
+      />
       <Button
         class="wide bottom-action payment-submit-button"
-        onclick={createTopupPayment}
+        onclick={() => createTopupPayment({ usePartnerBalance: topupUsePartnerBalance })}
         disabled={!selectedTopupPlan || !topupPaymentMethodSelected || payBusy}
       >
         {t("wa_buy_traffic")}
-        {selectedTopupPlan ? checkoutPlanPriceLabel(selectedTopupPlan) : ""}
+        {#if partnerCheckoutPriceParts(selectedTopupPlan, topupUsePartnerBalance, topupPartnerBalanceDiscount)}
+          {@const topupBalancePrice = partnerCheckoutPriceParts(
+            selectedTopupPlan,
+            topupUsePartnerBalance,
+            topupPartnerBalanceDiscount
+          )}
+          <span class="promo-price-pair">
+            <s>{topupBalancePrice?.base}</s>
+            <b>{topupBalancePrice?.discounted}</b>
+          </span>
+        {:else}
+          {selectedTopupPlan ? checkoutPlanPriceLabel(selectedTopupPlan) : ""}
+        {/if}
         <LockKeyhole size={17} />
       </Button>
     {:else}
@@ -655,13 +772,36 @@
           {t}
         />
       {/if}
+      <PartnerBalanceDiscount
+        {api}
+        open={deviceTopupModalOpen}
+        amount={checkoutAmount(selectedDeviceTopupPlan)}
+        currency={String(selectedDeviceTopupPlan?.currency || "")}
+        eligible={partnerBalanceEligible(selectedDeviceTopupPlan)}
+        minimumExternalAmount={selectedMethodMinimum()}
+        bind:selected={deviceUsePartnerBalance}
+        bind:discount={devicePartnerBalanceDiscount}
+        {t}
+      />
       <Button
         class="wide bottom-action payment-submit-button"
-        onclick={createDeviceTopupPayment}
+        onclick={() => createDeviceTopupPayment({ usePartnerBalance: deviceUsePartnerBalance })}
         disabled={!selectedDeviceTopupPlan || !devicePaymentMethodSelected || payBusy}
       >
         {t("wa_pay")}
-        {selectedDeviceTopupPlan ? checkoutPlanPriceLabel(selectedDeviceTopupPlan) : ""}
+        {#if partnerCheckoutPriceParts(selectedDeviceTopupPlan, deviceUsePartnerBalance, devicePartnerBalanceDiscount)}
+          {@const deviceBalancePrice = partnerCheckoutPriceParts(
+            selectedDeviceTopupPlan,
+            deviceUsePartnerBalance,
+            devicePartnerBalanceDiscount
+          )}
+          <span class="promo-price-pair">
+            <s>{deviceBalancePrice?.base}</s>
+            <b>{deviceBalancePrice?.discounted}</b>
+          </span>
+        {:else}
+          {selectedDeviceTopupPlan ? checkoutPlanPriceLabel(selectedDeviceTopupPlan) : ""}
+        {/if}
         <LockKeyhole size={17} />
       </Button>
     {:else}

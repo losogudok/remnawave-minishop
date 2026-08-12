@@ -93,22 +93,49 @@ async def list_unsent_failure_notifications(
     session: AsyncSession,
     *,
     limit: int = 100,
+    older_than_seconds: int = 0,
 ) -> list[Payment]:
     """Return new terminal failures whose user notification still needs delivery."""
 
     normalized_status = func.lower(func.trim(Payment.status))
+    conditions = [
+        normalized_status.in_(("failed", "canceled", "cancelled", "failed_creation")),
+        Payment.failure_notified_at.is_(None),
+    ]
+    if older_than_seconds > 0:
+        cutoff = datetime.now(UTC) - timedelta(seconds=int(older_than_seconds))
+        conditions.append(func.coalesce(Payment.updated_at, Payment.created_at) <= cutoff)
     stmt = (
         select(Payment)
-        .where(
-            normalized_status.in_(("failed", "canceled", "cancelled", "failed_creation")),
-            Payment.failure_notified_at.is_(None),
-        )
+        .where(*conditions)
         .options(joinedload(Payment.user), joinedload(Payment.promo_code_used))
         .order_by(Payment.updated_at.asc().nullsfirst(), Payment.payment_id.asc())
         .limit(max(1, int(limit)))
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def mark_user_failures_superseded_by_success(
+    session: AsyncSession,
+    *,
+    user_id: int,
+    succeeded_at: datetime,
+) -> int:
+    """Silence unresolved failures that predate a successful retry."""
+
+    normalized_status = func.lower(func.trim(Payment.status))
+    result = await session.execute(
+        update(Payment)
+        .where(
+            Payment.user_id == user_id,
+            normalized_status.in_(("failed", "canceled", "cancelled", "failed_creation")),
+            Payment.failure_notified_at.is_(None),
+            func.coalesce(Payment.updated_at, Payment.created_at) <= succeeded_at,
+        )
+        .values(failure_notified_at=func.now())
+    )
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 async def mark_failure_notification_sent(

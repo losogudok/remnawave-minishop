@@ -161,7 +161,7 @@ class StartReferralWelcomeBonusTests(IsolatedAsyncioTestCase):
         ensure_channel.assert_not_awaited()
         message.answer.assert_awaited_once_with("registration_invite_required")
 
-    async def test_start_referral_welcome_bonus_passes_default_tariff(self):
+    async def test_start_referral_welcome_bonus_passes_configured_tariff(self):
         end_date = datetime(2026, 1, 9, tzinfo=UTC)
         settings = self._settings(
             REFERRAL_WELCOME_BONUS_DAYS=3,
@@ -179,7 +179,10 @@ class StartReferralWelcomeBonusTests(IsolatedAsyncioTestCase):
                 welcome_bonus_without_telegram_enabled=True,
                 legacy_refs_enabled=True,
             ),
-            tariffs_config=SimpleNamespace(default_tariff="standard"),
+            tariffs_config=SimpleNamespace(
+                default_tariff="standard",
+                referral_welcome_bonus_tariff="starter",
+            ),
         )
         i18n = SimpleNamespace(gettext=lambda lang, key, **kw: key)
         subscription_service = SimpleNamespace(
@@ -243,5 +246,5 @@ class StartReferralWelcomeBonusTests(IsolatedAsyncioTestCase):
             42,
             3,
             reason="referral_welcome_bonus",
-            tariff_key="standard",
+            tariff_key="starter",
         )

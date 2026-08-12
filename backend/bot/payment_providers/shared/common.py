@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from types import SimpleNamespace
@@ -9,7 +9,7 @@ from typing import Any
 from aiohttp import web
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.dal import payment_dal
+from db.dal import payment_checkout_dal, payment_dal
 from db.models import Payment
 
 from ..base import WebAppPaymentContext, normalize_payment_currency_code
@@ -172,6 +172,7 @@ def build_payment_record_payload(
     renewal_subscription_id: int | None = None,
     renewal_cycle_end: Any = None,
     entitlement_context_snapshot: str | None = None,
+    checkout_promo: Any | None = None,
 ) -> dict:
     """Assemble the payment-record dict that every callback handler used to inline.
 
@@ -216,6 +217,10 @@ def build_payment_record_payload(
         )
     if entitlement_context_snapshot is not None:
         payload["entitlement_context_snapshot"] = entitlement_context_snapshot
+    if checkout_promo is not None:
+        from bot.services.checkout_promos import checkout_promo_payment_fields
+
+        payload.update(checkout_promo_payment_fields(checkout_promo))
     return payload
 
 
@@ -323,6 +328,54 @@ def payment_link_response(
     )
 
 
+def _provider_failure_code(value: Any) -> str | None:
+    if isinstance(value, Mapping):
+        for key in ("code", "error_code", "message", "error"):
+            resolved = _provider_failure_code(value.get(key))
+            if resolved:
+                return resolved
+        return None
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            resolved = _provider_failure_code(item)
+            if resolved:
+                return resolved
+        return None
+    if value is None or isinstance(value, bool):
+        return None
+    text = " ".join(str(value).split()).strip()
+    return text[:128] or None
+
+
+def payment_creation_failure_metadata(
+    provider_response: Any,
+    *,
+    api_success: bool,
+) -> dict[str, Any]:
+    """Extract safe, bounded diagnostics from a failed provider creation response."""
+
+    http_status: int | None = None
+    provider_code: str | None = None
+    if isinstance(provider_response, Mapping):
+        try:
+            parsed_status = int(str(provider_response.get("status") or ""))
+        except (TypeError, ValueError):
+            parsed_status = 0
+        if 100 <= parsed_status <= 599:
+            http_status = parsed_status
+        for key in ("message", "error", "code", "error_code", "errors"):
+            provider_code = _provider_failure_code(provider_response.get(key))
+            if provider_code:
+                break
+    return {
+        "failure_kind": (
+            "provider_response_invalid" if api_success else "provider_request_rejected"
+        ),
+        "failure_http_status": http_status,
+        "failure_provider_code": provider_code,
+    }
+
+
 def detached_payment_snapshot(payment: Any) -> SimpleNamespace:
     """Copy scalar payment columns so external calls do not keep a DB transaction open."""
     return SimpleNamespace(
@@ -353,6 +406,8 @@ async def create_base_payment_record(
     promo_code_id: int | None = None,
     promo_effect_summary: str | None = None,
     promo_bonus_days: int | None = None,
+    promo_regular_traffic_gb: float | None = None,
+    promo_premium_traffic_gb: float | None = None,
     promo_discount_percent: float | None = None,
     promo_duration_multiplier: float | None = None,
     promo_traffic_multiplier: float | None = None,
@@ -364,6 +419,11 @@ async def create_base_payment_record(
     checkout_charged_months: int | None = None,
     checkout_charged_gb: float | None = None,
     checkout_quoted_at: Any | None = None,
+    checkout_total_amount: float | None = None,
+    partner_balance_partner_id: int | None = None,
+    partner_balance_amount_minor: int | None = None,
+    partner_balance_currency_scale: int | None = None,
+    funding_source: str = "external",
     tariff_change_quote_snapshot: str | None = None,
     entitlement_context_snapshot: str | None = None,
 ) -> Payment:
@@ -377,6 +437,7 @@ async def create_base_payment_record(
             "description": description,
             "subscription_duration_months": months,
             "provider": provider,
+            "funding_source": funding_source,
             "sale_mode": sale_mode,
             "tariff_key": tariff_key,
             "purchased_gb": purchased_gb,
@@ -390,6 +451,8 @@ async def create_base_payment_record(
             "promo_code_id": promo_code_id,
             "promo_effect_summary": promo_effect_summary,
             "promo_bonus_days": promo_bonus_days,
+            "promo_regular_traffic_gb": promo_regular_traffic_gb,
+            "promo_premium_traffic_gb": promo_premium_traffic_gb,
             "promo_discount_percent": promo_discount_percent,
             "promo_duration_multiplier": promo_duration_multiplier,
             "promo_traffic_multiplier": promo_traffic_multiplier,
@@ -401,10 +464,41 @@ async def create_base_payment_record(
             "checkout_charged_months": checkout_charged_months,
             "checkout_charged_gb": checkout_charged_gb,
             "checkout_quoted_at": checkout_quoted_at,
+            "checkout_total_amount": checkout_total_amount,
+            "partner_balance_amount_minor": partner_balance_amount_minor,
+            "partner_balance_currency_scale": partner_balance_currency_scale,
             "tariff_change_quote_snapshot": tariff_change_quote_snapshot,
             "entitlement_context_snapshot": entitlement_context_snapshot,
         },
     )
+    if partner_balance_amount_minor:
+        if (
+            partner_balance_partner_id is None
+            or partner_balance_currency_scale is None
+            or checkout_total_amount is None
+        ):
+            raise ValueError("Incomplete partner balance allocation")
+        from bot.services.partner_checkout_balance import (
+            PartnerCheckoutBalanceAllocation,
+            PartnerCheckoutBalanceService,
+        )
+        from bot.services.partner_common import amount_to_minor
+
+        allocation = PartnerCheckoutBalanceAllocation(
+            partner_id=partner_balance_partner_id,
+            currency=currency.upper(),
+            currency_scale=partner_balance_currency_scale,
+            checkout_total_minor=amount_to_minor(
+                checkout_total_amount,
+                scale=partner_balance_currency_scale,
+            ),
+            applied_minor=partner_balance_amount_minor,
+        )
+        await PartnerCheckoutBalanceService.reserve(
+            session,
+            payment_id=int(payment.payment_id),
+            allocation=allocation,
+        )
     await session.commit()
     return payment
 
@@ -416,6 +510,7 @@ async def create_webapp_payment_record(
     currency: str,
     status: str,
     provider: str,
+    funding_source: str = "external",
 ) -> Payment:
     amounts = payment_record_amounts(
         months=ctx.months,
@@ -445,6 +540,8 @@ async def create_webapp_payment_record(
         promo_code_id=ctx.promo_code_id,
         promo_effect_summary=ctx.promo_effect_summary,
         promo_bonus_days=ctx.promo_bonus_days,
+        promo_regular_traffic_gb=ctx.promo_regular_traffic_gb,
+        promo_premium_traffic_gb=ctx.promo_premium_traffic_gb,
         promo_discount_percent=ctx.promo_discount_percent,
         promo_duration_multiplier=ctx.promo_duration_multiplier,
         promo_traffic_multiplier=ctx.promo_traffic_multiplier,
@@ -456,6 +553,11 @@ async def create_webapp_payment_record(
         checkout_charged_months=ctx.checkout_charged_months,
         checkout_charged_gb=ctx.checkout_charged_gb,
         checkout_quoted_at=ctx.checkout_quoted_at,
+        checkout_total_amount=ctx.checkout_total_amount,
+        partner_balance_partner_id=ctx.partner_balance_partner_id,
+        partner_balance_amount_minor=ctx.partner_balance_amount_minor,
+        partner_balance_currency_scale=ctx.partner_balance_currency_scale,
+        funding_source=funding_source,
         tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
         entitlement_context_snapshot=ctx.entitlement_context_snapshot,
     )
@@ -466,6 +568,10 @@ async def reusable_webapp_payment_response(
     provider_spec: Any,
     *,
     since_minutes: int | None = None,
+    match_reservations: bool = False,
+    requested_promo_code: str | None = None,
+    preserve_promo_code_case: bool = False,
+    requested_partner_balance: bool = False,
 ) -> web.Response | None:
     resolver = getattr(provider_spec, "reuse_webapp_payment", None)
     if resolver is None:
@@ -477,25 +583,63 @@ async def reusable_webapp_payment_response(
         traffic_gb=ctx.traffic_gb,
         hwid_device_count=ctx.hwid_device_count,
     )
-    payment = await payment_dal.find_recent_pending_provider_payment(
-        ctx.session,
-        user_id=ctx.user_id,
-        provider=provider_spec.provider_key,
-        pending_status=provider_spec.pending_status,
-        amount=ctx.price,
-        currency=ctx.currency,
-        sale_mode=ctx.sale_mode,
-        months=amounts.months,
-        purchased_gb=amounts.purchased_gb,
-        purchased_hwid_devices=amounts.purchased_hwid_devices,
-        hwid_traffic_bonus_bytes=ctx.hwid_traffic_bonus_bytes,
-        tariff_key=amounts.tariff_key,
-        promo_code_id=ctx.promo_code_id,
-        promo_effect_summary=ctx.promo_effect_summary,
-        tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
-        entitlement_context_snapshot=ctx.entitlement_context_snapshot,
-        since_minutes=since_minutes,
+    payment = None
+    if not match_reservations:
+        payment = await payment_dal.find_recent_pending_provider_payment(
+            ctx.session,
+            user_id=ctx.user_id,
+            provider=provider_spec.provider_key,
+            pending_status=provider_spec.pending_status,
+            amount=ctx.price,
+            currency=ctx.currency,
+            sale_mode=ctx.sale_mode,
+            months=amounts.months,
+            purchased_gb=amounts.purchased_gb,
+            purchased_hwid_devices=amounts.purchased_hwid_devices,
+            hwid_traffic_bonus_bytes=ctx.hwid_traffic_bonus_bytes,
+            tariff_key=amounts.tariff_key,
+            promo_code_id=ctx.promo_code_id,
+            promo_effect_summary=ctx.promo_effect_summary,
+            requested_partner_balance=int(ctx.partner_balance_amount_minor or 0) > 0,
+            tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
+            entitlement_context_snapshot=ctx.entitlement_context_snapshot,
+            since_minutes=since_minutes,
+        )
+    has_reservations = bool(
+        match_reservations
+        or ctx.promo_code_id is not None
+        or int(ctx.partner_balance_amount_minor or 0) > 0
     )
+    if payment is None and has_reservations:
+        relaxed_payment = (
+            await payment_checkout_dal.find_recent_pending_provider_payment_for_checkout(
+                ctx.session,
+                user_id=ctx.user_id,
+                provider=provider_spec.provider_key,
+                pending_status=provider_spec.pending_status,
+                currency=ctx.currency,
+                sale_mode=ctx.sale_mode,
+                months=amounts.months,
+                purchased_gb=amounts.purchased_gb,
+                purchased_hwid_devices=amounts.purchased_hwid_devices,
+                hwid_traffic_bonus_bytes=ctx.hwid_traffic_bonus_bytes,
+                tariff_key=amounts.tariff_key,
+                tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
+                entitlement_context_snapshot=ctx.entitlement_context_snapshot,
+                since_minutes=since_minutes,
+                match_reservations=True,
+                requested_promo_code=requested_promo_code,
+                requested_promo_code_id=ctx.promo_code_id,
+                preserve_promo_code_case=preserve_promo_code_case,
+                requested_partner_balance=(
+                    requested_partner_balance
+                    if match_reservations
+                    else int(ctx.partner_balance_amount_minor or 0) > 0
+                ),
+            )
+        )
+        if relaxed_payment is not None:
+            payment = relaxed_payment
     if payment is None:
         return None
 
@@ -507,6 +651,20 @@ async def reusable_webapp_payment_response(
     return payment_link_response(payment_url=payment_url, payment_id=payment_snapshot.payment_id)
 
 
-async def mark_payment_failed_creation(session: AsyncSession, payment_id: int) -> None:
-    await payment_dal.update_payment_status_by_db_id(session, payment_id, "failed_creation")
+async def mark_payment_failed_creation(
+    session: AsyncSession,
+    payment_id: int,
+    *,
+    failure_kind: str | None = None,
+    failure_http_status: int | None = None,
+    failure_provider_code: str | None = None,
+) -> None:
+    await payment_dal.update_payment_status_by_db_id(
+        session,
+        payment_id,
+        "failed_creation",
+        failure_kind=failure_kind,
+        failure_http_status=failure_http_status,
+        failure_provider_code=failure_provider_code,
+    )
     await session.commit()

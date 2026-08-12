@@ -13,14 +13,17 @@ from bot.app.web.context import (
 )
 from bot.infra import events
 from bot.infra.event_payloads import ReferralBonusGrantedPayload
+from bot.services.partner_program_service import PartnerProgramService
 from bot.services.registration_invite_gate import (
     RegistrationInviteRequiredError,
     evaluate_registration_invite,
+    referral_program_enabled,
     resolve_referrer_user_id,
 )
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.utils.text_sanitizer import sanitize_display_name, sanitize_username
 from config.settings import Settings
+from config.tariffs_config import referral_welcome_bonus_tariff_key_for_settings
 from db.dal import subscription_dal, user_dal
 from db.models import User
 
@@ -105,7 +108,7 @@ async def _apply_referral_welcome_bonus_if_needed(
     user: User,
     raw_referral_param: str | None,
 ) -> datetime | None:
-    if not raw_referral_param or not user.referred_by_id:
+    if not raw_referral_param:
         return None
 
     settings: Settings = get_settings(request)
@@ -125,34 +128,37 @@ async def _grant_referral_welcome_bonus_if_eligible(
         return None
     user = locked_user
 
-    if not user.referred_by_id:
-        return None
-
     # One-time grant: once a user has claimed the welcome bonus, never grant it
     # again. Without this marker the bonus could be re-claimed every time the
     # previous grant expired (has_active_subscription alone is not enough).
     if getattr(user, "referral_welcome_bonus_claimed_at", None) is not None:
         return None
 
+    settings: Settings = get_settings(request)
+    eligible_source = referral_program_enabled(settings) and bool(user.referred_by_id)
+    if not eligible_source:
+        eligible_source = await PartnerProgramService(settings).client_welcome_bonus_eligible(
+            session,
+            user_id=int(user.user_id),
+        )
+    if not eligible_source:
+        return None
+
     if await subscription_dal.has_any_subscription_for_user(session, int(user.user_id)):
         return None
 
-    settings: Settings = get_settings(request)
     referral_welcome_days = max(0, int(settings.referral_settings.welcome_bonus_days))
     if referral_welcome_days <= 0:
         return None
 
     subscription_service: SubscriptionService = get_subscription_service(request)
-    default_tariff_key = None
-    tariffs_config = settings.tariffs_config
-    if tariffs_config:
-        default_tariff_key = getattr(tariffs_config, "default_tariff", None)
+    welcome_tariff_key = referral_welcome_bonus_tariff_key_for_settings(settings)
     end_date = await subscription_service.extend_active_subscription_days(
         session,
         int(user.user_id),
         referral_welcome_days,
         reason="referral_welcome_bonus",
-        tariff_key=default_tariff_key,
+        tariff_key=welcome_tariff_key,
     )
     if end_date:
         # Persisted together with the grant on the caller's commit (the extend
@@ -280,6 +286,14 @@ async def _ensure_user_from_telegram(
                 "registration_date": datetime.now(UTC),
             },
         )
+        if created and invite_check.partner_code:
+            await PartnerProgramService(settings).attribute_user(
+                session,
+                user=db_user,
+                partner_code=invite_check.partner_code,
+                source="partner_web_link",
+                registered_via_partner_link=True,
+            )
         db_user._webapp_created = bool(created)
         return db_user
 

@@ -10,6 +10,7 @@ from bot.keyboards.inline.user_keyboards import (
     get_main_menu_inline_keyboard,
 )
 from bot.middlewares.i18n import JsonI18n
+from bot.services.partner_program_service import PartnerProgramService
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.utils.callback_answer import (
     callback_message,
@@ -74,7 +75,6 @@ async def send_main_menu(
     show_trial_button_in_menu = await should_show_trial_button(
         settings, subscription_service, session, user_id
     )
-
     text = _(key="main_menu_greeting", user_name=user_full_name)
     reply_markup = get_main_menu_inline_keyboard(
         current_lang,
@@ -154,12 +154,22 @@ async def send_bot_interface_menu(
     show_trial_button_in_menu = await should_show_trial_button(
         settings, subscription_service, session, user_id
     )
+    referral_program_enabled = await PartnerProgramService(
+        settings
+    ).referral_program_enabled_for_user(
+        session,
+        user_id=user_id,
+    )
 
     text = i18n.gettext(current_lang, "bot_interface_menu_title")
     if settings.SUBSCRIPTION_MINI_APP_URL:
         text = f"{text}\n\n{i18n.gettext(current_lang, 'bot_interface_menu_webapp_hint')}"
     reply_markup = get_bot_interface_inline_keyboard(
-        current_lang, i18n, settings, show_trial_button_in_menu
+        current_lang,
+        i18n,
+        settings,
+        show_trial_button_in_menu,
+        referral_program_enabled=referral_program_enabled,
     )
 
     target_message_obj: types.Message | None = None

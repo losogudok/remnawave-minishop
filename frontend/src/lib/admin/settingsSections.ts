@@ -65,6 +65,20 @@ const PLATEGA_CRYPTO_KEYS = new Set([
   "PLATEGA_CRYPTO_ADMIN_ONLY_ENABLED",
   "PLATEGA_CRYPTO_METHOD",
 ]);
+const PLATEGA_INTERNATIONAL_KEYS = new Set([
+  "PLATEGA_INTERNATIONAL_ENABLED",
+  "PLATEGA_INTERNATIONAL_ADMIN_ONLY_ENABLED",
+  "PLATEGA_INTERNATIONAL_METHOD",
+]);
+const PLATEGA_ALL_METHODS_KEYS = new Set([
+  "PLATEGA_ALL_METHODS_ENABLED",
+  "PLATEGA_ALL_METHODS_ADMIN_ONLY_ENABLED",
+]);
+const PLATEGA_SUBSCRIPTION_KEYS = new Set([
+  "PLATEGA_SUBSCRIPTION_ENABLED",
+  "PLATEGA_SUBSCRIPTION_ADMIN_ONLY_ENABLED",
+  "PLATEGA_SUBSCRIPTION_METHOD",
+]);
 const PLATEGA_LEGACY_KEYS = new Set(["PLATEGA_PAYMENT_METHOD"]);
 const WATA_FIAT_KEYS = new Set([
   "WATA_ENABLED",
@@ -98,7 +112,10 @@ const SEMANTIC_FIELD_GROUP_ORDER: Record<string, number> = {
   platega_common: 1,
   platega_sbp: 2,
   platega_crypto: 3,
-  platega_legacy: 4,
+  platega_international: 4,
+  platega_all_methods: 5,
+  platega_subscription: 6,
+  platega_legacy: 7,
   wata_common: 1,
   wata_fiat: 2,
   wata_crypto: 3,
@@ -255,11 +272,33 @@ export function settingsPathAnchorKey(path: unknown, target: ResolvedSettingsPat
       return settingsFieldGroupAnchorKey("payments", "Platega", "platega_crypto");
     }
     if (
+      fieldGroupToken === "international" ||
+      fieldGroupToken === "internationalcards" ||
+      fieldGroupToken === "plategainternational"
+    ) {
+      return settingsFieldGroupAnchorKey("payments", "Platega", "platega_international");
+    }
+    if (
+      fieldGroupToken === "all" ||
+      fieldGroupToken === "allmethods" ||
+      fieldGroupToken === "chooser" ||
+      fieldGroupToken === "plategaallmethods"
+    ) {
+      return settingsFieldGroupAnchorKey("payments", "Platega", "platega_all_methods");
+    }
+    if (
       fieldGroupToken === "sbp" ||
       fieldGroupToken === "card" ||
       fieldGroupToken === "plategasbp"
     ) {
       return settingsFieldGroupAnchorKey("payments", "Platega", "platega_sbp");
+    }
+    if (
+      fieldGroupToken === "subscription" ||
+      fieldGroupToken === "recurring" ||
+      fieldGroupToken === "plategasubscription"
+    ) {
+      return settingsFieldGroupAnchorKey("payments", "Platega", "platega_subscription");
     }
   }
   if (sectionToken === "payments" && subsectionToken === "wata") {
@@ -416,6 +455,33 @@ function plategaSemanticGroup(field: AdminSettingField): Omit<SemanticFieldGroup
       "Crypto button",
       "settings_group_platega_crypto_hint",
       "Visibility, method ID, and labels for the crypto payment button."
+    );
+  }
+  if (PLATEGA_INTERNATIONAL_KEYS.has(key) || key.startsWith("PAYMENT_PLATEGA_INTERNATIONAL_")) {
+    return fieldGroupMeta(
+      "platega_international",
+      "settings_group_platega_international",
+      "International card button",
+      "settings_group_platega_international_hint",
+      "Visibility, method ID, and labels for international card payments."
+    );
+  }
+  if (PLATEGA_ALL_METHODS_KEYS.has(key) || key.startsWith("PAYMENT_PLATEGA_ALL_METHODS_")) {
+    return fieldGroupMeta(
+      "platega_all_methods",
+      "settings_group_platega_all_methods",
+      "Payment method chooser",
+      "settings_group_platega_all_methods_hint",
+      "A hosted Platega page where the payer chooses an enabled payment method."
+    );
+  }
+  if (PLATEGA_SUBSCRIPTION_KEYS.has(key) || key.startsWith("PAYMENT_PLATEGA_SUBSCRIPTION_")) {
+    return fieldGroupMeta(
+      "platega_subscription",
+      "settings_group_platega_subscription",
+      "Subscription button (recurring)",
+      "settings_group_platega_subscription_hint",
+      "Recurring SBP mandates charged by Platega every period."
     );
   }
   if (PLATEGA_LEGACY_KEYS.has(key)) {

@@ -1,12 +1,19 @@
 <script lang="ts">
   import { AdminBadge, AdminField } from "$components/patterns/admin/index.js";
-  import { Checkbox, Input, RadioGroup, RadioGroupItem } from "$components/ui/index.js";
+  import { Checkbox, Input } from "$components/ui/index.js";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
   type PromoEffectKind =
-    "bonus_days" | "discount_percent" | "duration_multiplier" | "traffic_multiplier";
+    | "bonus_days"
+    | "regular_traffic_gb"
+    | "premium_traffic_gb"
+    | "discount_percent"
+    | "duration_multiplier"
+    | "traffic_multiplier";
   type EffectValues = {
     bonus_days?: number | null;
+    regular_traffic_gb?: number | null;
+    premium_traffic_gb?: number | null;
     discount_percent?: number | null;
     duration_multiplier?: number | null;
     traffic_multiplier?: number | null;
@@ -14,22 +21,20 @@
 
   let {
     at,
-    value,
     values,
     dirtyFields = {},
     bonusRequiresPayment = false,
     bonusModeDirty = false,
-    onValueChange,
+    onEnabledChange,
     onNumberInput,
     onBonusRequiresPaymentChange = () => {},
   }: {
     at: TranslateFn;
-    value: PromoEffectKind;
     values: EffectValues;
     dirtyFields?: Partial<Record<PromoEffectKind, boolean>>;
     bonusRequiresPayment?: boolean;
     bonusModeDirty?: boolean;
-    onValueChange: (value: string) => void;
+    onEnabledChange: (kind: PromoEffectKind, checked: boolean) => void;
     onNumberInput: (field: PromoEffectKind, value: string) => void;
     onBonusRequiresPaymentChange?: (checked: boolean) => void;
   } = $props();
@@ -50,6 +55,26 @@
       title: at("promo_effect_discount_title", {}, "Discount"),
       hint: at("promo_effect_discount_hint", {}, "Reduces the checkout amount before payment."),
       example: at("promo_effect_discount_example", {}, "Example: 15% changes 1000 to 850."),
+    },
+    {
+      kind: "regular_traffic_gb",
+      title: at("promo_effect_regular_traffic_title", {}, "Regular traffic"),
+      hint: at(
+        "promo_effect_regular_traffic_hint",
+        {},
+        "Credits persistent regular top-up traffic that remains until used."
+      ),
+      example: at("promo_effect_regular_traffic_example", {}, "Example: 50 adds 50 GB."),
+    },
+    {
+      kind: "premium_traffic_gb",
+      title: at("promo_effect_premium_traffic_title", {}, "Premium traffic"),
+      hint: at(
+        "promo_effect_premium_traffic_hint",
+        {},
+        "Credits persistent premium top-up traffic for premium-enabled tariffs."
+      ),
+      example: at("promo_effect_premium_traffic_example", {}, "Example: 20 adds 20 GB."),
     },
     {
       kind: "duration_multiplier",
@@ -75,6 +100,12 @@
 
   function fieldLabel(kind: PromoEffectKind): string {
     if (kind === "bonus_days") return at("promo_label_bonus_days", {}, "Bonus days");
+    if (kind === "regular_traffic_gb") {
+      return at("promo_label_regular_traffic_gb", {}, "Regular traffic, GB");
+    }
+    if (kind === "premium_traffic_gb") {
+      return at("promo_label_premium_traffic_gb", {}, "Premium traffic, GB");
+    }
     if (kind === "discount_percent") return at("promo_label_discount", {}, "Discount %");
     if (kind === "duration_multiplier") {
       return at("promo_label_duration_multiplier", {}, "Duration x");
@@ -83,18 +114,21 @@
   }
 
   function fieldValue(kind: PromoEffectKind): string {
-    if (kind === "bonus_days") return String(values.bonus_days || 1);
+    if (kind === "bonus_days") return String(values.bonus_days || 7);
+    if (kind === "regular_traffic_gb") return String(values.regular_traffic_gb || 50);
+    if (kind === "premium_traffic_gb") return String(values.premium_traffic_gb || 20);
     if (kind === "discount_percent") {
-      return values.discount_percent == null ? "" : String(values.discount_percent);
+      return values.discount_percent == null ? "10" : String(values.discount_percent);
     }
     if (kind === "duration_multiplier") {
-      return values.duration_multiplier == null ? "" : String(values.duration_multiplier);
+      return values.duration_multiplier == null ? "2" : String(values.duration_multiplier);
     }
-    return values.traffic_multiplier == null ? "" : String(values.traffic_multiplier);
+    return values.traffic_multiplier == null ? "2" : String(values.traffic_multiplier);
   }
 
   function minValue(kind: PromoEffectKind): string {
     if (kind === "bonus_days") return "1";
+    if (kind === "regular_traffic_gb" || kind === "premium_traffic_gb") return "0.001";
     if (kind === "discount_percent") return "0.01";
     return "1.001";
   }
@@ -106,32 +140,62 @@
   }
 
   function maxValue(kind: PromoEffectKind): string | undefined {
-    return kind === "discount_percent" ? "100" : undefined;
+    if (kind === "discount_percent") return "100";
+    if (kind === "regular_traffic_gb" || kind === "premium_traffic_gb") return "1000000";
+    return undefined;
   }
 
-  function selectKind(kind: PromoEffectKind): void {
-    onValueChange(kind);
+  function isEnabled(kind: PromoEffectKind): boolean {
+    const raw = Number(values[kind] || 0);
+    if (kind === "duration_multiplier" || kind === "traffic_multiplier") return raw > 1;
+    return raw > 0;
+  }
+
+  function isFixedGrantKind(kind: PromoEffectKind): boolean {
+    return kind === "bonus_days" || kind === "regular_traffic_gb" || kind === "premium_traffic_gb";
+  }
+
+  function hasFixedGrant(): boolean {
+    return (
+      isEnabled("bonus_days") || isEnabled("regular_traffic_gb") || isEnabled("premium_traffic_gb")
+    );
+  }
+
+  function hasCheckoutEffect(): boolean {
+    return (
+      isEnabled("discount_percent") ||
+      isEnabled("duration_multiplier") ||
+      isEnabled("traffic_multiplier")
+    );
+  }
+
+  function fixedGrantRequiresCheckout(): boolean {
+    return bonusRequiresPayment || (hasFixedGrant() && hasCheckoutEffect());
+  }
+
+  function isIncompatible(kind: PromoEffectKind): boolean {
+    if (isEnabled(kind)) return false;
+    if (kind === "traffic_multiplier") return hasFixedGrant();
+    return isFixedGrantKind(kind) && isEnabled("traffic_multiplier");
   }
 
   function toggleBonusRequiresPayment(checked: boolean): void {
-    selectKind("bonus_days");
     onBonusRequiresPaymentChange(checked);
   }
 </script>
 
-<RadioGroup class="admin-promo-effect-options" {value} {onValueChange}>
+<div class="admin-promo-effect-options">
   {#each effectOptions as option (option.kind)}
     <div
       class="admin-promo-effect-row"
-      class:is-selected={value === option.kind}
+      class:is-selected={isEnabled(option.kind)}
       class:is-dirty={dirtyFields[option.kind]}
-      onclick={() => selectKind(option.kind)}
-      role="presentation"
     >
-      <RadioGroupItem
-        class="admin-promo-effect-radio"
-        value={option.kind}
+      <Checkbox
+        checked={isEnabled(option.kind)}
+        disabled={isIncompatible(option.kind)}
         ariaLabel={option.title}
+        onCheckedChange={(checked) => onEnabledChange(option.kind, checked)}
       />
       <div class="admin-promo-effect-copy">
         <strong>
@@ -141,7 +205,15 @@
           {/if}
         </strong>
         <small>{option.hint}</small>
-        <span>{option.example}</span>
+        <span>
+          {isIncompatible(option.kind)
+            ? at(
+                "promo_effect_fixed_traffic_multiplier_incompatible",
+                {},
+                "Fixed grants cannot be combined with a traffic multiplier."
+              )
+            : option.example}
+        </span>
       </div>
       <div class="admin-promo-effect-input">
         <AdminField label={fieldLabel(option.kind)}>
@@ -152,50 +224,52 @@
             max={maxValue(option.kind)}
             step={stepValue(option.kind)}
             value={fieldValue(option.kind)}
-            onfocus={() => selectKind(option.kind)}
+            disabled={isIncompatible(option.kind)}
+            onfocus={() => {
+              if (!isEnabled(option.kind)) onEnabledChange(option.kind, true);
+            }}
             oninput={(e) => {
-              selectKind(option.kind);
+              if (!isEnabled(option.kind)) onEnabledChange(option.kind, true);
               onNumberInput(option.kind, inputValue(e));
             }}
           />
         </AdminField>
       </div>
-      {#if option.kind === "bonus_days"}
-        <div class="admin-promo-effect-mode" class:is-dirty={bonusModeDirty}>
-          <label class="admin-promo-effect-mode-line">
-            <Checkbox
-              checked={bonusRequiresPayment}
-              ariaLabel={at("promo_bonus_mode_payment", {}, "Grant after payment")}
-              onCheckedChange={toggleBonusRequiresPayment}
-            />
-            <span class="admin-promo-effect-mode-label">
-              {at("promo_bonus_mode_payment", {}, "Grant after payment")}
-            </span>
-            <small>
-              {bonusRequiresPayment
-                ? at(
-                    "promo_bonus_mode_payment_hint",
-                    {},
-                    "The user is sent to checkout; days are added only after a paid subscription purchase."
-                  )
-                : at(
-                    "promo_bonus_mode_instant_hint",
-                    {},
-                    "The user receives the days immediately when the code is activated."
-                  )}
-            </small>
-          </label>
-          {#if bonusModeDirty}
-            <AdminBadge variant="warning">{at("settings_badge_dirty", {}, "Changed")}</AdminBadge>
-          {/if}
-        </div>
-      {/if}
     </div>
   {/each}
-</RadioGroup>
+  <div class="admin-promo-effect-mode" class:is-dirty={bonusModeDirty}>
+    <label class="admin-promo-effect-mode-line">
+      <Checkbox
+        checked={fixedGrantRequiresCheckout()}
+        disabled={hasFixedGrant() && hasCheckoutEffect()}
+        ariaLabel={at("promo_bonus_mode_payment", {}, "Grant fixed bonuses after payment")}
+        onCheckedChange={toggleBonusRequiresPayment}
+      />
+      <span class="admin-promo-effect-mode-label">
+        {at("promo_bonus_mode_payment", {}, "Grant fixed bonuses after payment")}
+      </span>
+      <small>
+        {fixedGrantRequiresCheckout()
+          ? at(
+              "promo_bonus_mode_payment_hint",
+              {},
+              "Days and fixed traffic are granted after a paid subscription purchase."
+            )
+          : at(
+              "promo_bonus_mode_instant_hint",
+              {},
+              "Days and fixed traffic are granted immediately when the code is activated."
+            )}
+      </small>
+    </label>
+    {#if bonusModeDirty}
+      <AdminBadge variant="warning">{at("settings_badge_dirty", {}, "Changed")}</AdminBadge>
+    {/if}
+  </div>
+</div>
 
 <style>
-  :global(.ui-radio-group.admin-promo-effect-options) {
+  .admin-promo-effect-options {
     display: grid;
     gap: 8px;
   }
@@ -222,16 +296,12 @@
   }
 
   .admin-promo-effect-row.is-dirty {
-    border-color: color-mix(in srgb, var(--warning, #f59e0b) 70%, var(--admin-border));
-    background: color-mix(in srgb, var(--warning, #f59e0b) 8%, var(--admin-surface-2));
+    border-color: color-mix(in srgb, var(--warning) 70%, var(--admin-border));
+    background: color-mix(in srgb, var(--warning) 8%, var(--admin-surface-2));
   }
 
   .admin-promo-effect-row.is-selected {
     background: color-mix(in srgb, var(--accent) 9%, var(--admin-surface-2));
-  }
-
-  :global(.ui-radio-item.admin-promo-effect-radio) {
-    margin-top: 1px;
   }
 
   .admin-promo-effect-copy {
@@ -278,8 +348,8 @@
   }
 
   .admin-promo-effect-mode.is-dirty {
-    border-color: color-mix(in srgb, var(--warning, #f59e0b) 64%, var(--admin-border));
-    background: color-mix(in srgb, var(--warning, #f59e0b) 7%, transparent);
+    border-color: color-mix(in srgb, var(--warning) 64%, var(--admin-border));
+    background: color-mix(in srgb, var(--warning) 7%, transparent);
   }
 
   .admin-promo-effect-mode-line {

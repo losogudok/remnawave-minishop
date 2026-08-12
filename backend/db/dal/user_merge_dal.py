@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from typing import cast as type_cast
 
-from sqlalchemy import String, and_, cast, delete, or_, update
+from sqlalchemy import String, and_, case, cast, delete, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -40,6 +40,14 @@ from ..models import (
     UserBilling,
     UserPaymentMethod,
     UserTelegramAvatar,
+)
+from ..partner_models import (
+    PartnerApplication,
+    PartnerAuditEvent,
+    PartnerClient,
+    PartnerLedgerEntry,
+    PartnerProfile,
+    PartnerWithdrawal,
 )
 from .user_reads_dal import get_user_by_id
 
@@ -223,6 +231,61 @@ async def merge_users(
             "Both accounts already redeemed the same one-time code.",
             message_key="account_merge_duplicate_promo_conflict",
         )
+
+    source_partner = (
+        await session.execute(
+            select(PartnerProfile).where(PartnerProfile.user_id == source_user_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    target_partner = (
+        await session.execute(
+            select(PartnerProfile).where(PartnerProfile.user_id == target_user_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if source_partner and target_partner:
+        raise UserMergeConflictError("Both accounts already have partner profiles.")
+    source_partner_client = (
+        await session.execute(
+            select(PartnerClient)
+            .where(PartnerClient.client_user_id == source_user_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    target_partner_client = (
+        await session.execute(
+            select(PartnerClient)
+            .where(PartnerClient.client_user_id == target_user_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if source_partner_client and target_partner_client:
+        raise UserMergeConflictError("Both accounts are attributed to different partner records.")
+    resulting_partner = target_partner or source_partner
+    resulting_client = target_partner_client or source_partner_client
+    if (
+        resulting_partner
+        and resulting_client
+        and int(resulting_partner.partner_id) == int(resulting_client.partner_id)
+    ):
+        raise UserMergeConflictError("Account merge would create partner self-attribution.")
+    source_pending_application = (
+        await session.execute(
+            select(PartnerApplication.application_id).where(
+                PartnerApplication.user_id == source_user_id,
+                PartnerApplication.status == "pending",
+            )
+        )
+    ).scalar_one_or_none()
+    target_pending_application = (
+        await session.execute(
+            select(PartnerApplication.application_id).where(
+                PartnerApplication.user_id == target_user_id,
+                PartnerApplication.status == "pending",
+            )
+        )
+    ).scalar_one_or_none()
+    if source_pending_application and target_pending_application:
+        raise UserMergeConflictError("Both accounts have pending partner applications.")
 
     source_panel_uuid = source.panel_user_uuid
     target_panel_uuid = target.panel_user_uuid
@@ -466,6 +529,69 @@ async def merge_users(
         .values(referred_by_id=target_user_id)
     )
 
+    await session.execute(
+        update(PartnerProfile)
+        .where(PartnerProfile.user_id == source_user_id)
+        .values(user_id=target_user_id)
+    )
+    await session.execute(
+        update(PartnerClient)
+        .where(PartnerClient.client_user_id == source_user_id)
+        .values(client_user_id=target_user_id)
+    )
+    await session.execute(
+        update(PartnerClient)
+        .where(PartnerClient.attributed_by_admin_id == source_user_id)
+        .values(attributed_by_admin_id=target_user_id)
+    )
+    await session.execute(
+        update(PartnerApplication)
+        .where(PartnerApplication.user_id == source_user_id)
+        .values(user_id=target_user_id)
+    )
+    await session.execute(
+        update(PartnerApplication)
+        .where(PartnerApplication.decided_by_admin_id == source_user_id)
+        .values(decided_by_admin_id=target_user_id)
+    )
+    await session.execute(
+        update(PartnerWithdrawal)
+        .where(PartnerWithdrawal.handled_by_admin_id == source_user_id)
+        .values(handled_by_admin_id=target_user_id)
+    )
+    await session.execute(
+        update(PartnerLedgerEntry)
+        .where(PartnerLedgerEntry.actor_admin_id == source_user_id)
+        .values(actor_admin_id=target_user_id)
+    )
+    await session.execute(
+        update(PartnerAuditEvent)
+        .where(PartnerAuditEvent.actor_user_id == source_user_id)
+        .values(actor_user_id=target_user_id)
+    )
+
+    # Support history and verification codes reference users(user_id) with a
+    # plain foreign key -- no ON DELETE clause, and User declares no
+    # relationship for them, so neither the database nor the ORM moves them
+    # implicitly. Leaving them behind makes the delete below raise
+    # ForeignKeyViolationError and rolls the whole merge back, which is what a
+    # customer who opened a ticket before linking their email would hit.
+    await session.execute(
+        update(SupportTicket)
+        .where(SupportTicket.user_id == source_user_id)
+        .values(user_id=target_user_id)
+    )
+    await session.execute(
+        update(SupportTicketMessage)
+        .where(SupportTicketMessage.author_user_id == source_user_id)
+        .values(author_user_id=target_user_id)
+    )
+    await session.execute(
+        update(EmailVerificationCode)
+        .where(EmailVerificationCode.target_user_id == source_user_id)
+        .values(target_user_id=target_user_id)
+    )
+
     await session.delete(source)
     await session.flush()
     await session.refresh(target)
@@ -501,6 +627,56 @@ async def delete_user_and_relations(session: AsyncSession, user_id: int) -> bool
     # Ensure referral pointers do not block deletion
     await session.execute(
         update(User).where(User.referred_by_id == user_id).values(referred_by_id=None)
+    )
+
+    # Financial partner history is intentionally retained, but the deleted
+    # account must no longer be identifiable or able to receive attribution.
+    now = datetime.now(UTC)
+    profile_ids = (
+        (
+            await session.execute(
+                select(PartnerProfile.partner_id).where(PartnerProfile.user_id == user_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for partner_id in profile_ids:
+        await session.execute(
+            update(PartnerProfile)
+            .where(PartnerProfile.partner_id == partner_id)
+            .values(
+                user_id=None,
+                status="closed",
+                display_label_snapshot=f"Deleted partner {int(partner_id)}",
+                welcome_message=None,
+                pause_reason=None,
+                closed_at=now,
+                updated_at=now,
+            )
+        )
+    await session.execute(
+        update(PartnerClient)
+        .where(PartnerClient.client_user_id == user_id)
+        .values(client_user_id=None, public_label_snapshot="Deleted client")
+    )
+    await session.execute(
+        update(PartnerApplication)
+        .where(PartnerApplication.user_id == user_id)
+        .values(
+            user_id=None,
+            display_label_snapshot="Deleted account",
+            message="",
+            decision_message=None,
+            status=case(
+                (PartnerApplication.status == "pending", "canceled"),
+                else_=PartnerApplication.status,
+            ),
+            decided_at=case(
+                (PartnerApplication.status == "pending", now),
+                else_=PartnerApplication.decided_at,
+            ),
+        )
     )
 
     subscription_ids = select(Subscription.subscription_id).where(Subscription.user_id == user_id)

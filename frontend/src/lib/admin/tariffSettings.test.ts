@@ -4,8 +4,11 @@ import {
   boolValue,
   csvList,
   inputValueForKey,
+  isLastEnabledReferralLink,
+  REFERRAL_SETTING_KEYS,
   providerDisplayName,
   providerSettingsPath,
+  referralLinkResetViolatesRequirement,
   summarizeProviderSupport,
   trafficStrategyOptions,
   valueForKey,
@@ -21,6 +24,10 @@ const fields = new Map<string, SettingField>([
 ]);
 
 describe("tariffSettings", () => {
+  it("keeps the referral program switch first in the settings section", () => {
+    expect(REFERRAL_SETTING_KEYS[0]).toBe("REFERRAL_PROGRAM_ENABLED");
+  });
+
   it("resolves values through dirty state before saved fields", () => {
     const dirty: SettingsDirtyState = {
       ENABLED: { value: false, deleted: false },
@@ -49,6 +56,44 @@ describe("tariffSettings", () => {
     });
   });
 
+  it("locks only the last enabled referral link", () => {
+    const referralFields = new Map<string, SettingField>([
+      [
+        "REFERRAL_WEBAPP_LINK_ENABLED",
+        { key: "REFERRAL_WEBAPP_LINK_ENABLED", label: "Web", value: true },
+      ],
+      [
+        "REFERRAL_TELEGRAM_LINK_ENABLED",
+        { key: "REFERRAL_TELEGRAM_LINK_ENABLED", label: "Telegram", value: false },
+      ],
+    ]);
+
+    expect(isLastEnabledReferralLink("REFERRAL_WEBAPP_LINK_ENABLED", {}, referralFields)).toBe(
+      true
+    );
+    expect(isLastEnabledReferralLink("REFERRAL_TELEGRAM_LINK_ENABLED", {}, referralFields)).toBe(
+      false
+    );
+    expect(
+      isLastEnabledReferralLink(
+        "REFERRAL_WEBAPP_LINK_ENABLED",
+        { REFERRAL_TELEGRAM_LINK_ENABLED: { value: true, deleted: false } },
+        referralFields
+      )
+    ).toBe(false);
+
+    expect(
+      referralLinkResetViolatesRequirement(
+        "REFERRAL_TELEGRAM_LINK_ENABLED",
+        {
+          REFERRAL_WEBAPP_LINK_ENABLED: { value: false, deleted: false },
+          REFERRAL_TELEGRAM_LINK_ENABLED: { value: true, deleted: false },
+        },
+        referralFields
+      )
+    ).toBe(true);
+  });
+
   it("derives provider display names and settings paths", () => {
     expect(providerDisplayName({ provider_key: "platega_sbp" } as ProviderCurrencySupport)).toBe(
       "Platega SBP/card"
@@ -56,6 +101,12 @@ describe("tariffSettings", () => {
     expect(
       providerSettingsPath({ provider_key: "platega_crypto" } as ProviderCurrencySupport)
     ).toEqual(["payments", "platega", "crypto"]);
+    expect(
+      providerSettingsPath({ provider_key: "platega_international" } as ProviderCurrencySupport)
+    ).toEqual(["payments", "platega", "international"]);
+    expect(
+      providerSettingsPath({ provider_key: "platega_all_methods" } as ProviderCurrencySupport)
+    ).toEqual(["payments", "platega", "all-methods"]);
     expect(
       providerSettingsPath({ provider_key: "custom_gateway" } as ProviderCurrencySupport)
     ).toEqual(["payments", "custom-gateway"]);
@@ -72,6 +123,6 @@ describe("tariffSettings", () => {
       "MONTH_ROLLING",
     ]);
     expect(options[0].label).toBe("ru:No automatic reset");
-    expect(options[4].label).toBe("ru:Monthly from reset date");
+    expect(options[4].label).toBe("ru:Monthly from subscription start");
   });
 });

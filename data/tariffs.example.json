@@ -1,5 +1,6 @@
 {
   "default_tariff": "standard",
+  "referral_welcome_bonus_tariff": "standard",
   "default_currency": "rub",
   "tariffs": [
     {
@@ -10,6 +11,7 @@
       "squad_uuids": ["uuid-1", "uuid-2"],
       "premium_squad_uuids": ["premium-squad-uuid"],
       "premium_monthly_gb": 50,
+      "premium_traffic_limit_strategy": "MONTH",
       "premium_topup_packages": {
         "rub": [
           { "gb": 10, "price": 99 },

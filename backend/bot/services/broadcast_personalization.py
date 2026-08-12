@@ -77,6 +77,12 @@ SHORTCODES: dict[str, ShortcodeSpec] = {
         _spec("referral_code", "db"),
         _spec("referral_bot_link", "db"),
         _spec("referral_webapp_link", "db"),
+        _spec("partner_code", "db"),
+        _spec("partner_bot_link", "db"),
+        _spec("partner_webapp_link", "db"),
+        _spec("partner_status", "db"),
+        _spec("partner_commission_rate", "db"),
+        _spec("partner_clients_count", "db"),
     )
 }
 
@@ -134,6 +140,16 @@ _ACTIVE_SUB_SHORTCODES = frozenset(
 _REFERRAL_CODE_SHORTCODES = frozenset(
     {"referral_code", "referral_bot_link", "referral_webapp_link"}
 )
+_PARTNER_SHORTCODES = frozenset(
+    {
+        "partner_code",
+        "partner_bot_link",
+        "partner_webapp_link",
+        "partner_status",
+        "partner_commission_rate",
+        "partner_clients_count",
+    }
+)
 _CONFIG_LINK = "config_link"
 _INSTALL_LINK = "install_link"
 
@@ -166,6 +182,10 @@ class BroadcastUserContext:
     email: str | None = None
     language_code: str | None = None
     referral_code: str | None = None
+    partner_code: str | None = None
+    partner_status: str | None = None
+    partner_commission_bps: int | None = None
+    partner_clients_count: int | None = None
     has_active_subscription: bool = False
     has_any_subscription: bool = False
     end_date: datetime | None = None
@@ -266,6 +286,14 @@ async def load_broadcast_contexts(
     if known & _REFERRAL_CODE_SHORTCODES:
         await _ensure_referral_codes(session, contexts, users_by_id)
 
+    if known & _PARTNER_SHORTCODES:
+        await _load_partner_contexts(
+            session,
+            normalized_ids,
+            contexts,
+            include_client_count="partner_clients_count" in known,
+        )
+
     if _INSTALL_LINK in known:
         await _load_install_links(session, settings, contexts)
 
@@ -362,6 +390,53 @@ async def _ensure_referral_codes(
         ctx.referral_code = code or None
 
 
+async def _load_partner_contexts(
+    session: AsyncSession,
+    user_ids: list[int],
+    contexts: dict[int, BroadcastUserContext],
+    *,
+    include_client_count: bool,
+) -> None:
+    from sqlalchemy import func, select
+
+    from db.partner_models import PartnerClient, PartnerProfile
+
+    partner_users: dict[int, int] = {}
+    for chunk in _chunked(user_ids):
+        result = await session.execute(
+            select(
+                PartnerProfile.partner_id,
+                PartnerProfile.user_id,
+                PartnerProfile.partner_code,
+                PartnerProfile.status,
+                PartnerProfile.commission_bps,
+            ).where(PartnerProfile.user_id.in_(chunk))
+        )
+        for partner_id, user_id, code, status, commission_bps in result.all():
+            uid = int(user_id)
+            ctx = contexts.get(uid)
+            if ctx is None:
+                continue
+            partner_users[int(partner_id)] = uid
+            ctx.partner_code = str(code)
+            ctx.partner_status = str(status)
+            ctx.partner_commission_bps = int(commission_bps)
+
+    if not include_client_count or not partner_users:
+        return
+    partner_ids = list(partner_users)
+    for chunk in _chunked(partner_ids):
+        result = await session.execute(
+            select(PartnerClient.partner_id, func.count(PartnerClient.partner_client_id))
+            .where(PartnerClient.partner_id.in_(chunk))
+            .group_by(PartnerClient.partner_id)
+        )
+        for partner_id, client_count in result.all():
+            ctx = contexts.get(partner_users[int(partner_id)])
+            if ctx is not None:
+                ctx.partner_clients_count = int(client_count or 0)
+
+
 async def _load_install_links(
     session: AsyncSession,
     settings: Settings,
@@ -387,6 +462,7 @@ async def _load_config_links(
 ) -> None:
     import asyncio
 
+    from bot.services.panel_user_snapshot import load_panel_users_by_reference
     from bot.utils.config_link import prepare_config_links
 
     uuids = list(
@@ -399,14 +475,17 @@ async def _load_config_links(
     if not uuids:
         return
 
+    snapshot = await load_panel_users_by_reference(
+        panel_service,
+        uuids,
+        threshold=50,
+        concurrency=_PANEL_LOOKUP_CONCURRENCY,
+    )
     semaphore = asyncio.Semaphore(_PANEL_LOOKUP_CONCURRENCY)
 
     async def resolve(panel_uuid: str) -> str | None:
         async with semaphore:
-            try:
-                panel_user = await panel_service.get_user_by_uuid(panel_uuid)
-            except Exception:
-                return None
+            panel_user = snapshot.users_by_reference.get(panel_uuid)
             raw_link = ""
             if isinstance(panel_user, dict):
                 raw_link = str(panel_user.get("subscriptionUrl") or "").strip()
@@ -486,6 +565,7 @@ def _resolve_value(
     settings: Settings,
     bot_username: str,
 ) -> str:
+    from bot.utils.partner_links import build_partner_bot_link, build_partner_webapp_link
     from bot.utils.referral_links import build_bot_referral_link, build_webapp_referral_link
 
     def t(key: str) -> str:
@@ -507,12 +587,16 @@ def _resolve_value(
             return t("broadcast_value_no_subscription")
         if name == "config_link":
             return t("broadcast_value_config_unavailable")
-        _empty_without_user = _REFERRAL_CODE_SHORTCODES | {
-            "last_name",
-            "username",
-            "user_id",
-            "email",
-        }
+        _empty_without_user = (
+            _REFERRAL_CODE_SHORTCODES
+            | _PARTNER_SHORTCODES
+            | {
+                "last_name",
+                "username",
+                "user_id",
+                "email",
+            }
+        )
         return "" if name in _empty_without_user else dash
 
     if name == "first_name":
@@ -531,6 +615,26 @@ def _resolve_value(
         return build_bot_referral_link(bot_username, ctx.referral_code) or ""
     if name == "referral_webapp_link":
         return build_webapp_referral_link(mini_app_url, ctx.referral_code) or ""
+    if name == "partner_code":
+        return ctx.partner_code or ""
+    if name == "partner_bot_link":
+        if not settings.partner_settings.telegram_link_enabled:
+            return ""
+        return build_partner_bot_link(bot_username, ctx.partner_code) or ""
+    if name == "partner_webapp_link":
+        if not settings.partner_settings.webapp_link_enabled:
+            return ""
+        return build_partner_webapp_link(mini_app_url, ctx.partner_code) or ""
+    if name == "partner_status":
+        return t(f"wa_partner_status_{ctx.partner_status}") if ctx.partner_status else ""
+    if name == "partner_commission_rate":
+        return (
+            f"{_fmt_amount(ctx.partner_commission_bps / 100)}%"
+            if ctx.partner_commission_bps is not None
+            else ""
+        )
+    if name == "partner_clients_count":
+        return str(ctx.partner_clients_count or 0) if ctx.partner_code else ""
     if name == "install_link":
         return ctx.install_link or dash
     if name == "config_link":

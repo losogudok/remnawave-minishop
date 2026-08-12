@@ -13,8 +13,12 @@ from bot.infra import events
 from bot.infra.event_payloads import ReferralBonusGrantedPayload
 from bot.middlewares.i18n import JsonI18n
 from bot.services.behavior_events import BotStartedSource, emit_bot_started
+from bot.services.partner_program_service import PartnerProgramService
 from bot.services.referral_service import ReferralService
-from bot.services.registration_invite_gate import evaluate_registration_invite
+from bot.services.registration_invite_gate import (
+    evaluate_registration_invite,
+    referral_program_enabled,
+)
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.services.telegram_notifications import TELEGRAM_NOTIFICATIONS_ENABLED
 from bot.utils.callback_answer import (
@@ -28,6 +32,7 @@ from bot.utils.install_links import (
 from bot.utils.mini_app_url import subscription_mini_app_checkout_code_url
 from bot.utils.text_sanitizer import sanitize_display_name, sanitize_username
 from config.settings import Settings
+from config.tariffs_config import referral_welcome_bonus_tariff_key_for_settings
 from db.dal import subscription_dal, user_dal
 
 from .start_channel import ensure_required_channel_subscription
@@ -54,13 +59,14 @@ def _start_argument(message: types.Message) -> str | None:
 def _bot_started_source(
     *,
     ref_match: re.Match | None,
+    partner_match: re.Match | None,
     promo_match: re.Match | None,
     page_ref_match: re.Match | None,
     ad_param_match: re.Match | None,
     ticket_match: re.Match | None,
     notifications_match: re.Match | None,
 ) -> BotStartedSource:
-    if ref_match or page_ref_match:
+    if ref_match or partner_match or page_ref_match:
         return "referral"
     if promo_match:
         return "promo"
@@ -76,6 +82,9 @@ def _bot_started_source(
 @router.message(CommandStart())
 @router.message(CommandStart(magic=F.args.regexp(r"^ref_([A-Za-z0-9_-]{1,64})$").as_("ref_match")))
 @router.message(
+    CommandStart(magic=F.args.regexp(r"^p_([A-Za-z0-9_-]{8,64})$").as_("partner_match"))
+)
+@router.message(
     CommandStart(magic=F.args.regexp(r"^promo_([A-Za-z0-9_-]{1,100})$").as_("promo_match"))
 )
 @router.message(CommandStart(magic=F.args.regexp(r"^admin_user_(\d+)$").as_("admin_user_match")))
@@ -85,7 +94,7 @@ def _bot_started_source(
 @router.message(
     CommandStart(
         magic=F.args.regexp(
-            r"^(?!ref_|promo_|admin_user_|ticket_|notifications$|page_ref$|webapp_auth_)([A-Za-z0-9_\-]{2,64})$"
+            r"^(?!ref_|p_|promo_|admin_user_|ticket_|notifications$|page_ref$|webapp_auth_)([A-Za-z0-9_\-]{2,64})$"
         ).as_("ad_param_match")
     )
 )
@@ -98,6 +107,7 @@ async def start_command_handler(
     referral_service: ReferralService,
     session: AsyncSession,
     ref_match: re.Match | None = None,
+    partner_match: re.Match | None = None,
     promo_match: re.Match | None = None,
     page_ref_match: re.Match | None = None,
     ad_param_match: re.Match | None = None,
@@ -115,6 +125,7 @@ async def start_command_handler(
     start_param = _start_argument(message)
     start_source = _bot_started_source(
         ref_match=ref_match,
+        partner_match=partner_match,
         promo_match=promo_match,
         page_ref_match=page_ref_match,
         ad_param_match=ad_param_match,
@@ -211,6 +222,7 @@ async def start_command_handler(
             return
 
     referred_by_user_id: int | None = None
+    partner_code: str | None = None
     raw_ref_value: str | None = None
     promo_code_to_apply: str | None = None
     should_open_referral_from_start = False
@@ -219,6 +231,9 @@ async def start_command_handler(
 
     if ref_match:
         raw_ref_value = ref_match.group(1)
+    elif partner_match:
+        partner_code = partner_match.group(1)
+        raw_ref_value = f"p_{partner_code}"
     elif promo_match:
         promo_code_to_apply = promo_match.group(1)
         logger.info("User %s started with promo code: %s", user_id, promo_code_to_apply)
@@ -264,6 +279,7 @@ async def start_command_handler(
             await message.answer(_("registration_invite_required"))
             return
         referred_by_user_id = invite_check.referrer_user_id
+        partner_code = invite_check.partner_code
 
     if not db_user:
         user_data_to_create = {
@@ -284,6 +300,18 @@ async def start_command_handler(
             db_user, created = await user_dal.create_user(session, user_data_to_create)
 
             if created:
+                if partner_code:
+                    await PartnerProgramService(settings).attribute_user(
+                        session,
+                        user=db_user,
+                        partner_code=partner_code,
+                        source="partner_telegram_link",
+                        registered_via_partner_link=True,
+                    )
+                await PartnerProgramService(settings).auto_enroll_user(
+                    session,
+                    user=db_user,
+                )
                 try:
                     await session.commit()
                 except Exception as commit_error:
@@ -300,11 +328,24 @@ async def start_command_handler(
 
                 # Auto-grant referral welcome bonus to newly registered referred users.
                 referral_welcome_days = max(0, int(settings.referral_settings.welcome_bonus_days))
-                if referred_by_user_id and referral_welcome_days > 0:
+                if (referred_by_user_id or partner_code) and referral_welcome_days > 0:
                     try:
                         locked_user = await user_dal.lock_user_by_id(session, user_id)
+                        eligible_source = bool(
+                            referral_program_enabled(settings)
+                            and locked_user
+                            and locked_user.referred_by_id
+                        )
+                        if locked_user and not eligible_source:
+                            eligible_source = await PartnerProgramService(
+                                settings
+                            ).client_welcome_bonus_eligible(
+                                session,
+                                user_id=user_id,
+                            )
                         eligible = bool(
                             locked_user
+                            and eligible_source
                             and locked_user.referral_welcome_bonus_claimed_at is None
                             and not await subscription_dal.has_any_subscription_for_user(
                                 session, user_id
@@ -315,17 +356,16 @@ async def start_command_handler(
                             await session.rollback()
                         else:
                             db_user = locked_user
-                            default_tariff_key = None
-                            tariffs_config = settings.tariffs_config
-                            if tariffs_config:
-                                default_tariff_key = getattr(tariffs_config, "default_tariff", None)
+                            welcome_tariff_key = referral_welcome_bonus_tariff_key_for_settings(
+                                settings
+                            )
                             referral_bonus_end_date = (
                                 await subscription_service.extend_active_subscription_days(
                                     session,
                                     user_id,
                                     referral_welcome_days,
                                     reason="referral_welcome_bonus",
-                                    tariff_key=default_tariff_key,
+                                    tariff_key=welcome_tariff_key,
                                 )
                             )
                         if referral_bonus_end_date:
@@ -362,9 +402,10 @@ async def start_command_handler(
                         else:
                             await session.rollback()
                             logger.warning(
-                                "Referral welcome bonus was not applied for user %s (referred by %s).",  # noqa: E501
+                                "Welcome bonus was not applied for user %s (referrer=%s, partner=%s).",  # noqa: E501
                                 user_id,
                                 referred_by_user_id,
+                                bool(partner_code),
                             )
                     except Exception as referral_bonus_error:
                         await session.rollback()

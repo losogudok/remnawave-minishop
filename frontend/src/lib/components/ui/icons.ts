@@ -85,4 +85,4 @@ export {
   WalletCards,
   X,
   Zap,
-} from "lucide-svelte";
+} from "@lucide/svelte";

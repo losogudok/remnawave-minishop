@@ -59,6 +59,8 @@ async def consume_payment_promo(
     payment: Any | None = None,
     granted_days: int | None = None,
     granted_gb: float | None = None,
+    granted_regular_traffic_gb: float | None = None,
+    granted_premium_traffic_gb: float | None = None,
 ) -> bool:
     promo_code_id = int(promo_model.promo_code_id)
     existing = await promo_code_dal.get_user_activation_for_promo(
@@ -72,7 +74,7 @@ async def consume_payment_promo(
         raise PaymentPromoRedemptionError("Attached code was consumed by another payment")
 
     if (
-        (effects.is_bonus_days_only and sale_mode_base != "subscription")
+        (effects.has_fixed_grant and sale_mode_base != "subscription")
         or not effects.applies_to_sale_mode(sale_mode_base)
         or not effects.meets_threshold(
             sale_mode_base=sale_mode_base,
@@ -95,6 +97,8 @@ async def consume_payment_promo(
         enforce_limit=False,
         effect_summary=summarize_effects(effects),
         bonus_days=effects.bonus_days,
+        regular_traffic_gb=effects.regular_traffic_gb or None,
+        premium_traffic_gb=effects.premium_traffic_gb or None,
         discount_percent=effects.discount_percent,
         duration_multiplier=effects.duration_multiplier
         if effects.duration_multiplier != 1.0
@@ -109,6 +113,8 @@ async def consume_payment_promo(
         charged_gb=traffic_gb,
         granted_days=granted_days,
         granted_gb=granted_gb,
+        granted_regular_traffic_gb=granted_regular_traffic_gb,
+        granted_premium_traffic_gb=granted_premium_traffic_gb,
     )
     if activation is None:
         raise PaymentPromoRedemptionError("Attached code could not be consumed")

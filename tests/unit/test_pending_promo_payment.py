@@ -12,7 +12,7 @@ from bot.app.web.webapp.serializers import (
     _serialize_pending_promo_payment,
     _suggested_checkout_promo,
 )
-from db.dal import payment_dal
+from db.dal import payment_checkout_dal, payment_dal
 
 
 class PendingPromoPaymentTests(IsolatedAsyncioTestCase):
@@ -97,9 +97,41 @@ class PendingPromoPaymentTests(IsolatedAsyncioTestCase):
         )
         self.assertIn("payments.user_id = 42", rendered)
         self.assertIn("payments.promo_code_id IS NOT NULL", rendered)
+        self.assertIn("payments.partner_balance_amount_minor > 0", rendered)
         self.assertIn("payments.provider_payment_url IS NOT NULL", rendered)
         self.assertIn("lower(trim(payments.status)) LIKE 'pending_%%'", rendered)
         self.assertIn("ORDER BY payments.created_at DESC, payments.payment_id DESC", rendered)
+
+    async def test_checkout_reuse_matches_requested_promo_and_partner_balance(self) -> None:
+        session = SimpleNamespace(
+            execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: None))
+        )
+
+        await payment_checkout_dal.find_recent_pending_provider_payment_for_checkout(
+            cast(AsyncSession, session),
+            user_id=42,
+            provider="pally",
+            pending_status="pending_pally",
+            currency="RUB",
+            sale_mode="subscription@standard",
+            months=1,
+            purchased_gb=None,
+            purchased_hwid_devices=None,
+            match_reservations=True,
+            requested_promo_code="save20",
+            requested_partner_balance=True,
+        )
+
+        statement = session.execute.await_args.args[0]
+        rendered = str(
+            statement.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+        self.assertIn("upper(coalesce(nullif(trim(promo_codes.archived_code)", rendered.lower())
+        self.assertIn("= 'SAVE20'", rendered)
+        self.assertIn("coalesce(payments.partner_balance_amount_minor, 0) > 0", rendered)
 
     @patch(
         "bot.app.web.webapp.serializers.refresh_payment_status_for_request",
@@ -181,6 +213,9 @@ class PendingPromoPaymentTests(IsolatedAsyncioTestCase):
                 "currency": "RUB",
                 "discount_amount": 180.0,
                 "discount_percent": 20.0,
+                "partner_balance_amount": 0.0,
+                "partner_balance_amount_minor": 0,
+                "partner_balance_currency_scale": 0,
                 "months": 3,
                 "purchased_gb": None,
                 "purchased_hwid_devices": None,
@@ -191,3 +226,20 @@ class PendingPromoPaymentTests(IsolatedAsyncioTestCase):
                 "created_at": "2026-07-29T12:30:00+00:00",
             },
         )
+
+    def test_serializer_includes_partner_balance_as_checkout_discount(self) -> None:
+        payment = self._payment(19)
+        payment.amount = 300.0
+        payment.checkout_base_amount = 550.0
+        payment.checkout_discount_amount = 50.0
+        payment.partner_balance_amount_minor = 20000
+        payment.partner_balance_currency_scale = 2
+
+        result = _serialize_pending_promo_payment(payment)
+
+        assert result is not None
+        self.assertEqual(result["base_amount"], 550.0)
+        self.assertEqual(result["amount"], 300.0)
+        self.assertEqual(result["discount_amount"], 250.0)
+        self.assertEqual(result["partner_balance_amount"], 200.0)
+        self.assertEqual(result["partner_balance_amount_minor"], 20000)

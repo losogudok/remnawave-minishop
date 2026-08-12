@@ -34,11 +34,19 @@ export const TRIAL_GENERAL_KEYS = [
 export const TRIAL_RESET_KEYS = ["TRIAL_TRAFFIC_STRATEGY"];
 export const TRIAL_SQUAD_KEYS = ["TRIAL_SQUAD_UUIDS", "TRIAL_PREMIUM_SQUAD_UUIDS"];
 export const REFERRAL_SETTING_KEYS = [
+  "REFERRAL_PROGRAM_ENABLED",
+  "REFERRAL_WEBAPP_LINK_ENABLED",
+  "REFERRAL_TELEGRAM_LINK_ENABLED",
   "REFERRAL_WELCOME_BONUS_DAYS",
   "REFERRAL_WELCOME_BONUS_WITHOUT_TELEGRAM_ENABLED",
   "REFERRAL_ONE_BONUS_PER_REFEREE",
   "DISPOSABLE_EMAIL_DOMAINS",
 ];
+export const REFERRAL_LINK_KEYS = [
+  "REFERRAL_WEBAPP_LINK_ENABLED",
+  "REFERRAL_TELEGRAM_LINK_ENABLED",
+] as const;
+export type ReferralLinkSettingKey = (typeof REFERRAL_LINK_KEYS)[number];
 export const REFERRAL_WELCOME_KEYS = [
   "REFERRAL_WELCOME_BONUS_DAYS",
   "REFERRAL_WELCOME_BONUS_WITHOUT_TELEGRAM_ENABLED",
@@ -110,7 +118,7 @@ export function trafficStrategyOptions(at: TranslateFn): SelectOption[] {
       label: at(
         "settings_field_user_traffic_strategy_choice_month_rolling",
         {},
-        "Monthly from reset date"
+        "Monthly from subscription start"
       ),
     },
   ];
@@ -123,7 +131,9 @@ const PROVIDER_FALLBACK_LABELS = {
   lava: "LAVA",
   paykilla: "PayKilla",
   platega: "Platega",
+  platega_all_methods: "Platega All methods",
   platega_crypto: "Platega Crypto",
+  platega_international: "Platega International",
   platega_sbp: "Platega SBP/card",
   severpay: "SeverPay",
   stars: "Telegram Stars",
@@ -139,7 +149,9 @@ const PROVIDER_SETTINGS_PATHS: Partial<Record<ProviderKey, string[]>> = {
   lava: ["payments", "lava"],
   paykilla: ["payments", "paykilla"],
   platega: ["payments", "platega"],
+  platega_all_methods: ["payments", "platega", "all-methods"],
   platega_crypto: ["payments", "platega", "crypto"],
+  platega_international: ["payments", "platega", "international"],
   platega_sbp: ["payments", "platega", "sbp"],
   severpay: ["payments", "severpay"],
   stars: ["payments", "telegram-stars"],
@@ -200,6 +212,28 @@ export function isSettingDirty(key: string, dirty: SettingsDirtyState): boolean 
 
 export function dirtyCount(keys: readonly string[], dirty: SettingsDirtyState): number {
   return (keys || []).filter((key) => isSettingDirty(key, dirty)).length;
+}
+
+export function isLastEnabledReferralLink(
+  key: ReferralLinkSettingKey,
+  dirty: SettingsDirtyState,
+  fieldMap: Map<string, SettingField>
+): boolean {
+  const otherKey = REFERRAL_LINK_KEYS.find((candidate) => candidate !== key);
+  return Boolean(
+    otherKey && boolValue(key, dirty, fieldMap) && !boolValue(otherKey, dirty, fieldMap)
+  );
+}
+
+export function referralLinkResetViolatesRequirement(
+  key: ReferralLinkSettingKey,
+  dirty: SettingsDirtyState,
+  fieldMap: Map<string, SettingField>
+): boolean {
+  const otherKey = REFERRAL_LINK_KEYS.find((candidate) => candidate !== key);
+  return Boolean(
+    otherKey && !boolValue(key, {}, fieldMap) && !boolValue(otherKey, dirty, fieldMap)
+  );
 }
 
 export function csvList(

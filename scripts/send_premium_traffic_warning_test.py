@@ -15,9 +15,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
+from bot.app.factories.telegram_bot import create_telegram_bot
 from bot.middlewares.i18n import JsonI18n
 from bot.utils.mini_app_url import subscription_mini_app_topup_url
 from config.settings import Settings
@@ -106,7 +106,7 @@ async def main() -> None:
             **usage,
         )
     markup = _premium_topup_markup(settings, i18n, lang)
-    bot = Bot(token=settings.BOT_TOKEN)
+    bot = create_telegram_bot(settings)
     try:
         await bot.send_message(
             chat_id,

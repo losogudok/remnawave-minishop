@@ -8,6 +8,8 @@ function promo(overrides: TestOverrides = {}) {
     id: 5,
     code: "SAVE20",
     bonus_days: 0,
+    regular_traffic_gb: 0,
+    premium_traffic_gb: 0,
     discount_percent: 20,
     duration_multiplier: null,
     traffic_multiplier: null,
@@ -62,23 +64,33 @@ describe("promosStore", () => {
     expect(toasts).toEqual(["Code saved"]);
   });
 
-  it("saves only one active effect when editing old mixed rows", async () => {
-    const updated = promo({ bonus_days: 0, discount_percent: 15, effect_summary: "-15%" });
+  it("preserves stacked effects when editing a mixed promo", async () => {
+    const updated = promo({
+      bonus_days: 7,
+      regular_traffic_gb: 50,
+      premium_traffic_gb: 20,
+      discount_percent: 15,
+      effect_summary: "+7 days, +50 GB regular, +20 GB premium, -15%",
+    });
     const api = vi.fn().mockResolvedValue({ ok: true, promo: updated });
     const { store } = makeStore(api);
-    store.promos = [promo({ bonus_days: 7, discount_percent: 20, effect_summary: "+7d + -20%" })];
+    store.promos = [
+      promo({
+        bonus_days: 7,
+        regular_traffic_gb: 50,
+        premium_traffic_gb: 20,
+        discount_percent: 20,
+      }),
+    ];
 
     store.openEditPromo(store.promos[0]);
-    store.updateEditDraft({
-      bonus_days: 0,
-      discount_percent: 15,
-      duration_multiplier: null,
-      traffic_multiplier: null,
-    });
+    store.updateEditDraft({ discount_percent: 15 });
     await store.savePromo();
 
     const body = JSON.parse(api.mock.calls[0][1].body);
-    expect(body.bonus_days).toBe(0);
+    expect(body.bonus_days).toBe(7);
+    expect(body.regular_traffic_gb).toBe(50);
+    expect(body.premium_traffic_gb).toBe(20);
     expect(body.discount_percent).toBe(15);
     expect(body.duration_multiplier).toBeNull();
     expect(body.traffic_multiplier).toBeNull();
@@ -112,10 +124,28 @@ describe("promosStore", () => {
 
     await store.openActivations(promo());
 
-    expect(api).toHaveBeenCalledWith("/admin/promos/5/activations?page=0&page_size=25");
+    expect(api).toHaveBeenCalledWith(
+      "/admin/promos/5/activations?page=0&page_size=25&sort=date_desc"
+    );
     expect(store.promoActivationsOpen).toBe(true);
     expect(store.promoActivations).toEqual([row]);
     expect(store.promoActivationsTotal).toBe(1);
+  });
+
+  it("reloads activation history from page one with the selected sort", async () => {
+    const api = vi.fn().mockResolvedValue({ ok: true, activations: [], total: 0 });
+    const { store } = makeStore(api);
+    await store.openActivations(promo());
+    api.mockClear();
+
+    store.setActivationsSort("provider_asc");
+
+    await vi.waitFor(() =>
+      expect(api).toHaveBeenCalledWith(
+        "/admin/promos/5/activations?page=0&page_size=25&sort=provider_asc"
+      )
+    );
+    expect(store.promoActivationsPage).toBe(0);
   });
 
   it("keeps create and edit dialogs mutually exclusive", async () => {

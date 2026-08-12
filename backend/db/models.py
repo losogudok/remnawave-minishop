@@ -14,13 +14,10 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
-
-class Base(AsyncAttrs, DeclarativeBase):
-    pass
+from db.base import Base
 
 
 class User(Base):
@@ -332,6 +329,7 @@ class Payment(Base):
     provider_checked_at = Column(DateTime(timezone=True), nullable=True, index=True)
     failure_notified_at = Column(DateTime(timezone=True), nullable=True, index=True)
     provider = Column(String, nullable=False, default="yookassa", index=True)
+    funding_source = Column(String(48), nullable=False, default="external", index=True)
     idempotence_key = Column(String, unique=True, nullable=True)
     amount = Column(Float, nullable=False)
     currency = Column(String, nullable=False)
@@ -371,6 +369,8 @@ class Payment(Base):
     promo_code_id = Column(Integer, ForeignKey("promo_codes.promo_code_id"), nullable=True)
     promo_effect_summary = Column(String, nullable=True)
     promo_bonus_days = Column(Integer, nullable=True)
+    promo_regular_traffic_gb = Column(Numeric(12, 3), nullable=True)
+    promo_premium_traffic_gb = Column(Numeric(12, 3), nullable=True)
     promo_discount_percent = Column(Numeric(5, 2), nullable=True)
     promo_duration_multiplier = Column(Numeric(6, 3), nullable=True)
     promo_traffic_multiplier = Column(Numeric(6, 3), nullable=True)
@@ -382,6 +382,9 @@ class Payment(Base):
     checkout_charged_months = Column(Integer, nullable=True)
     checkout_charged_gb = Column(Float, nullable=True)
     checkout_quoted_at = Column(DateTime(timezone=True), nullable=True)
+    checkout_total_amount = Column(Float, nullable=True)
+    partner_balance_amount_minor = Column(BigInteger, nullable=True)
+    partner_balance_currency_scale = Column(Integer, nullable=True)
     tariff_change_quote_snapshot = Column(Text, nullable=True)
     entitlement_context_snapshot = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -674,12 +677,56 @@ class UserPaymentMethod(Base):
     )
 
 
+class PlategaSubscription(Base):
+    """One Platega SBP subscription mandate (provider-managed recurrence).
+
+    Platega owns the schedule: it charges the payer every ``interval_code``
+    period and reports each attempt on the shared Platega webhook. This row is
+    the local mirror of that mandate — it is what lets a renewal charge be
+    attributed to a customer and an entitlement long after the original
+    checkout, and what the customer's "turn auto-renew off" action cancels.
+    Rows are created by the webhook (never by checkout), so a mandate the payer
+    abandoned never appears here.
+    """
+
+    __tablename__ = "platega_subscriptions"
+    __table_args__ = (Index("ix_platega_subscriptions_user_status", "user_id", "status"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    platega_subscription_id = Column(String, nullable=False, unique=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False, index=True)
+    # Local lifecycle: active | past_due | cancelled | failed.
+    status = Column(String(32), nullable=False, default="active", index=True)
+    amount = Column(Float, nullable=False)
+    currency = Column(String, nullable=False)
+    # Platega SubscriptionInterval (1=day, 2=week, 3=month, 4=year).
+    interval_code = Column(Integer, nullable=False)
+    months = Column(Integer, nullable=False)
+    sale_mode = Column(String, nullable=True)
+    tariff_key = Column(String, nullable=True, index=True)
+    next_charge_at = Column(DateTime(timezone=True), nullable=True)
+    last_charge_at = Column(DateTime(timezone=True), nullable=True)
+    charges_count = Column(Integer, nullable=False, default=0)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    user = relationship("User")
+
+
 class PromoCode(Base):
     __tablename__ = "promo_codes"
 
     promo_code_id = Column(Integer, primary_key=True, autoincrement=True)
     code = Column(String, unique=True, nullable=False, index=True)
     bonus_days = Column(Integer, nullable=False)
+    regular_traffic_gb = Column(Numeric(12, 3), nullable=True)
+    premium_traffic_gb = Column(Numeric(12, 3), nullable=True)
     discount_percent = Column(Numeric(5, 2), nullable=True)
     duration_multiplier = Column(Numeric(6, 3), nullable=True)
     traffic_multiplier = Column(Numeric(6, 3), nullable=True)
@@ -715,6 +762,8 @@ class PromoCodeActivation(Base):
     payment_id = Column(Integer, ForeignKey("payments.payment_id"), nullable=True)
     effect_summary = Column(String, nullable=True)
     bonus_days = Column(Integer, nullable=True)
+    regular_traffic_gb = Column(Numeric(12, 3), nullable=True)
+    premium_traffic_gb = Column(Numeric(12, 3), nullable=True)
     discount_percent = Column(Numeric(5, 2), nullable=True)
     duration_multiplier = Column(Numeric(6, 3), nullable=True)
     traffic_multiplier = Column(Numeric(6, 3), nullable=True)
@@ -725,6 +774,8 @@ class PromoCodeActivation(Base):
     charged_gb = Column(Float, nullable=True)
     granted_days = Column(Integer, nullable=True)
     granted_gb = Column(Float, nullable=True)
+    granted_regular_traffic_gb = Column(Numeric(12, 3), nullable=True)
+    granted_premium_traffic_gb = Column(Numeric(12, 3), nullable=True)
 
     promo_code = relationship("PromoCode", back_populates="activations")
     user = relationship("User", back_populates="promo_code_activations")
@@ -922,3 +973,9 @@ class LocaleOverride(Base):
         nullable=False,
     )
     updated_by = Column(BigInteger, nullable=True)
+
+
+# Register decomposed domain tables in the same metadata used by create_all,
+# backup/restore and migration tests.  Domain code imports the classes from
+# ``db.partner_models`` directly; this import exists only for registration.
+from db import partner_models as partner_models  # noqa: E402

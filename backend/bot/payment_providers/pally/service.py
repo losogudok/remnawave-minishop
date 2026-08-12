@@ -65,6 +65,11 @@ _SUCCESS_STATUSES = {"success", "overpaid"}
 _FAILED_STATUSES = {"fail", "failed", "cancelled", "canceled"}
 _PENDING_STATUSES = {"new", "process", "underpaid"}
 _PAYMENT_METHODS = {"BANK_CARD", "SBP"}
+_DEFAULT_MINIMUM_AMOUNTS = {
+    "RUB": Decimal("30"),
+    "USD": Decimal("0"),
+    "EUR": Decimal("0"),
+}
 
 
 class PallyConfig(ProviderEnvConfig):
@@ -88,6 +93,9 @@ class PallyConfig(ProviderEnvConfig):
     PAYMENT_METHOD: str | None = None
     LOCALE: str | None = None
     NAME: str | None = None
+    MIN_PAYMENT_AMOUNT_RUB: float = Field(default=30, ge=0)
+    MIN_PAYMENT_AMOUNT_USD: float = Field(default=0, ge=0)
+    MIN_PAYMENT_AMOUNT_EUR: float = Field(default=0, ge=0)
 
     @field_validator("TTL_SECONDS", mode="before")
     @classmethod
@@ -96,6 +104,19 @@ class PallyConfig(ProviderEnvConfig):
             v = v.strip()
             if not v:
                 return None
+        return v
+
+    @field_validator(
+        "MIN_PAYMENT_AMOUNT_RUB",
+        "MIN_PAYMENT_AMOUNT_USD",
+        "MIN_PAYMENT_AMOUNT_EUR",
+        mode="before",
+    )
+    @classmethod
+    def _empty_to_default_minimum(cls, v: Any, info: Any) -> Any:
+        if v is None or (isinstance(v, str) and not v.strip()):
+            currency = str(info.field_name).rsplit("_", 1)[-1]
+            return float(_DEFAULT_MINIMUM_AMOUNTS.get(currency, Decimal("0")))
         return v
 
     @field_validator(
@@ -203,6 +224,50 @@ def _payment_page_url(payload: Mapping[str, Any] | None) -> str | None:
         "paymentUrl",
         "url",
     )
+
+
+def _minimum_amount_for_currency(config: PallyConfig, currency: Any) -> Decimal:
+    currency_code = normalize_payment_currency_code(currency, default="")
+    default = _DEFAULT_MINIMUM_AMOUNTS.get(currency_code, Decimal("0"))
+    raw_value = getattr(config, f"MIN_PAYMENT_AMOUNT_{currency_code}", default)
+    try:
+        value = Decimal(str(raw_value))
+    except (InvalidOperation, TypeError, ValueError):
+        return default
+    if not value.is_finite() or value < 0:
+        return default
+    return value
+
+
+def _pally_payment_minimum_metadata(
+    config: PallyConfig,
+    payment_currency: Any,
+) -> dict[str, Any] | None:
+    currency_code = normalize_payment_currency_code(payment_currency, default="")
+    threshold = _minimum_amount_for_currency(config, currency_code)
+    if threshold <= 0:
+        return None
+    return {
+        "min_amount": str(format_decimal_amount(threshold)),
+        "min_currency": currency_code,
+    }
+
+
+def _pally_payment_amount_supported(
+    config: PallyConfig,
+    payment_currency: Any,
+    amount: Any,
+) -> bool:
+    threshold = _minimum_amount_for_currency(config, payment_currency)
+    if threshold <= 0:
+        return True
+    try:
+        value = Decimal(str(amount))
+    except (InvalidOperation, TypeError, ValueError):
+        return True
+    if not value.is_finite():
+        return True
+    return format_decimal_amount(value) >= format_decimal_amount(threshold)
 
 
 class PallyService(HttpClientMixin):
@@ -378,6 +443,14 @@ class PallyService(HttpClientMixin):
                 "currency": currency_code,
                 "supported_currencies": list(PALLY_SUPPORTED_CURRENCIES),
             }
+        if not _pally_payment_amount_supported(self.config, currency_code, amount):
+            minimum = _minimum_amount_for_currency(self.config, currency_code)
+            return False, {
+                "status": 400,
+                "message": "payment_amount_below_minimum",
+                "minimum_amount": str(format_decimal_amount(minimum)),
+                "currency": currency_code,
+            }
 
         locale = self.config.LOCALE
         if not locale and language:
@@ -418,6 +491,48 @@ class PallyService(HttpClientMixin):
             return False, {"message": "missing_bill_id"}
         return await self._get_json("/bill/status", params={"id": bill_id})
 
+    async def get_bill_payments(self, bill_id: str) -> tuple[bool, dict[str, Any]]:
+        if not bill_id:
+            return False, {"message": "missing_bill_id"}
+        return await self._get_json("/bill/payments", params={"id": bill_id})
+
+    async def cancel_pending_bill(self, bill_id: str) -> tuple[bool, dict[str, Any]]:
+        """Deactivate a still-payable bill without toggling a finished payment."""
+
+        if not bill_id:
+            return False, {"message": "missing_bill_id"}
+        status_ok, status_data = await self.get_bill_status(bill_id)
+        if not status_ok:
+            return False, status_data
+        returned_id = _bill_id_value(status_data)
+        if returned_id and returned_id != bill_id:
+            return False, {"message": "bill_id_mismatch"}
+        status = _status_value(status_data)
+        if status not in _PENDING_STATUSES:
+            return False, {"message": "bill_not_pending", "status": status}
+        active = status_data.get("active", status_data.get("activity"))
+        if str(active).strip().lower() in {"0", "false", "no", "off"}:
+            return True, status_data
+
+        success, data = await self._post_form(
+            "/bill/toggle_activity",
+            {"id": bill_id, "active": "0"},
+        )
+        if not success:
+            return False, data
+        returned_id = _bill_id_value(data)
+        if returned_id and returned_id != bill_id:
+            return False, {"message": "bill_id_mismatch"}
+        activity = data.get("activity", data.get("active"))
+        if activity is not None and str(activity).strip().lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }:
+            return False, {"message": "bill_still_active"}
+        return True, data
+
     async def try_reuse_pending_bill(self, payment: Any) -> str | None:
         provider_payment_id = str(getattr(payment, "provider_payment_id", None) or "").strip()
         payment_url = str(getattr(payment, "provider_payment_url", None) or "").strip()
@@ -426,6 +541,9 @@ class PallyService(HttpClientMixin):
 
         success, data = await self.get_bill_status(provider_payment_id)
         if not success or _status_value(data) not in _PENDING_STATUSES:
+            return None
+        active = data.get("active", data.get("activity"))
+        if str(active).strip().lower() in {"0", "false", "no", "off"}:
             return None
         returned_ids = {
             str(data.get("id") or "").strip(),
@@ -768,6 +886,8 @@ SPEC = PaymentProviderSpec(
     presentation_class=PallyPresentation,
     manifest_fields=_CONFIG_MANIFEST + _PRESENTATION_MANIFEST,
     supported_currencies=PALLY_SUPPORTED_CURRENCIES,
+    payment_amount_resolver=_pally_payment_amount_supported,
+    payment_minimum_resolver=_pally_payment_minimum_metadata,
     currency_support_note="Pally bills support RUB, USD and EUR.",
     info_url="https://pally.info/",
     currency_support_url="https://pally.info/reference/api",

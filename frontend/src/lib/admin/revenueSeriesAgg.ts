@@ -1,6 +1,20 @@
 export type RevenuePoint = { date: string; amount: number };
 
-export type RevenueGranularity = "day" | "week" | "month";
+export const REVENUE_PRESETS = [7, 14, 30, 90, 180, 365, 730, 1095, "all"] as const;
+export const REVENUE_GRANULARITIES = ["day", "week", "month", "year"] as const;
+
+export type RevenuePreset = (typeof REVENUE_PRESETS)[number];
+export type RevenueGranularity = (typeof REVENUE_GRANULARITIES)[number];
+
+export function isRevenuePreset(value: unknown): value is RevenuePreset {
+  if (value === "all") return true;
+  const days = Number(value);
+  return REVENUE_PRESETS.some((preset) => preset === days);
+}
+
+export function isRevenueGranularity(value: unknown): value is RevenueGranularity {
+  return REVENUE_GRANULARITIES.includes(value as RevenueGranularity);
+}
 
 /** UTC ms at noon (stable day bucket) for a YYYY-MM-DD or ISO datetime string. */
 function noonUtcMs(iso: string): number {
@@ -32,6 +46,12 @@ export function utcMonthStartMs(iso: string): number {
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
 }
 
+/** First day of year (UTC) containing `iso`. */
+export function utcYearStartMs(iso: string): number {
+  const d = new Date(iso.includes("T") ? iso : `${iso}T12:00:00Z`);
+  return Date.UTC(d.getUTCFullYear(), 0, 1);
+}
+
 /** `points` sorted ascending by `date`; `fromIso` / `toIso` are YYYY-MM-DD inclusive. */
 export function filterDailyByIsoRange(
   points: RevenuePoint[],
@@ -42,11 +62,32 @@ export function filterDailyByIsoRange(
   return points.filter((p) => p.date >= fromIso && p.date <= toIso);
 }
 
-/** `points` sorted ascending. */
-export function sliceLastDays(points: RevenuePoint[], n: number): RevenuePoint[] {
-  if (!points?.length || n <= 0) return [];
-  const take = Math.min(n, points.length);
-  return points.slice(-take);
+/**
+ * Select a trailing UTC calendar range ending at `toIso`. Unlike slicing by
+ * point count, this remains correct for sparse series such as partner payouts.
+ */
+export function filterRevenueByPreset(
+  points: RevenuePoint[],
+  preset: RevenuePreset,
+  toIso = new Date().toISOString().slice(0, 10)
+): RevenuePoint[] {
+  if (!points?.length) return [];
+  if (preset === "all") return points.slice();
+  const end = noonUtcMs(toIso);
+  if (!end) return [];
+  const start = end - (preset - 1) * 86400000;
+  return points.filter((point) => {
+    const timestamp = noonUtcMs(point.date);
+    return timestamp >= start && timestamp <= end;
+  });
+}
+
+/** A calendar series can be populated entirely with zero-value buckets. */
+export function hasChartValues(points: RevenuePoint[]): boolean {
+  return points.some((point) => {
+    const amount = Number(point.amount);
+    return Number.isFinite(amount) && amount !== 0;
+  });
 }
 
 /** `daily` sorted ascending, day granularity. */
@@ -75,6 +116,19 @@ function bucketMonths(daily: RevenuePoint[]): RevenuePoint[] {
     .map(([ms, amount]) => ({ date: isoUtcDateFromMs(ms), amount }));
 }
 
+/** `daily` sorted ascending. */
+function bucketYears(daily: RevenuePoint[]): RevenuePoint[] {
+  const sums = new Map<number, number>();
+  for (const p of daily) {
+    const k = utcYearStartMs(p.date);
+    const amt = Number(p.amount) || 0;
+    sums.set(k, (sums.get(k) || 0) + amt);
+  }
+  return [...sums.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([ms, amount]) => ({ date: isoUtcDateFromMs(ms), amount }));
+}
+
 /** `dailySorted` ascending by date, consecutive calendar days. */
 export function aggregateRevenueSeries(
   dailySorted: RevenuePoint[],
@@ -83,6 +137,7 @@ export function aggregateRevenueSeries(
   if (!dailySorted?.length) return [];
   if (granularity === "week") return bucketWeeks(dailySorted);
   if (granularity === "month") return bucketMonths(dailySorted);
+  if (granularity === "year") return bucketYears(dailySorted);
   return dailySorted.map((p) => ({ date: p.date, amount: Number(p.amount) || 0 }));
 }
 

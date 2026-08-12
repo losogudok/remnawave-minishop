@@ -2,6 +2,7 @@
   import type { AccountStore } from "../lib/webapp/stores/accountStore.js";
   import type { DevicesStore } from "../lib/webapp/stores/devicesStore.js";
   import type { SupportStore } from "../lib/webapp/stores/supportStore.js";
+  import type { ApiClient } from "../lib/webapp/publicApi.js";
 
   import { lazyScreen } from "../lib/webapp/lazyScreen.svelte.js";
 
@@ -31,6 +32,7 @@
   type LoadDevicesAction = (force?: boolean) => void;
 
   type Props = {
+    api: ApiClient["api"];
     accountStore: AccountStore;
     activateTrial: VoidAction;
     activeTab?: string;
@@ -61,6 +63,8 @@
     goDevices: VoidAction;
     goHome: VoidAction;
     goInvite: VoidAction;
+    goPartner: VoidAction;
+    partnerEnabled?: boolean;
     goSettings: VoidAction;
     goSupport: VoidAction;
     hasActiveTariffSubscription?: boolean;
@@ -107,11 +111,13 @@
     referral?: ReferralState;
     referralBonusDetails?: ReferralBonusDetail[];
     referralOneBonusPerReferee?: boolean;
+    referralProgramEnabled?: boolean;
     referralWelcomeBonusDays?: number;
     regularTrafficTopupBarClickable?: boolean;
     regularTrafficTopupUnlocked?: boolean;
     screen?: string;
     serverStatusUrl?: string;
+    showTelegramLinkedStatus?: boolean;
     setLanguageMenuOpen: BooleanAction;
     setPromoCode: StringAction;
     subscription?: SubscriptionView;
@@ -140,6 +146,7 @@
   };
 
   let {
+    api,
     accountStore,
     activateTrial,
     activeTab = "home",
@@ -170,6 +177,8 @@
     goDevices,
     goHome,
     goInvite,
+    goPartner,
+    partnerEnabled = false,
     goSettings,
     goSupport,
     hasActiveTariffSubscription = false,
@@ -216,11 +225,13 @@
     referral = {},
     referralBonusDetails = [],
     referralOneBonusPerReferee = false,
+    referralProgramEnabled = true,
     referralWelcomeBonusDays = 0,
     regularTrafficTopupBarClickable = false,
     regularTrafficTopupUnlocked = false,
     screen = "home",
     serverStatusUrl = "",
+    showTelegramLinkedStatus = false,
     setLanguageMenuOpen,
     setPromoCode,
     subscription = {},
@@ -254,6 +265,7 @@
   const installGuideScreen = lazyScreen(() => import("./screens/InstallGuideScreen.svelte"));
   const trialActivationScreen = lazyScreen(() => import("./screens/TrialActivationScreen.svelte"));
   const inviteScreen = lazyScreen(() => import("./screens/InviteScreen.svelte"));
+  const partnerScreen = lazyScreen(() => import("./screens/partner/PartnerScreen.svelte"));
   const devicesScreen = lazyScreen(() => import("./screens/DevicesScreen.svelte"));
   const supportScreen = lazyScreen(() => import("./screens/SupportScreen.svelte"));
   const supportTicketScreen = lazyScreen(() => import("./screens/SupportTicketScreen.svelte"));
@@ -262,6 +274,7 @@
     if (screen === "install") installGuideScreen.load();
     else if (screen === "trial") trialActivationScreen.load();
     else if (screen === "invite") inviteScreen.load();
+    else if (screen === "partner") partnerScreen.load();
     else if (screen === "devices") devicesScreen.load();
     else if (screen === "support") {
       supportScreen.load();
@@ -292,6 +305,8 @@
   {goDevices}
   {goHome}
   {goInvite}
+  {goPartner}
+  {partnerEnabled}
   {goSupport}
   {goSettings}
   {t}
@@ -378,6 +393,7 @@
         {referral}
         {referralBonusDetails}
         {referralOneBonusPerReferee}
+        {referralProgramEnabled}
         {referralWelcomeBonusDays}
         {promoCode}
         {promoFieldError}
@@ -390,6 +406,13 @@
         {copyText}
         {t}
       />
+    {:else}
+      <ScreenLoading label={t("wa_loading")} />
+    {/if}
+  {:else if screen === "partner"}
+    {#if partnerScreen.component}
+      {@const Screen = partnerScreen.component}
+      <Screen {api} {copyText} {t} />
     {:else}
       <ScreenLoading label={t("wa_loading")} />
     {/if}
@@ -410,6 +433,7 @@
         {subscriptionReissueBusy}
         {openSubscriptionReissueDialog}
         {openDeviceTopupModal}
+        {openPaymentModal}
         {t}
       />
     {:else}
@@ -460,6 +484,7 @@
       {profileEmail}
       {profileTelegramId}
       {serverStatusUrl}
+      {showTelegramLinkedStatus}
       {subscriptionReissueBusy}
       subscriptionReissueVisible={settingsSubscriptionReissueVisible}
       {supportUrl}

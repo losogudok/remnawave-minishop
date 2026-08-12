@@ -137,6 +137,37 @@ def _configure_persisted_panel_echo(
 
 
 class SubscriptionServiceCalculationTests(unittest.TestCase):
+    def test_zero_premium_quota_limits_access_until_balance_is_added(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            payload = _tariffs_config_payload()
+            payload["tariffs"][0]["premium_monthly_gb"] = 0
+            settings = _make_settings(payload, tmpdir)
+            service = _make_service(settings)
+            tariff = settings.tariffs_config.require("standard")
+
+            self.assertTrue(
+                service._premium_access_should_be_limited(
+                    tariff,
+                    premium_limit_bytes=0,
+                    premium_used_bytes=0,
+                )
+            )
+            self.assertFalse(
+                service._premium_access_should_be_limited(
+                    tariff,
+                    premium_limit_bytes=10 * GIB,
+                    premium_used_bytes=0,
+                )
+            )
+            self.assertFalse(
+                service._premium_access_should_be_limited(
+                    tariff,
+                    premium_limit_bytes=0,
+                    premium_used_bytes=0,
+                    premium_unlimited_override=True,
+                )
+            )
+
     def test_panel_squads_for_tariff_deduplicates_and_can_hide_premium(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             settings = _make_settings(_tariffs_config_payload(), tmpdir)
@@ -278,6 +309,111 @@ class SubscriptionServiceCalculationTests(unittest.TestCase):
                 "MONTH_ROLLING",
             )
 
+    def test_premium_strategy_inherits_effective_regular_strategy_by_default(self):
+        payload = _tariffs_config_payload()
+        payload["tariffs"][0]["traffic_limit_strategy"] = "WEEK"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(payload, tmpdir, USER_TRAFFIC_STRATEGY="DAY")
+            service = _make_service(settings)
+            period_sub = SimpleNamespace(
+                tariff_key="standard",
+                provider="admin",
+                status_from_panel="ACTIVE",
+            )
+            traffic_sub = SimpleNamespace(
+                tariff_key="traffic",
+                provider="admin",
+                status_from_panel="ACTIVE",
+            )
+
+            self.assertTrue(service._premium_traffic_strategy_inherits_regular(period_sub))
+            self.assertEqual(
+                service._premium_traffic_strategy_for_subscription(
+                    period_sub,
+                    panel_user_data={"trafficLimitStrategy": "DAY"},
+                ),
+                "DAY",
+            )
+            self.assertEqual(
+                service._premium_traffic_strategy_for_subscription(traffic_sub),
+                "NO_RESET",
+            )
+
+    def test_explicit_premium_strategy_is_independent_from_regular_panel_strategy(self):
+        payload = _tariffs_config_payload()
+        payload["tariffs"][0]["traffic_limit_strategy"] = "NO_RESET"
+        payload["tariffs"][0]["premium_traffic_limit_strategy"] = "MONTH"
+        payload["tariffs"][1]["premium_traffic_limit_strategy"] = "MONTH"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(payload, tmpdir, USER_TRAFFIC_STRATEGY="DAY")
+            service = _make_service(settings)
+            for tariff_key in ("standard", "traffic"):
+                sub = SimpleNamespace(
+                    tariff_key=tariff_key,
+                    provider="admin",
+                    status_from_panel="ACTIVE",
+                )
+                with self.subTest(tariff_key=tariff_key):
+                    self.assertFalse(service._premium_traffic_strategy_inherits_regular(sub))
+                    self.assertEqual(
+                        service._premium_traffic_strategy_for_subscription(
+                            sub,
+                            panel_user_data={"trafficLimitStrategy": "NO_RESET"},
+                        ),
+                        "MONTH",
+                    )
+
+    def test_explicit_premium_month_rolling_uses_subscription_start(self):
+        payload = _tariffs_config_payload()
+        payload["tariffs"][0]["premium_traffic_limit_strategy"] = "MONTH_ROLLING"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(payload, tmpdir, USER_TRAFFIC_STRATEGY="NO_RESET")
+            service = _make_service(settings)
+            sub = SimpleNamespace(
+                tariff_key="standard",
+                provider="admin",
+                status_from_panel="ACTIVE",
+                start_date=datetime(2026, 5, 3, 12, 30, tzinfo=UTC),
+                premium_period_start_at=datetime(2026, 7, 15, 9, tzinfo=UTC),
+            )
+
+            period_start = service._premium_accounting_period_start(
+                sub,
+                datetime(2026, 8, 20, 9, tzinfo=UTC),
+                panel_user_data={
+                    "trafficLimitStrategy": "MONTH_ROLLING",
+                    "lastTrafficResetAt": "2026-06-15T12:30:00Z",
+                },
+            )
+
+        self.assertEqual(period_start, datetime(2026, 8, 3, 12, 30, tzinfo=UTC))
+
+    def test_explicit_premium_month_rolling_keeps_legacy_saved_period_fallback(self):
+        payload = _tariffs_config_payload()
+        payload["tariffs"][0]["premium_traffic_limit_strategy"] = "MONTH_ROLLING"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(payload, tmpdir)
+            service = _make_service(settings)
+            saved_period_start = datetime(2026, 7, 15, 9, tzinfo=UTC)
+
+            for subscription_start in (None, datetime(2026, 9, 3, tzinfo=UTC)):
+                sub = SimpleNamespace(
+                    tariff_key="standard",
+                    provider="admin",
+                    status_from_panel="ACTIVE",
+                    start_date=subscription_start,
+                    premium_period_start_at=saved_period_start,
+                )
+
+                with self.subTest(subscription_start=subscription_start):
+                    self.assertEqual(
+                        service._premium_accounting_period_start(
+                            sub,
+                            datetime(2026, 8, 20, 9, tzinfo=UTC),
+                        ),
+                        datetime(2026, 8, 15, 9, tzinfo=UTC),
+                    )
+
 
 class SubscriptionServicePremiumAccessTests(unittest.IsolatedAsyncioTestCase):
     async def test_premium_access_hides_hidden_and_disabled_hosts(self):
@@ -417,6 +553,59 @@ class SubscriptionServicePanelPayloadTests(unittest.TestCase):
 
 
 class SubscriptionServiceActivationDispatchTests(unittest.IsolatedAsyncioTestCase):
+    async def test_panel_link_reconnects_stale_v2_uuid_by_username_after_v3_upgrade(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(_tariffs_config_payload(), tmpdir)
+            service = _make_service(settings)
+            upgraded_user = {
+                "id": 42,
+                "uuid": "42",
+                "username": "tg_42",
+                "shortUuid": "short",
+                "telegramId": None,
+            }
+            service.panel_service.get_users_by_filter = AsyncMock(side_effect=[[], [upgraded_user]])
+            service.panel_service.get_user_by_uuid = AsyncMock()
+            service.panel_service.create_panel_user = AsyncMock()
+            session = AsyncMock()
+            db_user = SimpleNamespace(
+                user_id=42,
+                telegram_id=42,
+                panel_user_uuid="old-v2-uuid",
+                email=None,
+                username="trial-user",
+                first_name="Trial",
+                last_name="User",
+            )
+
+            with (
+                patch(
+                    "bot.services.subscription_service_impl.panel_identity.user_dal.get_user_by_panel_uuid",
+                    AsyncMock(return_value=None),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.panel_identity.user_dal.update_user",
+                    AsyncMock(),
+                ) as update_user,
+                patch(
+                    "bot.services.subscription_service_impl.panel_identity.user_panel_squad_override_dal.merge_panel_user_uuid",
+                    AsyncMock(return_value=1),
+                ) as merge_overrides,
+            ):
+                link = await service._get_or_create_panel_user_link(session, 42, db_user)
+
+            self.assertEqual(link.panel_user_uuid, "42")
+            self.assertTrue(link.local_link_updated_now)
+            service.panel_service.get_user_by_uuid.assert_not_awaited()
+            service.panel_service.create_panel_user.assert_not_awaited()
+            update_user.assert_awaited_once_with(session, 42, {"panel_user_uuid": "42"})
+            merge_overrides.assert_awaited_once_with(
+                session,
+                user_id=42,
+                old_panel_user_uuid="old-v2-uuid",
+                new_panel_user_uuid="42",
+            )
+
     async def test_panel_link_creation_uses_operation_specific_access(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             settings = _make_settings(
@@ -2943,7 +3132,7 @@ class SubscriptionServiceActiveDetailsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["traffic_next_reset_at"], datetime(2099, 1, 1, tzinfo=UTC))
         self.assertEqual(result["premium_next_reset_at"], add_months(premium_period_start, 1))
 
-    async def test_traffic_tariff_details_use_global_strategy_for_premium_next_reset(self):
+    async def test_traffic_tariff_details_inherit_no_reset_for_premium_traffic(self):
         payload = _tariffs_config_payload()
         payload["tariffs"][1]["premium_squad_uuids"] = ["premium-squad"]
         payload["tariffs"][1]["premium_monthly_gb"] = 25
@@ -3016,8 +3205,9 @@ class SubscriptionServiceActiveDetailsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["billing_model"], "traffic")
         self.assertEqual(result["traffic_limit_strategy"], "NO_RESET")
         self.assertIsNone(result["traffic_next_reset_at"])
-        self.assertEqual(result["premium_period_start_at"], period_start)
-        self.assertEqual(result["premium_next_reset_at"], add_months(period_start, 1))
+        self.assertEqual(result["premium_traffic_limit_strategy"], "NO_RESET")
+        self.assertEqual(result["premium_period_start_at"], local_sub.start_date)
+        self.assertIsNone(result["premium_next_reset_at"])
 
 
 class SubscriptionDalPayloadTests(unittest.TestCase):

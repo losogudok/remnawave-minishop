@@ -80,7 +80,6 @@
 
   const broadcastTarget = $derived(broadcastStore.broadcastTarget);
   const broadcastTargetError = $derived(broadcastStore.broadcastTargetError);
-  const broadcastText = $derived(broadcastStore.broadcastText);
   const broadcastBusy = $derived(broadcastStore.broadcastBusy);
   const broadcastResult = $derived(broadcastStore.broadcastResult);
   const broadcastCounts = $derived(broadcastStore.broadcastCounts as Record<string, number> | null);
@@ -410,8 +409,8 @@
     display: inline-block;
     padding: 1px 6px;
     border-radius: 6px;
-    background: color-mix(in srgb, var(--admin-accent, #00fe7a) 18%, transparent);
-    color: var(--admin-accent, #00fe7a);
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent);
     font-family: "JetBrains Mono", ui-monospace, monospace;
     font-size: 12px;
   }

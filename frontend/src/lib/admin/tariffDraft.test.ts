@@ -128,6 +128,7 @@ describe("tariffDraft", () => {
       squad_uuids: ["a", "b"],
       monthly_gb: 500,
       traffic_limit_strategy: "WEEK",
+      premium_traffic_limit_strategy: "MONTH",
       topup_packages: { rub: [{ gb: 10, price: 199 }] },
       tribute: {
         link: "https://t.me/tribute/app?startapp=pro",
@@ -146,6 +147,7 @@ describe("tariffDraft", () => {
     expect(draft.key).toBe("pro");
     expect(draft.legacyKeys).toEqual(["premium"]);
     expect(draft.traffic_limit_strategy).toBe("WEEK");
+    expect(draft.premium_traffic_limit_strategy).toBe("MONTH");
     expect(draft.tributeLink).toBe("https://t.me/tribute/app?startapp=pro");
     expect(draft.tributeSubscriptionId).toBe(101);
     expect(draft.topupRows).toEqual([
@@ -196,6 +198,7 @@ describe("tariffDraft", () => {
       prices_stars: { 1: 90, 3: 0 },
       monthly_gb: 500,
       traffic_limit_strategy: "WEEK",
+      premium_traffic_limit_strategy: "MONTH",
       topup_packages: { rub: [{ gb: 10, price: 199 }] },
       tribute: {
         link: "https://t.me/tribute/app?startapp=pro",
@@ -288,6 +291,7 @@ describe("tariffDraft", () => {
       billing_model: "traffic",
       trafficRows: [{ gb: "25", price: "300", stars: "" }],
       conversion_rate_rub_per_gb: "12.5",
+      premium_traffic_limit_strategy: "MONTH",
     };
 
     const tariff = tariffFromDraft(draft);
@@ -296,6 +300,7 @@ describe("tariffDraft", () => {
       billing_model: "traffic",
       traffic_packages: { rub: [{ gb: 25, price: 300 }] },
       conversion_rate_rub_per_gb: 12.5,
+      premium_traffic_limit_strategy: "MONTH",
     });
     expect(tariff).not.toHaveProperty("traffic_limit_strategy");
     expect(tariff).not.toHaveProperty("tribute");
@@ -311,7 +316,27 @@ describe("tariffDraft", () => {
     });
 
     expect(draft.traffic_limit_strategy).toBe("");
+    expect(draft.premium_traffic_limit_strategy).toBe("");
     expect(tariffFromDraft(draft)).not.toHaveProperty("traffic_limit_strategy");
+    expect(tariffFromDraft(draft)).not.toHaveProperty("premium_traffic_limit_strategy");
+  });
+
+  it("round-trips the explicit premium unlimited flag", () => {
+    const draft = draftFromTariff({
+      key: "premium",
+      billing_model: "period",
+      premium_squad_uuids: ["premium-squad"],
+      premium_monthly_gb: 0,
+      premium_unlimited: true,
+      enabled_periods: [1],
+      prices_rub: { 1: 100 },
+    });
+
+    expect(draft.premium_unlimited).toBe(true);
+    expect(tariffFromDraft(draft)).toMatchObject({
+      premium_monthly_gb: 0,
+      premium_unlimited: true,
+    });
   });
 
   it("normalizes uuid lists from arrays and text", () => {

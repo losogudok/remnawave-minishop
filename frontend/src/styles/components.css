@@ -728,11 +728,13 @@
   opacity: 1;
 }
 
-.support-status-tabs {
+.support-status-tabs,
+.partner-tabs-root {
   min-width: 0;
 }
 
-.support-status-tabs-list {
+.support-status-tabs-list,
+.partner-tabs {
   display: flex;
   width: 100%;
   max-width: 100%;
@@ -747,11 +749,13 @@
   box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
 }
 
-.support-status-tabs-list::-webkit-scrollbar {
+.support-status-tabs-list::-webkit-scrollbar,
+.partner-tabs::-webkit-scrollbar {
   display: none;
 }
 
-.support-status-tabs-trigger {
+.support-status-tabs-trigger,
+.partner-tabs-trigger {
   appearance: none;
   display: inline-flex;
   flex: 0 0 auto;
@@ -778,7 +782,8 @@
     transform 0.16s ease;
 }
 
-.support-status-tabs-trigger b {
+.support-status-tabs-trigger b,
+.partner-tabs-trigger b {
   display: inline-grid;
   min-width: 20px;
   height: 20px;
@@ -791,22 +796,26 @@
   padding-inline: 6px;
 }
 
-.support-status-tabs-trigger:hover {
+.support-status-tabs-trigger:hover,
+.partner-tabs-trigger:hover {
   color: var(--text);
 }
 
-.support-status-tabs-trigger[data-state="active"] {
+.support-status-tabs-trigger[data-state="active"],
+.partner-tabs-trigger[data-state="active"] {
   background: var(--panel);
   color: var(--text);
   box-shadow: var(--shadow-soft);
 }
 
-.support-status-tabs-trigger[data-state="active"] b {
+.support-status-tabs-trigger[data-state="active"] b,
+.partner-tabs-trigger[data-state="active"] b {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: color-mix(in srgb, var(--accent) 78%, white);
 }
 
-.support-status-tabs-trigger:focus-visible {
+.support-status-tabs-trigger:focus-visible,
+.partner-tabs-trigger:focus-visible {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 26%, transparent);
 }
 
@@ -820,6 +829,17 @@
   min-height: 180px;
   place-items: center;
   text-align: center;
+}
+
+.support-list-card .ticket-list-item {
+  display: grid;
+  min-width: 0;
+}
+
+/* Held while the list still has no idea whether it will render cards or the empty state; sized
+   like the empty state because that is what most inboxes settle on. */
+.support-list-probe {
+  min-height: 170px;
 }
 
 .support-user-list-skeleton {
@@ -1601,6 +1621,10 @@
     padding-right: 4px;
   }
 
+  .support-list-card .support-list-probe {
+    min-height: 0;
+  }
+
   .support-list-card .support-empty-state {
     width: min(100%, 430px);
     min-height: 220px;
@@ -1774,7 +1798,8 @@
     line-height: 1;
   }
 
-  .support-empty-state {
+  .support-empty-state,
+  .support-list-probe {
     min-height: 190px;
   }
 

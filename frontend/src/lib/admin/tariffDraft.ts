@@ -30,6 +30,8 @@ export interface TariffDraft extends UnknownRecord {
   monthly_gb: string | number;
   traffic_limit_strategy: string;
   premium_monthly_gb: string | number;
+  premium_unlimited: boolean;
+  premium_traffic_limit_strategy: string;
   hwid_device_limit: string | number;
   conversion_rate_rub_per_gb: string | number;
   tributeLink: string;
@@ -97,6 +99,8 @@ export function emptyTariffDraft(): TariffDraft {
     monthly_gb: 500,
     traffic_limit_strategy: "MONTH",
     premium_monthly_gb: "",
+    premium_unlimited: false,
+    premium_traffic_limit_strategy: "",
     hwid_device_limit: "",
     conversion_rate_rub_per_gb: "",
     tributeLink: "",
@@ -336,6 +340,8 @@ export function draftFromTariff(tariff: UnknownRecord, defaultCurrency = "rub"):
     monthly_gb: scalarDraftValue(tariff.monthly_gb),
     traffic_limit_strategy: String(tariff.traffic_limit_strategy || ""),
     premium_monthly_gb: scalarDraftValue(tariff.premium_monthly_gb),
+    premium_unlimited: tariff.premium_unlimited === true,
+    premium_traffic_limit_strategy: String(tariff.premium_traffic_limit_strategy || ""),
     hwid_device_limit: scalarDraftValue(tariff.hwid_device_limit),
     conversion_rate_rub_per_gb: scalarDraftValue(tariff.conversion_rate_rub_per_gb),
     tributeLink: String(tribute.link || ""),
@@ -511,6 +517,11 @@ export function tariffFromDraft(draft: TariffDraft, fallbackCurrency = "rub"): U
   if (hwidPackages) tariff.hwid_device_packages = hwidPackages;
   const premiumMonthlyGb = parseNumber(draft.premium_monthly_gb);
   if (premiumMonthlyGb !== null) tariff.premium_monthly_gb = premiumMonthlyGb;
+  tariff.premium_unlimited = Boolean(draft.premium_unlimited);
+  const premiumTrafficLimitStrategy = String(draft.premium_traffic_limit_strategy || "").trim();
+  if (premiumTrafficLimitStrategy) {
+    tariff.premium_traffic_limit_strategy = premiumTrafficLimitStrategy;
+  }
   const premiumTopupPackages = packageSetFromRows(draft.premiumTopupRows, "gb", defaultCurrency);
   if (premiumTopupPackages) tariff.premium_topup_packages = premiumTopupPackages;
   tariff.premium_topup_always_available = Boolean(draft.premium_topup_always_available);

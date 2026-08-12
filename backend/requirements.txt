@@ -10,10 +10,13 @@ aiogram==3.29.1
     # via -r backend/requirements.in
 aiohappyeyeballs==2.7.1
     # via aiohttp
-aiohttp==3.14.1
+aiohttp==3.14.3
     # via
     #   -r backend/requirements.in
     #   aiogram
+    #   aiohttp-socks
+aiohttp-socks==0.11.0
+    # via -r backend/requirements.in
 aiosignal==1.4.0
     # via aiohttp
 annotated-types==0.7.0
@@ -35,8 +38,10 @@ cffi==2.0.0
     # via cryptography
 charset-normalizer==3.4.7
     # via requests
-cryptography==49.0.0
-    # via pyjwt
+cryptography==50.0.0
+    # via
+    #   -r backend/requirements.in
+    #   pyjwt
 deprecated==1.3.1
     # via yookassa
 distro==1.9.0
@@ -97,6 +102,8 @@ python-dotenv==1.2.2
     # via
     #   -r backend/requirements.in
     #   pydantic-settings
+python-socks[asyncio]==2.8.2
+    # via aiohttp-socks
 redis==8.0.1
     # via -r backend/requirements.in
 requests==2.34.2

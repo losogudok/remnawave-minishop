@@ -30,6 +30,7 @@ async def create_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
         return payment_unavailable()
     currency = (ctx.currency or "RUB").upper()
 
+    payment = None
     try:
         amounts = payment_record_amounts(
             months=ctx.months,
@@ -107,6 +108,16 @@ async def create_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
         return payment_link_response(payment_url=payment_url, payment_id=payment.payment_id)
     except Exception:
         await ctx.session.rollback()
+        if payment is not None:
+            try:
+                await mark_payment_failed_creation(ctx.session, int(payment.payment_id))
+            except Exception:
+                await ctx.session.rollback()
+                logger.exception(
+                    "YooKassa failed to release checkout after provider creation error for "
+                    "payment %s",
+                    payment.payment_id,
+                )
         logger.exception("YooKassa WebApp payment failed")
         return payment_failed()
 

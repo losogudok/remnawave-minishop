@@ -344,6 +344,18 @@ class WebAppAssetTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(".bottom-nav.bottom-nav-many .bottom-nav-label", css)
         self.assertIn("display: none;", css)
 
+    def test_checkout_button_price_pair_inherits_contrast_color(self):
+        css_path = Path(__file__).resolve().parents[2] / "frontend/src/styles/webapp.css"
+        css = css_path.read_text(encoding="utf-8")
+
+        self.assertIn(
+            ".payment-submit-button .promo-price-pair s,\n"
+            ".payment-submit-button .promo-price-pair b {\n"
+            "  color: inherit;\n"
+            "}",
+            css,
+        )
+
     def test_settings_screen_places_server_status_between_legal_and_support_links(self):
         app_source = (Path(__file__).resolve().parents[2] / "frontend/src/App.svelte").read_text(
             encoding="utf-8"
@@ -502,7 +514,7 @@ class WebAppAssetTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Number(sub?.traffic_limit_bytes || 0) > 0", traffic_source)
         self.assertIn("export function premiumTrafficLimitVisible", traffic_source)
         self.assertIn("!sub?.premium_unlimited_override", traffic_source)
-        self.assertIn("Number(sub?.premium_limit_bytes || 0) > 0", traffic_source)
+        self.assertIn("sub?.premium_traffic_limited === true", traffic_source)
         self.assertIn("{#if regularTrafficLimitVisible(subscription)}", home_source)
         self.assertIn(
             "{#if premiumTrafficAvailable(subscription) "

@@ -13,6 +13,7 @@
   import Card from "$components/ui/card.svelte";
   import Input from "$components/ui/input.svelte";
   import { StatusMessage } from "$components/patterns/webapp/index.js";
+  import { visibleReferralLinks } from "$lib/webapp/referralLinks.js";
   import type {
     CopyTextAction,
     ReferralBonusDetail,
@@ -34,6 +35,7 @@
     referral?: ReferralState;
     referralBonusDetails?: ReferralBonusDetail[];
     referralOneBonusPerReferee?: boolean;
+    referralProgramEnabled?: boolean;
     referralWelcomeBonusDays?: number;
     setPromoCode?: StringAction;
     t?: Translate;
@@ -43,6 +45,7 @@
     referral = {},
     referralBonusDetails = [],
     referralOneBonusPerReferee = false,
+    referralProgramEnabled = true,
     referralWelcomeBonusDays = 0,
     promoBusy = false,
     promoCode = "",
@@ -68,6 +71,7 @@
   const promoEffectStatus = $derived(
     !promoIsError && hasPromoCode && promoStatus ? String(promoStatus).trim() : ""
   );
+  const referralLinks = $derived(visibleReferralLinks(referral));
 
   function daysRange(minDays: unknown, maxDays: unknown): string {
     return t("wa_referral_bonus_range_days", {
@@ -83,105 +87,135 @@
 </script>
 
 <main class="content with-nav">
-  <Card class="bonus-card">
-    <div class="bonus-card-head">
-      <Gift size={42} />
-      <div>
-        <strong>{t("wa_referral_bonus_overview_title")}</strong>
-        {#if referralOneBonusPerReferee}
-          <p>{t("wa_referral_bonus_once_note")}</p>
-        {/if}
-      </div>
-    </div>
-    <div>
-      <h3 class="card-heading">{t("wa_referral_link_title")}</h3>
-      <div class="copy-row referral-copy-row">
-        <code>{referral.webapp_link || referral.bot_link || t("wa_link_unavailable")}</code>
-        <Button
-          class="referral-copy-button"
-          onclick={() =>
-            copyText(String(referral.webapp_link || referral.bot_link || ""), t("wa_link_copied"))}
-        >
-          {t("wa_copy")}
-          <Copy size={17} />
-        </Button>
-      </div>
-    </div>
-    {#if referralBonusDetails.length || referralWelcomeBonusDays > 0}
-      <div class="referral-bonus-list">
-        {#if referralWelcomeBonusDays > 0}
-          <div class="referral-bonus-row">
-            <strong>{t("wa_referral_bonus_registration_title")}</strong>
-            <small>{t("wa_referral_bonus_friend_days", { days: referralWelcomeBonusDays })}</small>
+  <section class="referral-program-shell" hidden={!referralProgramEnabled}>
+    <div class="referral-program-content">
+      <Card class="bonus-card">
+        <div class="bonus-card-head">
+          <Gift size={42} />
+          <div>
+            <strong>{t("wa_referral_bonus_overview_title")}</strong>
+            {#if referralOneBonusPerReferee}
+              <p>{t("wa_referral_bonus_once_note")}</p>
+            {/if}
           </div>
-        {/if}
-        {#if usesTariffBonusSummaries}
-          <p class="referral-bonus-intro">{t("wa_referral_bonus_depends_on_tariff")}</p>
-        {:else if periodBonusDetails.length}
-          <p class="referral-bonus-intro">{t("wa_referral_bonus_paid_intro")}</p>
-        {/if}
-        {#if usesTariffBonusSummaries}
-          {#each tariffBonusSummaries as tariffBonus, index (tariffBonus.id || `tariff:${tariffBonus.tariff_key || index}`)}
-            <details class="referral-tariff-dropdown">
-              <summary class="referral-tariff-summary">
-                <span class="referral-tariff-copy">
-                  <strong>{tariffBonus.title || tariffBonus.tariff_name}</strong>
-                  <small>
-                    {t("wa_referral_bonus_you_range", {
-                      range: daysRange(tariffBonus.inviter_min_days, tariffBonus.inviter_max_days),
-                    })}
-                  </small>
-                  <small>
-                    {t("wa_referral_bonus_friend_range", {
-                      range: daysRange(tariffBonus.friend_min_days, tariffBonus.friend_max_days),
-                    })}
-                  </small>
-                </span>
-                <CircleQuestionMark class="premium-server-help-icon" size={16} />
-              </summary>
-              <div class="referral-tariff-details">
-                <div class="referral-tariff-detail-list">
-                  {#each tariffBonus.details || [] as bonus, detailIndex (bonus.id || `${tariffBonus.tariff_key || index}:${bonus.months || detailIndex}`)}
-                    <div class="referral-bonus-row referral-bonus-row-nested">
-                      <strong>{bonus.title || `${bonus.months || "?"}`}</strong>
-                      <small
-                        >{t("wa_referral_bonus_you_days", {
-                          days: Number(bonus.inviter_days || 0),
-                        })}</small
-                      >
-                      <small
-                        >{t("wa_referral_bonus_friend_days", {
-                          days: Number(bonus.friend_days || 0),
-                        })}</small
-                      >
-                    </div>
-                  {/each}
+        </div>
+        <div>
+          <h3 class="card-heading">{t("wa_referral_link_title")}</h3>
+          {#if referralLinks.length}
+            <div class="referral-link-list">
+              {#each referralLinks as link (link.id)}
+                <div class="referral-link-item">
+                  <small class="referral-link-label">{t(link.labelKey)}</small>
+                  <div class="copy-row referral-copy-row">
+                    <code>{link.url}</code>
+                    <Button
+                      class="referral-copy-button"
+                      onclick={() => copyText(link.url, t("wa_link_copied"))}
+                    >
+                      {t("wa_copy")}
+                      <Copy size={17} />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </details>
-          {/each}
-        {:else}
-          {#each periodBonusDetails as bonus, index (bonus.id || `${bonus.tariff_key || "legacy"}:${bonus.months || index}`)}
-            <div class="referral-bonus-row">
-              <strong>{bonus.title || `${bonus.months || "?"}`}</strong>
-              <small
-                >{t("wa_referral_bonus_you_days", {
-                  days: Number(bonus.inviter_days || 0),
-                })}</small
-              >
-              <small
-                >{t("wa_referral_bonus_friend_days", {
-                  days: Number(bonus.friend_days || 0),
-                })}</small
-              >
+              {/each}
             </div>
-          {/each}
+          {:else}
+            <div class="copy-row referral-copy-row">
+              <code>{t("wa_link_unavailable")}</code>
+              <Button class="referral-copy-button" disabled>
+                {t("wa_copy")}
+                <Copy size={17} />
+              </Button>
+            </div>
+          {/if}
+        </div>
+        {#if referralBonusDetails.length || referralWelcomeBonusDays > 0}
+          <div class="referral-bonus-list">
+            {#if referralWelcomeBonusDays > 0}
+              <div class="referral-bonus-row">
+                <strong>{t("wa_referral_bonus_registration_title")}</strong>
+                <small
+                  >{t("wa_referral_bonus_friend_days", {
+                    days: referralWelcomeBonusDays,
+                  })}</small
+                >
+              </div>
+            {/if}
+            {#if usesTariffBonusSummaries}
+              <p class="referral-bonus-intro">{t("wa_referral_bonus_depends_on_tariff")}</p>
+            {:else if periodBonusDetails.length}
+              <p class="referral-bonus-intro">{t("wa_referral_bonus_paid_intro")}</p>
+            {/if}
+            {#if usesTariffBonusSummaries}
+              {#each tariffBonusSummaries as tariffBonus, index (tariffBonus.id || `tariff:${tariffBonus.tariff_key || index}`)}
+                <details class="referral-tariff-dropdown">
+                  <summary class="referral-tariff-summary">
+                    <span class="referral-tariff-copy">
+                      <strong>{tariffBonus.title || tariffBonus.tariff_name}</strong>
+                      <small>
+                        {t("wa_referral_bonus_you_range", {
+                          range: daysRange(
+                            tariffBonus.inviter_min_days,
+                            tariffBonus.inviter_max_days
+                          ),
+                        })}
+                      </small>
+                      <small>
+                        {t("wa_referral_bonus_friend_range", {
+                          range: daysRange(
+                            tariffBonus.friend_min_days,
+                            tariffBonus.friend_max_days
+                          ),
+                        })}
+                      </small>
+                    </span>
+                    <CircleQuestionMark class="premium-server-help-icon" size={16} />
+                  </summary>
+                  <div class="referral-tariff-details">
+                    <div class="referral-tariff-detail-list">
+                      {#each tariffBonus.details || [] as bonus, detailIndex (bonus.id || `${tariffBonus.tariff_key || index}:${bonus.months || detailIndex}`)}
+                        <div class="referral-bonus-row referral-bonus-row-nested">
+                          <strong>{bonus.title || `${bonus.months || "?"}`}</strong>
+                          <small
+                            >{t("wa_referral_bonus_you_days", {
+                              days: Number(bonus.inviter_days || 0),
+                            })}</small
+                          >
+                          <small
+                            >{t("wa_referral_bonus_friend_days", {
+                              days: Number(bonus.friend_days || 0),
+                            })}</small
+                          >
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+                </details>
+              {/each}
+            {:else}
+              {#each periodBonusDetails as bonus, index (bonus.id || `${bonus.tariff_key || "legacy"}:${bonus.months || index}`)}
+                <div class="referral-bonus-row">
+                  <strong>{bonus.title || `${bonus.months || "?"}`}</strong>
+                  <small
+                    >{t("wa_referral_bonus_you_days", {
+                      days: Number(bonus.inviter_days || 0),
+                    })}</small
+                  >
+                  <small
+                    >{t("wa_referral_bonus_friend_days", {
+                      days: Number(bonus.friend_days || 0),
+                    })}</small
+                  >
+                </div>
+              {/each}
+            {/if}
+          </div>
+        {:else}
+          <StatusMessage>{t("wa_referral_bonus_not_configured")}</StatusMessage>
         {/if}
-      </div>
-    {:else}
-      <StatusMessage>{t("wa_referral_bonus_not_configured")}</StatusMessage>
-    {/if}
-  </Card>
+      </Card>
+    </div>
+  </section>
   <Card>
     <h3 class="card-heading card-heading-accent promo-heading">
       <Ticket size={18} />

@@ -1,7 +1,15 @@
 import { ADMIN_SECTIONS, APP_SECTION_PATHS } from "./constants";
 
 export type WebappSection =
-  "home" | "invite" | "install" | "trial" | "devices" | "support" | "settings" | "admin";
+  | "home"
+  | "invite"
+  | "partner"
+  | "install"
+  | "trial"
+  | "devices"
+  | "support"
+  | "settings"
+  | "admin";
 
 type AdminUserRouteId = string | number | boolean | null | undefined;
 
@@ -11,6 +19,7 @@ export function normalizeSection(value: unknown): WebappSection {
     .toLowerCase();
   if (
     section === "invite" ||
+    section === "partner" ||
     section === "install" ||
     section === "trial" ||
     section === "devices" ||
@@ -117,6 +126,17 @@ export function adminSettingsPathFromPath(pathname: unknown, routePrefix: unknow
     .slice(0, 3);
 }
 
+export function adminPartnersDeepLinkFromPath(
+  pathname: unknown,
+  routePrefix: unknown = ""
+): string {
+  const normalized = stripRoutePrefix(pathname, routePrefix).replace(/\/+$/, "");
+  const match = normalized.match(
+    /^\/admin\/partners\/(?:partners|applications|withdrawals|(?:partner|applications|withdrawals)\/[a-z0-9][a-z0-9_-]*)$/i
+  );
+  return match ? match[0] : "";
+}
+
 export function adminUserIdFromPath(pathname: unknown, routePrefix: unknown = ""): number | null {
   const normalized = stripRoutePrefix(pathname, routePrefix).toLowerCase().replace(/\/+$/, "");
   const m = normalized.match(/^\/admin\/users\/(-?\d+)$/);
@@ -190,6 +210,10 @@ export function syncSectionPath(
         : null;
     const settingsPath =
       adm === "settings" ? adminSettingsPathFromPath(window.location.pathname, routePrefix) : [];
+    const partnersDeepLink =
+      adm === "partners"
+        ? adminPartnersDeepLinkFromPath(window.location.pathname, routePrefix)
+        : "";
     if (adm === "users" && uid) targetPath = `/admin/users/${uid}`;
     else if (adm === "support" && supportTicketId) targetPath = `/admin/support/${supportTicketId}`;
     else if (adm === "payments" && paymentUserId)
@@ -197,6 +221,7 @@ export function syncSectionPath(
     else if (adm === "payments" && paymentId) targetPath = `/admin/payments/${paymentId}`;
     else if (adm === "settings" && settingsPath.length)
       targetPath = `/admin/settings/${settingsPath.map(encodeURIComponent).join("/")}`;
+    else if (partnersDeepLink) targetPath = partnersDeepLink;
     else targetPath = `/admin/${adm}`;
   }
   targetPath = withRoutePrefix(targetPath, routePrefix);

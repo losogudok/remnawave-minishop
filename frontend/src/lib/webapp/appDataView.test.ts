@@ -52,6 +52,8 @@ describe("computeAppDataView", () => {
         plans: [{ id: "live-plan" }],
         settings: {
           my_devices_enabled: false,
+          partner_program_enabled: true,
+          referral_program_enabled: false,
           subscription_guides_enabled: false,
           support_tickets_enabled: false,
         },
@@ -71,6 +73,8 @@ describe("computeAppDataView", () => {
     expect(view.suggestedPromoCode).toBe("PERSONAL15");
     expect(view.devicesEnabled).toBe(false);
     expect(view.installGuidesEnabled).toBe(false);
+    expect(view.partnerProgramEnabled).toBe(true);
+    expect(view.referralProgramEnabled).toBe(false);
     expect(view.supportEnabled).toBe(false);
     expect(view.subscription).toEqual({ active: false });
   });
@@ -129,6 +133,26 @@ describe("computeAppDataView", () => {
     ).toBe(false);
   });
 
+  it("normalizes configured auth providers and falls back to current capabilities", () => {
+    expect(
+      computeAppDataView({
+        cfg: { emailAuthEnabled: false },
+        data: { settings: { auth_providers: [" Telegram ", "OIDC", "oidc"] } },
+        fallbackBrandTitle: "Subscription",
+        mockData: {},
+      }).authProviders
+    ).toEqual(["telegram", "oidc"]);
+
+    expect(
+      computeAppDataView({
+        cfg: { emailAuthEnabled: false },
+        data: { settings: {} },
+        fallbackBrandTitle: "Subscription",
+        mockData: {},
+      }).authProviders
+    ).toEqual(["telegram"]);
+  });
+
   it("normalizes missing referral fields", () => {
     const view = computeAppDataView({
       cfg: {},
@@ -140,5 +164,6 @@ describe("computeAppDataView", () => {
     expect(view.referralBonusDetails).toEqual([]);
     expect(view.referralWelcomeBonusDays).toBe(0);
     expect(view.referralOneBonusPerReferee).toBe(false);
+    expect(view.referralProgramEnabled).toBe(true);
   });
 });

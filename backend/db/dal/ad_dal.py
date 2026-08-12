@@ -125,6 +125,7 @@ async def get_campaign_stats(session: AsyncSession, campaign_id: int) -> dict[st
         .where(
             and_(
                 Payment.status == "succeeded",
+                Payment.funding_source == "external",
                 Payment.created_at >= attrib_subq.c.first_start_at,
             )
         )
@@ -139,6 +140,7 @@ async def get_campaign_stats(session: AsyncSession, campaign_id: int) -> dict[st
         .where(
             and_(
                 Payment.status == "succeeded",
+                Payment.funding_source == "external",
                 Payment.created_at >= attrib_subq.c.first_start_at,
             )
         )
@@ -188,6 +190,7 @@ async def get_totals(session: AsyncSession) -> dict[str, float]:
         .where(
             and_(
                 Payment.status == "succeeded",
+                Payment.funding_source == "external",
                 Payment.created_at >= attrib_subq.c.first_start_at,
             )
         )

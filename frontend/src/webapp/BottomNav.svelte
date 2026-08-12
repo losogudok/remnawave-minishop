@@ -6,6 +6,7 @@
     Settings as SettingsIcon,
     Shield,
     Smartphone,
+    WalletCards,
   } from "$components/ui/icons.js";
   import { AttentionDot } from "$components/ui/index.js";
 
@@ -25,6 +26,8 @@
     onDevices?: Action;
     onHome?: Action;
     onInvite?: Action;
+    onPartner?: Action;
+    partnerEnabled?: boolean;
     onSettings?: Action;
     onSupport?: Action;
     supportEnabled?: boolean;
@@ -49,12 +52,16 @@
     onDevices = () => {},
     onHome = () => {},
     onInvite = () => {},
+    onPartner = () => {},
+    partnerEnabled = false,
     onSupport = () => {},
     onSettings = () => {},
     t = (key) => key,
   }: Props = $props();
 
-  const visibleNavItems = $derived(3 + (devicesEnabled ? 1 : 0) + (supportEnabled ? 1 : 0));
+  const visibleNavItems = $derived(
+    3 + (partnerEnabled ? 1 : 0) + (devicesEnabled ? 1 : 0) + (supportEnabled ? 1 : 0)
+  );
   const adminLabel = $derived(t("wa_nav_admin", {}, "Admin panel"));
 </script>
 
@@ -89,6 +96,18 @@
     <Gift size={21} />
     <span class="bottom-nav-label">{t("wa_nav_bonuses")}</span>
   </button>
+  {#if partnerEnabled}
+    <button
+      class:active={activeTab === "partner"}
+      type="button"
+      aria-label={t("wa_nav_partner")}
+      title={t("wa_nav_partner")}
+      onclick={onPartner}
+    >
+      <WalletCards size={21} />
+      <span class="bottom-nav-label">{t("wa_nav_partner")}</span>
+    </button>
+  {/if}
   {#if devicesEnabled}
     <button
       class:active={activeTab === "devices"}

@@ -14,6 +14,7 @@ from ..shared import (
     create_webapp_payment_record,
     finalize_webapp_link_payment,
     first_value,
+    mark_payment_failed_creation,
     payment_failed,
     payment_record_amounts,
     payment_unavailable,
@@ -33,6 +34,7 @@ async def create_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
         return payment_unavailable()
 
     currency = ctx.currency or settings.DEFAULT_CURRENCY_SYMBOL or "RUB"
+    payment = None
     try:
         amounts = payment_record_amounts(
             months=ctx.months,
@@ -67,6 +69,16 @@ async def create_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
         )
     except Exception:
         await ctx.session.rollback()
+        if payment is not None:
+            try:
+                await mark_payment_failed_creation(ctx.session, int(payment.payment_id))
+            except Exception:
+                await ctx.session.rollback()
+                logger.exception(
+                    "Stripe failed to release checkout after provider creation error "
+                    "for payment %s",
+                    payment.payment_id,
+                )
         logger.exception("Stripe WebApp payment failed")
         return payment_failed()
 

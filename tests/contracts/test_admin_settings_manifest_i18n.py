@@ -27,6 +27,7 @@ SUBSCRIPTION_PURCHASE_DESCRIPTION_SETTINGS = (
     "SUBSCRIPTION_PURCHASE_DESCRIPTION_RU",
     "SUBSCRIPTION_PURCHASE_DESCRIPTION_EN",
     "PAYMENT_REQUEST_TIMEOUT_SECONDS",
+    "PAYMENT_FAILURE_NOTIFICATION_GRACE_SECONDS",
 )
 
 SUBSCRIPTION_GUIDE_SETTINGS = (
@@ -674,12 +675,28 @@ def test_legacy_tariff_settings_are_separated_from_payment_settings():
     assert manifest["TRIAL_HWID_DEVICE_LIMIT"]["min"] == 0
     assert manifest["TRIAL_PREMIUM_SQUAD_UUIDS"]["section"] == "pricing"
     assert manifest["TRIAL_PREMIUM_SQUAD_UUIDS"]["subsection"] == "trial"
+    assert manifest["REFERRAL_PROGRAM_ENABLED"]["section"] == "pricing"
+    assert manifest["REFERRAL_PROGRAM_ENABLED"]["subsection"] == "referral"
     assert manifest["REFERRAL_WELCOME_BONUS_DAYS"]["section"] == "pricing"
     assert manifest["REFERRAL_WELCOME_BONUS_DAYS"]["subsection"] == "referral"
     assert manifest["REFERRAL_WELCOME_BONUS_WITHOUT_TELEGRAM_ENABLED"]["section"] == "pricing"
     assert manifest["REFERRAL_WELCOME_BONUS_WITHOUT_TELEGRAM_ENABLED"]["subsection"] == "referral"
     assert manifest["REFERRAL_ONE_BONUS_PER_REFEREE"]["section"] == "pricing"
     assert manifest["REFERRAL_ONE_BONUS_PER_REFEREE"]["subsection"] == "referral"
+    assert manifest["REFERRAL_WEBAPP_LINK_ENABLED"]["section"] == "pricing"
+    assert manifest["REFERRAL_WEBAPP_LINK_ENABLED"]["subsection"] == "referral"
+    assert manifest["REFERRAL_TELEGRAM_LINK_ENABLED"]["section"] == "pricing"
+    assert manifest["REFERRAL_TELEGRAM_LINK_ENABLED"]["subsection"] == "referral"
+    assert manifest["PARTNER_CLIENT_WELCOME_BONUS_ENABLED"]["section"] == "pricing"
+    assert manifest["PARTNER_CLIENT_WELCOME_BONUS_ENABLED"]["subsection"] == "partner"
+    assert manifest["PARTNER_CLIENT_PAYMENT_BONUS_ENABLED"]["section"] == "pricing"
+    assert manifest["PARTNER_CLIENT_PAYMENT_BONUS_ENABLED"]["subsection"] == "partner"
+    assert manifest["PARTNER_AUTO_ENROLLMENT_ENABLED"]["section"] == "pricing"
+    assert manifest["PARTNER_AUTO_ENROLLMENT_ENABLED"]["subsection"] == "partner"
+    assert manifest["PARTNER_REFERRAL_PROGRAM_DISABLED"]["section"] == "pricing"
+    assert manifest["PARTNER_REFERRAL_PROGRAM_DISABLED"]["subsection"] == "partner"
+    assert manifest["PARTNER_ONE_BONUS_PER_CLIENT"]["section"] == "pricing"
+    assert manifest["PARTNER_ONE_BONUS_PER_CLIENT"]["subsection"] == "partner"
     assert manifest["LEGACY_REFS"]["section"] == "pricing"
     assert manifest["LEGACY_REFS"]["subsection"] == "legacy_tariffs"
     assert manifest["DISPOSABLE_EMAIL_DOMAINS"]["section"] == "pricing"

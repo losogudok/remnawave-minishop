@@ -102,6 +102,7 @@ class WebAppPaymentCreatePayload(BaseModel):
     tariff_key: OptionalTariffKeyString | None = None
     sale_mode: SaleModeString | None = None
     renew_hwid_devices: bool | None = None
+    use_partner_balance: bool = False
     promo_code: ShortCodeString | None = None
     description: LongTextString | None = None
     comment: LongTextString | None = None

@@ -303,6 +303,15 @@
         ariaLabel={at("tariff_label_traffic_strategy", {}, "Traffic reset strategy")}
         onValueChange={(value) => setDraftField("traffic_limit_strategy", value)}
       />
+      {#if tariffDraft.traffic_limit_strategy === "MONTH_ROLLING"}
+        <small
+          >{at(
+            "tariff_hint_traffic_strategy_month_rolling",
+            {},
+            "The monthly cycle starts with the subscription. Remnawave owns the regular counter and reports the effective boundary as lastTrafficResetAt; selecting this strategy does not erase already recorded traffic."
+          )}</small
+        >
+      {/if}
     </div>
   {/if}
 </Tabs.Content>

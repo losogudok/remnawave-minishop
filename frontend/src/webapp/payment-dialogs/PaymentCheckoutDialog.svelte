@@ -14,12 +14,14 @@
   import Dialog from "$components/ui/dialog.svelte";
   import { EmptyCard, PaymentMethodGrid } from "$components/patterns/webapp/index.js";
   import CheckoutPromoRow from "../CheckoutPromoRow.svelte";
+  import PartnerBalanceDiscount from "./PartnerBalanceDiscount.svelte";
   import {
     checkoutPromoAffectsQuotedPlan,
     checkoutPromoBlockVisible,
     selectPaymentMethodWithPromoReset,
   } from "$lib/webapp/checkoutPromoPolicy.js";
-  import { formatCompactNumber } from "$lib/webapp/formatters.js";
+  import { formatCompactNumber, formatMoney } from "$lib/webapp/formatters.js";
+  import type { ApiClient } from "$lib/webapp/publicApi.js";
   import {
     planKey as planKeyFn,
     planDisplayTitle as planDisplayTitleFn,
@@ -42,7 +44,10 @@
     VoidAction,
   } from "$lib/webapp/types.js";
 
+  type BalancePaymentAction = (options?: { usePartnerBalance?: boolean }) => unknown;
+
   let {
+    api,
     createPayment = () => {},
     hasMultipleTariffs = false,
     methods = [],
@@ -68,6 +73,7 @@
     checkoutPromoInput = $bindable(""),
     checkoutPromoIsError = false,
     checkoutPromoPriceText = "",
+    checkoutPromoEffectiveAmount = 0,
     checkoutPromoStatus = "",
     checkoutPromoDiscountPercent = 0,
     checkoutPromoAppliesTo = "all",
@@ -82,7 +88,8 @@
     t = (key) => key,
     termUnitLabel = () => "",
   }: {
-    createPayment?: VoidAction;
+    api: ApiClient["api"];
+    createPayment?: BalancePaymentAction;
     hasMultipleTariffs?: boolean;
     methods?: PaymentMethodView[];
     pendingPayment?: PendingPaymentView | null;
@@ -107,6 +114,7 @@
     checkoutPromoInput?: string;
     checkoutPromoIsError?: boolean;
     checkoutPromoPriceText?: string;
+    checkoutPromoEffectiveAmount?: number;
     checkoutPromoStatus?: string;
     checkoutPromoDiscountPercent?: number;
     checkoutPromoAppliesTo?: string;
@@ -411,7 +419,60 @@
     if (paymentStep === "tariff") return false;
     return String(selectedTariff?.billing_model || "period").toLowerCase() !== "traffic";
   }
+  let usePartnerBalance = $state(false);
+  let partnerBalanceDiscount = $state(0);
+
+  function checkoutAmount(plan: PlanView | null) {
+    const quotedPromoAmount = Number(checkoutPromoEffectiveAmount || 0);
+    if (checkoutPromoAppliedCode && quotedPromoAmount > 0) return quotedPromoAmount;
+    return Number(planWithSelectedHwidRenewal(plan)?.price || 0);
+  }
+
+  function selectedMethodMinimum() {
+    const method = methods.find(
+      (item) => String(item.id || "").toLowerCase() === String(selectedMethod || "").toLowerCase()
+    );
+    return Math.max(
+      0,
+      Number(method?.minimum_amount || method?.min_amount || method?.shop_min_amount || 0)
+    );
+  }
+
+  function partnerBalanceEligible() {
+    return Boolean(
+      selectedPlan &&
+      selectedMethod &&
+      checkoutAmount(selectedPlan) > 0 &&
+      !methodUsesStars() &&
+      !providerManagesPrice()
+    );
+  }
+
+  function partnerCheckoutPriceParts(plan: PlanView | null) {
+    if (!usePartnerBalance || partnerBalanceDiscount <= 0 || !plan) return null;
+    return {
+      base: checkoutPaymentPriceLabel(plan),
+      discounted: formatMoney(
+        Math.max(0, checkoutAmount(plan) - partnerBalanceDiscount),
+        String(plan.currency || "")
+      ),
+    };
+  }
 </script>
+
+{#snippet partnerBalanceOption()}
+  <PartnerBalanceDiscount
+    {api}
+    open={paymentModalOpen}
+    amount={checkoutAmount(selectedPlan)}
+    currency={String(selectedPlan?.currency || "")}
+    eligible={partnerBalanceEligible()}
+    minimumExternalAmount={selectedMethodMinimum()}
+    bind:selected={usePartnerBalance}
+    bind:discount={partnerBalanceDiscount}
+    {t}
+  />
+{/snippet}
 
 <Dialog
   open={paymentModalOpen}
@@ -604,13 +665,22 @@
             {t}
           />
         {/if}
+        {@render partnerBalanceOption()}
         <Button
           class="wide bottom-action payment-submit-button"
-          onclick={createPayment}
+          onclick={() => createPayment({ usePartnerBalance })}
           disabled={!selectedPlan || !paymentMethodSelected || payBusy}
         >
           {t("wa_pay")}
-          {selectedPlan ? checkoutPaymentPriceLabel(selectedPlan) : ""}
+          {#if partnerCheckoutPriceParts(selectedPlan)}
+            {@const balancePrice = partnerCheckoutPriceParts(selectedPlan)}
+            <span class="promo-price-pair">
+              <s>{balancePrice?.base}</s>
+              <b>{balancePrice?.discounted}</b>
+            </span>
+          {:else}
+            {selectedPlan ? checkoutPaymentPriceLabel(selectedPlan) : ""}
+          {/if}
           <LockKeyhole size={17} />
         </Button>
       {:else}
@@ -717,13 +787,22 @@
           {t}
         />
       {/if}
+      {@render partnerBalanceOption()}
       <Button
         class="wide bottom-action payment-submit-button"
-        onclick={createPayment}
+        onclick={() => createPayment({ usePartnerBalance })}
         disabled={!selectedPlan || !paymentMethodSelected || payBusy}
       >
         {t("wa_pay")}
-        {selectedPlan ? checkoutPaymentPriceLabel(selectedPlan) : ""}
+        {#if partnerCheckoutPriceParts(selectedPlan)}
+          {@const balancePrice = partnerCheckoutPriceParts(selectedPlan)}
+          <span class="promo-price-pair">
+            <s>{balancePrice?.base}</s>
+            <b>{balancePrice?.discounted}</b>
+          </span>
+        {:else}
+          {selectedPlan ? checkoutPaymentPriceLabel(selectedPlan) : ""}
+        {/if}
         <LockKeyhole size={17} />
       </Button>
     {/if}

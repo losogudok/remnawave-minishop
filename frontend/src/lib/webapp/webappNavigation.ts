@@ -6,6 +6,7 @@ type NavigationDeps = {
   loadInstallGuides: () => void;
   loadSupport: () => void;
   openConnectLink: () => void;
+  partnerProgramEnabled: () => boolean;
   setActiveTab: (tab: string) => void;
   setScreen: (screen: string) => void;
   supportEnabled: () => boolean;
@@ -20,6 +21,7 @@ export function createWebappNavigation({
   loadInstallGuides,
   loadSupport,
   openConnectLink,
+  partnerProgramEnabled,
   setActiveTab,
   setScreen,
   supportEnabled,
@@ -50,6 +52,12 @@ export function createWebappNavigation({
     showSection("invite");
   }
 
+  function goPartner() {
+    if (!partnerProgramEnabled()) return false;
+    showSection("partner");
+    return true;
+  }
+
   function goDevices() {
     if (!devicesEnabled()) return false;
     showSection("devices");
@@ -73,6 +81,7 @@ export function createWebappNavigation({
     goHome,
     goInstall,
     goInvite,
+    goPartner,
     goSettings,
     goSupport,
   };

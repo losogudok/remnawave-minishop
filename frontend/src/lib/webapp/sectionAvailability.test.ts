@@ -20,6 +20,10 @@ describe("section availability", () => {
     expect(resolveAvailableWebappSection({ devicesEnabled: false, section: "devices" })).toBe(
       "home"
     );
+    expect(resolveAvailableWebappSection({ section: "partner" })).toBe("home");
+    expect(resolveAvailableWebappSection({ partnerProgramEnabled: true, section: "partner" })).toBe(
+      "partner"
+    );
     expect(resolveAvailableWebappSection({ section: "support", supportEnabled: false })).toBe(
       "home"
     );
@@ -35,6 +39,7 @@ describe("section availability", () => {
     expect(activeTabForWebappSection("admin")).toBe("settings");
     expect(activeTabForWebappSection("install")).toBe("home");
     expect(activeTabForWebappSection("trial")).toBe("home");
+    expect(activeTabForWebappSection("partner")).toBe("partner");
     expect(activeTabForWebappSection("support")).toBe("support");
   });
 });

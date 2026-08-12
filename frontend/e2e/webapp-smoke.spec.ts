@@ -75,6 +75,38 @@ function activeAdminSection(page: Page, id: string): Locator {
   return page.locator(`.admin-section-stage[data-admin-active-section="${id}"]:not([inert])`);
 }
 
+/**
+ * Horizontal position of the hover drop line, in CSS px inside the overlay.
+ * The highlight is painted on a canvas (it clips uPlot's own path), so this
+ * samples the axis strip under the plot, where only the dashed line to the
+ * readout card is drawn — that line marks the active point.
+ */
+async function chartHighlightCentre(chart: Locator): Promise<number | null> {
+  return chart.locator(".admin-chart-highlight").evaluate((element) => {
+    const canvas = element as HTMLCanvasElement;
+    const context = canvas.getContext("2d");
+    if (!context || !canvas.width || !canvas.height) return null;
+    const bandTop = Math.floor(canvas.height * 0.9);
+    const bandHeight = canvas.height - bandTop;
+    if (bandHeight <= 0) return null;
+    const pixels = context.getImageData(0, bandTop, canvas.width, bandHeight).data;
+    let total = 0;
+    let weighted = 0;
+    for (let y = 0; y < bandHeight; y += 1) {
+      for (let x = 0; x < canvas.width; x += 1) {
+        const alpha = pixels[(y * canvas.width + x) * 4 + 3];
+        if (alpha > 40) {
+          total += alpha;
+          weighted += x * alpha;
+        }
+      }
+    }
+    if (!total) return null;
+    const ratio = canvas.width / (canvas.getBoundingClientRect().width || canvas.width);
+    return weighted / total / ratio;
+  });
+}
+
 async function assertNoDuplicateIds(page: Page, phase: string): Promise<void> {
   const duplicates = await page.locator("[id]").evaluateAll((elements) => {
     const seen = new Map<string, number>();
@@ -642,7 +674,9 @@ async function openUserDetailFromCurrentSection(
 }
 
 async function exerciseSettingsDisclosures(stage: Locator): Promise<void> {
-  const sectionTriggers = stage.locator(".admin-accordion-trigger");
+  const sectionTriggers = stage.locator(
+    ".admin-accordion > .admin-accordion-item > .admin-accordion-trigger"
+  );
   const sectionCount = await sectionTriggers.count();
   for (let index = 0; index < sectionCount; index += 1) {
     const trigger = sectionTriggers.nth(index);
@@ -844,6 +878,540 @@ test("device traffic bonuses stay legible on mobile", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("partner operations open their linked payment card", async ({ page }) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto(
+    "/demo/runtime/admin/partners/partner/PT-104?partner_admin_scenario=populated&theme_preview=dark"
+  );
+
+  await page.getByRole("tab", { name: "Операции", exact: true }).click();
+  const activity = page.locator(".partners-detail-tabs");
+  await expect(activity.locator("tbody")).toContainText("LG-903");
+
+  const commission = activity
+    .locator(".admin-entity-link.is-actionable")
+    .filter({ hasText: "COM-184" })
+    .first();
+  await expect(commission).toBeVisible();
+  await commission.click();
+
+  const paymentDialog = page.locator(".dialog-card.admin-payment-dialog");
+  await expect(paymentDialog).toBeVisible();
+  await expect(paymentDialog).toContainText("Платёж #710024");
+  await closeDialog(paymentDialog);
+});
+
+test("partner admin tabs keep stable routes and share the users page size", async ({ page }) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto(
+    "/demo/runtime/admin/partners/applications?partner_admin_scenario=populated&theme_preview=dark"
+  );
+
+  const partnerPage = page.locator(".partners-admin-page");
+  await expect(partnerPage.getByRole("tab", { name: /Заявки/ })).toHaveAttribute(
+    "data-state",
+    "active"
+  );
+  await expect(partnerPage.locator("tbody tr")).toHaveCount(4);
+  await expect(partnerPage.locator("tbody .admin-entity-link.is-person img")).toHaveCount(4);
+
+  await partnerPage.getByRole("tab", { name: "Партнёры", exact: true }).click();
+  await expect(page).toHaveURL(/\/demo\/runtime\/admin\/partners\/partners\?/);
+  await expect(partnerPage.locator("tbody tr")).toHaveCount(6);
+  await expect(partnerPage.locator("tbody .admin-entity-link.is-person img")).toHaveCount(6);
+
+  await partnerPage.getByRole("tab", { name: /Выводы/ }).click();
+  await expect(page).toHaveURL(/\/demo\/runtime\/admin\/partners\/withdrawals\?/);
+  await expect(partnerPage.locator("tbody tr")).toHaveCount(6);
+  await expect(partnerPage.locator("tbody .admin-entity-link.is-person img")).toHaveCount(6);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/demo\/runtime\/admin\/partners\/partners\?/);
+  await expect(partnerPage.getByRole("tab", { name: "Партнёры", exact: true })).toHaveAttribute(
+    "data-state",
+    "active"
+  );
+
+  await adminSectionButton(page, "stats").click();
+  await expect(page).toHaveURL(/\/demo\/runtime\/admin\/stats\?/);
+  await adminSectionButton(page, "partners").click();
+  await expect(page).toHaveURL(/\/demo\/runtime\/admin\/partners\?/);
+  await expect(partnerPage.getByRole("tab", { name: "Сводка", exact: true })).toHaveAttribute(
+    "data-state",
+    "active"
+  );
+});
+
+test("partner dashboard converts referrals when the referral system is disabled", async ({
+  page,
+}) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto(
+    "/demo/runtime/admin/partners?partner_admin_scenario=populated&theme_preview=dark"
+  );
+  await expect(page.locator(".partners-referral-import-banner")).toHaveCount(0);
+
+  await page.goto(
+    "/demo/runtime/admin/partners?partner_admin_scenario=populated&mock=partner-referral-disabled&theme_preview=dark"
+  );
+  const banner = page.locator(".partners-referral-import-banner");
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText(/12\s+пользователей к конвертации/);
+
+  await banner.getByRole("button", { name: "Конвертировать рефералов", exact: true }).click();
+  const dialog = page.locator(".dialog-card.admin-partners-dialog");
+  await expect(dialog).toContainText("Конвертировать всех доступных рефералов?");
+  await expect(dialog).toContainText("У найденных рефералов исторических платежей: 9");
+  await dialog.getByRole("button", { name: "Подтвердить", exact: true }).click();
+
+  await expect(dialog).toBeHidden();
+  await expect(banner).toContainText("Конвертировано пользователей: 12");
+  await expect(banner).toContainText("Все доступные рефералы уже являются клиентами");
+});
+
+test("disabled referral mode hides referral controls without hiding promo codes", async ({
+  page,
+}) => {
+  await page.goto("/demo/runtime/invite?mock=partner-referral-disabled&theme_preview=dark");
+
+  await expect(page.locator(".referral-program-shell")).toBeHidden();
+  await expect(page.locator(".promo-code-input")).toBeEditable();
+});
+
+test("partner encryption diagnostic explains safe initial key setup", async ({ page }) => {
+  await page.goto(
+    "/demo/runtime/admin/settings/partner?partner_settings_scenario=missing_key&theme_preview=dark"
+  );
+
+  const diagnostic = page.locator(".partner-diagnostics .danger").filter({
+    hasText: "Ключ шифрования реквизитов не задан",
+  });
+  await expect(diagnostic).toBeVisible();
+  await expect(diagnostic.locator("[data-partner-encryption-command]")).toHaveText(
+    "openssl rand -base64 32 | tr '+/' '-_'"
+  );
+  const diagnosticCards = page.locator(".partner-diagnostics > div");
+  await expect(diagnosticCards).toHaveCount(2);
+  const cardGeometry = await diagnosticCards.evaluateAll((cards) =>
+    cards.map((card) => {
+      const rect = card.getBoundingClientRect();
+      return { bottom: rect.bottom, top: rect.top, width: rect.width };
+    })
+  );
+  expect(Math.abs(cardGeometry[0].width - cardGeometry[1].width)).toBeLessThanOrEqual(1);
+  expect(cardGeometry[1].top).toBeGreaterThan(cardGeometry[0].bottom);
+  await expect(diagnostic).toContainText("PARTNER_REQUISITES_ENCRYPTION_KEY");
+  await expect(diagnostic).toContainText("перезапустите backend и worker");
+  await expect(diagnostic).toContainText("никогда не сохраняйте секрет в Git");
+
+  await page.goto(
+    "/demo/runtime/admin/settings/partner?partner_settings_scenario=program_on&theme_preview=dark"
+  );
+  await expect(page.locator("[data-partner-encryption-command]")).toHaveCount(0);
+});
+
+test("partner withdrawal method actions stay clear of section copy", async ({ page }) => {
+  const route =
+    "/demo/runtime/admin/settings/partner?partner_settings_scenario=program_on&theme_preview=dark";
+
+  await page.setViewportSize(MOBILE_VIEWPORT);
+  await page.goto(route);
+  const section = page.locator(".partner-methods-section");
+  const mobileGeometry = await section.evaluate((element) => {
+    const copy = element.querySelector<HTMLElement>(".admin-settings-field-group-head-copy");
+    const actions = element.querySelector<HTMLElement>(".partner-method-add");
+    if (!copy || !actions) throw new Error("Partner withdrawal method header is incomplete");
+    const copyRect = copy.getBoundingClientRect();
+    const actionsRect = actions.getBoundingClientRect();
+    return {
+      actionsTop: actionsRect.top,
+      actionsWidth: actionsRect.width,
+      buttonWidths: Array.from(
+        actions.querySelectorAll<HTMLElement>(".admin-btn"),
+        (button) => button.getBoundingClientRect().width
+      ),
+      copyBottom: copyRect.bottom,
+      copyWidth: copyRect.width,
+    };
+  });
+  expect(mobileGeometry.actionsTop).toBeGreaterThan(mobileGeometry.copyBottom + 10);
+  expect(Math.abs(mobileGeometry.actionsWidth - mobileGeometry.copyWidth)).toBeLessThanOrEqual(1);
+  expect(mobileGeometry.buttonWidths).toHaveLength(3);
+  for (const width of mobileGeometry.buttonWidths) {
+    expect(Math.abs(width - mobileGeometry.actionsWidth)).toBeLessThanOrEqual(1);
+  }
+
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  const desktopGeometry = await section.evaluate((element) => {
+    const copy = element.querySelector<HTMLElement>(".admin-settings-field-group-head-copy");
+    const actions = element.querySelector<HTMLElement>(".partner-method-add");
+    if (!copy || !actions) throw new Error("Partner withdrawal method header is incomplete");
+    const copyRect = copy.getBoundingClientRect();
+    const actionsRect = actions.getBoundingClientRect();
+    return { actionsLeft: actionsRect.left, copyRight: copyRect.right };
+  });
+  expect(desktopGeometry.actionsLeft).toBeGreaterThanOrEqual(desktopGeometry.copyRight + 10);
+});
+
+test("partner automatic enrollment requires confirmation", async ({ page }) => {
+  await page.goto(
+    "/demo/runtime/admin/settings/partner?partner_settings_scenario=program_on&theme_preview=dark"
+  );
+
+  const setting = page.locator(".admin-setting").filter({
+    hasText: "Автоматически подключать всех пользователей",
+  });
+  const toggle = setting.getByRole("switch");
+  await expect(toggle).not.toBeChecked();
+  await toggle.click();
+
+  const dialog = page.getByRole("dialog", {
+    name: "Включить автоматическое подключение?",
+  });
+  await expect(dialog).toContainText("для каждого подходящего пользователя");
+  await dialog.getByRole("button", { name: "Подтвердить" }).click();
+  await expect(toggle).toBeChecked();
+});
+
+test("partner account stays compact, table-driven, and keeps the tour ring local", async ({
+  page,
+}) => {
+  await page.setViewportSize(MOBILE_VIEWPORT);
+  await page.goto("/demo/runtime/partner?partner_scenario=active_populated&theme_preview=dark");
+
+  const overview = page.locator(".partner-overview-card");
+  await expect(overview.locator(".partner-overview-head")).toContainText("Партнёрский кабинет");
+  await expect(overview.locator(".partner-link-item")).toHaveCount(2);
+  await expect(overview.getByRole("button", { name: "Поделиться" })).toHaveCount(0);
+  await expect(overview.getByRole("button", { name: "Открыть QR-код" })).toHaveCount(0);
+  await expect(overview.locator(".partner-link-item code")).toHaveText([
+    "https://t.me/minishop_bot?start=p_Q7m2pK8v4",
+    "https://example.com/?start=p_Q7m2pK8v4",
+  ]);
+  await expect(page.locator(".partner-balance-card .partner-section-head")).toContainText(
+    "Баланс и вывод"
+  );
+  const statistics = page.locator(".partner-stats-card");
+  await expect(statistics.locator(".partner-section-head")).toContainText("Партнёрская статистика");
+  await expect(statistics).not.toContainText("Детали партнёрской программы");
+  await expect(page.locator(".partner-methods-section, .partner-methods")).toHaveCount(0);
+  await expect(statistics.locator(".partner-data-table tbody tr")).toHaveCount(20);
+  const pagination = statistics.locator(".admin-pagination");
+  await expect(pagination).toContainText("Страница 1 из 2");
+  await expect(pagination).toContainText("Всего 21");
+
+  await pagination.getByRole("button", { name: "Далее", exact: true }).click();
+  await expect(statistics.locator(".partner-data-table tbody tr")).toHaveCount(1);
+  await expect(statistics.locator(".partner-data-table tbody tr").first()).toContainText(
+    "Demo client 17"
+  );
+  await expect(pagination).toContainText("Страница 2 из 2");
+  await pagination.getByRole("button", { name: "Назад", exact: true }).click();
+
+  await page.getByRole("button", { name: "Вывести", exact: true }).click();
+  const withdrawalDialog = page.locator(".dialog-card.partner-withdraw-dialog");
+  await expect(withdrawalDialog).toBeVisible();
+  await expect(withdrawalDialog.locator(".partner-method-options button")).toHaveCount(3);
+  await withdrawalDialog
+    .locator(".partner-method-options button")
+    .filter({ hasText: "Криптовалюта" })
+    .click();
+  const networkTrigger = withdrawalDialog.locator(".partner-network-select-trigger");
+  await networkTrigger.click();
+  const networkOptions = page.locator(".partner-network-select-item");
+  await expect(networkOptions).toHaveCount(2);
+  const networkTypography = await networkOptions.evaluateAll((options) =>
+    options.map((option) => {
+      const style = window.getComputedStyle(option);
+      return [style.fontFamily, style.fontSize, style.fontWeight, style.lineHeight].join("|");
+    })
+  );
+  expect(new Set(networkTypography).size).toBe(1);
+  const triggerTypography = await networkTrigger.evaluate((element) => {
+    const style = window.getComputedStyle(element);
+    return [style.fontFamily, style.fontSize, style.fontWeight, style.lineHeight].join("|");
+  });
+  expect(networkTypography[0]).toBe(triggerTypography);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".partner-network-select-content")).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(withdrawalDialog).toBeHidden();
+
+  const firstLink = overview.locator(".partner-link-item").first();
+  const linkField = firstLink.locator("code");
+  const copyButton = firstLink.locator(".partner-copy-button");
+  const [fieldBox, copyBox] = await Promise.all([
+    linkField.boundingBox(),
+    copyButton.boundingBox(),
+  ]);
+  expect(fieldBox).not.toBeNull();
+  expect(copyBox).not.toBeNull();
+  expect(Math.abs(copyBox!.y - fieldBox!.y)).toBeLessThan(2);
+  expect(copyBox!.x).toBeGreaterThan(fieldBox!.x);
+  expect(fieldBox!.x + fieldBox!.width).toBeLessThanOrEqual(copyBox!.x + 1);
+
+  const firstTableRow = statistics.locator(".partner-data-table tbody tr").first();
+  await expect(firstTableRow).toHaveCSS("display", "block");
+  await statistics.getByRole("tab", { name: /Комиссии/ }).click();
+  await expect(statistics.locator(".partner-data-table tbody tr")).toHaveCount(20);
+  await expect(statistics.locator(".partner-data-table thead th")).toHaveCount(5);
+  const reversedCommission = statistics.locator(".partner-status-tooltip-trigger").first();
+  await expect(reversedCommission).toContainText("Отменена");
+  await reversedCommission.hover();
+  await expect(page.locator(".partner-status-tooltip-content")).toContainText(
+    "Начисление отменено, потому что платёж клиента был возвращён или аннулирован."
+  );
+  await pagination.getByRole("button", { name: "Далее", exact: true }).click();
+  await expect(statistics.locator(".partner-data-table tbody tr")).toHaveCount(1);
+  await expect(statistics.locator(".partner-data-table tbody tr").first()).toContainText(
+    "Demo client 17"
+  );
+  await pagination.getByRole("button", { name: "Назад", exact: true }).click();
+  await statistics.getByRole("tab", { name: /Выводы/ }).click();
+  await expect(statistics.locator(".partner-data-table tbody tr")).toHaveCount(20);
+  await expect(statistics.locator(".partner-data-table thead th")).toHaveCount(5);
+  await pagination.getByRole("button", { name: "Далее", exact: true }).click();
+  await expect(statistics.locator(".partner-data-table tbody tr")).toHaveCount(1);
+  await expect(statistics.locator(".partner-data-table tbody tr").first()).toContainText("WD-D17");
+  await pagination.getByRole("button", { name: "Назад", exact: true }).click();
+
+  await page.getByRole("button", { name: "Как это работает", exact: true }).click();
+  const spotlight = page.locator(".partner-tour-spotlight.is-ready");
+  await expect(spotlight).toBeVisible();
+  const spotlightPaint = await spotlight.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    const ring = window.getComputedStyle(element, "::after");
+    return {
+      boxWidth: box.width,
+      viewportWidth: window.innerWidth,
+      shadow: style.boxShadow,
+      transitionDuration: style.transitionDuration,
+      ringBorderWidth: ring.borderTopWidth,
+      ringOpacity: ring.opacity,
+    };
+  });
+  expect(spotlightPaint.boxWidth).toBeLessThan(spotlightPaint.viewportWidth - 24);
+  expect(spotlightPaint.shadow).toContain("9999px");
+  expect(spotlightPaint.transitionDuration).toBe("0s");
+  expect(spotlightPaint.ringBorderWidth).toBe("2px");
+  expect(spotlightPaint.ringOpacity).toBe("1");
+
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto("/demo/runtime/partner?partner_scenario=active_populated&theme_preview=dark");
+  await expect(page.locator(".partner-copy-button").first()).toBeVisible();
+  const desktopStatistics = page.locator(".partner-stats-card");
+  await expect(desktopStatistics.locator(".partner-table-primary").first()).toContainText(
+    "Alex M."
+  );
+  await desktopStatistics.getByRole("button", { name: "Оборот", exact: true }).click();
+  await expect(desktopStatistics.locator(".partner-table-primary").first()).toContainText(
+    "Demo client 17"
+  );
+  const desktopLayout = await page.evaluate(() => {
+    const copyButton = document.querySelector<HTMLElement>(".partner-copy-button");
+    return {
+      viewportWidth: window.innerWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+      copyRight: copyButton?.getBoundingClientRect().right ?? 0,
+    };
+  });
+  expect(desktopLayout.scrollWidth).toBeLessThanOrEqual(desktopLayout.viewportWidth);
+  expect(desktopLayout.copyRight).toBeLessThanOrEqual(desktopLayout.viewportWidth);
+});
+
+test("partner loading and empty chart states preserve their final geometry", async ({ page }) => {
+  await page.setViewportSize(MOBILE_VIEWPORT);
+  await page.goto("/demo/runtime/partner?partner_scenario=loading&theme_preview=dark");
+
+  const accountSkeleton = page.locator(".partner-skeleton");
+  await expect(accountSkeleton.locator(".partner-skeleton-card")).toHaveCount(3);
+  await expect(accountSkeleton.locator(".partner-skeleton-table-row")).toHaveCount(4);
+  const mobileFit = await page.evaluate(() => {
+    const card = document.querySelector<HTMLElement>(".partner-skeleton-card");
+    const button = document.querySelector<HTMLElement>(
+      ".partner-overview-head > .partner-skeleton-button"
+    );
+    return {
+      buttonRight: button?.getBoundingClientRect().right ?? 0,
+      cardRight: card?.getBoundingClientRect().right ?? 0,
+      scrollWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+    };
+  });
+  expect(mobileFit.buttonRight).toBeLessThanOrEqual(mobileFit.cardRight);
+  expect(mobileFit.scrollWidth).toBeLessThanOrEqual(mobileFit.viewportWidth);
+
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto("/demo/runtime/admin/partners?partner_admin_scenario=loading&theme_preview=dark");
+  const adminSkeleton = page.locator(".partners-skeleton");
+  await expect(adminSkeleton.locator(".partners-kpi-card")).toHaveCount(8);
+  await expect(
+    adminSkeleton.locator(".partners-chart-block .admin-revenue-chart-body")
+  ).toHaveCount(2);
+  await expect(adminSkeleton.locator(".partners-preview-card")).toHaveCount(3);
+  const skeletonKpiHeight = await adminSkeleton
+    .locator(".partners-kpi-card")
+    .first()
+    .evaluate((element) => element.getBoundingClientRect().height);
+  const skeletonChartHeight = await adminSkeleton
+    .locator(".partners-chart-block .admin-revenue-svg-frame")
+    .first()
+    .evaluate((element) => element.getBoundingClientRect().height);
+
+  await page.goto(
+    "/demo/runtime/admin/partners?partner_admin_scenario=populated&theme_preview=dark"
+  );
+  const partnerDashboard = page.locator(".partners-admin-page");
+  const finalKpiHeight = await partnerDashboard
+    .locator(".partners-kpi-card")
+    .first()
+    .evaluate((element) => element.getBoundingClientRect().height);
+  const finalChartHeight = await partnerDashboard
+    .locator(".partners-chart-block .admin-revenue-svg-frame")
+    .first()
+    .evaluate((element) => element.getBoundingClientRect().height);
+  expect(Math.abs(skeletonKpiHeight - finalKpiHeight)).toBeLessThanOrEqual(12);
+  expect(Math.abs(skeletonChartHeight - finalChartHeight)).toBeLessThanOrEqual(1);
+
+  await page.goto(
+    "/demo/runtime/admin/partners?partner_admin_scenario=empty_charts&theme_preview=dark"
+  );
+  const emptyPartnerCharts = page.locator(".partners-chart-block .admin-chart-empty");
+  await expect(emptyPartnerCharts).toHaveCount(2);
+  await expect(emptyPartnerCharts).toHaveText(["Нет данных для графика", "Нет данных для графика"]);
+  const emptyPartnerChartHeight = await emptyPartnerCharts
+    .first()
+    .locator("..")
+    .evaluate((element) => element.getBoundingClientRect().height);
+  expect(Math.abs(emptyPartnerChartHeight - finalChartHeight)).toBeLessThanOrEqual(1);
+
+  await page.goto(
+    "/demo/runtime/admin/partners?partner_admin_scenario=empty_lists&theme_preview=dark"
+  );
+  const emptyDashboardTables = page.locator(".partners-dashboard-table-card > .admin-chart-empty");
+  await expect(emptyDashboardTables).toHaveCount(2);
+  await expect(emptyDashboardTables).toHaveText(["Заявок на вывод пока нет", "Партнёров пока нет"]);
+
+  await page.goto("/demo/runtime/admin/stats?stats_scenario=empty_revenue&theme_preview=dark");
+  const emptyRevenueChart = page.locator(".admin-revenue-chart .admin-chart-empty");
+  await expect(emptyRevenueChart).toHaveText("Нет данных для графика");
+  await expect(page.locator(".admin-revenue-chart .admin-revenue-chart-body")).toHaveCount(0);
+});
+
+test("partner dashboard tables stay compact, sortable, and show six rows", async ({ page }) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto(
+    "/demo/runtime/admin/partners?partner_admin_scenario=populated&theme_preview=dark"
+  );
+
+  const dashboardTables = page.locator(".partners-dashboard-table-card");
+  await expect(dashboardTables).toHaveCount(2);
+  await expect(dashboardTables.nth(0).locator("tbody tr")).toHaveCount(6);
+  await expect(dashboardTables.nth(1).locator("tbody tr")).toHaveCount(6);
+
+  const earnedHeader = dashboardTables
+    .nth(1)
+    .getByRole("columnheader", { name: /Чистая комиссия/ });
+  await expect(earnedHeader).toHaveAttribute("aria-sort", "descending");
+  await earnedHeader.getByRole("button").click();
+  await expect(earnedHeader).toHaveAttribute("aria-sort", "ascending");
+
+  const rowHeights = await dashboardTables
+    .first()
+    .locator("tbody tr")
+    .evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
+  expect(Math.max(...rowHeights)).toBeLessThanOrEqual(44);
+
+  const dashboardGeometry = await dashboardTables.evaluateAll((cards) =>
+    cards.map((card) => ({
+      card: card.getBoundingClientRect().height,
+      header: card.querySelector("header")?.getBoundingClientRect().height ?? 0,
+    }))
+  );
+  expect(Math.abs(dashboardGeometry[0].header - dashboardGeometry[1].header)).toBeLessThanOrEqual(
+    1
+  );
+  expect(Math.abs(dashboardGeometry[0].card - dashboardGeometry[1].card)).toBeLessThanOrEqual(1);
+
+  await dashboardTables
+    .first()
+    .locator("tbody tr")
+    .evaluateAll((rows) => rows.slice(2).forEach((row) => row.remove()));
+  const unequalListHeights = await dashboardTables.evaluateAll((cards) =>
+    cards.map((card) => card.getBoundingClientRect().height)
+  );
+  expect(Math.abs(unequalListHeights[0] - unequalListHeights[1])).toBeLessThanOrEqual(1);
+});
+
+test("crypto withdrawals require settlement data before they can be marked paid", async ({
+  page,
+}) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto(
+    "/demo/runtime/admin/partners/withdrawals/WD-499?partner_admin_scenario=populated&theme_preview=dark"
+  );
+
+  const settlement = page.getByLabel("Фактическая сумма в криптовалюте");
+  await expect(settlement).toBeVisible();
+  await page.getByRole("button", { name: "Отметить выплаченным" }).click();
+  await expect(settlement).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("alert")).toContainText("Укажите фактическую сумму");
+
+  await settlement.fill("125.50 USDT");
+  await page.getByRole("button", { name: "Отметить выплаченным" }).click();
+  await expect(page.locator(".partners-record-card > header")).toContainText("Выплачен");
+  await expect(page.getByRole("status")).toContainText("Вывод отмечен выплаченным");
+
+  await page.getByRole("tab", { name: "Партнёры", exact: true }).click();
+  await expect(page.locator(".partners-success-banner")).toHaveCount(0);
+});
+
+test("broadcast promo picker fills its mobile editor row", async ({ page }) => {
+  await page.setViewportSize(MOBILE_VIEWPORT);
+  await page.goto("/demo/runtime/admin/broadcast?theme_preview=dark");
+
+  await page.getByRole("button", { name: "Добавить кнопку", exact: true }).click();
+  const row = page.locator(".admin-row-editor-broadcast").first();
+  await row.getByRole("button", { name: "Кнопки", exact: true }).click();
+  await page.getByRole("option", { name: "Промокод — в боте", exact: true }).click();
+
+  const kindSelect = row.locator(".admin-select-trigger");
+  const combo = row.locator(".admin-combobox");
+  const input = row.getByRole("combobox", { name: "Выберите промокод", exact: true });
+  const trigger = row.getByRole("button", { name: "Выберите промокод", exact: true });
+  await input.click();
+  const menu = page.locator(".admin-combobox-content");
+  await expect(menu).toBeVisible();
+
+  const rect = async (locator: Locator) =>
+    locator.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return {
+        bottom: bounds.bottom,
+        left: bounds.left,
+        right: bounds.right,
+        top: bounds.top,
+        width: bounds.width,
+      };
+    });
+  const [kindRect, comboRect, inputRect, triggerRect, menuRect] = await Promise.all([
+    rect(kindSelect),
+    rect(combo),
+    rect(input),
+    rect(trigger),
+    rect(menu),
+  ]);
+
+  expect(Math.abs(comboRect.width - kindRect.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(inputRect.width - comboRect.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(menuRect.width - comboRect.width)).toBeLessThanOrEqual(1);
+  expect(triggerRect.left).toBeGreaterThanOrEqual(inputRect.left);
+  expect(triggerRect.right).toBeLessThanOrEqual(inputRect.right);
+  expect(triggerRect.top).toBeGreaterThanOrEqual(inputRect.top);
+  expect(triggerRect.bottom).toBeLessThanOrEqual(inputRect.bottom);
+});
+
 test("webapp and admin sections, dialogs, tabs stay interactive without console errors", async ({
   page,
 }) => {
@@ -878,6 +1446,20 @@ test("webapp and admin sections, dialogs, tabs stay interactive without console 
   const adminSidebar = page.locator("aside.admin-sidebar");
   await expect(adminSidebar).toBeVisible();
 
+  setPhase("admin-dashboard:panel-version");
+  const panelVersionTrigger = activeAdminSection(page, "stats").locator(
+    ".admin-panel-version-trigger"
+  );
+  await expect(panelVersionTrigger).toBeVisible();
+  await expect(panelVersionTrigger).toContainText("v3.2.3");
+  await panelVersionTrigger.click();
+  const panelVersionPopover = page.locator(".admin-panel-version-popover");
+  await expect(panelVersionPopover).toBeVisible();
+  await expect(panelVersionPopover).toContainText("Точная версия проверена");
+  await expect(panelVersionPopover).toContainText("Проверенные версии");
+  await page.keyboard.press("Escape");
+  await expect(panelVersionPopover).toBeHidden();
+
   setPhase("admin-dashboard:user-filter-link");
   const paidUsersCounter = activeAdminSection(page, "stats").locator(
     '[data-admin-user-filter="paid"]'
@@ -889,6 +1471,68 @@ test("webapp and admin sections, dialogs, tabs stay interactive without console 
   await page.goBack();
   await expect(page).toHaveURL(/\/demo\/runtime\/admin\/stats$/);
   await expect(activeAdminSection(page, "stats")).toBeVisible();
+
+  setPhase("admin-dashboard:revenue-chart-hover");
+  const revenueChart = activeAdminSection(page, "stats").locator(".admin-revenue-chart-body");
+  const revenueChartOver = revenueChart.locator(".u-over");
+  await revenueChart.scrollIntoViewIfNeeded();
+  await expect(revenueChartOver).toBeVisible();
+  const revenueChartOverBox = await revenueChartOver.boundingBox();
+  if (!revenueChartOverBox) throw new Error("revenue chart hover surface has no bounding box");
+  await revenueChartOver.hover({
+    position: { x: revenueChartOverBox.width / 2, y: revenueChartOverBox.height / 2 },
+  });
+  await expect(revenueChart.locator(".admin-chart-tooltip.is-visible")).toBeVisible();
+  await expect(revenueChart.locator(".admin-chart-highlight.is-visible")).toBeVisible();
+  const firstTooltipBox = await revenueChart
+    .locator(".admin-chart-tooltip.is-visible")
+    .boundingBox();
+  const firstHighlightCentre = await chartHighlightCentre(revenueChart);
+  await revenueChartOver.hover({
+    position: { x: revenueChartOverBox.width - 2, y: revenueChartOverBox.height / 2 },
+  });
+  await page.waitForTimeout(400);
+  const secondHighlightCentre = await chartHighlightCentre(revenueChart);
+  expect(secondHighlightCentre).not.toBeNull();
+  expect(Math.abs((secondHighlightCentre ?? 0) - (firstHighlightCentre ?? 0))).toBeGreaterThan(20);
+  const revenueWrapBox = await revenueChart.locator(".admin-revenue-uplot-wrap").boundingBox();
+  const revenueTooltipBox = await revenueChart
+    .locator(".admin-chart-tooltip.is-visible")
+    .boundingBox();
+  if (!revenueWrapBox || !revenueTooltipBox) {
+    throw new Error("revenue chart tooltip has no bounding box");
+  }
+  if (!firstTooltipBox) throw new Error("revenue chart tooltip has no initial bounding box");
+  const revenueTooltipLaneBox = await revenueChart
+    .locator(".admin-chart-tooltip-lane")
+    .boundingBox();
+  const revenueHighlightBox = await revenueChart
+    .locator(".admin-chart-highlight.is-visible")
+    .boundingBox();
+  // The readout's notch comes from the shared `Plate` component.
+  const revenueTooltipArrowBox = await revenueChart
+    .locator(".admin-chart-tooltip .ui-plate-arrow")
+    .boundingBox();
+  if (
+    !revenueTooltipLaneBox ||
+    !revenueHighlightBox ||
+    !revenueTooltipArrowBox ||
+    secondHighlightCentre === null
+  ) {
+    throw new Error("revenue chart overlay geometry is unavailable");
+  }
+  const highlightDotX = revenueHighlightBox.x + secondHighlightCentre;
+  const tooltipArrowX = revenueTooltipArrowBox.x + revenueTooltipArrowBox.width / 2;
+  expect(Math.abs(revenueTooltipBox.y - firstTooltipBox.y)).toBeLessThanOrEqual(1);
+  expect(revenueTooltipLaneBox.y).toBeGreaterThanOrEqual(revenueWrapBox.y + revenueWrapBox.height);
+  expect(Math.abs(revenueHighlightBox.width - revenueWrapBox.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(revenueHighlightBox.height - revenueWrapBox.height)).toBeLessThanOrEqual(1);
+  // The card is clamped at the extreme right; its arrow keeps a safe inset
+  // from the rounded corner while staying visually attached to the point.
+  expect(Math.abs(tooltipArrowX - highlightDotX)).toBeLessThanOrEqual(12);
+  expect(
+    revenueWrapBox.x + revenueWrapBox.width - revenueTooltipBox.x - revenueTooltipBox.width
+  ).toBeGreaterThanOrEqual(7);
 
   setPhase("admin-section-registry");
   for (const id of CORE_ADMIN_SECTION_IDS) {
@@ -907,9 +1551,7 @@ test("webapp and admin sections, dialogs, tabs stay interactive without console 
   await shortcodeToggle.click();
   const shortcodeList = page.locator(".rt-menu-list");
   await expect(shortcodeList).toBeVisible();
-  await expect(
-    shortcodeList.locator(".rt-menu-scroll .scroll-area__viewport")
-  ).toBeVisible();
+  await expect(shortcodeList.locator(".rt-menu-scroll .scroll-area__viewport")).toBeVisible();
   await shortcodeList.locator(".rt-menu-item").first().click();
   await expect(page.locator(".rt-surface .rt-chip").first()).toBeVisible();
   await page.locator("[data-rt-source-toggle]").click();
@@ -970,7 +1612,7 @@ test("webapp and admin sections, dialogs, tabs stay interactive without console 
     ".dialog-card.admin-promo-dialog:not(.admin-promo-edit-dialog)"
   );
   await expect(createCodeDialog).toBeVisible();
-  await expect(createCodeDialog.locator(".admin-promo-effect-row")).toHaveCount(4);
+  await expect(createCodeDialog.locator(".admin-promo-effect-row")).toHaveCount(6);
   await assertFormFieldsNamed(page, "admin-codes:create-dialog");
   await closeDialog(createCodeDialog);
 

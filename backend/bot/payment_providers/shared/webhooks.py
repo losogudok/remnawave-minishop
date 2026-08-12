@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from aiogram import Bot
@@ -74,6 +74,12 @@ async def notify_user_payment_failed(
     message_key: str = "payment_failed",
 ) -> None:
     """Publish the standard payment-canceled event; reactions notify the user."""
+    grace_seconds = max(0, int(settings.PAYMENT_FAILURE_NOTIFICATION_GRACE_SECONDS or 0))
+    failure_at = getattr(payment, "updated_at", None) or getattr(payment, "created_at", None)
+    if grace_seconds > 0 and isinstance(failure_at, datetime):
+        normalized_failure_at = failure_at if failure_at.tzinfo else failure_at.replace(tzinfo=UTC)
+        if normalized_failure_at + timedelta(seconds=grace_seconds) > datetime.now(UTC):
+            return
     await events.emit_model(
         PaymentCanceledPayload(
             user_id=int(payment.user_id),

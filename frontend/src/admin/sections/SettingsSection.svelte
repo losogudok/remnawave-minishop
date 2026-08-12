@@ -13,11 +13,13 @@
     resolveSettingsPath,
     settingsPathAnchorKey,
     settingsPathKey,
+    settingsSectionAnchorKey,
     settingsSectionRoute,
     settingsSubsectionRoute,
   } from "$lib/admin/settingsSections";
   import {
     buildSettingsSearchEntries,
+    normalizeSettingsSearchText,
     searchSettingsEntries,
     type SettingsSearchEntry,
   } from "$lib/admin/settingsSearch";
@@ -40,6 +42,7 @@
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
   type SettingsDirtyState = Record<string, SettingsDirtyEntry>;
   type DynamicComponent = ComponentType<SvelteComponent<Record<string, unknown>>>;
+  const PROGRAM_SETTINGS_SECTION_IDS = ["referral", "partner"];
   type ScrollOptions = { focus?: boolean };
   type WindowListenerTuple = [
     type: string,
@@ -54,6 +57,8 @@
     settingsPath = [],
     routePrefix = "",
     onSettingsPathChange = () => {},
+    onOpenSettingsPath: _onOpenSettingsPath = () => {},
+    onNavigateSection = () => {},
   }: {
     at: TranslateFn;
     onSettingsSaved: (payload: SettingsSavedPayload) => void | Promise<void>;
@@ -61,6 +66,8 @@
     settingsPath?: SettingsPath;
     routePrefix?: string;
     onSettingsPathChange?: (path: SettingsPath) => void;
+    onOpenSettingsPath?: (path?: unknown) => void;
+    onNavigateSection?: (section: string) => void;
   } = $props();
 
   const settingsStore = getSettingsStore();
@@ -92,9 +99,13 @@
   let highlightedSettingKey = $state("");
   let settingsSearchHighlightTimer = $state<ReturnType<typeof window.setTimeout> | null>(null);
 
+  const allSettingsSectionIds = $derived([
+    ...PROGRAM_SETTINGS_SECTION_IDS,
+    ...visibleSettingsSections.map((section) => section.id),
+  ]);
   const settingsAllOpen = $derived(
-    visibleSettingsSections.length > 0 &&
-      settingsOpenSections.length === visibleSettingsSections.length
+    allSettingsSectionIds.length > 0 &&
+      allSettingsSectionIds.every((sectionId) => settingsOpenSections.includes(sectionId))
   );
   const iconOptions = $derived(
     Object.keys(UiIcons)
@@ -104,14 +115,15 @@
   const filteredIconOptions = $derived(
     iconOptions.filter((name) => name.toLowerCase().includes(iconPickerSearch.trim().toLowerCase()))
   );
-  const settingsSearchEntries = $derived(
-    buildSettingsSearchEntries(visibleSettingsSections, {
+  const settingsSearchEntries = $derived([
+    ...buildSettingsSearchEntries(visibleSettingsSections, {
       sectionTitle,
       subsectionTitle,
       fieldLabelText,
       fieldDescriptionText,
-    })
-  );
+    }),
+    ...programSearchEntries(),
+  ]);
   const settingsSearchResults = $derived(
     searchSettingsEntries(settingsSearchEntries, settingsSearchQuery, 8)
   );
@@ -140,10 +152,10 @@
   });
 
   function toggleAllSections(): void {
-    if (settingsOpenSections.length === visibleSettingsSections.length) {
+    if (settingsAllOpen) {
       settingsOpenSections = [];
     } else {
-      settingsOpenSections = visibleSettingsSections.map((s) => s.id);
+      settingsOpenSections = allSettingsSectionIds;
     }
   }
 
@@ -190,6 +202,48 @@
     highlightSettingsSearchResult(result.key);
     await tick();
     scrollToSettingsAnchor(result.anchorKey);
+  }
+
+  function programSearchEntries(): SettingsSearchEntry[] {
+    return [
+      {
+        key: "REFERRAL_PROGRAM_SETTINGS",
+        sectionId: "referral",
+        subsectionId: null,
+        label: at("marketing_programs_referral", {}, "Referral program"),
+        description: at("marketing_programs_referral_hint", {}, "Bonuses in subscription days"),
+        pathLabel: at("marketing_programs_referral", {}, "Referral program"),
+        anchorKey: settingsSectionAnchorKey("referral"),
+        // Synonyms live in the locale files like every other searchable string,
+        // so a Russian admin finds the section by a Russian word.
+        searchText: normalizeSettingsSearchText(
+          [
+            at("marketing_programs_referral", {}, "Referral program"),
+            at("marketing_programs_referral_hint", {}, "Bonuses in subscription days"),
+            at("marketing_programs_referral_keywords", {}, "referral invite bonus"),
+            "REFERRAL_PROGRAM_SETTINGS",
+          ].join(" ")
+        ),
+      },
+      {
+        key: "PARTNER_PROGRAM_SETTINGS",
+        sectionId: "partner",
+        subsectionId: null,
+        label: at("marketing_programs_partner", {}, "Partner program"),
+        description: at("marketing_programs_partner_hint", {}, "Money commissions and withdrawals"),
+        pathLabel: at("marketing_programs_partner", {}, "Partner program"),
+        anchorKey: settingsSectionAnchorKey("partner"),
+        searchText: normalizeSettingsSearchText(
+          [
+            at("marketing_programs_partner", {}, "Partner program"),
+            at("marketing_programs_partner_hint", {}, "Money commissions and withdrawals"),
+            at("marketing_programs_partner_keywords", {}, "partner commission payout"),
+            "PARTNER_PROGRAM_SETTINGS",
+            "PARTNER_WITHDRAWAL_METHODS_JSON",
+          ].join(" ")
+        ),
+      },
+    ];
   }
 
   function currentUrlSettingsPath(): SettingsPath {
@@ -402,6 +456,28 @@
 
   async function applySettingsPath(path: unknown): Promise<void> {
     const resolvedPath = effectiveSettingsPath(path);
+    const firstSegment = resolvedPath[0]?.toLowerCase();
+    const legacyProgram =
+      firstSegment === "marketing" ? resolvedPath[1]?.toLowerCase() : firstSegment;
+    if (legacyProgram === "referral" || legacyProgram === "partner") {
+      settingsPathSyncing = true;
+      try {
+        if (!settingsOpenSections.includes(legacyProgram)) {
+          settingsOpenSections = [...settingsOpenSections, legacyProgram];
+        }
+        await tick();
+        scrollToSettingsAnchor(settingsSectionAnchorKey(legacyProgram));
+      } finally {
+        if (typeof window !== "undefined") {
+          window.setTimeout(() => {
+            settingsPathSyncing = false;
+          }, 0);
+        } else {
+          settingsPathSyncing = false;
+        }
+      }
+      return;
+    }
     const target = resolveSettingsPath(resolvedPath, visibleSettingsSections);
     if (!target) return;
 
@@ -684,6 +760,7 @@
 <SettingsContent
   {at}
   {settingsLoading}
+  extraDirtyCount={Number(settingsStore.extraDirtyCount || 0)}
   {visibleSettingsSections}
   {settingsDirty}
   {settingsSaving}
@@ -729,6 +806,7 @@
   {jsonFileHandler}
   {markFieldDirty}
   {resetField}
+  {onNavigateSection}
 />
 
 <SettingsIconPicker

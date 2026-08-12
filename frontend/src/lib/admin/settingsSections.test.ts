@@ -76,6 +76,8 @@ describe("settingsSections", () => {
         field("PLATEGA_API_URL", { subsection: "Platega" }),
         field("PLATEGA_SBP_ENABLED", { subsection: "Platega" }),
         field("PLATEGA_CRYPTO_ENABLED", { subsection: "Platega" }),
+        field("PLATEGA_INTERNATIONAL_ENABLED", { subsection: "Platega" }),
+        field("PLATEGA_ALL_METHODS_ENABLED", { subsection: "Platega" }),
       ],
     } as AdminSettingsSection;
     const [group] = groupSectionFields(section);
@@ -84,6 +86,8 @@ describe("settingsSections", () => {
       "platega_common",
       "platega_sbp",
       "platega_crypto",
+      "platega_international",
+      "platega_all_methods",
     ]);
 
     const resolved = resolveSettingsPath(["payments", "platega", "card"], [section]);
@@ -91,6 +95,12 @@ describe("settingsSections", () => {
     expect(resolved?.anchorKey).toBe(settingsSubsectionAnchorKey("payments", "Platega"));
     expect(settingsPathAnchorKey(["payments", "platega", "card"], resolved)).toBe(
       settingsFieldGroupAnchorKey("payments", "Platega", "platega_sbp")
+    );
+    expect(settingsPathAnchorKey(["payments", "platega", "international"], resolved)).toBe(
+      settingsFieldGroupAnchorKey("payments", "Platega", "platega_international")
+    );
+    expect(settingsPathAnchorKey(["payments", "platega", "all-methods"], resolved)).toBe(
+      settingsFieldGroupAnchorKey("payments", "Platega", "platega_all_methods")
     );
   });
 });

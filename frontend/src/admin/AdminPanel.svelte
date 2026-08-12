@@ -272,7 +272,12 @@
     supportStore.setActive(active);
   });
 
-  const dirtyCount = $derived(Object.keys(settingsStore.settingsDirty || {}).length);
+  // Includes sections that own their own contract (the referral bonus
+  // matrix), so the single header Save enables for their edits too.
+  const dirtyCount = $derived(
+    Object.keys(settingsStore.settingsDirty || {}).length +
+      Number(settingsStore.extraDirtyCount || 0)
+  );
   const translationsDirtyCount = $derived(
     Object.keys(translationsStore.translationsDirty || {}).length
   );
@@ -556,6 +561,43 @@
     void usersStore.openUser(uid, { pathContext: "payments" });
   }
 
+  /** Open a payment from anywhere (the partner commission list uses this). */
+  function openPaymentCard(paymentId: number): void {
+    const id = Number(paymentId);
+    if (!Number.isFinite(id) || id <= 0) return;
+    const next = normalizeSection("payments");
+    sidebarOpen = false;
+    if (active !== next) {
+      active = next;
+      usersStore.closeUser();
+      onSectionChange(next);
+    }
+    usersStore.setActive(next);
+    void paymentsStore.openPayment(id);
+  }
+
+  /** Open a partner card from anywhere (the payment card links back here). */
+  function openPartnerCard(partnerId: string): void {
+    const id = String(partnerId || "").trim();
+    if (!id) return;
+    const next = normalizeSection("partners");
+    sidebarOpen = false;
+    if (active !== next) {
+      active = next;
+      usersStore.closeUser();
+      paymentsStore.closePayment({ skipPush: true });
+      onSectionChange(next);
+    }
+    usersStore.setActive(next);
+    if (typeof window === "undefined") return;
+    const target = withRoutePrefix(
+      `/admin/partners/partner/${encodeURIComponent(id)}`,
+      routePrefix
+    );
+    window.history.pushState(null, "", `${target}${window.location.search}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
+
   function openLogsUserCard(userId: unknown): void {
     const uid = Number(userId);
     if (!Number.isFinite(uid) || uid === 0) return;
@@ -700,6 +742,7 @@
 </script>
 
 <AdminPanelLayout
+  api={stableApi}
   {active}
   {activeSectionComponent}
   {activeSectionLoading}
@@ -730,6 +773,8 @@
   onCloseUser={closeUserCard}
   onExportPayments={exportPayments}
   onOpenPaymentUserCard={openPaymentUserCard}
+  onOpenPartnerCard={openPartnerCard}
+  onOpenPaymentCard={openPaymentCard}
   onOpenSettingsPath={openSettingsPath}
   onOpenUserCard={openSectionUserCard}
   onOpenUsersFilter={openUsersFilter}

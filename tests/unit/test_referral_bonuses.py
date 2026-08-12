@@ -29,6 +29,7 @@ from config.tariffs_config import TariffsConfig
 def _make_settings(**overrides: Any) -> SimpleNamespace:
     base = {
         "DEFAULT_LANGUAGE": "en",
+        "REFERRAL_PROGRAM_ENABLED": True,
         "REFERRAL_ONE_BONUS_PER_REFEREE": True,
         "user_traffic_limit_bytes": 0,
         "referral_bonus_inviter": {1: 7, 3: 21, 6: 45, 12: 90},
@@ -59,6 +60,30 @@ def _make_service(*, settings, subscription_service):
 
 
 class SkipPathTests(unittest.IsolatedAsyncioTestCase):
+    async def test_disabled_referral_program_skips_ordinary_payment_bonus(self):
+        settings = _make_settings(
+            REFERRAL_PROGRAM_ENABLED=False,
+            partner_settings=SimpleNamespace(enabled=False),
+        )
+        subscription_service = AsyncMock()
+        service, _bot = _make_service(settings=settings, subscription_service=subscription_service)
+
+        with patch(
+            "bot.services.referral_service.user_dal.get_user_by_id",
+            AsyncMock(return_value=_make_user(42, referred_by_id=7)),
+        ):
+            result = await service.apply_referral_bonuses_for_payment(
+                session=AsyncMock(),
+                referee_user_id=42,
+                purchased_subscription_months=1,
+            )
+
+        self.assertEqual(
+            result,
+            {"referee_bonus_applied_days": None, "referee_new_end_date": None},
+        )
+        subscription_service.extend_active_subscription_days.assert_not_called()
+
     async def test_no_inviter_returns_empty_payload(self):
         settings = _make_settings()
         subscription_service = AsyncMock()
@@ -73,6 +98,50 @@ class SkipPathTests(unittest.IsolatedAsyncioTestCase):
                 referee_user_id=42,
                 purchased_subscription_months=1,
             )
+        self.assertEqual(
+            result,
+            {"referee_bonus_applied_days": None, "referee_new_end_date": None},
+        )
+        subscription_service.extend_active_subscription_days.assert_not_called()
+
+    async def test_partner_client_with_prior_payment_uses_independent_first_payment_rule(self):
+        settings = _make_settings(
+            REFERRAL_PROGRAM_ENABLED=False,
+            REFERRAL_ONE_BONUS_PER_REFEREE=False,
+            partner_settings=SimpleNamespace(
+                enabled=True,
+                client_payment_bonus_enabled=True,
+                one_bonus_per_client=True,
+            ),
+        )
+        subscription_service = AsyncMock()
+        service, _bot = _make_service(settings=settings, subscription_service=subscription_service)
+        with (
+            patch(
+                "bot.services.referral_service.user_dal.get_user_by_id",
+                AsyncMock(return_value=_make_user(42, referred_by_id=7)),
+            ),
+            patch(
+                "bot.services.partner_program_service.partner_dal.get_client_with_profile_for_user",
+                AsyncMock(
+                    return_value=(
+                        SimpleNamespace(partner_client_id=3),
+                        SimpleNamespace(status="active"),
+                    )
+                ),
+            ),
+            patch(
+                "bot.services.referral_service.payment_dal.count_user_succeeded_payments",
+                AsyncMock(return_value=1),
+            ),
+        ):
+            result = await service.apply_referral_bonuses_for_payment(
+                session=AsyncMock(),
+                referee_user_id=42,
+                purchased_subscription_months=1,
+                current_payment_db_id=99,
+            )
+
         self.assertEqual(
             result,
             {"referee_bonus_applied_days": None, "referee_new_end_date": None},
@@ -292,6 +361,67 @@ class InviterBonusTests(unittest.IsolatedAsyncioTestCase):
 
 
 class RefereeBonusTests(unittest.IsolatedAsyncioTestCase):
+    async def test_partner_client_gets_only_referee_tariff_bonus(self):
+        settings = _make_settings(
+            REFERRAL_PROGRAM_ENABLED=False,
+            REFERRAL_ONE_BONUS_PER_REFEREE=True,
+            partner_settings=SimpleNamespace(
+                enabled=True,
+                client_payment_bonus_enabled=True,
+                one_bonus_per_client=False,
+            ),
+        )
+        subscription_service = AsyncMock()
+        referee_new_end = datetime(2026, 3, 1, tzinfo=UTC)
+        subscription_service.extend_active_subscription_days = AsyncMock(
+            return_value=referee_new_end
+        )
+        service, _bot = _make_service(settings=settings, subscription_service=subscription_service)
+
+        with (
+            patch(
+                "bot.services.referral_service.user_dal.get_user_by_id",
+                AsyncMock(return_value=_make_user(42, referred_by_id=7)),
+            ),
+            patch(
+                "bot.services.partner_program_service.partner_dal.get_client_with_profile_for_user",
+                AsyncMock(
+                    return_value=(
+                        SimpleNamespace(partner_client_id=3),
+                        SimpleNamespace(status="active"),
+                    )
+                ),
+            ),
+            patch(
+                "bot.services.referral_service.subscription_dal.get_active_subscription_by_user_id",
+                AsyncMock(),
+            ) as inviter_subscription,
+            patch(
+                "bot.services.referral_service.payment_dal.count_user_succeeded_payments",
+                AsyncMock(return_value=1),
+            ) as payment_count,
+        ):
+            result = await service.apply_referral_bonuses_for_payment(
+                session=AsyncMock(),
+                referee_user_id=42,
+                purchased_subscription_months=3,
+                skip_if_active_before_payment=False,
+            )
+
+        self.assertEqual(result["referee_bonus_applied_days"], 10)
+        self.assertEqual(result["referee_new_end_date"], referee_new_end)
+        self.assertEqual(result["referee_bonus_source"], "partner")
+        self.assertFalse(result["inviter_bonus_applied_flag"])
+        self.assertFalse(result["event_payload"]["one_bonus_per_referee"])
+        payment_count.assert_not_awaited()
+        inviter_subscription.assert_not_awaited()
+        subscription_service.extend_active_subscription_days.assert_awaited_once_with(
+            session=unittest.mock.ANY,
+            user_id=42,
+            bonus_days=10,
+            reason="partner client payment bonus",
+        )
+
     async def test_applies_referee_bonus_via_extend_active_subscription(self):
         settings = _make_settings(REFERRAL_ONE_BONUS_PER_REFEREE=False)
         subscription_service = AsyncMock()

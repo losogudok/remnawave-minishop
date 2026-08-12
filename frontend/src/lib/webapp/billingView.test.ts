@@ -151,4 +151,25 @@ describe("computeBillingView", () => {
     expect(view.premiumTrafficTopupUnlocked).toBe(false);
     expect(view.premiumTrafficTopupBarClickable).toBe(false);
   });
+
+  it("unlocks premium top-up immediately for a zero-quota tariff", () => {
+    const view = computeBillingView({
+      appSettings: {},
+      plans: [periodPlan],
+      selectedTariffKey: "period",
+      subscription: {
+        active: true,
+        tariff_key: "period",
+        can_topup_premium_traffic: true,
+        premium_traffic_limited: true,
+        premium_limit_bytes: 0,
+        premium_used_bytes: 0,
+      },
+      topupUnlockPercent: 80,
+    });
+
+    expect(view.canOpenPremiumTopupModal).toBe(true);
+    expect(view.premiumTrafficTopupUnlocked).toBe(true);
+    expect(view.premiumTrafficTopupBarClickable).toBe(true);
+  });
 });

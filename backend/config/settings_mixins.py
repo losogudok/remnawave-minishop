@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 import secrets
@@ -8,17 +9,20 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Protocol,
+    Self,
     TypeVar,
     overload,
 )
 
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator, model_validator
 
 from config.settings_models import (
     CompatibilitySettings,
     DBSettings,
     EmailSettings,
     PanelSettings,
+    PartnerSettings,
+    PartnerWithdrawalMethod,
     PaymentSettings,
     ReferralSettings,
     RegistrationSettings,
@@ -27,6 +31,7 @@ from config.settings_models import (
 )
 from config.support_links import normalize_support_link
 from config.tariffs_config import TariffsConfig, load_tariffs_config
+from config.telegram_proxy import validate_telegram_bot_proxy_url
 from config.traffic_strategy import normalize_traffic_limit_strategy
 from config.webapp_themes_config import WebappThemesConfig, resolved_webapp_themes_catalog
 
@@ -136,6 +141,7 @@ if TYPE_CHECKING:
         TARIFFS_CONFIG_PATH: str
         WEBAPP_DEFAULT_THEME: str | None
         WEBAPP_THEMES_DIR: str
+        REFERRAL_PROGRAM_ENABLED: bool
         REFERRAL_BONUS_DAYS_INVITER_1_MONTH: int | None
         REFERRAL_BONUS_DAYS_INVITER_3_MONTHS: int | None
         REFERRAL_BONUS_DAYS_INVITER_6_MONTHS: int | None
@@ -147,6 +153,32 @@ if TYPE_CHECKING:
         REFERRAL_ONE_BONUS_PER_REFEREE: bool
         REFERRAL_WELCOME_BONUS_DAYS: int
         REFERRAL_WELCOME_BONUS_WITHOUT_TELEGRAM_ENABLED: bool
+        REFERRAL_WEBAPP_LINK_ENABLED: bool
+        REFERRAL_TELEGRAM_LINK_ENABLED: bool
+        PARTNER_PROGRAM_ENABLED: bool
+        PARTNER_AUTO_ENROLLMENT_ENABLED: bool
+        PARTNER_REFERRAL_PROGRAM_DISABLED: bool
+        PARTNER_WITHDRAWALS_ENABLED: bool
+        PARTNER_BALANCE_PAYMENT_ENABLED: bool
+        PARTNER_CLIENT_WELCOME_BONUS_ENABLED: bool
+        PARTNER_CLIENT_PAYMENT_BONUS_ENABLED: bool
+        PARTNER_ONE_BONUS_PER_CLIENT: bool
+        PARTNER_DEFAULT_COMMISSION_BPS: int
+        PARTNER_COMMISSION_HOLD_DAYS: int
+        PARTNER_ELIGIBLE_CURRENCIES: str
+        PARTNER_EXCLUDED_SALE_MODES: str
+        PARTNER_WITHDRAWAL_METHODS_JSON: str
+        PARTNER_TELEGRAM_LINK_ENABLED: bool
+        PARTNER_WEBAPP_LINK_ENABLED: bool
+        PARTNER_APPLICATION_MESSAGE_MAX_LENGTH: int
+        PARTNER_MAX_ACTIVE_WITHDRAWALS: int
+        PARTNER_REAPPLICATION_ENABLED: bool
+        PARTNER_REAPPLICATION_COOLDOWN_DAYS: int
+        PARTNER_LIST_PAGE_LIMIT: int
+        PARTNER_APPLICATION_RATE_LIMIT_HOURS: int
+        PARTNER_WITHDRAWAL_RATE_LIMIT_SECONDS: int
+        PARTNER_AUDIT_RETENTION_DAYS: int
+        PARTNER_REQUISITES_RETENTION_DAYS: int
         REGISTRATION_INVITE_ONLY_ENABLED: bool
         LEGACY_REFS: bool
         MIGRATION_REMNASHOP_REFERRAL_CODE_COMPAT_ENABLED: bool
@@ -255,6 +287,7 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
     @property
     def referral_settings(self) -> ReferralSettings:
         return ReferralSettings(
+            enabled=self.REFERRAL_PROGRAM_ENABLED,
             bonus_days_inviter_1_month=self.REFERRAL_BONUS_DAYS_INVITER_1_MONTH,
             bonus_days_inviter_3_months=self.REFERRAL_BONUS_DAYS_INVITER_3_MONTHS,
             bonus_days_inviter_6_months=self.REFERRAL_BONUS_DAYS_INVITER_6_MONTHS,
@@ -266,7 +299,59 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
             one_bonus_per_referee=self.REFERRAL_ONE_BONUS_PER_REFEREE,
             welcome_bonus_days=self.REFERRAL_WELCOME_BONUS_DAYS,
             welcome_bonus_without_telegram_enabled=self.REFERRAL_WELCOME_BONUS_WITHOUT_TELEGRAM_ENABLED,
+            webapp_link_enabled=self.REFERRAL_WEBAPP_LINK_ENABLED,
+            telegram_link_enabled=self.REFERRAL_TELEGRAM_LINK_ENABLED,
             legacy_refs_enabled=self.LEGACY_REFS,
+        )
+
+    @property
+    def partner_settings(self) -> PartnerSettings:
+        def _json_list(raw: str, key: str) -> list[Any]:
+            try:
+                value = json.loads(raw or "[]")
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{key} must be valid JSON") from exc
+            if not isinstance(value, list):
+                raise ValueError(f"{key} must be a JSON array")
+            return value
+
+        return PartnerSettings(
+            enabled=self.PARTNER_PROGRAM_ENABLED,
+            auto_enrollment_enabled=self.PARTNER_AUTO_ENROLLMENT_ENABLED,
+            referral_program_disabled=self.PARTNER_REFERRAL_PROGRAM_DISABLED,
+            withdrawals_enabled=self.PARTNER_WITHDRAWALS_ENABLED,
+            balance_payment_enabled=self.PARTNER_BALANCE_PAYMENT_ENABLED,
+            client_welcome_bonus_enabled=self.PARTNER_CLIENT_WELCOME_BONUS_ENABLED,
+            client_payment_bonus_enabled=self.PARTNER_CLIENT_PAYMENT_BONUS_ENABLED,
+            one_bonus_per_client=self.PARTNER_ONE_BONUS_PER_CLIENT,
+            default_commission_bps=self.PARTNER_DEFAULT_COMMISSION_BPS,
+            commission_hold_days=self.PARTNER_COMMISSION_HOLD_DAYS,
+            eligible_currencies=_json_list(
+                self.PARTNER_ELIGIBLE_CURRENCIES,
+                "PARTNER_ELIGIBLE_CURRENCIES",
+            ),
+            excluded_sale_modes=_json_list(
+                self.PARTNER_EXCLUDED_SALE_MODES,
+                "PARTNER_EXCLUDED_SALE_MODES",
+            ),
+            withdrawal_methods=[
+                PartnerWithdrawalMethod.model_validate(item)
+                for item in _json_list(
+                    self.PARTNER_WITHDRAWAL_METHODS_JSON,
+                    "PARTNER_WITHDRAWAL_METHODS_JSON",
+                )
+            ],
+            telegram_link_enabled=self.PARTNER_TELEGRAM_LINK_ENABLED,
+            webapp_link_enabled=self.PARTNER_WEBAPP_LINK_ENABLED,
+            application_message_max_length=self.PARTNER_APPLICATION_MESSAGE_MAX_LENGTH,
+            max_active_withdrawals=self.PARTNER_MAX_ACTIVE_WITHDRAWALS,
+            reapplication_enabled=self.PARTNER_REAPPLICATION_ENABLED,
+            reapplication_cooldown_days=self.PARTNER_REAPPLICATION_COOLDOWN_DAYS,
+            list_page_limit=self.PARTNER_LIST_PAGE_LIMIT,
+            application_rate_limit_hours=self.PARTNER_APPLICATION_RATE_LIMIT_HOURS,
+            withdrawal_rate_limit_seconds=self.PARTNER_WITHDRAWAL_RATE_LIMIT_SECONDS,
+            audit_retention_days=self.PARTNER_AUDIT_RETENTION_DAYS,
+            requisites_retention_days=self.PARTNER_REQUISITES_RETENTION_DAYS,
         )
 
     @property
@@ -633,6 +718,8 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
             "freekassa",
             "platega_sbp",
             "platega_crypto",
+            "platega_international",
+            "platega_all_methods",
             "severpay",
             "wata",
             "wata_crypto",
@@ -666,6 +753,10 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
                     methods.append("platega_sbp")
                 if "platega_crypto" not in methods:
                     methods.append("platega_crypto")
+                if "platega_international" not in methods:
+                    methods.append("platega_international")
+                if "platega_all_methods" not in methods:
+                    methods.append("platega_all_methods")
                 continue
             methods.append(slug)
         # Append any registered spec that the operator didn't list — keeps
@@ -697,6 +788,13 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
         return bool(self.qa_auth_enabled or self.smtp_delivery_configured)
 
     @computed_field
+    def webapp_auth_providers(self) -> list[str]:
+        providers = ["telegram"]
+        if self.email_auth_configured:
+            providers.append("email")
+        return providers
+
+    @computed_field
     def smtp_delivery_configured(self) -> bool:
         return bool(
             self.SMTP_HOST
@@ -725,6 +823,20 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
 
 
 class SettingsValidationMixin:
+    @field_validator("TELEGRAM_BOT_PROXY_URL")
+    @classmethod
+    def validate_telegram_bot_proxy_setting(cls, value: SecretStr | None) -> SecretStr | None:
+        return validate_telegram_bot_proxy_url(value)
+
+    @model_validator(mode="after")
+    def validate_referral_link_visibility(self) -> Self:
+        if not (
+            bool(getattr(self, "REFERRAL_WEBAPP_LINK_ENABLED", False))
+            or bool(getattr(self, "REFERRAL_TELEGRAM_LINK_ENABLED", False))
+        ):
+            raise ValueError("at least one referral link must remain enabled")
+        return self
+
     @field_validator("SUPPORT_LINK", mode="before")
     @classmethod
     def normalize_support_link_setting(cls, value):

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.middlewares.i18n import JsonI18n
 from bot.services.referral_service import ReferralService
+from bot.services.registration_invite_gate import referral_program_enabled
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.utils.install_links import ensure_user_install_guide_share_url
 from bot.utils.telegram_markup import (
@@ -392,7 +393,8 @@ async def format_user_card(
             )
 
     # Referral links — bot deep-link + webapp deep-link.
-    if referral_service is not None and bot_username:
+    referrals_enabled = settings is None or referral_program_enabled(settings)
+    if referrals_enabled and referral_service is not None and bot_username:
         try:
             bot_ref_link = await referral_service.generate_referral_link(
                 session, bot_username, user.user_id
@@ -404,7 +406,7 @@ async def format_user_card(
                 "Failed to build bot referral link for %s: %s", user.user_id, exc_bot_ref
             )
 
-    if settings is not None:
+    if referrals_enabled and settings is not None:
         webapp_base = settings.SUBSCRIPTION_MINI_APP_URL
         if webapp_base:
             try:

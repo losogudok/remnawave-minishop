@@ -7,6 +7,7 @@ export { default as Dialog } from "./dialog.svelte";
 export { default as FileInput } from "./file-input.svelte";
 export { default as Input } from "./input.svelte";
 export { default as LegacyCard } from "./card.svelte";
+export { default as Plate } from "./plate.svelte";
 export { default as RadioGroup } from "./radio-group.svelte";
 export { default as RadioGroupItem } from "./radio-group-item.svelte";
 export { default as RangeInput } from "./range-input.svelte";

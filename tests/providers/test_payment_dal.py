@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 from sqlalchemy.dialects import postgresql
 
+from bot.services.partner_checkout_balance import PartnerCheckoutBalanceService
 from db.dal import payment_dal
 
 
@@ -152,6 +153,67 @@ class PaymentDalStatusUpdateTests(IsolatedAsyncioTestCase):
         self.assertEqual(payment.provider_payment_id, "provider-3")
         session.flush.assert_awaited_once()
         session.refresh.assert_awaited_once_with(payment)
+
+    async def test_success_reactivates_a_previously_released_partner_spend(self):
+        savepoint = AsyncMock()
+        session = SimpleNamespace(
+            begin_nested=AsyncMock(return_value=savepoint),
+            flush=AsyncMock(),
+            refresh=AsyncMock(),
+        )
+        payment = SimpleNamespace(payment_id=4, status="failed_creation")
+
+        with (
+            patch.object(
+                payment_dal,
+                "get_payment_by_db_id_for_update",
+                AsyncMock(return_value=payment),
+            ),
+            patch.object(
+                PartnerCheckoutBalanceService,
+                "ensure_consumed",
+                AsyncMock(),
+            ) as ensure_consumed,
+            patch.object(
+                PartnerCheckoutBalanceService,
+                "release_if_terminal",
+                AsyncMock(),
+            ),
+        ):
+            await payment_dal.update_payment_status_by_db_id(session, 4, "succeeded")
+
+        ensure_consumed.assert_awaited_once_with(session, payment_id=4)
+        self.assertEqual(payment.status, "succeeded")
+
+    async def test_terminal_status_releases_partner_spend(self):
+        savepoint = AsyncMock()
+        session = SimpleNamespace(
+            begin_nested=AsyncMock(return_value=savepoint),
+            flush=AsyncMock(),
+            refresh=AsyncMock(),
+        )
+        payment = SimpleNamespace(payment_id=5, status="pending")
+
+        with (
+            patch.object(
+                payment_dal,
+                "get_payment_by_db_id_for_update",
+                AsyncMock(return_value=payment),
+            ),
+            patch.object(
+                PartnerCheckoutBalanceService,
+                "release_if_terminal",
+                AsyncMock(),
+            ) as release_if_terminal,
+        ):
+            await payment_dal.update_payment_status_by_db_id(session, 5, "canceled")
+
+        release_if_terminal.assert_awaited_once_with(
+            session,
+            payment_id=5,
+            status="canceled",
+        )
+        self.assertEqual(payment.status, "canceled")
 
 
 class PaymentDalFinalizationClaimTests(IsolatedAsyncioTestCase):

@@ -361,6 +361,8 @@ async def promo_export_activations_handler(
                 "Charged GB",
                 "Granted Days",
                 "Granted GB",
+                "Granted Regular Traffic GB",
+                "Granted Premium Traffic GB",
                 "Effect",
             ]
         )
@@ -385,6 +387,8 @@ async def promo_export_activations_handler(
                     act.charged_gb or "",
                     act.granted_days or "",
                     act.granted_gb or "",
+                    getattr(act, "granted_regular_traffic_gb", None) or "",
+                    getattr(act, "granted_premium_traffic_gb", None) or "",
                     _activation_effect_text(act),
                 ]
             )

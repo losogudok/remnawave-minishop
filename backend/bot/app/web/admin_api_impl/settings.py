@@ -19,6 +19,7 @@ from bot.app.web.route_contracts import (
 )
 from bot.app.web.webapp.cache_helpers import refresh_webapp_runtime_after_settings_change
 from bot.services.entitlements import features as entitlement_features
+from bot.services.partner_withdrawal_service import PartnerWithdrawalService
 from bot.services.settings_override_service import current_value, update_overrides
 from config.settings import Settings
 from config.subscription_guides_config import (
@@ -125,7 +126,15 @@ async def admin_settings_get_route(request: web.Request) -> web.Response:
         sections[section_id]["fields"].append(response_field)
 
     ordered_sections = sorted(sections.values(), key=lambda s: s["order"])
-    return _ok({"sections": ordered_sections, "features": sorted(entitlement_features())})
+    return _ok(
+        {
+            "sections": ordered_sections,
+            "features": sorted(entitlement_features()),
+            "partner_encryption_available": PartnerWithdrawalService(
+                settings
+            ).encryption_available(),
+        }
+    )
 
 
 async def admin_settings_patch_route(request: web.Request) -> web.Response:

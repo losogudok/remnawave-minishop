@@ -17,6 +17,10 @@ OLD_TGSHOP_DB_VOLUME="remnawave-tg-shop-db-data"
 KNOWN_LEGACY_CONTAINERS="remnawave-tg-shop remnawave-tg-shop-db remnawave-tg-shop-caddy remnawave-minishop remnawave-minishop-db remnawave-minishop-caddy remnawave-minishop-backend remnawave-minishop-worker remnawave-minishop-frontend remnawave-minishop-migrate remnawave-minishop-postgres remnawave-minishop-redis"
 REMNASHOP_RUNTIME_CONTAINERS="remnashop remnashop-taskiq-worker remnashop-taskiq-scheduler remnashop-db remnashop-redis"
 PANGOLIN_COMPOSE_FILE="docker-compose.pangolin.yml"
+MIN_DOCKER_ENGINE_VERSION="25.0.0"
+MIN_DOCKER_COMPOSE_VERSION="2.20.2"
+DOCKER_INSTALL_URL="https://get.docker.com"
+DOCKER_INSTALL_DOCS_URL="https://docs.docker.com/engine/install/"
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     RESET="$(printf '\033[0m')"
@@ -44,7 +48,10 @@ SOURCE_REF="$DEFAULT_REF"
 PROFILE_KEY=""
 DEPLOYMENT_PROFILE_VALUE=""
 ENV_PATH=""
-COMPOSE_STYLE=""
+COMPOSE_VERSION_VALUE=""
+DOCKER_ENGINE_VERSION_VALUE=""
+DOCKER_PREFLIGHT_DONE="0"
+DOCKER_UPDATE_OFFERED="0"
 PROMPT_VALUE=""
 CHOICE_VALUE=""
 LEGACY_SOURCE=""
@@ -77,6 +84,8 @@ PANGOLIN_ENDPOINT_VALUE=""
 NEWT_ID_VALUE=""
 NEWT_SECRET_VALUE=""
 BOT_TOKEN_VALUE=""
+TELEGRAM_BOT_PROXY_URL_VALUE=""
+TELEGRAM_OAUTH_USE_BOT_PROXY_VALUE=""
 ADMIN_IDS_VALUE=""
 POSTGRES_USER_VALUE=""
 POSTGRES_PASSWORD_VALUE=""
@@ -94,7 +103,7 @@ TELEGRAM_OAUTH_CLIENT_ID_VALUE=""
 TELEGRAM_OAUTH_CLIENT_SECRET_VALUE=""
 TELEGRAM_OAUTH_REQUEST_ACCESS_VALUE=""
 
-KNOWN_ENV_KEYS="DEPLOYMENT_PROFILE COMPOSE_PROJECT_NAME IMAGE_TAG WEBHOOK_HOST MINIAPP_HOST WEBHOOK_PUBLIC_URL MINIAPP_PUBLIC_URL FRONTEND_BACKEND_MODE INSTALL_NODE_ROLE WEBAPP_API_BASE_URL WEBAPP_BACKEND_UPSTREAM WEBAPP_BACKEND_UPSTREAM_HOST MINISHOP_EDGE_TOKEN MINISHOP_EDGE_TOKEN_HEADER HTTP_BIND HTTPS_BIND WEB_SERVER_BIND WEBAPP_SERVER_BIND FRONTEND_BIND RATHOLE_IMAGE RATHOLE_CONTROL_BIND RATHOLE_CONTROL_REMOTE RATHOLE_SERVICE_TOKEN RATHOLE_SERVICE_PORT PANGOLIN_ENDPOINT NEWT_ID NEWT_SECRET BOT_TOKEN ADMIN_IDS POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB WEBAPP_ENABLED WEBAPP_TITLE WEBAPP_SESSION_SECRET WEBHOOK_SECRET_TOKEN TRUSTED_PROXIES PANEL_API_URL PANEL_API_KEY PANEL_API_COOKIE PANEL_WEBHOOK_SECRET TELEGRAM_OAUTH_CLIENT_ID TELEGRAM_OAUTH_CLIENT_SECRET TELEGRAM_OAUTH_REQUEST_ACCESS"
+KNOWN_ENV_KEYS="DEPLOYMENT_PROFILE COMPOSE_PROJECT_NAME IMAGE_TAG WEBHOOK_HOST MINIAPP_HOST WEBHOOK_PUBLIC_URL MINIAPP_PUBLIC_URL FRONTEND_BACKEND_MODE INSTALL_NODE_ROLE WEBAPP_API_BASE_URL WEBAPP_BACKEND_UPSTREAM WEBAPP_BACKEND_UPSTREAM_HOST MINISHOP_EDGE_TOKEN MINISHOP_EDGE_TOKEN_HEADER HTTP_BIND HTTPS_BIND WEB_SERVER_BIND WEBAPP_SERVER_BIND FRONTEND_BIND RATHOLE_IMAGE RATHOLE_CONTROL_BIND RATHOLE_CONTROL_REMOTE RATHOLE_SERVICE_TOKEN RATHOLE_SERVICE_PORT PANGOLIN_ENDPOINT NEWT_ID NEWT_SECRET BOT_TOKEN TELEGRAM_BOT_PROXY_URL TELEGRAM_OAUTH_USE_BOT_PROXY ADMIN_IDS POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB WEBAPP_ENABLED WEBAPP_TITLE WEBAPP_SESSION_SECRET WEBHOOK_SECRET_TOKEN TRUSTED_PROXIES PANEL_API_URL PANEL_API_KEY PANEL_API_COOKIE PANEL_WEBHOOK_SECRET TELEGRAM_OAUTH_CLIENT_ID TELEGRAM_OAUTH_CLIENT_SECRET TELEGRAM_OAUTH_REQUEST_ACCESS"
 
 color() {
     printf '%s%s%s' "$2" "$1" "$RESET"
@@ -159,6 +168,8 @@ print_help() {
   LEGACY_TGSHOP_DB_CONTAINER имя контейнера PostgreSQL старого remnawave-tg-shop
 
 Мастер интерактивный: он не перезаписывает файлы без подтверждения.
+Для запуска нужны Docker Engine $MIN_DOCKER_ENGINE_VERSION+ и Docker Compose $MIN_DOCKER_COMPOSE_VERSION+.
+Перед новой установкой мастер проверяет runtime и предлагает обновление до latest stable.
 Импорт из Remnashop всегда сначала запускается в режиме проверки без записи (dry-run).
 Документация по установке: $DOCS_SETUP_URL
 Документация по миграции из Remnashop: $DOCS_REMNASHOP_URL
@@ -181,7 +192,7 @@ mask_secret() {
 
 is_secret_key() {
     case "$1" in
-        BOT_TOKEN|POSTGRES_PASSWORD|WEBAPP_SESSION_SECRET|WEBHOOK_SECRET_TOKEN|PANEL_API_KEY|PANEL_API_COOKIE|PANEL_WEBHOOK_SECRET|TELEGRAM_OAUTH_CLIENT_SECRET|NEWT_SECRET|MINISHOP_EDGE_TOKEN|RATHOLE_SERVICE_TOKEN)
+        BOT_TOKEN|TELEGRAM_BOT_PROXY_URL|POSTGRES_PASSWORD|WEBAPP_SESSION_SECRET|WEBHOOK_SECRET_TOKEN|PANEL_API_KEY|PANEL_API_COOKIE|PANEL_WEBHOOK_SECRET|TELEGRAM_OAUTH_CLIENT_SECRET|NEWT_SECRET|MINISHOP_EDGE_TOKEN|RATHOLE_SERVICE_TOKEN)
             return 0
             ;;
         *)
@@ -250,6 +261,74 @@ is_bind_address() {
     esac
 }
 
+is_valid_proxy_credential_part() {
+    value="$1"
+    [ -n "$value" ] && printf '%s' "$value" | grep -Eq '^([A-Za-z0-9._~-]|%[0-9A-Fa-f]{2})+$'
+}
+
+is_valid_socks5_url() {
+    value="$1"
+    case "$value" in
+        socks5://*)
+            authority=${value#socks5://}
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    case "$authority" in
+        ""|*[[:space:]]*|*/*|*\?*|*\#*)
+            return 1
+            ;;
+    esac
+
+    endpoint="$authority"
+    case "$authority" in
+        *@*)
+            userinfo=${authority%@*}
+            endpoint=${authority##*@}
+            case "$userinfo" in
+                *@*|""|:*)
+                    return 1
+                    ;;
+            esac
+            case "$userinfo" in
+                *:*)
+                    username=${userinfo%%:*}
+                    password=${userinfo#*:}
+                    ;;
+                *)
+                    return 1
+                    ;;
+            esac
+            is_valid_proxy_credential_part "$username" || return 1
+            is_valid_proxy_credential_part "$password" || return 1
+            ;;
+    esac
+
+    case "$endpoint" in
+        \[*\]:*)
+            host=${endpoint%%]:*}
+            host=${host#\[}
+            port=${endpoint##*:}
+            [ -n "$host" ] && is_ipv6_literal "$host" && is_port_number "$port"
+            ;;
+        *:*)
+            host=${endpoint%:*}
+            port=${endpoint##*:}
+            case "$host" in
+                ""|*:*)
+                    return 1
+                    ;;
+            esac
+            printf '%s' "$host" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._-]*$' && is_port_number "$port"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 print_validation_hint() {
     validator="$1"
     value="${2:-}"
@@ -266,6 +345,9 @@ print_validation_hint() {
                 warn "Похоже, указан только IP без порта. Docker Compose прочитает это неверно; добавьте порт, например $value:80."
             fi
             warn "Если не уверены, оставьте значение по умолчанию. 0.0.0.0 означает слушать все сетевые интерфейсы сервера."
+            ;;
+        socks5)
+            warn "Используйте socks5://host:port или socks5://user:password@host:port. Спецсимволы credentials кодируйте через percent-encoding."
             ;;
     esac
 }
@@ -285,6 +367,9 @@ validate_value() {
             ;;
         bind)
             is_bind_address "$value"
+            ;;
+        socks5)
+            is_valid_socks5_url "$value"
             ;;
         *)
             return 0
@@ -318,7 +403,21 @@ prompt_value() {
         else
             printf '%s: ' "$label"
         fi
-        if ! read -r raw_value; then
+        read_failed=0
+        prompt_tty_state=""
+        if [ "$secret" = "1" ] && [ -t 0 ] && command -v stty >/dev/null 2>&1; then
+            prompt_tty_state=$(stty -g 2>/dev/null || true)
+        fi
+        if [ -n "$prompt_tty_state" ] && stty -echo 2>/dev/null; then
+            trap 'stty "$prompt_tty_state" 2>/dev/null || true; exit 130' HUP INT TERM
+            read -r raw_value || read_failed=1
+            stty "$prompt_tty_state" 2>/dev/null || true
+            trap - HUP INT TERM
+            printf '\n'
+        else
+            read -r raw_value || read_failed=1
+        fi
+        if [ "$read_failed" = "1" ]; then
             if [ "$required" = "1" ] && [ -z "$default_value" ]; then
                 fail "Ввод завершился во время чтения обязательного значения: $label"
                 return 1
@@ -836,6 +935,94 @@ panel_configuration_looks_configured() {
     ! panel_value_is_placeholder "$2"
 }
 
+panel_api_cookie_is_valid() {
+    panel_cookie_candidate="$1"
+    [ -n "$panel_cookie_candidate" ] || return 1
+    printf '%s\n' "$panel_cookie_candidate" | awk '
+        NR != 1 { exit 1 }
+        {
+            count = split($0, parts, ";")
+            for (i = 1; i <= count; i++) {
+                item = parts[i]
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", item)
+                equals = index(item, "=")
+                if (equals <= 1) {
+                    exit 1
+                }
+                name = substr(item, 1, equals - 1)
+                value = substr(item, equals + 1)
+                lower_name = tolower(name)
+                if (i > 1 && (lower_name == "path" || lower_name == "domain" || lower_name == "expires" || lower_name == "max-age" || lower_name == "samesite")) {
+                    exit 1
+                }
+                if (name !~ /^[A-Za-z0-9!#%&*+.^_~-]+$/ || value == "" || value !~ /^[A-Za-z0-9._~%+\/:=@-]+$/) {
+                    exit 1
+                }
+            }
+        }
+    '
+}
+
+normalize_panel_api_cookie() {
+    panel_cookie_input=$(printf '%s' "$1" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    [ -n "$panel_cookie_input" ] || return 1
+
+    case "$panel_cookie_input" in
+        [Cc][Oo][Oo][Kk][Ii][Ee]:*)
+            panel_cookie_input=${panel_cookie_input#*:}
+            ;;
+        [Ss][Ee][Tt]-[Cc][Oo][Oo][Kk][Ii][Ee]:*)
+            panel_cookie_input=${panel_cookie_input#*:}
+            panel_cookie_input=${panel_cookie_input%%;*}
+            ;;
+        http://*|https://*)
+            case "$panel_cookie_input" in
+                *\?*) panel_cookie_input=${panel_cookie_input#*\?} ;;
+                *) return 1 ;;
+            esac
+            panel_cookie_input=${panel_cookie_input%%\#*}
+            case "$panel_cookie_input" in
+                ""|*\&*|*\;*) return 1 ;;
+            esac
+            ;;
+    esac
+
+    panel_cookie_input=$(printf '%s' "$panel_cookie_input" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    panel_api_cookie_is_valid "$panel_cookie_input" || return 1
+    printf '%s' "$panel_cookie_input"
+}
+
+prompt_panel_access_cookie() {
+    panel_access_default=1
+    if [ -n "$detected_panel_api_cookie" ]; then
+        panel_access_default=2
+    fi
+    choose "Способ доступа к Remnawave Panel" "$panel_access_default" "1|2" \
+        "1. Прямой доступ к Panel API без дополнительной cookie-защиты." \
+        "2. Удалённая Panel за eGames reverse proxy (нужен access-cookie)." || return 1
+    if [ "$CHOICE_VALUE" = "1" ]; then
+        PANEL_API_COOKIE_VALUE=""
+        detected_panel_api_cookie=""
+        detected_panel_api_cookie_prefilled=0
+        return 0
+    fi
+
+    info "Access-cookie eGames только открывает reverse proxy и не заменяет API-ключ Remnawave Panel."
+    info "Можно вставить name=value, строку Cookie:/Set-Cookie: или полный eGames access URL с одной парой ?name=value."
+    while :; do
+        prompt_value "Access-cookie или access URL удалённой eGames Panel" "$detected_panel_api_cookie" 1 1 "" "$detected_panel_api_cookie_prefilled" || return 1
+        if panel_cookie_normalized=$(normalize_panel_api_cookie "$PROMPT_VALUE"); then
+            PANEL_API_COOKIE_VALUE="$panel_cookie_normalized"
+            return 0
+        fi
+        warn "Не удалось распознать access-cookie eGames."
+        info "Допустимы name=value, Cookie: name=value, Set-Cookie: name=value; ... или https://panel.example.com/auth/login?name=value."
+        info "JWT/API-ключ, URL без query-пары, несколько query-параметров и управляющие символы не принимаются."
+        detected_panel_api_cookie="$PROMPT_VALUE"
+        detected_panel_api_cookie_prefilled=1
+    done
+}
+
 clear_panel_configuration() {
     PANEL_API_URL_VALUE=""
     PANEL_API_KEY_VALUE=""
@@ -860,18 +1047,22 @@ panel_configuration_shape_ready() {
     fi
 
     if [ -n "$PANEL_API_COOKIE_VALUE" ]; then
-        case "$PANEL_API_COOKIE_VALUE" in
-            *=*) ;;
-            *.*.*)
-                warn "PANEL_API_COOKIE похож на JWT/API-ключ, а не на Cookie header."
-                info "Cookie должен иметь формат name=value. Возможно, это значение нужно перенести в PANEL_API_KEY."
-                panel_shape_valid=0
-                ;;
-            *)
-                warn "PANEL_API_COOKIE должен быть пустым или иметь формат name=value."
-                panel_shape_valid=0
-                ;;
-        esac
+        if panel_cookie_normalized=$(normalize_panel_api_cookie "$PANEL_API_COOKIE_VALUE"); then
+            PANEL_API_COOKIE_VALUE="$panel_cookie_normalized"
+        else
+            case "$PANEL_API_COOKIE_VALUE" in
+                *.*.*)
+                    warn "PANEL_API_COOKIE похож на JWT/API-ключ, а не на Cookie header."
+                    info "Cookie должен иметь формат name=value. Возможно, это значение нужно перенести в PANEL_API_KEY."
+                    panel_shape_valid=0
+                    ;;
+                *)
+                    warn "PANEL_API_COOKIE должен быть пустым или содержать корректный Cookie header."
+                    info "Используйте name=value; eGames access URL можно вставить в wizard, он сохранит только cookie-пару."
+                    panel_shape_valid=0
+                    ;;
+            esac
+        fi
     fi
 
     [ "$panel_shape_valid" = "1" ]
@@ -919,6 +1110,16 @@ probe_panel_api_configuration() {
             return 1
             ;;
         2??) ;;
+        404)
+            rm -f "$panel_probe_body"
+            warn "Panel API вернул HTTP 404."
+            if [ -n "$PANEL_API_COOKIE_VALUE" ]; then
+                info "Проверьте access-cookie/access URL eGames и PANEL_API_URL: cookie могла не пройти защиту reverse proxy."
+            else
+                info "Если удалённая Panel скрыта eGames reverse proxy, выберите доступ с access-cookie в wizard."
+            fi
+            return 1
+            ;;
         *)
             rm -f "$panel_probe_body"
             warn "Panel API вернул неожиданный HTTP-статус: ${panel_probe_status:-неизвестно}."
@@ -1044,8 +1245,7 @@ configure_panel_integration() {
         if [ -n "$detected_panel_api_cookie" ]; then
             info "Использую найденный Cookie header reverse proxy как значение по умолчанию."
         fi
-        prompt_value "Cookie header reverse proxy Remnawave (пусто, если не нужен; формат name=value)" "$detected_panel_api_cookie" 0 1 "" "$detected_panel_api_cookie_prefilled"
-        PANEL_API_COOKIE_VALUE="$PROMPT_VALUE"
+        prompt_panel_access_cookie || return 1
 
         if panel_configuration_shape_ready && probe_panel_api_configuration; then
             prompt_panel_webhook_secret || return 1
@@ -1372,6 +1572,13 @@ prompt_common_env() {
     fi
     prompt_value "Токен Telegram бота" "$detected_bot_token" 1 1 "" "$detected_bot_token_prefilled"
     BOT_TOKEN_VALUE="$PROMPT_VALUE"
+    existing_telegram_proxy_url=$(env_get TELEGRAM_BOT_PROXY_URL "")
+    existing_telegram_proxy_url_prefilled=0
+    if [ -n "$existing_telegram_proxy_url" ]; then
+        existing_telegram_proxy_url_prefilled=1
+    fi
+    prompt_value "SOCKS5 proxy для исходящих запросов Telegram Bot API (пусто = напрямую)" "$existing_telegram_proxy_url" 0 1 "socks5" "$existing_telegram_proxy_url_prefilled"
+    TELEGRAM_BOT_PROXY_URL_VALUE="$PROMPT_VALUE"
     detected_admin_ids=$(env_get ADMIN_IDS "")
     detected_admin_ids_prefilled=0
     if [ -n "$detected_admin_ids" ]; then
@@ -1422,6 +1629,19 @@ prompt_common_env() {
     TELEGRAM_OAUTH_CLIENT_SECRET_VALUE="$PROMPT_VALUE"
     TELEGRAM_OAUTH_REQUEST_ACCESS_VALUE="$(env_get TELEGRAM_OAUTH_REQUEST_ACCESS write)"
     info "Параметр Telegram OAuth request_access: $TELEGRAM_OAUTH_REQUEST_ACCESS_VALUE. Значение write позволяет боту написать пользователю после входа через Web Login."
+    TELEGRAM_OAUTH_USE_BOT_PROXY_VALUE="True"
+    if [ -n "$TELEGRAM_BOT_PROXY_URL_VALUE" ]; then
+        oauth_proxy_default=1
+        existing_oauth_proxy=$(env_get TELEGRAM_OAUTH_USE_BOT_PROXY True | tr '[:upper:]' '[:lower:]')
+        case "$existing_oauth_proxy" in
+            false|0|no|n|нет|н)
+                oauth_proxy_default=0
+                ;;
+        esac
+        if ! confirm "Использовать этот SOCKS5 proxy для server-side Telegram OAuth token/JWKS?" "$oauth_proxy_default"; then
+            TELEGRAM_OAUTH_USE_BOT_PROXY_VALUE="False"
+        fi
+    fi
 
     case "$PROFILE_KEY" in
         caddy|angie|nginx|newt|egames)
@@ -1567,6 +1787,8 @@ display_env_summary() {
     show_env_value RATHOLE_SERVICE_PORT "$RATHOLE_SERVICE_PORT_VALUE"
     [ "$INSTALL_NODE_ROLE_VALUE" = "frontend-node" ] && return 0
     show_env_value BOT_TOKEN "$BOT_TOKEN_VALUE"
+    show_env_value TELEGRAM_BOT_PROXY_URL "$TELEGRAM_BOT_PROXY_URL_VALUE"
+    show_env_value TELEGRAM_OAUTH_USE_BOT_PROXY "$TELEGRAM_OAUTH_USE_BOT_PROXY_VALUE"
     show_env_value ADMIN_IDS "$ADMIN_IDS_VALUE"
     show_env_value POSTGRES_USER "$POSTGRES_USER_VALUE"
     show_env_value POSTGRES_PASSWORD "$POSTGRES_PASSWORD_VALUE"
@@ -1646,6 +1868,8 @@ render_env_file() {
 
     printf '\n# Telegram\n' >> "$output"
     env_line BOT_TOKEN "$BOT_TOKEN_VALUE" "$output"
+    env_line TELEGRAM_BOT_PROXY_URL "$TELEGRAM_BOT_PROXY_URL_VALUE" "$output"
+    env_line TELEGRAM_OAUTH_USE_BOT_PROXY "$TELEGRAM_OAUTH_USE_BOT_PROXY_VALUE" "$output"
     env_line ADMIN_IDS "$ADMIN_IDS_VALUE" "$output"
 
     printf '\n# PostgreSQL\n' >> "$output"
@@ -1940,8 +2164,6 @@ install_nginx_certbot_deploy_hook() {
         printf 'cd "$TARGET_DIR" || exit 0\n'
         printf 'if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then\n'
         printf '  docker compose exec -T nginx nginx -s reload >/dev/null 2>&1 || true\n'
-        printf 'elif command -v docker-compose >/dev/null 2>&1; then\n'
-        printf '  docker-compose exec -T nginx nginx -s reload >/dev/null 2>&1 || true\n'
         printf 'fi\n'
     } > "$tmp"
     mv "$tmp" "$hook"
@@ -2070,15 +2292,101 @@ run_privileged() {
     return 1
 }
 
+normalize_version() {
+    printf '%s' "${1:-}" | sed 's/^[^0-9]*//; s/[^0-9.].*$//'
+}
+
+version_at_least() {
+    version_current=$(normalize_version "${1:-}")
+    version_required=$(normalize_version "${2:-}")
+    [ -n "$version_current" ] && [ -n "$version_required" ] || return 1
+    awk -v current="$version_current" -v required="$version_required" '
+        BEGIN {
+            current_count = split(current, current_parts, ".")
+            required_count = split(required, required_parts, ".")
+            count = current_count > required_count ? current_count : required_count
+            for (part_index = 1; part_index <= count; part_index++) {
+                current_part = current_parts[part_index] + 0
+                required_part = required_parts[part_index] + 0
+                if (current_part > required_part) exit 0
+                if (current_part < required_part) exit 1
+            }
+            exit 0
+        }
+    '
+}
+
+compose_command_version() {
+    compose_version_output=$(docker compose version --short 2>/dev/null || docker compose version 2>/dev/null || true)
+    normalize_version "$compose_version_output"
+}
+
 detect_compose_command() {
     if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-        COMPOSE_STYLE="docker"
-        return 0
-    elif command -v docker-compose >/dev/null 2>&1; then
-        COMPOSE_STYLE="docker-compose"
-        return 0
+        COMPOSE_VERSION_VALUE=$(compose_command_version)
+        [ -n "$COMPOSE_VERSION_VALUE" ]
+    else
+        COMPOSE_VERSION_VALUE=""
+        return 1
     fi
-    return 1
+}
+
+refresh_docker_runtime_versions() {
+    DOCKER_ENGINE_VERSION_VALUE=""
+    if command -v docker >/dev/null 2>&1; then
+        DOCKER_ENGINE_VERSION_VALUE=$(docker version --format '{{.Server.Version}}' 2>/dev/null || true)
+        DOCKER_ENGINE_VERSION_VALUE=$(normalize_version "$DOCKER_ENGINE_VERSION_VALUE")
+    fi
+    detect_compose_command >/dev/null 2>&1 || true
+}
+
+compose_version_supported() {
+    [ -n "$COMPOSE_VERSION_VALUE" ] && version_at_least "$COMPOSE_VERSION_VALUE" "$MIN_DOCKER_COMPOSE_VERSION"
+}
+
+docker_engine_version_supported() {
+    [ -n "$DOCKER_ENGINE_VERSION_VALUE" ] && version_at_least "$DOCKER_ENGINE_VERSION_VALUE" "$MIN_DOCKER_ENGINE_VERSION"
+}
+
+docker_runtime_compatible() {
+    command -v docker >/dev/null 2>&1 || return 1
+    docker info >/dev/null 2>&1 || return 1
+    refresh_docker_runtime_versions
+    docker_engine_version_supported && compose_version_supported
+}
+
+print_docker_runtime_versions() {
+    refresh_docker_runtime_versions
+    if [ -n "$DOCKER_ENGINE_VERSION_VALUE" ]; then
+        info "Docker Engine: $DOCKER_ENGINE_VERSION_VALUE (минимум $MIN_DOCKER_ENGINE_VERSION)."
+    elif command -v docker >/dev/null 2>&1; then
+        warn "Версию Docker Engine определить не удалось: daemon недоступен или не отвечает."
+    else
+        warn "Docker Engine не найден."
+    fi
+
+    if [ -n "$COMPOSE_VERSION_VALUE" ]; then
+        info "Docker Compose plugin: $COMPOSE_VERSION_VALUE, команда docker compose (минимум $MIN_DOCKER_COMPOSE_VERSION)."
+    else
+        warn "Docker Compose plugin не найден. Standalone-команда docker-compose не используется."
+    fi
+}
+
+explain_docker_runtime_incompatibility() {
+    refresh_docker_runtime_versions
+    if [ -z "$DOCKER_ENGINE_VERSION_VALUE" ]; then
+        warn "Нужен работающий Docker Engine версии $MIN_DOCKER_ENGINE_VERSION или новее."
+    elif ! docker_engine_version_supported; then
+        warn "Docker Engine $DOCKER_ENGINE_VERSION_VALUE устарел; требуется $MIN_DOCKER_ENGINE_VERSION или новее."
+        info "Healthcheck start_interval требует Docker Engine 25.0+ (API 1.44+)."
+    fi
+
+    if [ -z "$COMPOSE_VERSION_VALUE" ]; then
+        warn "Нужен Docker Compose plugin версии $MIN_DOCKER_COMPOSE_VERSION или новее."
+    elif ! compose_version_supported; then
+        warn "Docker Compose $COMPOSE_VERSION_VALUE устарел; требуется $MIN_DOCKER_COMPOSE_VERSION или новее."
+        info "Legacy и standalone Compose не используются wizard как совместимый runtime."
+    fi
 }
 
 ensure_docker_daemon() {
@@ -2107,14 +2415,91 @@ ensure_docker_daemon() {
     return 1
 }
 
+install_docker_engine_with_package_manager() {
+    if command -v apt-get >/dev/null 2>&1; then
+        info "Обновляю Docker Engine через apt-get до последней версии из настроенных репозиториев."
+        run_privileged apt-get update || return 1
+        for package_set in \
+            "docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin" \
+            "docker.io docker-compose-v2" \
+            "docker.io docker-compose-plugin"; do
+            info "Пробую: apt-get install -y $package_set"
+            if run_privileged apt-get install -y $package_set; then
+                command -v docker >/dev/null 2>&1 && return 0
+            fi
+        done
+        return 1
+    fi
+
+    if command -v dnf >/dev/null 2>&1; then
+        info "Обновляю Docker Engine через dnf до последней версии из настроенных репозиториев."
+        for package_set in \
+            "docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin" \
+            "docker docker-compose-plugin"; do
+            if run_privileged dnf install -y $package_set; then
+                command -v docker >/dev/null 2>&1 && return 0
+            fi
+        done
+        return 1
+    fi
+
+    if command -v yum >/dev/null 2>&1; then
+        info "Обновляю Docker Engine через yum до последней версии из настроенных репозиториев."
+        for package_set in \
+            "docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin" \
+            "docker docker-compose-plugin"; do
+            if run_privileged yum install -y $package_set; then
+                command -v docker >/dev/null 2>&1 && return 0
+            fi
+        done
+        return 1
+    fi
+
+    if command -v apk >/dev/null 2>&1; then
+        info "Обновляю Docker Engine через apk до последней версии из репозитория дистрибутива."
+        run_privileged apk update || return 1
+        run_privileged apk add --upgrade docker docker-cli-compose
+        return $?
+    fi
+
+    if command -v pacman >/dev/null 2>&1; then
+        info "Обновляю Docker Engine через pacman до последней версии из репозитория дистрибутива."
+        run_privileged pacman -Sy --noconfirm docker docker-compose
+        return $?
+    fi
+
+    return 1
+}
+
+install_docker_engine_with_official_script() {
+    if command -v docker >/dev/null 2>&1; then
+        warn "Официальный convenience installer не используется для обновления существующего Docker Engine."
+        info "Обновите настроенный пакетный репозиторий Docker: $DOCKER_INSTALL_DOCS_URL"
+        return 1
+    fi
+
+    tmp="${TMPDIR:-/tmp}/remnawave-minishop-get-docker.$$"
+    info "Скачиваю официальный installer Docker Engine: $DOCKER_INSTALL_URL"
+    if ! download_to "$DOCKER_INSTALL_URL" "$tmp"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    run_privileged sh "$tmp"
+    status=$?
+    rm -f "$tmp"
+    return "$status"
+}
+
 install_compose_with_package_manager() {
     if command -v apt-get >/dev/null 2>&1; then
         info "Найден apt-get. Пробую установить Docker Compose через пакеты."
         run_privileged apt-get update || warn "apt-get update завершился с предупреждением; всё равно пробую установку пакетов."
-        for package_set in "docker-compose-plugin" "docker-compose-v2" "docker.io docker-compose-v2" "docker.io docker-compose-plugin" "docker-compose"; do
+        for package_set in "docker-compose-plugin" "docker-compose-v2" "docker.io docker-compose-v2" "docker.io docker-compose-plugin"; do
             info "Пробую: apt-get install -y $package_set"
             if run_privileged apt-get install -y $package_set; then
-                detect_compose_command && return 0
+                if detect_compose_command && compose_version_supported; then
+                    return 0
+                fi
             fi
         done
         return 1
@@ -2122,9 +2507,11 @@ install_compose_with_package_manager() {
 
     if command -v dnf >/dev/null 2>&1; then
         info "Найден dnf. Пробую установить Docker Compose через пакеты."
-        for package_set in "docker-compose-plugin" "docker-compose"; do
+        for package_set in "docker-compose-plugin"; do
             if run_privileged dnf install -y $package_set; then
-                detect_compose_command && return 0
+                if detect_compose_command && compose_version_supported; then
+                    return 0
+                fi
             fi
         done
         return 1
@@ -2132,9 +2519,11 @@ install_compose_with_package_manager() {
 
     if command -v yum >/dev/null 2>&1; then
         info "Найден yum. Пробую установить Docker Compose через пакеты."
-        for package_set in "docker-compose-plugin" "docker-compose"; do
+        for package_set in "docker-compose-plugin"; do
             if run_privileged yum install -y $package_set; then
-                detect_compose_command && return 0
+                if detect_compose_command && compose_version_supported; then
+                    return 0
+                fi
             fi
         done
         return 1
@@ -2142,9 +2531,11 @@ install_compose_with_package_manager() {
 
     if command -v apk >/dev/null 2>&1; then
         info "Найден apk. Пробую установить Docker Compose через пакеты."
-        for package_set in "docker-cli-compose" "docker-compose"; do
+        for package_set in "docker-cli-compose"; do
             if run_privileged apk add --no-cache $package_set; then
-                detect_compose_command && return 0
+                if detect_compose_command && compose_version_supported; then
+                    return 0
+                fi
             fi
         done
         return 1
@@ -2153,7 +2544,9 @@ install_compose_with_package_manager() {
     if command -v pacman >/dev/null 2>&1; then
         info "Найден pacman. Пробую установить Docker Compose через пакеты."
         if run_privileged pacman -Sy --noconfirm docker-compose; then
-            detect_compose_command && return 0
+            if detect_compose_command && compose_version_supported; then
+                return 0
+            fi
         fi
         return 1
     fi
@@ -2172,10 +2565,34 @@ compose_binary_arch() {
         armv7l|armv7*)
             printf 'armv7'
             ;;
+        armv6l|armv6*)
+            printf 'armv6'
+            ;;
+        ppc64le)
+            printf 'ppc64le'
+            ;;
+        riscv64)
+            printf 'riscv64'
+            ;;
+        s390x)
+            printf 's390x'
+            ;;
         *)
             return 1
             ;;
     esac
+}
+
+file_sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{ print $1 }'
+        return 0
+    fi
+    if command -v openssl >/dev/null 2>&1; then
+        openssl dgst -sha256 "$1" | awk '{ print $NF }'
+        return 0
+    fi
+    return 1
 }
 
 install_compose_binary_plugin() {
@@ -2202,9 +2619,23 @@ install_compose_binary_plugin() {
     mkdir -p "$plugin_dir" || return 1
     plugin_path="$plugin_dir/docker-compose"
     tmp="$plugin_path.tmp.$$"
+    checksum_tmp="$plugin_path.sha256.tmp.$$"
     url="https://github.com/docker/compose/releases/latest/download/docker-compose-$os_name-$arch"
     info "Пробую скачать Docker Compose CLI plugin: $url"
     if ! download_to "$url" "$tmp"; then
+        rm -f "$tmp" "$checksum_tmp"
+        return 1
+    fi
+    if ! download_to "$url.sha256" "$checksum_tmp"; then
+        fail "Не удалось скачать SHA-256 checksum Docker Compose. Бинарник не будет установлен."
+        rm -f "$tmp" "$checksum_tmp"
+        return 1
+    fi
+    expected_checksum=$(awk 'NR == 1 { print $1 }' "$checksum_tmp")
+    actual_checksum=$(file_sha256 "$tmp" || true)
+    rm -f "$checksum_tmp"
+    if [ -z "$actual_checksum" ] || [ "$actual_checksum" != "$expected_checksum" ]; then
+        fail "SHA-256 checksum Docker Compose не совпал. Бинарник не будет установлен."
         rm -f "$tmp"
         return 1
     fi
@@ -2212,41 +2643,98 @@ install_compose_binary_plugin() {
         rm -f "$tmp"
         return 1
     }
-    mv "$tmp" "$plugin_path" || return 1
-    docker compose version >/dev/null 2>&1
-}
-
-install_docker_compose() {
-    section "Установка Docker Compose"
-    warn "Docker Compose не найден: нет команды docker compose и fallback docker-compose."
-    if ! confirm "Попробовать установить Docker Compose автоматически?" 1; then
-        fail "Без Docker Compose wizard не сможет скачать образы, запустить стек или выполнить миграции."
-        info "Установите Docker Engine и Docker Compose plugin, затем запустите wizard повторно."
+    previous_plugin="$plugin_path.previous.$$"
+    if [ -f "$plugin_path" ]; then
+        mv "$plugin_path" "$previous_plugin" || {
+            rm -f "$tmp"
+            return 1
+        }
+    fi
+    if ! mv "$tmp" "$plugin_path"; then
+        [ -f "$previous_plugin" ] && mv "$previous_plugin" "$plugin_path"
         return 1
     fi
+    if ! docker compose version >/dev/null 2>&1 || ! detect_compose_command || ! compose_version_supported; then
+        fail "Скачанный Docker Compose plugin не запускается."
+        rm -f "$plugin_path"
+        [ -f "$previous_plugin" ] && mv "$previous_plugin" "$plugin_path"
+        return 1
+    fi
+    rm -f "$previous_plugin"
+}
 
-    if install_compose_with_package_manager || install_compose_binary_plugin; then
-        if detect_compose_command; then
-            ok "Docker Compose установлен: $(compose version 2>/dev/null | head -n 1)"
-            return 0
+update_docker_runtime_latest() {
+    section "Обновление Docker runtime"
+    warn "Обновление Docker Engine может перезапустить daemon и кратковременно затронуть работающие контейнеры."
+
+    if ! install_docker_engine_with_package_manager; then
+        if ! install_docker_engine_with_official_script; then
+            warn "Автоматически обновить Docker Engine не удалось. Проверяю, совместима ли уже установленная версия."
         fi
     fi
 
-    fail "Автоматически установить Docker Compose не удалось."
-    info "Установите Docker Compose вручную и повторите запуск. Для Ubuntu/Debian обычно подходит: sudo apt-get update && sudo apt-get install -y docker-compose-plugin"
-    info "Если Docker Engine тоже не установлен, сначала установите Docker Engine, затем Compose plugin."
-    return 1
+    ensure_docker_daemon || return 1
+
+    if ! install_compose_binary_plugin && ! install_compose_with_package_manager; then
+        fail "Не удалось установить актуальный Docker Compose plugin."
+        return 1
+    fi
+
+    print_docker_runtime_versions
+    if ! docker_runtime_compatible; then
+        fail "Docker runtime после обновления всё еще не соответствует требованиям."
+        explain_docker_runtime_incompatibility
+        info "Инструкции по установке Docker Engine: $DOCKER_INSTALL_DOCS_URL"
+        return 1
+    fi
+    ok "Docker Engine и Docker Compose готовы к установке."
+}
+
+docker_runtime_preflight() {
+    docker_preflight_offer_latest="${1:-0}"
+    if [ "$DOCKER_PREFLIGHT_DONE" = "1" ]; then
+        return 0
+    fi
+
+    section "Проверка Docker runtime"
+    if command -v docker >/dev/null 2>&1; then
+        ensure_docker_daemon || true
+    fi
+    print_docker_runtime_versions
+
+    if docker_runtime_compatible; then
+        ok "Docker runtime совместим с текущими Compose-профилями."
+        if [ "$docker_preflight_offer_latest" = "1" ] && [ "$DOCKER_UPDATE_OFFERED" != "1" ]; then
+            DOCKER_UPDATE_OFFERED="1"
+            if confirm "Обновить Docker Engine и Docker Compose до latest stable перед установкой?" 0; then
+                update_docker_runtime_latest || return 1
+            fi
+        fi
+    else
+        explain_docker_runtime_incompatibility
+        if ! confirm "Установить или обновить Docker Engine и Docker Compose до latest stable сейчас?" 1; then
+            fail "Установка остановлена: текущий Docker runtime не поддерживает Compose-профили проекта."
+            return 1
+        fi
+        update_docker_runtime_latest || return 1
+    fi
+
+    docker_runtime_compatible || {
+        fail "Финальная проверка Docker runtime не пройдена."
+        return 1
+    }
+    DOCKER_PREFLIGHT_DONE="1"
 }
 
 require_docker() {
-    if ! detect_compose_command; then
-        install_docker_compose || return 1
-    fi
-    detect_compose_command || {
-        fail "Docker Compose не найден после установки."
-        return 1
-    }
+    docker_runtime_preflight 0 || return 1
     ensure_docker_daemon || return 1
+    refresh_docker_runtime_versions
+    if ! docker_engine_version_supported || ! compose_version_supported; then
+        fail "Docker runtime больше не соответствует требованиям."
+        explain_docker_runtime_incompatibility
+        return 1
+    fi
 }
 
 compose_bind_value() {
@@ -2297,11 +2785,7 @@ validate_bind_settings() {
 }
 
 compose() {
-    if [ "$COMPOSE_STYLE" = "docker" ]; then
-        docker compose "$@"
-    else
-        docker-compose "$@"
-    fi
+    docker compose "$@"
 }
 
 mask_compose_log_args() {
@@ -2310,11 +2794,7 @@ mask_compose_log_args() {
 
 run_compose() {
     log_args=$(mask_compose_log_args "$@")
-    if [ "$COMPOSE_STYLE" = "docker" ]; then
-        color "+ docker compose $log_args" "$DIM"
-    else
-        color "+ docker-compose $log_args" "$DIM"
-    fi
+    color "+ docker compose $log_args" "$DIM"
     printf '\n'
     compose "$@"
 }
@@ -2334,6 +2814,21 @@ explain_compose_failure() {
     shift
     log_args=$(mask_compose_log_args "$@")
     fail "Docker Compose вернул ошибку на команде: $log_args"
+
+    if grep -Eiq 'start_interval.*(does not match|unsupported|not allowed|unknown)|unknown.*StartInterval|unknown field.*StartInterval' "$output_file"; then
+        fail "Docker runtime не поддерживает healthcheck.start_interval из текущего Compose-профиля."
+        info "Требуются Docker Compose $MIN_DOCKER_COMPOSE_VERSION+ и Docker Engine $MIN_DOCKER_ENGINE_VERSION+."
+        print_docker_runtime_versions
+        info "Запустите install wizard повторно и согласитесь на обновление Docker runtime до latest stable."
+        return 0
+    fi
+
+    if grep -Eiq 'does not match any of the regexes|additional propert(y|ies).*(not allowed|unexpected)|unsupported config option|client version .* is too old|server API version .* is too old|client is newer than server' "$output_file"; then
+        fail "Версия или реализация Docker Compose/Engine несовместима с текущим Compose-профилем."
+        print_docker_runtime_versions
+        info "Проверьте конфигурацию командой docker compose config и обновите Docker runtime через wizard."
+        return 0
+    fi
 
     if grep -Eiq 'invalid hostPort|invalid host port|invalid.*published.*port|invalid.*containerPort|invalid port' "$output_file"; then
         fail "Docker Compose не смог разобрать публикацию порта."
@@ -2429,12 +2924,13 @@ run_compose_checked() {
         output_file="${TMPDIR:-/tmp}/remnawave-minishop-compose-last-error.log"
     fi
     tmp="$output_file.tmp.$$"
-    if run_compose "$@" > "$tmp" 2>&1; then
+    run_compose "$@" > "$tmp" 2>&1
+    status=$?
+    if [ "$status" -eq 0 ]; then
         cat "$tmp"
         rm -f "$tmp"
         return 0
     fi
-    status=$?
     cat "$tmp"
     mv "$tmp" "$output_file" 2>/dev/null || cp "$tmp" "$output_file" 2>/dev/null || true
     [ -f "$tmp" ] && rm -f "$tmp"
@@ -2443,6 +2939,25 @@ run_compose_checked() {
         info "Полный вывод последней ошибки сохранен: $output_file"
     fi
     return "$status"
+}
+
+validate_compose_configuration() {
+    [ -n "$TARGET_DIR" ] || {
+        fail "Каталог установки не выбран; Compose config проверить нельзя."
+        return 1
+    }
+    [ -f "$TARGET_DIR/docker-compose.yml" ] || {
+        fail "Не найден $TARGET_DIR/docker-compose.yml."
+        return 1
+    }
+    require_docker || return 1
+    info "Проверяю итоговую Compose-конфигурацию до скачивания образов и запуска контейнеров."
+    if (cd "$TARGET_DIR" && run_compose_checked config --quiet); then
+        ok "Docker Compose config прошел проверку."
+        return 0
+    fi
+    fail "Compose-конфигурация несовместима или содержит ошибку; pull/up не будут запущены."
+    return 1
 }
 
 explain_postgres_password_mismatch() {
@@ -2529,7 +3044,7 @@ start_stack() {
     section "Запуск Docker Compose стека"
     [ -n "$ENV_PATH" ] || ENV_PATH="$TARGET_DIR/.env"
     validate_bind_settings || return 1
-    require_docker || return 1
+    validate_compose_configuration || return 1
     if [ "$pull" = "1" ]; then
         (cd "$TARGET_DIR" && run_compose_checked pull) || return 1
     fi
@@ -2546,7 +3061,7 @@ validate_stack() {
     section "Проверка стека"
     [ -n "$ENV_PATH" ] || ENV_PATH="$TARGET_DIR/.env"
     validate_bind_settings || return 1
-    require_docker || return 1
+    validate_compose_configuration || return 1
     (cd "$TARGET_DIR" && run_compose_checked ps) || true
     (cd "$TARGET_DIR" && run_compose logs --tail 80 migrate) || true
     validate_reverse_proxy_runtime || return 1
@@ -2681,17 +3196,238 @@ bind_port() {
     esac
 }
 
-first_nginx_value() {
-    key="$1"
-    file="$2"
-    awk -v key="$key" '
-        $1 == key {
-            value = $2
-            gsub(/[";]/, "", value)
-            print value
-            exit
+egames_nginx_tls_mode() {
+    file="$1"
+    awk '
+        /^# BEGIN remnawave-minishop managed by install.sh$/ { managed = 1; next }
+        /^# END remnawave-minishop managed by install.sh$/ { managed = 0; next }
+        managed { next }
+        $1 == "listen" && $0 ~ /(^|[[:space:]])ssl([[:space:];]|$)/ {
+            endpoint = $2
+            gsub(/;/, "", endpoint)
+            if (endpoint ~ /^unix:/) {
+                unix_listener = 1
+            } else if (endpoint == "443" || endpoint ~ /:443$/) {
+                tcp_listener = 1
+            }
+        }
+        END {
+            if (unix_listener && tcp_listener) {
+                print "mixed"
+                exit 1
+            }
+            if (unix_listener) {
+                print "unix"
+                exit 0
+            }
+            if (tcp_listener) {
+                print "tcp"
+                exit 0
+            }
+            exit 1
         }
     ' "$file"
+}
+
+egames_nginx_listen_directives() {
+    mode="$1"
+    file="$2"
+    awk -v mode="$mode" '
+        /^# BEGIN remnawave-minishop managed by install.sh$/ { managed = 1; next }
+        /^# END remnawave-minishop managed by install.sh$/ { managed = 0; next }
+        managed { next }
+        $1 == "listen" && $0 ~ /(^|[[:space:]])ssl([[:space:];]|$)/ {
+            endpoint = $2
+            gsub(/;/, "", endpoint)
+            is_unix = endpoint ~ /^unix:/
+            is_tcp_443 = endpoint == "443" || endpoint ~ /:443$/
+            if ((mode == "unix" && !is_unix) || (mode == "tcp" && !is_tcp_443)) {
+                next
+            }
+            has_proxy_protocol = $0 ~ /(^|[[:space:]])proxy_protocol([[:space:];]|$)/
+            if (has_proxy_protocol) {
+                proxy_listener = 1
+            } else {
+                direct_listener = 1
+            }
+            key = endpoint SUBSEP has_proxy_protocol
+            if (!seen[key]) {
+                seen[key] = 1
+                count += 1
+                endpoints[count] = endpoint
+                proxy_protocol[count] = has_proxy_protocol
+            }
+        }
+        END {
+            if (proxy_listener && direct_listener) {
+                exit 1
+            }
+            for (i = 1; i <= count; i++) {
+                printf "    listen %s ssl%s;\n", endpoints[i], proxy_protocol[i] ? " proxy_protocol" : ""
+            }
+            if (!count) {
+                exit 1
+            }
+        }
+    ' "$file"
+}
+
+nginx_certificate_pairs() {
+    file="$1"
+    awk '
+        function clean(value) {
+            gsub(/[";]/, "", value)
+            return value
+        }
+        /^# BEGIN remnawave-minishop managed by install.sh$/ { managed = 1; next }
+        /^# END remnawave-minishop managed by install.sh$/ { managed = 0; next }
+        managed { next }
+        !capture && $0 ~ /^[[:space:]]*server[[:space:]]*\{/ {
+            capture = 1
+            depth = 0
+            certificate = ""
+            certificate_key = ""
+            trusted_certificate = ""
+        }
+        capture {
+            if ($1 == "ssl_certificate") {
+                certificate = clean($2)
+            } else if ($1 == "ssl_certificate_key") {
+                certificate_key = clean($2)
+            } else if ($1 == "ssl_trusted_certificate") {
+                trusted_certificate = clean($2)
+            }
+            open_line = $0
+            close_line = $0
+            opens = gsub(/\{/, "", open_line)
+            closes = gsub(/\}/, "", close_line)
+            depth += opens - closes
+            if (depth == 0) {
+                if (certificate != "" && certificate_key != "") {
+                    if (trusted_certificate == "") {
+                        trusted_certificate = certificate
+                    }
+                    pair = certificate "|" certificate_key "|" trusted_certificate
+                    if (!seen[pair]) {
+                        print pair
+                        seen[pair] = 1
+                    }
+                }
+                capture = 0
+            }
+        }
+    ' "$file"
+}
+
+container_certificate_covers_host() {
+    container="$1"
+    certificate="$2"
+    host="$3"
+    if docker exec "$container" sh -c '
+        command -v openssl >/dev/null 2>&1 || exit 127
+        openssl x509 -in "$1" -noout -checkhost "$2" |
+            grep -F "does match certificate" >/dev/null
+    ' sh "$certificate" "$host" >/dev/null 2>&1; then
+        return 0
+    fi
+    command -v openssl >/dev/null 2>&1 || return 1
+    docker exec "$container" cat "$certificate" 2>/dev/null |
+        openssl x509 -noout -checkhost "$host" 2>/dev/null |
+        grep -F "does match certificate" >/dev/null
+}
+
+egames_certificate_pair_for_host() {
+    container="$1"
+    nginx_conf="$2"
+    host="$3"
+    pairs=$(nginx_certificate_pairs "$nginx_conf")
+    while IFS='|' read -r certificate certificate_key trusted_certificate; do
+        [ -n "$certificate" ] && [ -n "$certificate_key" ] || continue
+        if container_certificate_covers_host "$container" "$certificate" "$host"; then
+            printf '%s|%s|%s\n' "$certificate" "$certificate_key" "${trusted_certificate:-$certificate}"
+            return 0
+        fi
+    done <<EOF
+$pairs
+EOF
+    return 1
+}
+
+resolve_egames_certificate_pair() {
+    container="$1"
+    nginx_conf="$2"
+    host="$3"
+    pair=$(egames_certificate_pair_for_host "$container" "$nginx_conf" "$host" || true)
+    if [ -n "$pair" ]; then
+        EGAMES_CERT_PATH=${pair%%|*}
+        pair_rest=${pair#*|}
+        EGAMES_KEY_PATH=${pair_rest%%|*}
+        EGAMES_TRUSTED_PATH=${pair_rest#*|}
+        ok "Сертификат $EGAMES_CERT_PATH покрывает $host."
+        return 0
+    fi
+
+    warn "Ни один сертификат из $nginx_conf не подтвержден для $host."
+    prompt_value "Путь к fullchain.pem для $host внутри контейнера $container (пусто = остановить)" "" 0 0 ""
+    EGAMES_CERT_PATH="$PROMPT_VALUE"
+    if [ -z "$EGAMES_CERT_PATH" ]; then
+        fail "Настройка остановлена: нужен сертификат, SAN которого покрывает $host."
+        info "Сначала выпустите и смонтируйте сертификат в $container, затем повторите настройку reverse proxy."
+        return 1
+    fi
+    prompt_value "Путь к privkey.pem для $host внутри контейнера $container" "" 1 0 ""
+    EGAMES_KEY_PATH="$PROMPT_VALUE"
+    prompt_value "Путь к trusted/fullchain.pem для $host внутри контейнера $container" "$EGAMES_CERT_PATH" 1 0 ""
+    EGAMES_TRUSTED_PATH="$PROMPT_VALUE"
+
+    if ! docker exec "$container" sh -c '
+        [ -r "$1" ] && [ -r "$2" ] && [ -r "$3" ]
+    ' sh "$EGAMES_CERT_PATH" "$EGAMES_KEY_PATH" "$EGAMES_TRUSTED_PATH" >/dev/null 2>&1; then
+        fail "Указанные файлы сертификата для $host недоступны внутри контейнера $container."
+        return 1
+    fi
+    if ! container_certificate_covers_host "$container" "$EGAMES_CERT_PATH" "$host"; then
+        fail "Сертификат $EGAMES_CERT_PATH не прошел проверку SAN для $host."
+        return 1
+    fi
+    ok "Сертификат $EGAMES_CERT_PATH покрывает $host."
+}
+
+render_egames_server_block() {
+    server_host="$1"
+    upstream_port="$2"
+    listen_directives="$3"
+    certificate="$4"
+    certificate_key="$5"
+    trusted_certificate="$6"
+    real_ip_source="$7"
+    forwarded_for_source="$8"
+    cat <<EOF
+server {
+    server_name $server_host;
+$listen_directives
+    http2 on;
+
+    ssl_certificate "$certificate";
+    ssl_certificate_key "$certificate_key";
+    ssl_trusted_certificate "$trusted_certificate";
+
+    client_max_body_size 20m;
+
+    location / {
+        proxy_http_version 1.1;
+        proxy_pass http://127.0.0.1:$upstream_port;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP $real_ip_source;
+        proxy_set_header X-Forwarded-For $forwarded_for_source;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$host;
+        proxy_set_header X-Forwarded-Port \$server_port;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}
+EOF
 }
 
 egames_container_has_routes() {
@@ -2730,6 +3466,10 @@ configure_egames_reverse_proxy() {
     [ -n "$detected_nginx_container" ] || detected_nginx_container="remnawave-nginx"
     prompt_value "Имя Nginx контейнера eGames" "$detected_nginx_container" 1 0 ""
     nginx_container="$PROMPT_VALUE"
+    if ! docker inspect "$nginx_container" >/dev/null 2>&1; then
+        fail "Nginx контейнер eGames не найден: $nginx_container"
+        return 1
+    fi
 
     webhook_host="${WEBHOOK_HOST_VALUE:-$(env_get WEBHOOK_HOST '')}"
     miniapp_host="${MINIAPP_HOST_VALUE:-$(env_get MINIAPP_HOST '')}"
@@ -2738,14 +3478,48 @@ configure_egames_reverse_proxy() {
         return 1
     fi
 
-    cert_path=$(first_nginx_value ssl_certificate "$nginx_conf")
-    key_path=$(first_nginx_value ssl_certificate_key "$nginx_conf")
-    trusted_path=$(first_nginx_value ssl_trusted_certificate "$nginx_conf")
-    [ -n "$trusted_path" ] || trusted_path="$cert_path"
-    if [ -z "$cert_path" ] || [ -z "$key_path" ]; then
-        fail "Не удалось найти ssl_certificate и ssl_certificate_key в $nginx_conf"
+    nginx_tls_mode=$(egames_nginx_tls_mode "$nginx_conf" || true)
+    case "$nginx_tls_mode" in
+        unix)
+            info "Обнаружена схема eGames с TLS через Unix socket."
+            ;;
+        tcp)
+            info "Обнаружена схема eGames с прямым TLS на TCP/443."
+            ;;
+        mixed)
+            fail "В $nginx_conf одновременно найдены TLS-listener на TCP/443 и Unix socket."
+            info "Выберите универсальное подключение к reverse proxy или настройте listener вручную."
+            return 1
+            ;;
+        *)
+            fail "Не удалось определить TLS-listener eGames в $nginx_conf."
+            return 1
+            ;;
+    esac
+    listen_directives=$(egames_nginx_listen_directives "$nginx_tls_mode" "$nginx_conf" || true)
+    if [ -z "$listen_directives" ]; then
+        fail "Не удалось безопасно воспроизвести listen-директивы из $nginx_conf."
         return 1
     fi
+    case "$listen_directives" in
+        *" proxy_protocol;"*)
+            real_ip_source='$proxy_protocol_addr'
+            forwarded_for_source='$proxy_protocol_addr'
+            ;;
+        *)
+            real_ip_source='$remote_addr'
+            forwarded_for_source='$proxy_add_x_forwarded_for'
+            ;;
+    esac
+
+    resolve_egames_certificate_pair "$nginx_container" "$nginx_conf" "$webhook_host" || return 1
+    webhook_cert_path="$EGAMES_CERT_PATH"
+    webhook_key_path="$EGAMES_KEY_PATH"
+    webhook_trusted_path="$EGAMES_TRUSTED_PATH"
+    resolve_egames_certificate_pair "$nginx_container" "$nginx_conf" "$miniapp_host" || return 1
+    miniapp_cert_path="$EGAMES_CERT_PATH"
+    miniapp_key_path="$EGAMES_KEY_PATH"
+    miniapp_trusted_path="$EGAMES_TRUSTED_PATH"
 
     backend_port=$(bind_port "${WEB_SERVER_BIND_VALUE:-$(env_get WEB_SERVER_BIND '127.0.0.1:8080')}")
     frontend_port=$(bind_port "${FRONTEND_BIND_VALUE:-$(env_get FRONTEND_BIND '127.0.0.1:8082')}")
@@ -2757,60 +3531,20 @@ configure_egames_reverse_proxy() {
         return 1
     }
 
-    cat >> "$tmp" <<EOF
-
-# BEGIN remnawave-minishop managed by install.sh
-server {
-    server_name $webhook_host;
-    listen unix:/dev/shm/nginx.sock ssl proxy_protocol;
-    http2 on;
-
-    ssl_certificate "$cert_path";
-    ssl_certificate_key "$key_path";
-    ssl_trusted_certificate "$trusted_path";
-
-    client_max_body_size 20m;
-
-    location / {
-        proxy_http_version 1.1;
-        proxy_pass http://127.0.0.1:$backend_port;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$proxy_protocol_addr;
-        proxy_set_header X-Forwarded-For \$proxy_protocol_addr;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header X-Forwarded-Host \$host;
-        proxy_set_header X-Forwarded-Port \$server_port;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
+    {
+        printf '\n# BEGIN remnawave-minishop managed by install.sh\n'
+        render_egames_server_block "$webhook_host" "$backend_port" "$listen_directives" \
+            "$webhook_cert_path" "$webhook_key_path" "$webhook_trusted_path" \
+            "$real_ip_source" "$forwarded_for_source"
+        printf '\n'
+        render_egames_server_block "$miniapp_host" "$frontend_port" "$listen_directives" \
+            "$miniapp_cert_path" "$miniapp_key_path" "$miniapp_trusted_path" \
+            "$real_ip_source" "$forwarded_for_source"
+        printf '# END remnawave-minishop managed by install.sh\n'
+    } >> "$tmp" || {
+        rm -f "$tmp"
+        return 1
     }
-}
-
-server {
-    server_name $miniapp_host;
-    listen unix:/dev/shm/nginx.sock ssl proxy_protocol;
-    http2 on;
-
-    ssl_certificate "$cert_path";
-    ssl_certificate_key "$key_path";
-    ssl_trusted_certificate "$trusted_path";
-
-    client_max_body_size 20m;
-
-    location / {
-        proxy_http_version 1.1;
-        proxy_pass http://127.0.0.1:$frontend_port;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$proxy_protocol_addr;
-        proxy_set_header X-Forwarded-For \$proxy_protocol_addr;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header X-Forwarded-Host \$host;
-        proxy_set_header X-Forwarded-Port \$server_port;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
-    }
-}
-# END remnawave-minishop managed by install.sh
-EOF
 
     if ! cat "$tmp" > "$nginx_conf"; then
         rm -f "$tmp"
@@ -3357,7 +4091,7 @@ configure_existing_reverse_proxy() {
         default_proxy_mode="1"
     fi
     choose "Подключение к существующему reverse proxy" "$default_proxy_mode" "1|2|3" \
-        "1. Remnawave/eGames Nginx - правка nginx.conf по схеме eGames (unix socket)." \
+        "1. Remnawave/eGames Nginx - определение фактической схемы TLS (TCP/443 или Unix socket)." \
         "2. Другой запущенный Nginx, Angie или Caddy - универсальное подключение к контейнеру." \
         "3. Пропустить - настрою reverse proxy вручную." || return 1
     case "$CHOICE_VALUE" in
@@ -4345,10 +5079,8 @@ BACKUP_DIR=$(shell_quote "$backup_dir")
 compose_cmd() {
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
     docker compose "\$@"
-  elif command -v docker-compose >/dev/null 2>&1; then
-    docker-compose "\$@"
   else
-    echo "Docker Compose не найден." >&2
+    echo "Совместимый Docker Compose plugin не найден." >&2
     exit 1
   fi
 }
@@ -4578,7 +5310,7 @@ prepare_compose_without_starting_apps() {
     section "Подготовка целевого Docker Compose стека"
     [ -n "$ENV_PATH" ] || ENV_PATH="$TARGET_DIR/.env"
     validate_bind_settings || return 1
-    require_docker || return 1
+    validate_compose_configuration || return 1
     (cd "$TARGET_DIR" && run_compose_checked up --no-start) || return 1
 }
 
@@ -4879,6 +5611,7 @@ install_source() {
 install_flow() {
     with_migration="$1"
     LEGACY_SOURCE=""
+    docker_runtime_preflight 1 || return 1
     installation_directory || return 1
     install_source || return 1
     ENV_PATH="$TARGET_DIR/.env"
@@ -4915,6 +5648,7 @@ install_flow() {
     if [ "$INSTALL_NODE_ROLE_VALUE" != "frontend-node" ]; then
         prepare_data_mount || return 1
     fi
+    validate_compose_configuration || return 1
     if [ "$INSTALL_NODE_ROLE_VALUE" != "frontend-node" ] && [ "$with_migration" != "1" ] && confirm "Мигрировать данные из другого бота после установки?" 0; then
         choose_legacy_source || return 1
     fi

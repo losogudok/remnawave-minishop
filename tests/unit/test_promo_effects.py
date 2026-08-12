@@ -43,13 +43,16 @@ def test_promo_effects_normalize_model_defaults():
         PromoEffects(traffic_multiplier=2, applies_to="subscription"),
         PromoEffects(bonus_days=1, applies_to="hwid"),
         PromoEffects(applies_to="hwid"),
-        PromoEffects(bonus_days=1, discount_percent=10),
-        PromoEffects(discount_percent=10, duration_multiplier=2),
-        PromoEffects(duration_multiplier=2, traffic_multiplier=2),
         PromoEffects(bonus_days=1, min_subscription_months=12),
         PromoEffects(bonus_days=1, applies_to="traffic", min_subscription_months=12),
         PromoEffects(bonus_days=1, applies_to="subscription", min_traffic_gb=50),
         PromoEffects(discount_percent=10, bonus_requires_payment=True),
+        PromoEffects(regular_traffic_gb=-1),
+        PromoEffects(regular_traffic_gb=0.0005),
+        PromoEffects(regular_traffic_gb=float("inf")),
+        PromoEffects(premium_traffic_gb=1.0004),
+        PromoEffects(premium_traffic_gb=1_000_001),
+        PromoEffects(regular_traffic_gb=10, traffic_multiplier=2),
     ],
 )
 def test_validate_effects_rejects_invalid_combinations(effects):
@@ -96,6 +99,37 @@ def test_thresholds_are_inclusive_and_dimension_scoped():
     )
 
 
+def test_fixed_grants_stack_and_can_apply_standalone():
+    effects = PromoEffects(
+        bonus_days=7,
+        regular_traffic_gb=50,
+        premium_traffic_gb=20,
+        applies_to="subscription",
+    )
+
+    validate_effects(effects)
+
+    assert effects.active_effect_count == 3
+    assert effects.has_traffic_grant is True
+    assert effects.can_apply_standalone is True
+
+
+def test_checkout_effects_can_stack_with_fixed_grants_for_subscription():
+    effects = PromoEffects(
+        bonus_days=7,
+        regular_traffic_gb=50,
+        premium_traffic_gb=20,
+        discount_percent=10,
+        duration_multiplier=2,
+        applies_to="subscription",
+    )
+
+    validate_effects(effects)
+
+    assert effects.active_effect_count == 5
+    assert effects.can_apply_standalone is False
+
+
 def test_bonus_days_payment_mode_controls_standalone_redemption():
     instant = PromoEffects(bonus_days=7)
     after_payment = PromoEffects(bonus_days=7, bonus_requires_payment=True)
@@ -121,6 +155,8 @@ def test_promo_effects_from_payment_snapshot_normalizes_scope_and_discount():
         SimpleNamespace(
             promo_effect_summary="old terms",
             promo_bonus_days=5,
+            promo_regular_traffic_gb=12.5,
+            promo_premium_traffic_gb=3,
             promo_discount_percent=0,
             promo_duration_multiplier=None,
             promo_traffic_multiplier=None,
@@ -132,5 +168,7 @@ def test_promo_effects_from_payment_snapshot_normalizes_scope_and_discount():
 
     assert effects is not None
     assert effects.bonus_days == 5
+    assert effects.regular_traffic_gb == 12.5
+    assert effects.premium_traffic_gb == 3
     assert effects.discount_percent is None
     assert effects.applies_to == "all"

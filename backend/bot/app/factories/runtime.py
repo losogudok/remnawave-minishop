@@ -4,8 +4,6 @@ from dataclasses import dataclass
 from typing import cast
 
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 from sqlalchemy.orm import sessionmaker
 
 from bot.middlewares.i18n import JsonI18n, get_i18n_instance
@@ -16,6 +14,7 @@ from db.database_setup import init_db, init_db_connection
 
 from .build_services import build_core_services
 from .core_services import CoreServices
+from .telegram_bot import create_telegram_bot
 
 
 @dataclass(frozen=True)
@@ -42,10 +41,7 @@ async def build_runtime_bootstrap(settings: Settings) -> RuntimeBootstrap:
     session_factory = cast(sessionmaker, init_db_connection(settings))
     await init_db(settings, session_factory)
 
-    bot = Bot(
-        token=settings.BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    bot = create_telegram_bot(settings)
     i18n = get_i18n_instance(path="locales", default=settings.DEFAULT_LANGUAGE)
     apply_plugin_locales(settings, i18n)
     await load_locale_overrides(i18n, session_factory)

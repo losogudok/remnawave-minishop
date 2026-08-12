@@ -18,6 +18,7 @@ export type AppDataViewInput = {
 
 export type AppDataView = {
   appSettings: WebappRecord;
+  authProviders: string[];
   brand: WebappRecord;
   brandTitle: string;
   devicesEnabled: boolean;
@@ -26,18 +27,33 @@ export type AppDataView = {
   faviconBrand: WebappRecord;
   installGuidesEnabled: boolean;
   methods: PaymentMethod[];
+  partnerProgramEnabled: boolean;
   pendingPayment: WebappRecord | null;
   plans: WebappRecord[];
   rawEmailAuthEnabled: unknown;
   referral: WebappRecord;
   referralBonusDetails: WebappRecord[];
   referralOneBonusPerReferee: boolean;
+  referralProgramEnabled: boolean;
   referralWelcomeBonusDays: number;
   subscription: WebappRecord;
   subscriptionPurchaseDescription: string;
   suggestedPromoCode: string;
   supportEnabled: boolean;
 };
+
+export function normalizeAuthProviders(value: unknown, emailAuthEnabled: boolean): string[] {
+  const providers = arrayField(value)
+    .map((provider) =>
+      String(provider || "")
+        .trim()
+        .toLowerCase()
+    )
+    .filter(Boolean);
+  const normalized = [...new Set(providers)];
+  if (normalized.length) return normalized;
+  return emailAuthEnabled ? ["telegram", "email"] : ["telegram"];
+}
 
 export function computeAppDataView({
   cfg,
@@ -72,11 +88,18 @@ export function computeAppDataView({
     appSettings.email_auth_enabled ??
     cfg.emailAuthEnabled;
   const emailAuthEnabled = rawEmailAuthEnabled !== false && rawEmailAuthEnabled !== "false";
+  const authProviders = normalizeAuthProviders(
+    recordField(dataRecord.settings).auth_providers ??
+      appSettings.auth_providers ??
+      cfg.authProviders,
+    emailAuthEnabled
+  );
   const subscription = recordField(dataRecord.subscription || mock.subscription);
   const referral = recordField(dataRecord.referral || mock.referral);
 
   return {
     appSettings,
+    authProviders,
     brand,
     brandTitle,
     devicesEnabled: Boolean(appSettings.my_devices_enabled),
@@ -85,12 +108,14 @@ export function computeAppDataView({
     faviconBrand,
     installGuidesEnabled: Boolean(appSettings.subscription_guides_enabled),
     methods,
+    partnerProgramEnabled: Boolean(appSettings.partner_program_enabled ?? false),
     pendingPayment: recordOrNull(dataRecord.pending_payment),
     plans,
     rawEmailAuthEnabled,
     referral,
     referralBonusDetails: recordArrayField(referral.bonus_details),
     referralOneBonusPerReferee: Boolean(referral.one_bonus_per_referee),
+    referralProgramEnabled: appSettings.referral_program_enabled !== false,
     referralWelcomeBonusDays: Math.max(0, Number(referral.welcome_bonus_days || 0)),
     subscription,
     subscriptionPurchaseDescription: String(

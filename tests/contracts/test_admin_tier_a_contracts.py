@@ -168,6 +168,7 @@ def test_tariffs_response_models_match_legacy_catalog_payload():
     config = TariffsConfig.model_validate(
         {
             "default_tariff": "standard",
+            "referral_welcome_bonus_tariff": "standard",
             "default_currency": "rub",
             "tariffs": [
                 {

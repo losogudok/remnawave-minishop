@@ -19,6 +19,8 @@ import {
   premiumNextResetLabel,
   premiumServerLabels,
   premiumTrafficLeftLabel,
+  premiumTrafficResetLabel,
+  premiumTrafficResetScheduled,
   trafficLabel,
   trafficNextResetLabel,
   trafficPercent,
@@ -85,6 +87,16 @@ describe("webapp traffic helpers", () => {
     expect(trafficNextResetLabel({ traffic_next_reset_text: "05.07.2026" }, t)).toBe("05.07.2026");
     expect(premiumNextResetLabel({ premium_next_reset_text: "" }, t)).toBe(
       "wa_traffic_next_reset_none:{}"
+    );
+    expect(premiumTrafficResetLabel({ premium_traffic_limit_strategy: "MONTH" }, t)).toBe(
+      "wa_traffic_reset_monthly:{}"
+    );
+    expect(premiumTrafficResetLabel({ premium_traffic_limit_strategy: "NO_RESET" }, t)).toBe(
+      "wa_traffic_reset_none:{}"
+    );
+    expect(premiumTrafficResetScheduled({ premium_traffic_limit_strategy: "WEEK" })).toBe(true);
+    expect(premiumTrafficResetScheduled({ premium_traffic_limit_strategy: "NO_RESET" })).toBe(
+      false
     );
   });
 

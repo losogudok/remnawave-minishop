@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from bot.app.web.admin_settings_manifest_email_fields import EMAIL_SETTINGS_FIELDS
 from bot.app.web.admin_settings_manifest_types import TRAFFIC_STRATEGY_CHOICES, SettingField
+from bot.app.web.admin_settings_partner_manifest_fields import PARTNER_SETTINGS_FIELDS
 
 SETTINGS_MANIFEST: list[SettingField] = [
     # ─── General ────────────────────────────────────────────────────
@@ -381,6 +382,19 @@ SETTINGS_MANIFEST: list[SettingField] = [
         min=1,
         subsection="checkout",
     ),
+    SettingField(
+        "PAYMENT_FAILURE_NOTIFICATION_GRACE_SECONDS",
+        "int",
+        "payments",
+        "Failed payment notification grace",
+        (
+            "Delay before notifying about a failed payment, allowing a successful retry "
+            "to suppress stale errors. Set 0 to notify immediately."
+        ),
+        optional=False,
+        min=0,
+        subsection="checkout",
+    ),
     # ─── Payment providers (toggles) ───────────────────────────────
     # Common
     SettingField("STARS_ENABLED", "bool", "payments", "Telegram Stars", subsection="common"),
@@ -498,6 +512,17 @@ SETTINGS_MANIFEST: list[SettingField] = [
         subsection="trial",
     ),
     SettingField(
+        "REFERRAL_PROGRAM_ENABLED",
+        "bool",
+        "pricing",
+        "Referral program",
+        (
+            "Enable ordinary referral links, attribution, welcome bonuses and payment bonuses. "
+            "Promo codes and the partner program remain available."
+        ),
+        subsection="referral",
+    ),
+    SettingField(
         "REFERRAL_ONE_BONUS_PER_REFEREE",
         "bool",
         "pricing",
@@ -527,6 +552,23 @@ SETTINGS_MANIFEST: list[SettingField] = [
         ),
         subsection="referral",
     ),
+    SettingField(
+        "REFERRAL_WEBAPP_LINK_ENABLED",
+        "bool",
+        "pricing",
+        "Website referral link",
+        "Show the website referral link in the user Web App bonus section.",
+        subsection="referral",
+    ),
+    SettingField(
+        "REFERRAL_TELEGRAM_LINK_ENABLED",
+        "bool",
+        "pricing",
+        "Telegram referral link",
+        "Show the Telegram bot referral link in the user Web App bonus section.",
+        subsection="referral",
+    ),
+    *PARTNER_SETTINGS_FIELDS,
     SettingField(
         "LEGACY_REFS",
         "bool",

@@ -75,6 +75,8 @@ class TariffsConfigTests(unittest.TestCase):
         config = TariffsConfig.model_validate(_valid_config())
 
         self.assertIsNone(config.require("standard").traffic_limit_strategy)
+        self.assertIsNone(config.require("standard").premium_traffic_limit_strategy)
+        self.assertIsNone(config.require("traffic").premium_traffic_limit_strategy)
 
     def test_period_tariff_traffic_strategy_loads(self):
         data = _valid_config()
@@ -94,6 +96,23 @@ class TariffsConfigTests(unittest.TestCase):
     def test_traffic_tariff_rejects_reset_strategy(self):
         data = _valid_config()
         data["tariffs"][1]["traffic_limit_strategy"] = "WEEK"
+
+        with self.assertRaises(ValueError):
+            TariffsConfig.model_validate(data)
+
+    def test_premium_traffic_strategy_loads_for_period_and_traffic_tariffs(self):
+        data = _valid_config()
+        data["tariffs"][0]["premium_traffic_limit_strategy"] = "WEEK"
+        data["tariffs"][1]["premium_traffic_limit_strategy"] = "MONTH"
+
+        config = TariffsConfig.model_validate(data)
+
+        self.assertEqual(config.require("standard").premium_traffic_limit_strategy, "WEEK")
+        self.assertEqual(config.require("traffic").premium_traffic_limit_strategy, "MONTH")
+
+    def test_invalid_premium_traffic_strategy_rejected(self):
+        data = _valid_config()
+        data["tariffs"][0]["premium_traffic_limit_strategy"] = "YEAR"
 
         with self.assertRaises(ValueError):
             TariffsConfig.model_validate(data)
@@ -503,6 +522,45 @@ class TariffsConfigTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             TariffsConfig.model_validate(data)
 
+    def test_referral_welcome_tariff_defaults_to_default_tariff(self):
+        config = TariffsConfig.model_validate(_valid_config())
+
+        self.assertIsNone(config.referral_welcome_bonus_tariff)
+        self.assertEqual(config.referral_welcome_bonus_tariff_key, "standard")
+
+    def test_referral_welcome_tariff_accepts_enabled_period_tariff(self):
+        data = _valid_config()
+        period_tariff = deepcopy(data["tariffs"][0])
+        period_tariff["key"] = "starter"
+        data["tariffs"].append(period_tariff)
+        data["referral_welcome_bonus_tariff"] = "starter"
+
+        config = TariffsConfig.model_validate(data)
+
+        self.assertEqual(config.referral_welcome_bonus_tariff, "starter")
+        self.assertEqual(config.referral_welcome_bonus_tariff_key, "starter")
+
+    def test_referral_welcome_tariff_rejects_missing_or_disabled_tariff(self):
+        for key in ("missing", "disabled"):
+            with self.subTest(key=key):
+                data = _valid_config()
+                if key == "disabled":
+                    disabled_tariff = deepcopy(data["tariffs"][0])
+                    disabled_tariff["key"] = "disabled"
+                    disabled_tariff["enabled"] = False
+                    data["tariffs"].append(disabled_tariff)
+                data["referral_welcome_bonus_tariff"] = key
+
+                with self.assertRaisesRegex(ValueError, "must reference an enabled tariff"):
+                    TariffsConfig.model_validate(data)
+
+    def test_referral_welcome_tariff_rejects_traffic_tariff(self):
+        data = _valid_config()
+        data["referral_welcome_bonus_tariff"] = "traffic"
+
+        with self.assertRaisesRegex(ValueError, "must reference a period tariff"):
+            TariffsConfig.model_validate(data)
+
     def test_period_price_required_for_enabled_period(self):
         data = _valid_config()
         data["tariffs"][0]["prices_rub"] = {"1": 0}
@@ -640,3 +698,24 @@ class TariffsConfigTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             TariffsConfig.model_validate(data)
+
+    def test_zero_premium_limit_is_explicitly_quota_controlled(self):
+        data = _valid_config()
+        data["tariffs"][0]["premium_squad_uuids"] = ["premium-squad"]
+        data["tariffs"][0]["premium_monthly_gb"] = 0
+
+        tariff = TariffsConfig.model_validate(data).require("standard")
+
+        self.assertEqual(tariff.premium_monthly_bytes, 0)
+        self.assertTrue(tariff.has_premium_squad_limit())
+
+    def test_explicit_premium_unlimited_disables_quota_control(self):
+        data = _valid_config()
+        data["tariffs"][0]["premium_squad_uuids"] = ["premium-squad"]
+        data["tariffs"][0]["premium_monthly_gb"] = 50
+        data["tariffs"][0]["premium_unlimited"] = True
+
+        tariff = TariffsConfig.model_validate(data).require("standard")
+
+        self.assertEqual(tariff.premium_monthly_bytes, 0)
+        self.assertFalse(tariff.has_premium_squad_limit())

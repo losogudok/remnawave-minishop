@@ -92,9 +92,12 @@ export type SettingsState = {
   features: string[];
   /** True once the feature manifest has been loaded at least once. */
   featuresResolved: boolean;
+  partnerEncryptionAvailable: boolean;
   settingsLoading: boolean;
   settingsDirty: SettingsDirtyState;
   settingsSaving: boolean;
+  /** Pending changes owned by a section that writes its own contract. */
+  extraDirtyCount: number;
 };
 type SettingsStoreOptions = {
   api: AdminApi;
@@ -103,6 +106,13 @@ type SettingsStoreOptions = {
 };
 export type SettingsStore = SettingsState & {
   loadSettings: () => Promise<void>;
+  /**
+   * Lets a settings section that writes another contract (for example the
+   * referral bonus matrix, which patches the tariff catalog) hang off the one
+   * Save in the screen header instead of shipping a second Save button.
+   */
+  registerExtraSaver: (saver: () => void | Promise<void>) => () => void;
+  reportExtraDirty: (sectionId: string, count: number) => void;
   markDirty: (key: string, value: unknown, deleted?: boolean) => void;
   clearDirty: (key: string) => void;
   setFieldValue: (key: string, value: unknown) => void;
@@ -131,16 +141,39 @@ export function createSettingsStore({ api, onToast, at }: SettingsStoreOptions):
     settingsSections: [],
     features: [],
     featuresResolved: false,
+    partnerEncryptionAvailable: false,
     settingsLoading: false,
     settingsDirty: {},
     settingsSaving: false,
+    extraDirtyCount: 0,
     loadSettings,
+    registerExtraSaver,
+    reportExtraDirty,
     markDirty,
     clearDirty,
     setFieldValue,
     resetField,
     saveSettings,
   });
+
+  // Plain collections, deliberately outside `$state`: they must not make the
+  // effect that registers a saver depend on its own write.
+  const extraSavers = new Set<() => void | Promise<void>>();
+  const extraDirty = new Map<string, number>();
+
+  function registerExtraSaver(saver: () => void | Promise<void>): () => void {
+    extraSavers.add(saver);
+    return () => {
+      extraSavers.delete(saver);
+    };
+  }
+
+  function reportExtraDirty(sectionId: string, count: number): void {
+    if (count > 0) extraDirty.set(sectionId, count);
+    else extraDirty.delete(sectionId);
+    const total = [...extraDirty.values()].reduce((sum, value) => sum + value, 0);
+    if (total !== state.extraDirtyCount) updateState((s) => ({ ...s, extraDirtyCount: total }));
+  }
 
   function updateState(updater: (snapshot: SettingsStore) => SettingsStore): void {
     const next = updater(state);
@@ -159,6 +192,7 @@ export function createSettingsStore({ api, onToast, at }: SettingsStoreOptions):
           settingsSections: normalizeSections(result.sections),
           features: Array.isArray(result.features) ? result.features : [],
           featuresResolved: true,
+          partnerEncryptionAvailable: Boolean(result.partner_encryption_available),
         }));
       }
     } finally {
@@ -202,10 +236,13 @@ export function createSettingsStore({ api, onToast, at }: SettingsStoreOptions):
     onSettingsSaved?: (payload: SettingsSavedPayload) => void | Promise<void>
   ): Promise<boolean> {
     const dirty = snapshotForPayload(state.settingsDirty);
-    if (!Object.keys(dirty).length) return true;
+    const savers = [...extraSavers];
+    if (!Object.keys(dirty).length && !savers.length) return true;
 
     updateState((s) => ({ ...s, settingsSaving: true }));
     try {
+      for (const saver of savers) await saver();
+      if (!Object.keys(dirty).length) return true;
       const updates: SettingsUpdates = {};
       const deletes: string[] = [];
       for (const [key, change] of Object.entries(dirty)) {

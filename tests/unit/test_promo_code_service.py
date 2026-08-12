@@ -75,6 +75,38 @@ class PromoCodeServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(created_payload["code"], "GIFT")
         self.assertEqual(created_payload["bonus_days"], 7)
 
+    async def test_issue_code_persists_composite_traffic_grants(self):
+        session = AsyncMock()
+        created = SimpleNamespace(promo_code_id=8, code="STACKED")
+        with (
+            patch(
+                "bot.services.promo_code_service.promo_code_dal.get_promo_code_by_code",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "bot.services.promo_code_service.promo_code_dal.create_promo_code",
+                AsyncMock(return_value=created),
+            ) as create_promo,
+        ):
+            await PromoCodeService.issue_code(
+                session,
+                effects=PromoEffects(
+                    bonus_days=7,
+                    regular_traffic_gb=50,
+                    premium_traffic_gb=20,
+                    applies_to="subscription",
+                ),
+                code="stacked",
+                max_activations=3,
+                valid_until=None,
+                origin="admin",
+                created_by_admin_id=100,
+            )
+
+        payload = create_promo.await_args.args[1]
+        self.assertEqual(payload["regular_traffic_gb"], 50)
+        self.assertEqual(payload["premium_traffic_gb"], 20)
+
     async def test_apply_promo_passes_default_tariff_for_new_bonus_subscription(self):
         end_date = datetime(2026, 1, 8, tzinfo=UTC)
         settings = SimpleNamespace(
@@ -216,6 +248,133 @@ class PromoCodeServiceTests(IsolatedAsyncioTestCase):
         release_activation.assert_awaited_once_with(session, 5, 42, payment_id=None)
         clear_throttle.assert_not_awaited()
         emit_event.assert_not_awaited()
+
+    async def test_apply_composite_traffic_grant_uses_persistent_topup_service(self):
+        end_date = datetime(2026, 3, 1, tzinfo=UTC)
+        tariff = SimpleNamespace(premium_squad_uuids=["premium"])
+        settings = SimpleNamespace(
+            MIGRATION_REMNASHOP_PROMO_CODE_COMPAT_ENABLED=False,
+            BRUTE_FORCE_LOCK_SECONDS=60,
+            BRUTE_FORCE_MAX_FAILURES=5,
+            BRUTE_FORCE_WINDOW_SECONDS=300,
+            tariffs_config=SimpleNamespace(
+                default_tariff="standard",
+                require=lambda key: tariff,
+            ),
+        )
+        subscription_service = SimpleNamespace(
+            extend_active_subscription_days=AsyncMock(),
+            grant_promo_entitlements=AsyncMock(return_value={"end_date": end_date}),
+        )
+        service = PromoCodeService(
+            settings,
+            subscription_service,
+            AsyncMock(),
+            SimpleNamespace(gettext=lambda lang, key, **kw: key),
+        )
+        promo = SimpleNamespace(
+            promo_code_id=5,
+            code="STACKED",
+            bonus_days=7,
+            regular_traffic_gb=50,
+            premium_traffic_gb=20,
+            applies_to="subscription",
+        )
+        session = AsyncMock()
+        with (
+            patch(
+                "bot.services.promo_code_service.security_dal.check_throttle",
+                AsyncMock(return_value=SimpleNamespace(locked=False, retry_after=None)),
+            ),
+            patch(
+                "bot.services.promo_code_service.promo_code_dal.get_active_promo_code_by_code_str",
+                AsyncMock(return_value=promo),
+            ),
+            patch(
+                "bot.services.promo_code_service.promo_code_dal.get_user_activation_for_promo",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "bot.services.promo_code_service.subscription_dal.get_active_subscription_by_user_id",
+                AsyncMock(return_value=SimpleNamespace(tariff_key="standard")),
+            ),
+            patch(
+                "bot.services.promo_code_service.promo_code_dal.consume_promo_activation",
+                AsyncMock(return_value=SimpleNamespace(activation_id=10)),
+            ) as consume_activation,
+            patch(
+                "bot.services.promo_code_service.security_dal.clear_throttle_state",
+                AsyncMock(),
+            ),
+            patch("bot.services.promo_code_service.events.emit_model", AsyncMock()) as emit_event,
+        ):
+            success, result = await service.apply_promo_code(session, 42, "stacked", "en")
+
+        self.assertTrue(success)
+        self.assertEqual(result, end_date)
+        subscription_service.grant_promo_entitlements.assert_awaited_once_with(
+            session=session,
+            user_id=42,
+            bonus_days=7,
+            regular_traffic_gb=50,
+            premium_traffic_gb=20,
+        )
+        consume_kwargs = consume_activation.await_args.kwargs
+        self.assertEqual(consume_kwargs["granted_regular_traffic_gb"], 50)
+        self.assertEqual(consume_kwargs["granted_premium_traffic_gb"], 20)
+        emitted = emit_event.await_args.args[0]
+        self.assertEqual(emitted.regular_traffic_gb, 50)
+        self.assertEqual(emitted.premium_traffic_gb, 20)
+
+    async def test_traffic_promo_requires_active_subscription_before_consuming(self):
+        settings = SimpleNamespace(
+            MIGRATION_REMNASHOP_PROMO_CODE_COMPAT_ENABLED=False,
+            BRUTE_FORCE_LOCK_SECONDS=60,
+            BRUTE_FORCE_MAX_FAILURES=5,
+            BRUTE_FORCE_WINDOW_SECONDS=300,
+            tariffs_config=None,
+        )
+        service = PromoCodeService(
+            settings,
+            SimpleNamespace(grant_promo_entitlements=AsyncMock()),
+            AsyncMock(),
+            SimpleNamespace(gettext=lambda lang, key, **kw: key),
+        )
+        promo = SimpleNamespace(
+            promo_code_id=5,
+            code="TRAFFIC",
+            bonus_days=0,
+            regular_traffic_gb=10,
+            applies_to="subscription",
+        )
+        consume = AsyncMock()
+        with (
+            patch(
+                "bot.services.promo_code_service.security_dal.check_throttle",
+                AsyncMock(return_value=SimpleNamespace(locked=False, retry_after=None)),
+            ),
+            patch(
+                "bot.services.promo_code_service.promo_code_dal.get_active_promo_code_by_code_str",
+                AsyncMock(return_value=promo),
+            ),
+            patch(
+                "bot.services.promo_code_service.promo_code_dal.get_user_activation_for_promo",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "bot.services.promo_code_service.subscription_dal.get_active_subscription_by_user_id",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "bot.services.promo_code_service.promo_code_dal.consume_promo_activation",
+                consume,
+            ),
+        ):
+            success, result = await service.apply_promo_code(AsyncMock(), 42, "traffic", "en")
+
+        self.assertFalse(success)
+        self.assertEqual(result, "promo_code_active_subscription_required")
+        consume.assert_not_awaited()
 
     async def test_apply_bonus_code_requires_checkout_when_payment_mode_enabled(self):
         settings = SimpleNamespace(

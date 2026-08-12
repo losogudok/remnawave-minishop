@@ -10,6 +10,7 @@ from bot.app.web.webapp import auth_email, auth_oauth, auth_referral
 from bot.services.registration_invite_gate import (
     RegistrationInviteRequiredError,
     RegistrationInviteStatus,
+    evaluate_registration_invite,
 )
 
 
@@ -31,9 +32,17 @@ class InviteOnlyRegistrationTests(unittest.IsolatedAsyncioTestCase):
         async def __aexit__(self, exc_type, exc, tb):
             return None
 
-    def _settings(self, *, invite_only: bool = True):
+    def _settings(
+        self,
+        *,
+        invite_only: bool = True,
+        referral_program_enabled: bool = True,
+        partner_program_enabled: bool = False,
+        partner_referral_program_disabled: bool = False,
+    ):
         return SimpleNamespace(
             DEFAULT_LANGUAGE="en",
+            REFERRAL_PROGRAM_ENABLED=referral_program_enabled,
             REGISTRATION_INVITE_ONLY_ENABLED=invite_only,
             LEGACY_REFS=True,
             compatibility_settings=SimpleNamespace(remnashop_referral_code_compat_enabled=False),
@@ -44,7 +53,14 @@ class InviteOnlyRegistrationTests(unittest.IsolatedAsyncioTestCase):
             REFERRAL_WELCOME_BONUS_WITHOUT_TELEGRAM_ENABLED=True,
             disposable_email_domains=[],
             DISPOSABLE_EMAIL_DOMAINS="",
-            referral_settings=SimpleNamespace(welcome_bonus_days=0),
+            referral_settings=SimpleNamespace(
+                enabled=referral_program_enabled,
+                welcome_bonus_days=0,
+            ),
+            partner_settings=SimpleNamespace(
+                enabled=partner_program_enabled,
+                referral_program_disabled=partner_referral_program_disabled,
+            ),
             tariffs_config=None,
         )
 
@@ -149,6 +165,124 @@ class InviteOnlyRegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(payload["ok"])
         create_payload = create_user.await_args.args[1]
         self.assertEqual(create_payload["referred_by_id"], 7)
+
+    async def test_partner_referral_gate_is_disabled_by_default(self):
+        settings = self._settings(
+            partner_program_enabled=True,
+            partner_referral_program_disabled=False,
+        )
+        partner_lookup = AsyncMock()
+
+        with (
+            patch(
+                "bot.services.registration_invite_gate.user_dal.get_user_by_referral_code",
+                AsyncMock(return_value=SimpleNamespace(user_id=7)),
+            ),
+            patch(
+                "bot.services.registration_invite_gate.partner_dal.get_profile_by_user_id",
+                partner_lookup,
+            ),
+        ):
+            invite = await evaluate_registration_invite(
+                AsyncMock(),
+                "ABC123",
+                settings=settings,
+                current_user_id=42,
+            )
+
+        self.assertEqual(invite.status, RegistrationInviteStatus.VALID)
+        self.assertEqual(invite.referrer_user_id, 7)
+        self.assertIsNone(invite.partner_code)
+        partner_lookup.assert_not_awaited()
+
+    async def test_disabled_referral_program_rejects_ordinary_invite_without_lookup(self):
+        settings = self._settings(referral_program_enabled=False)
+        referrer_lookup = AsyncMock()
+
+        with patch(
+            "bot.services.registration_invite_gate.user_dal.get_user_by_referral_code",
+            referrer_lookup,
+        ):
+            invite = await evaluate_registration_invite(
+                AsyncMock(),
+                "ABC123",
+                settings=settings,
+                current_user_id=42,
+            )
+
+        self.assertEqual(invite.status, RegistrationInviteStatus.INVALID)
+        self.assertTrue(invite.requires_invite)
+        referrer_lookup.assert_not_awaited()
+
+    async def test_active_partner_referral_link_uses_partner_attribution(self):
+        settings = self._settings(
+            partner_program_enabled=True,
+            partner_referral_program_disabled=True,
+        )
+
+        with (
+            patch(
+                "bot.services.registration_invite_gate.user_dal.get_user_by_referral_code",
+                AsyncMock(return_value=SimpleNamespace(user_id=7)),
+            ),
+            patch(
+                "bot.services.registration_invite_gate.partner_dal.get_profile_by_user_id",
+                AsyncMock(
+                    return_value=SimpleNamespace(
+                        partner_id=11,
+                        partner_code="partner-code",
+                        status="active",
+                        user_id=7,
+                    )
+                ),
+            ),
+        ):
+            invite = await evaluate_registration_invite(
+                AsyncMock(),
+                "ABC123",
+                settings=settings,
+                current_user_id=42,
+            )
+
+        self.assertEqual(invite.status, RegistrationInviteStatus.VALID)
+        self.assertIsNone(invite.referrer_user_id)
+        self.assertEqual(invite.partner_id, 11)
+        self.assertEqual(invite.partner_code, "partner-code")
+
+    async def test_paused_partner_referral_link_cannot_bypass_partner_status(self):
+        settings = self._settings(
+            partner_program_enabled=True,
+            partner_referral_program_disabled=True,
+        )
+
+        with (
+            patch(
+                "bot.services.registration_invite_gate.user_dal.get_user_by_referral_code",
+                AsyncMock(return_value=SimpleNamespace(user_id=7)),
+            ),
+            patch(
+                "bot.services.registration_invite_gate.partner_dal.get_profile_by_user_id",
+                AsyncMock(
+                    return_value=SimpleNamespace(
+                        partner_id=11,
+                        partner_code="partner-code",
+                        status="paused",
+                        user_id=7,
+                    )
+                ),
+            ),
+        ):
+            invite = await evaluate_registration_invite(
+                AsyncMock(),
+                "ABC123",
+                settings=settings,
+                current_user_id=42,
+            )
+
+        self.assertEqual(invite.status, RegistrationInviteStatus.INVALID)
+        self.assertTrue(invite.requires_invite)
+        self.assertIsNone(invite.referrer_user_id)
+        self.assertIsNone(invite.partner_code)
 
     async def test_oauth_callback_redirects_invite_required(self):
         settings = self._settings(invite_only=True)

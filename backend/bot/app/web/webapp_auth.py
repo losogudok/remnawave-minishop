@@ -6,10 +6,19 @@ import json
 import logging
 import secrets
 import time
-from typing import Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qsl
 
+from bot.app.web.webapp.telegram_oauth_transport import (
+    get_telegram_oauth_http_session,
+    telegram_oauth_transport_route_key,
+)
 from config.settings import Settings
+from config.telegram_proxy import safe_telegram_network_error_detail
+
+if TYPE_CHECKING:
+    from jwt import PyJWK
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +27,119 @@ TELEGRAM_CLOCK_SKEW_SECONDS = 300
 TELEGRAM_OAUTH_ISSUER = "https://oauth.telegram.org"
 TELEGRAM_OAUTH_JWKS_URL = "https://oauth.telegram.org/.well-known/jwks.json"
 TELEGRAM_OAUTH_ALGORITHMS = ["RS256", "ES256", "EdDSA"]
+# The signing keys are fetched over the network, on the login callback, while the customer's
+# browser waits. Telegram rotates them rarely, so one cached key set serves every login instead
+# of one round-trip per login. The fetch uses the same dedicated transport as the token exchange,
+# which lets an operator opt both server-side OIDC calls into the Bot API SOCKS5 route.
+TELEGRAM_OAUTH_JWKS_LIFESPAN_SECONDS = 600
+TELEGRAM_OAUTH_JWKS_TIMEOUT_SECONDS = 10.0
+TELEGRAM_OAUTH_VALIDATION_TIMEOUT_SECONDS = 12.0
+
+
+@dataclass(frozen=True)
+class _TelegramJwksCacheEntry:
+    payload: dict[str, Any]
+    fetched_at: float
+    transport_route_key: str
+
+
+_telegram_jwks_cache: _TelegramJwksCacheEntry | None = None
+_telegram_jwks_cache_lock = asyncio.Lock()
+
+
+async def _fetch_telegram_oauth_jwks(settings: Settings) -> dict[str, Any]:
+    session = await get_telegram_oauth_http_session(settings)
+    async with session.get(
+        TELEGRAM_OAUTH_JWKS_URL,
+        timeout=TELEGRAM_OAUTH_JWKS_TIMEOUT_SECONDS,
+    ) as response:
+        if response.status >= 400:
+            raise RuntimeError(f"Telegram OAuth JWKS endpoint returned HTTP {response.status}")
+        payload = await response.json(content_type=None)
+
+    if not isinstance(payload, dict) or not isinstance(payload.get("keys"), list):
+        raise ValueError("Telegram OAuth JWKS endpoint returned an invalid key set")
+    return dict(payload)
+
+
+async def _get_telegram_oauth_jwks(
+    settings: Settings,
+    *,
+    force_refresh: bool = False,
+) -> dict[str, Any]:
+    global _telegram_jwks_cache
+
+    route_key = telegram_oauth_transport_route_key(settings)
+    now = time.monotonic()
+    cached = _telegram_jwks_cache
+    if (
+        not force_refresh
+        and cached is not None
+        and cached.transport_route_key == route_key
+        and now - cached.fetched_at < TELEGRAM_OAUTH_JWKS_LIFESPAN_SECONDS
+    ):
+        return cached.payload
+
+    async with _telegram_jwks_cache_lock:
+        now = time.monotonic()
+        cached = _telegram_jwks_cache
+        if (
+            not force_refresh
+            and cached is not None
+            and cached.transport_route_key == route_key
+            and now - cached.fetched_at < TELEGRAM_OAUTH_JWKS_LIFESPAN_SECONDS
+        ):
+            return cached.payload
+
+        payload = await _fetch_telegram_oauth_jwks(settings)
+        _telegram_jwks_cache = _TelegramJwksCacheEntry(
+            payload=payload,
+            fetched_at=time.monotonic(),
+            transport_route_key=route_key,
+        )
+        return payload
+
+
+def _select_telegram_oauth_signing_key(
+    id_token: str,
+    jwks_payload: dict[str, Any],
+) -> "PyJWK | None":
+    import jwt
+
+    key_id = str(jwt.get_unverified_header(id_token).get("kid") or "")
+    if not key_id:
+        raise ValueError("Telegram OAuth ID token does not contain a key ID")
+
+    key_set = jwt.PyJWKSet.from_dict(jwks_payload)
+    for key in key_set.keys:
+        if key.key_id == key_id and key.public_key_use in {"sig", None}:
+            return key
+    return None
+
+
+async def _load_telegram_oauth_signing_key(
+    settings: Settings,
+    id_token: str,
+) -> "PyJWK":
+    jwks_payload = await _get_telegram_oauth_jwks(settings)
+    signing_key = await asyncio.to_thread(
+        _select_telegram_oauth_signing_key,
+        id_token,
+        jwks_payload,
+    )
+    if signing_key is not None:
+        return signing_key
+
+    # A missing kid usually means Telegram rotated keys before the cache expired.
+    jwks_payload = await _get_telegram_oauth_jwks(settings, force_refresh=True)
+    signing_key = await asyncio.to_thread(
+        _select_telegram_oauth_signing_key,
+        id_token,
+        jwks_payload,
+    )
+    if signing_key is None:
+        raise ValueError("Telegram OAuth signing key was not found after refreshing JWKS")
+    return signing_key
 
 
 def _urlsafe_b64encode(raw: bytes) -> str:
@@ -190,6 +312,7 @@ def verify_signed_telegram_oauth_state(
 async def validate_telegram_oauth_id_token(
     id_token: str,
     *,
+    settings: Settings,
     client_id: int,
     expected_nonce: str,
     max_age_seconds: int,
@@ -201,7 +324,6 @@ async def validate_telegram_oauth_id_token(
 
     try:
         import jwt
-        from jwt import PyJWKClient
     except Exception as exc:
         logger.error(
             "PyJWT is not installed; Telegram OAuth ID token validation is unavailable: %s",
@@ -210,10 +332,9 @@ async def validate_telegram_oauth_id_token(
         return None
 
     try:
-        jwks_client = PyJWKClient(TELEGRAM_OAUTH_JWKS_URL)
-        signing_key = await asyncio.to_thread(
-            jwks_client.get_signing_key_from_jwt,
-            id_token,
+        signing_key = await asyncio.wait_for(
+            _load_telegram_oauth_signing_key(settings, id_token),
+            timeout=TELEGRAM_OAUTH_VALIDATION_TIMEOUT_SECONDS,
         )
         claims = await asyncio.to_thread(
             jwt.decode,
@@ -260,7 +381,10 @@ async def validate_telegram_oauth_id_token(
             "language_code": claims.get("locale"),
         }
     except Exception as exc:
-        logger.warning("Failed to validate Telegram OAuth ID token: %s", exc)
+        logger.warning(
+            "Failed to validate Telegram OAuth ID token: %s",
+            safe_telegram_network_error_detail(exc),
+        )
         return None
 
 

@@ -116,6 +116,17 @@ class PaymentReconciliationWorker:
             payments = await payment_reconciliation_dal.list_unsent_failure_notifications(
                 session,
                 limit=self._batch_size(),
+                older_than_seconds=max(
+                    0,
+                    int(
+                        getattr(
+                            self.settings,
+                            "PAYMENT_FAILURE_NOTIFICATION_GRACE_SECONDS",
+                            300,
+                        )
+                        or 0
+                    ),
+                ),
             )
             candidates = [detached_payment_snapshot(payment) for payment in payments]
 

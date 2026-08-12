@@ -5,21 +5,16 @@ import {
   buildAdminBroadcastPath,
   buildAdminBroadcastPreviewPath,
   buildAdminBroadcastShortcodesPath,
-  buildAdminPromosPath,
+  buildAdminPromoOptionsPath,
   unwrap,
   type ApiClient,
-  type ApiResponse,
   type GetResponse,
   type PostPayload,
 } from "../../webapp/publicApi";
 import type { components } from "../../api/openapi.generated";
 import { snapshotForPayload } from "./snapshotForPayload.svelte";
 
-type AdminErrorResponse = { ok?: false; error?: string; message?: string; detail?: string };
-type AdminApi = <Path extends Parameters<ApiClient["api"]>[0]>(
-  path: Path,
-  options?: Parameters<ApiClient["api"]>[1]
-) => Promise<ApiResponse<Path> | AdminErrorResponse>;
+type AdminApi = ApiClient["api"];
 type ToastFn = (message: string) => void;
 type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
 type BroadcastCounts = Record<string, number>;
@@ -124,7 +119,7 @@ export type BroadcastStore = BroadcastState & {
   removeButton: (index: number) => void;
   updateButton: (index: number, fields: Partial<BroadcastButtonDraft>) => void;
   moveButton: (from: number, to: number) => void;
-  loadPromoOptions: () => Promise<void>;
+  loadPromoOptions: (query?: string) => Promise<void>;
   loadShortcodes: () => Promise<void>;
   sendPreview: (mode: "render" | "send_telegram", userId?: number | null) => Promise<void>;
   sendToUser: (input: SingleUserMessage) => Promise<string | null>;
@@ -172,19 +167,8 @@ export function buttonsForPayload(buttons: BroadcastButtonDraft[]) {
   }));
 }
 
-type PromoListItem = components["schemas"]["PromoOut"];
-type PromosListResponse = GetResponse<"/api/admin/promos">;
-
-// Only codes a user can still redeem belong in the button dropdown.
-function promoUsable(promo: PromoListItem): boolean {
-  if (!promo.is_active) return false;
-  const validUntil = promo.valid_until ? Date.parse(String(promo.valid_until)) : NaN;
-  if (Number.isFinite(validUntil) && validUntil <= Date.now()) return false;
-  const max = Number(promo.max_activations);
-  const current = Number(promo.current_activations);
-  if (Number.isFinite(max) && max > 0 && Number.isFinite(current) && current >= max) return false;
-  return true;
-}
+type PromoListItem = components["schemas"]["PromoOptionOut"];
+type PromosListResponse = GetResponse<"/api/admin/promos/options">;
 
 /**
  * A code minted for one named customer.
@@ -209,6 +193,27 @@ function promoOptionLabel(promo: PromoListItem): string {
 
 function isPromosListResponse(value: unknown): value is PromosListResponse {
   return Boolean(value && typeof value === "object" && (value as { ok?: unknown }).ok === true);
+}
+
+function promoOptionsFromResponse(
+  response: PromosListResponse,
+  at: TranslateFn
+): BroadcastPromoOption[] {
+  const sharedGroup = at("broadcast_promo_group_shared", {}, "Shared codes");
+  const personalGroup = at("broadcast_promo_group_personal", {}, "Personal codes");
+  const options = (response.promos || [])
+    .map((promo) => ({
+      value: String(promo.code || ""),
+      label: promoOptionLabel(promo),
+      group: promoIsPersonal(promo) ? personalGroup : sharedGroup,
+    }))
+    .filter((option) => option.value);
+  // Keep ownership visually strict even when the server ranks one exact
+  // personal match above similar shared codes: shared is always the first group.
+  return [
+    ...options.filter((option) => option.group === sharedGroup),
+    ...options.filter((option) => option.group === personalGroup),
+  ];
 }
 
 function asBroadcastCounts(value: unknown): BroadcastCounts | null {
@@ -256,6 +261,9 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
   const COUNTS_STORAGE_KEY = "remnawave-admin:broadcast-audience-counts";
   let countsPromise: Promise<void> | null = null;
   let promoOptionsPromise: Promise<void> | null = null;
+  let promoOptionsRequestId = 0;
+  let promoOptionsQuery = "";
+  const promoOptionsCache = new Map<string, BroadcastPromoOption[]>();
   let shortcodesPromise: Promise<void> | null = null;
   let buttonIdCounter = 0;
   const subscriptionGroup = () =>
@@ -650,7 +658,11 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
   ): Promise<void> {
     if (state.broadcastPreviewBusy) return;
     const written = localizedForPayload(state.broadcastTexts);
-    const text = state.broadcastText.trim() || written[state.broadcastLanguage] || "";
+    const text =
+      state.broadcastText.trim() ||
+      written[state.broadcastLanguage] ||
+      Object.values(written)[0] ||
+      "";
     if (!text && !Object.keys(written).length) {
       onToast(at("broadcast_preview_empty", {}, "Enter text to preview"));
       return;
@@ -746,48 +758,60 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
     });
   }
 
-  async function loadPromoOptions(): Promise<void> {
-    if (state.broadcastPromoOptionsLoaded || promoOptionsPromise) {
-      return promoOptionsPromise || Promise.resolve();
+  async function loadPromoOptions(query?: string): Promise<void> {
+    const isInitialLoad = query === undefined;
+    const normalizedQuery = isInitialLoad ? "" : String(query || "").trim();
+    const queryKey = normalizedQuery.toLocaleLowerCase();
+    promoOptionsQuery = queryKey;
+
+    const cached = promoOptionsCache.get(queryKey);
+    if (cached) {
+      promoOptionsRequestId += 1;
+      updateState((s) => ({
+        ...s,
+        broadcastPromoOptions: cached,
+        broadcastPromoOptionsLoaded: true,
+        broadcastPromoOptionsLoading: false,
+      }));
+      return;
     }
+
+    if (!queryKey && promoOptionsPromise) return promoOptionsPromise;
+
+    const requestId = ++promoOptionsRequestId;
     updateState((s) => ({ ...s, broadcastPromoOptionsLoading: true }));
-    promoOptionsPromise = (async () => {
+    const request = (async () => {
       try {
-        const params = new URLSearchParams({ page: "0", page_size: "100" });
-        const res = await api(buildAdminPromosPath(params));
-        if (isPromosListResponse(res)) {
-          const promos = res.promos || [];
-          const sharedGroup = at("broadcast_promo_group_shared", {}, "Shared codes");
-          const personalGroup = at("broadcast_promo_group_personal", {}, "Personal codes");
-          const usable = promos
-            .filter(promoUsable)
-            .map((promo) => ({
-              value: String(promo.code || ""),
-              label: promoOptionLabel(promo),
-              group: promoIsPersonal(promo) ? personalGroup : sharedGroup,
-            }))
-            .filter((option) => option.value);
-          // Shared codes lead the list; single-use ones sit apart so nobody
-          // attaches a personal code to a whole audience by accident.
-          const options = [
-            ...usable.filter((option) => option.group === sharedGroup),
-            ...usable.filter((option) => option.group === personalGroup),
-          ];
-          updateState((s) => ({
-            ...s,
-            broadcastPromoOptions: options,
-            broadcastPromoOptionsLoaded: true,
-          }));
+        const params = normalizedQuery
+          ? new URLSearchParams({ query: normalizedQuery })
+          : undefined;
+        const response = await api(buildAdminPromoOptionsPath(params));
+        if (!isPromosListResponse(response)) {
+          throw new Error("Promo suggestions request failed");
         }
+        const options = promoOptionsFromResponse(response, at);
+        promoOptionsCache.set(queryKey, options);
+        if (requestId !== promoOptionsRequestId || promoOptionsQuery !== queryKey) return;
+        updateState((s) => ({
+          ...s,
+          broadcastPromoOptions: options,
+          broadcastPromoOptionsLoaded: true,
+        }));
       } catch {
-        // Leave options empty; the dropdown shows the "no codes" hint and the
-        // backend still validates codes on submit.
+        // Suggestions are an aid only: a manually entered code is still sent
+        // through the same backend validation as a selected suggestion.
+        if (requestId === promoOptionsRequestId) {
+          updateState((s) => ({ ...s, broadcastPromoOptionsLoaded: true }));
+        }
       } finally {
-        updateState((s) => ({ ...s, broadcastPromoOptionsLoading: false }));
-        promoOptionsPromise = null;
+        if (requestId === promoOptionsRequestId) {
+          updateState((s) => ({ ...s, broadcastPromoOptionsLoading: false }));
+        }
+        if (!queryKey) promoOptionsPromise = null;
       }
     })();
-    return promoOptionsPromise;
+    if (!queryKey) promoOptionsPromise = request;
+    return request;
   }
 
   return state;

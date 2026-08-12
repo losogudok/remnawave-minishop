@@ -1,6 +1,10 @@
 <script lang="ts">
   import { X } from "$components/ui/icons.js";
   import { cn } from "$lib/utils.js";
+  import {
+    focusFirstDialogControl,
+    handleDialogFocusTrap,
+  } from "$lib/components/dialogFocusTrap.js";
   import { lockPageScroll } from "$lib/webapp/scrollLock.js";
   import type { Snippet } from "svelte";
   import { cubicOut } from "svelte/easing";
@@ -51,6 +55,19 @@
   }
 
   let overlay = $state<HTMLDivElement | null>(null);
+  let card = $state<HTMLElement | null>(null);
+
+  // Escape and Tab are handled on the overlay, not on `window`: a dialog opened
+  // from another dialog keeps its own trap, and only the one holding focus
+  // reacts to the key.
+  function handleKeydown(event: KeyboardEvent) {
+    handleDialogFocusTrap(event, card, onclose);
+  }
+
+  $effect(() => {
+    if (!open) return;
+    focusFirstDialogControl(() => card);
+  });
 
   function stopScrollPropagation(event: WheelEvent | TouchEvent) {
     event.stopPropagation();
@@ -83,6 +100,7 @@
     aria-label={title}
     tabindex="-1"
     onwheel={stopScrollPropagation}
+    onkeydown={handleKeydown}
   >
     <button
       class="dialog-backdrop"
@@ -92,7 +110,12 @@
       in:fade={backdropTransition()}
       out:fade={backdropTransition()}
     ></button>
-    <section class={cn("dialog-card", className)} in:fly={cardIn()} out:fly={cardOut()}>
+    <section
+      bind:this={card}
+      class={cn("dialog-card", className)}
+      in:fly={cardIn()}
+      out:fly={cardOut()}
+    >
       <div class="dialog-head">
         <div class:dialog-title-with-icon={titleIcon} class="dialog-title-block">
           {#if titleIcon}

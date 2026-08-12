@@ -31,6 +31,7 @@ export type PopstateRouteInput = {
   isAdmin?: boolean;
   isDocsDemo?: boolean;
   mode: PopstateMode;
+  partnerProgramEnabled?: boolean;
   pathname: string;
   routePrefix?: string;
   screenQuery?: string | null;
@@ -44,6 +45,7 @@ export function resolvePopstateRoute({
   isAdmin = false,
   isDocsDemo = false,
   mode,
+  partnerProgramEnabled = false,
   pathname,
   routePrefix = "",
   screenQuery = null,
@@ -77,6 +79,7 @@ export function resolvePopstateRoute({
     devicesEnabled,
     installGuidesAvailable: canUseInstallGuides,
     isAdmin,
+    partnerProgramEnabled,
     section: routeSection,
     supportEnabled,
   });

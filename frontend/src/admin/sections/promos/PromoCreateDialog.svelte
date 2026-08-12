@@ -11,6 +11,8 @@
   };
   type CreateNumberField =
     | "bonus_days"
+    | "regular_traffic_gb"
+    | "premium_traffic_gb"
     | "discount_percent"
     | "duration_multiplier"
     | "traffic_multiplier"
@@ -19,18 +21,22 @@
     | "max_activations"
     | "valid_days";
   type PromoEffectKind =
-    "bonus_days" | "discount_percent" | "duration_multiplier" | "traffic_multiplier";
+    | "bonus_days"
+    | "regular_traffic_gb"
+    | "premium_traffic_gb"
+    | "discount_percent"
+    | "duration_multiplier"
+    | "traffic_multiplier";
   type ScopeItem = { value: string; label: string };
 
   type Props = {
     at: TranslateFn;
     draft: PromoDraft;
-    effectKind: PromoEffectKind;
     onBonusRequiresPaymentChange: (checked: boolean) => void;
     onClose: () => void;
     onCodeInput: (code: string) => void;
     onCreate: () => void | Promise<void>;
-    onEffectChange: (value: string) => void;
+    onEffectEnabledChange: (kind: PromoEffectKind, checked: boolean) => void;
     onNumberInput: (field: CreateNumberField, value: string) => void;
     onScopeChange: (scope: string) => void;
     open: boolean;
@@ -41,12 +47,11 @@
   let {
     at,
     draft,
-    effectKind,
     onBonusRequiresPaymentChange,
     onClose,
     onCodeInput,
     onCreate,
-    onEffectChange,
+    onEffectEnabledChange,
     onNumberInput,
     onScopeChange,
     open,
@@ -56,6 +61,14 @@
 
   function inputValue(event: Event): string {
     return (event.currentTarget as HTMLInputElement).value;
+  }
+
+  function hasFixedGrant(promo: PromoDraft): boolean {
+    return (
+      Number(promo.bonus_days || 0) > 0 ||
+      Number(promo.regular_traffic_gb || 0) > 0 ||
+      Number(promo.premium_traffic_gb || 0) > 0
+    );
   }
 </script>
 
@@ -138,16 +151,15 @@
           <div class="admin-editor-section-title">
             <strong>{at("promo_col_effect", {}, "Effect")}</strong>
             <small>
-              {at("promo_effect_single_hint", {}, "Choose one effect; values do not stack.")}
+              {at("promo_effect_multiple_hint", {}, "Select one or more effects to combine.")}
             </small>
           </div>
         </header>
         <PromoEffectSelector
           {at}
-          value={effectKind}
           values={draft}
           bonusRequiresPayment={Boolean(draft.bonus_requires_payment)}
-          onValueChange={onEffectChange}
+          onEnabledChange={onEffectEnabledChange}
           {onNumberInput}
           {onBonusRequiresPaymentChange}
         />
@@ -196,7 +208,7 @@
                 class="input"
                 min="0"
                 step="0.01"
-                disabled={!usesCheckout}
+                disabled={!usesCheckout || hasFixedGrant(draft)}
                 value={draft.min_traffic_gb == null ? "" : String(draft.min_traffic_gb)}
                 oninput={(event) => onNumberInput("min_traffic_gb", inputValue(event))}
               />

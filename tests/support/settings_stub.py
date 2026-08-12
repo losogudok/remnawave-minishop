@@ -6,6 +6,8 @@ from typing import Any
 from config.settings_mixins import _split_csv
 from config.settings_models import (
     PanelSettings,
+    PartnerSettings,
+    PartnerWithdrawalMethod,
     ReferralSettings,
     RegistrationSettings,
     SupportSettings,
@@ -48,12 +50,41 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "PANEL_SYNC_LIFETIME_TRAFFIC_MIN_INTERVAL_SECONDS": 3600,
     "PANEL_USER_CACHE_TTL_SECONDS": 5,
     "PANEL_WRITE_MODE": "auto",
+    "PARTNER_PROGRAM_ENABLED": False,
+    "PARTNER_AUTO_ENROLLMENT_ENABLED": False,
+    "PARTNER_REFERRAL_PROGRAM_DISABLED": False,
+    "PARTNER_WITHDRAWALS_ENABLED": True,
+    "PARTNER_BALANCE_PAYMENT_ENABLED": True,
+    "PARTNER_CLIENT_WELCOME_BONUS_ENABLED": False,
+    "PARTNER_CLIENT_PAYMENT_BONUS_ENABLED": False,
+    "PARTNER_ONE_BONUS_PER_CLIENT": True,
+    "PARTNER_DEFAULT_COMMISSION_BPS": 3000,
+    "PARTNER_COMMISSION_HOLD_DAYS": 0,
+    "PARTNER_ELIGIBLE_CURRENCIES": '["RUB"]',
+    "PARTNER_EXCLUDED_SALE_MODES": "[]",
+    "PARTNER_WITHDRAWAL_METHODS_JSON": "[]",
+    "PARTNER_TELEGRAM_LINK_ENABLED": True,
+    "PARTNER_WEBAPP_LINK_ENABLED": True,
+    "PARTNER_APPLICATION_MESSAGE_MAX_LENGTH": 2000,
+    "PARTNER_MAX_ACTIVE_WITHDRAWALS": 3,
+    "PARTNER_REAPPLICATION_ENABLED": False,
+    "PARTNER_REAPPLICATION_COOLDOWN_DAYS": 0,
+    "PARTNER_LIST_PAGE_LIMIT": 50,
+    "PARTNER_APPLICATION_RATE_LIMIT_HOURS": 24,
+    "PARTNER_WITHDRAWAL_RATE_LIMIT_SECONDS": 10,
+    "PARTNER_AUDIT_RETENTION_DAYS": 1095,
+    "PARTNER_REQUISITES_RETENTION_DAYS": 90,
+    "PARTNER_REQUISITES_ENCRYPTION_KEY": None,
+    "PARTNER_REQUISITES_KEY_ID": "v1",
     "PROFILE_SYNC_CACHE_TTL_SECONDS": 900,
     "REDIS_KEY_PREFIX": "tests",
     "REDIS_URL": None,
+    "REFERRAL_PROGRAM_ENABLED": True,
     "REFERRAL_ONE_BONUS_PER_REFEREE": False,
     "REFERRAL_WELCOME_BONUS_DAYS": 0,
     "REFERRAL_WELCOME_BONUS_WITHOUT_TELEGRAM_ENABLED": True,
+    "REFERRAL_WEBAPP_LINK_ENABLED": True,
+    "REFERRAL_TELEGRAM_LINK_ENABLED": True,
     "REGISTRATION_INVITE_ONLY_ENABLED": False,
     "SUBSCRIPTION_GUIDES_CONFIG_CACHE_TTL_SECONDS": 300,
     "SUBSCRIPTION_GUIDES_ENABLED": True,
@@ -78,9 +109,11 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "TELEGRAM_ANTIFLOOD_START_MAX_PER_WINDOW": 30,
     "TELEGRAM_ANTIFLOOD_WINDOW_SECONDS": 60,
     "TELEGRAM_BOT_MENU_DISABLED": False,
+    "TELEGRAM_BOT_PROXY_URL": None,
     "TELEGRAM_OAUTH_CLIENT_ID": None,
     "TELEGRAM_OAUTH_CLIENT_SECRET": None,
     "TELEGRAM_OAUTH_REQUEST_ACCESS": None,
+    "TELEGRAM_OAUTH_USE_BOT_PROXY": True,
     "TELEGRAM_PAYMENT_CALLBACK_COOLDOWN_SECONDS": 20,
     "TELEGRAM_TRIAL_CALLBACK_COOLDOWN_SECONDS": 30,
     "TORRENT_BLOCKER_EMAIL_NOTIFICATIONS_ENABLED": False,
@@ -248,6 +281,7 @@ class SettingsStub(SimpleNamespace):
     @property
     def referral_settings(self) -> ReferralSettings:
         return ReferralSettings(
+            enabled=bool(getattr(self, "REFERRAL_PROGRAM_ENABLED", True)),
             bonus_days_inviter_1_month=getattr(self, "REFERRAL_BONUS_DAYS_1_MONTH", 7),
             bonus_days_inviter_3_months=getattr(self, "REFERRAL_BONUS_DAYS_3_MONTHS", 7),
             bonus_days_inviter_6_months=getattr(self, "REFERRAL_BONUS_DAYS_6_MONTHS", 7),
@@ -261,6 +295,8 @@ class SettingsStub(SimpleNamespace):
             welcome_bonus_without_telegram_enabled=bool(
                 getattr(self, "REFERRAL_WELCOME_BONUS_WITHOUT_TELEGRAM_ENABLED", True)
             ),
+            webapp_link_enabled=bool(getattr(self, "REFERRAL_WEBAPP_LINK_ENABLED", True)),
+            telegram_link_enabled=bool(getattr(self, "REFERRAL_TELEGRAM_LINK_ENABLED", True)),
             legacy_refs_enabled=bool(getattr(self, "LEGACY_REFS", True)),
         )
 
@@ -268,6 +304,40 @@ class SettingsStub(SimpleNamespace):
     def registration_settings(self) -> RegistrationSettings:
         return RegistrationSettings(
             invite_only_enabled=bool(getattr(self, "REGISTRATION_INVITE_ONLY_ENABLED", False)),
+        )
+
+    @property
+    def partner_settings(self) -> PartnerSettings:
+        import json
+
+        return PartnerSettings(
+            enabled=bool(self.PARTNER_PROGRAM_ENABLED),
+            auto_enrollment_enabled=bool(self.PARTNER_AUTO_ENROLLMENT_ENABLED),
+            referral_program_disabled=bool(self.PARTNER_REFERRAL_PROGRAM_DISABLED),
+            withdrawals_enabled=bool(self.PARTNER_WITHDRAWALS_ENABLED),
+            balance_payment_enabled=bool(self.PARTNER_BALANCE_PAYMENT_ENABLED),
+            client_welcome_bonus_enabled=bool(self.PARTNER_CLIENT_WELCOME_BONUS_ENABLED),
+            client_payment_bonus_enabled=bool(self.PARTNER_CLIENT_PAYMENT_BONUS_ENABLED),
+            one_bonus_per_client=bool(self.PARTNER_ONE_BONUS_PER_CLIENT),
+            default_commission_bps=int(self.PARTNER_DEFAULT_COMMISSION_BPS),
+            commission_hold_days=int(self.PARTNER_COMMISSION_HOLD_DAYS),
+            eligible_currencies=json.loads(self.PARTNER_ELIGIBLE_CURRENCIES),
+            excluded_sale_modes=json.loads(self.PARTNER_EXCLUDED_SALE_MODES),
+            withdrawal_methods=[
+                PartnerWithdrawalMethod.model_validate(item)
+                for item in json.loads(self.PARTNER_WITHDRAWAL_METHODS_JSON)
+            ],
+            telegram_link_enabled=bool(self.PARTNER_TELEGRAM_LINK_ENABLED),
+            webapp_link_enabled=bool(self.PARTNER_WEBAPP_LINK_ENABLED),
+            application_message_max_length=int(self.PARTNER_APPLICATION_MESSAGE_MAX_LENGTH),
+            max_active_withdrawals=int(self.PARTNER_MAX_ACTIVE_WITHDRAWALS),
+            reapplication_enabled=bool(self.PARTNER_REAPPLICATION_ENABLED),
+            reapplication_cooldown_days=int(self.PARTNER_REAPPLICATION_COOLDOWN_DAYS),
+            list_page_limit=int(self.PARTNER_LIST_PAGE_LIMIT),
+            application_rate_limit_hours=int(self.PARTNER_APPLICATION_RATE_LIMIT_HOURS),
+            withdrawal_rate_limit_seconds=int(self.PARTNER_WITHDRAWAL_RATE_LIMIT_SECONDS),
+            audit_retention_days=int(self.PARTNER_AUDIT_RETENTION_DAYS),
+            requisites_retention_days=int(self.PARTNER_REQUISITES_RETENTION_DAYS),
         )
 
     @property

@@ -10,7 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.dal import payment_dal
 from db.models import Payment
 
-from .common import mark_payment_failed_creation, payment_failed, payment_link_response
+from .common import (
+    mark_payment_failed_creation,
+    payment_creation_failure_metadata,
+    payment_failed,
+    payment_link_response,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +97,17 @@ async def finalize_webapp_link_payment(
             _short_repr(provider_response),
         )
         try:
-            await mark_payment_failed_creation(session, payment.payment_id)
+            failure_metadata = payment_creation_failure_metadata(
+                provider_response,
+                api_success=api_success,
+            )
+            if not provider_id_stored:
+                failure_metadata["failure_kind"] = "provider_correlation_persist_failed"
+            await mark_payment_failed_creation(
+                session,
+                payment.payment_id,
+                **failure_metadata,
+            )
         except Exception:
             await session.rollback()
             logger.exception(

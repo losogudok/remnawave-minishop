@@ -15,6 +15,8 @@
     goDevices: Action;
     goHome: Action;
     goInvite: Action;
+    goPartner: Action;
+    partnerEnabled?: boolean;
     goSettings: Action;
     goSupport: Action;
     hasUnlinkedIdentity?: boolean;
@@ -44,6 +46,8 @@
     goDevices,
     goHome,
     goInvite,
+    goPartner,
+    partnerEnabled = false,
     goSupport,
     goSettings,
     t,
@@ -52,7 +56,7 @@
 </script>
 
 <div class="phone-screen" class:home-screen={screen === "home"}>
-  {#if screen === "install" || screen === "invite" || screen === "devices" || screen === "support" || screen === "settings"}
+  {#if screen === "install" || screen === "invite" || screen === "partner" || screen === "devices" || screen === "support" || screen === "settings"}
     <header class="app-header accent-title">
       <div class="brand-row">
         <BrandMark {brand} />
@@ -78,6 +82,8 @@
     onDevices={goDevices}
     onHome={goHome}
     onInvite={goInvite}
+    onPartner={goPartner}
+    {partnerEnabled}
     onSupport={goSupport}
     onSettings={goSettings}
     {t}

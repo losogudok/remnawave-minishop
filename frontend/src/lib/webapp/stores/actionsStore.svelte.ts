@@ -7,6 +7,8 @@ import {
   buildTrialActivatePath,
   unwrap,
 } from "../publicApi";
+import { formatPromoEffectSummary } from "../promoEffectSummary.js";
+import type { TermUnitLabel } from "../types.js";
 
 type Translate = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
 type MaybeRecord = Record<string, unknown>;
@@ -35,6 +37,7 @@ type ActionsStoreDeps = {
   showToast: (message: string) => void;
   loadData: (options?: LoadDataOptions & Record<string, unknown>) => Promise<unknown>;
   maybeShowActivationSuccessDialog: (context?: Record<string, unknown>) => Promise<boolean>;
+  termUnitLabel: TermUnitLabel;
   startCheckoutPromo?: (code: string) => void;
   prefillCheckoutPromo?: (code: string) => void;
 };
@@ -64,6 +67,7 @@ export function createActionsStore({
   showToast,
   loadData,
   maybeShowActivationSuccessDialog,
+  termUnitLabel,
   startCheckoutPromo = () => {},
   prefillCheckoutPromo = () => {},
 }: ActionsStoreDeps) {
@@ -225,7 +229,7 @@ export function createActionsStore({
       const status = stringField(statusPayload.status);
       const resolvedCode = stringField(statusPayload.code) || trimmed;
       const message = stringField(statusPayload.message);
-      const effectSummary = stringField(statusPayload.effect_summary);
+      const effectSummary = formatPromoEffectSummary(statusPayload, { t, termUnitLabel });
       if (status === "requires_checkout") {
         // The code adjusts a purchase — the checkout flow with the prefilled
         // code stays the right UX. Reuse the opened deeplink modal if any.

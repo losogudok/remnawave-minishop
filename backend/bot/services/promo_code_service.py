@@ -54,6 +54,8 @@ class PromoCodeStatus:
     min_subscription_months: int | None = None
     min_traffic_gb: float | None = None
     bonus_days: int = 0
+    regular_traffic_gb: float = 0
+    premium_traffic_gb: float = 0
     activated_at: datetime | None = None
     subscription_end_date: datetime | None = None
 
@@ -129,6 +131,8 @@ class PromoCodeService:
             {
                 "code": normalized_code,
                 "bonus_days": effects.bonus_days,
+                "regular_traffic_gb": effects.regular_traffic_gb or None,
+                "premium_traffic_gb": effects.premium_traffic_gb or None,
                 "discount_percent": effects.discount_percent,
                 "duration_multiplier": (
                     effects.duration_multiplier if effects.duration_multiplier != 1.0 else None
@@ -137,7 +141,7 @@ class PromoCodeService:
                     effects.traffic_multiplier if effects.traffic_multiplier != 1.0 else None
                 ),
                 "bonus_requires_payment": bool(
-                    effects.bonus_requires_payment and effects.bonus_days > 0
+                    effects.bonus_requires_payment and effects.has_fixed_grant
                 ),
                 "applies_to": effects.applies_to,
                 "min_subscription_months": effects.min_subscription_months,
@@ -292,6 +296,8 @@ class PromoCodeService:
             effect_summary=summary,
             applies_to=effects.applies_to,
             bonus_days=int(effects.bonus_days or 0),
+            regular_traffic_gb=effects.regular_traffic_gb,
+            premium_traffic_gb=effects.premium_traffic_gb,
         )
 
     async def apply_promo_code(
@@ -372,11 +378,27 @@ class PromoCodeService:
                 min_traffic_gb=effects.min_traffic_gb,
             )
 
-        bonus_days = promo_data.bonus_days
+        bonus_days = effects.bonus_days
         default_tariff_key = None
         tariffs_config = getattr(self.settings, "tariffs_config", None)
         if tariffs_config:
             default_tariff_key = getattr(tariffs_config, "default_tariff", None)
+
+        if effects.has_traffic_grant:
+            active_sub = await subscription_dal.get_active_subscription_by_user_id(session, user_id)
+            if not active_sub:
+                return False, _("promo_code_active_subscription_required")
+            if effects.premium_traffic_gb > 0:
+                try:
+                    active_tariff = (
+                        tariffs_config.require(active_sub.tariff_key)
+                        if tariffs_config and active_sub.tariff_key
+                        else None
+                    )
+                except (KeyError, ValueError):
+                    active_tariff = None
+                if active_tariff is None or not active_tariff.premium_squad_uuids:
+                    return False, _("promo_code_premium_traffic_unavailable")
 
         activation = await promo_code_dal.consume_promo_activation(
             session,
@@ -386,6 +408,8 @@ class PromoCodeService:
             enforce_limit=True,
             effect_summary=summarize_effects(effects),
             bonus_days=effects.bonus_days,
+            regular_traffic_gb=effects.regular_traffic_gb or None,
+            premium_traffic_gb=effects.premium_traffic_gb or None,
             discount_percent=effects.discount_percent,
             duration_multiplier=(
                 effects.duration_multiplier if effects.duration_multiplier != 1.0 else None
@@ -395,6 +419,8 @@ class PromoCodeService:
             ),
             applies_to=effects.applies_to,
             granted_days=bonus_days,
+            granted_regular_traffic_gb=effects.regular_traffic_gb or None,
+            granted_premium_traffic_gb=effects.premium_traffic_gb or None,
         )
         if activation is None:
             logger.warning(
@@ -404,13 +430,23 @@ class PromoCodeService:
             )
             return False, _("error_applying_promo_bonus")
 
-        new_end_date = await self.subscription_service.extend_active_subscription_days(
-            session=session,
-            user_id=user_id,
-            bonus_days=bonus_days,
-            reason=f"promo code {applied_code}",
-            tariff_key=default_tariff_key,
-        )
+        if effects.has_traffic_grant:
+            grant_result = await self.subscription_service.grant_promo_entitlements(
+                session=session,
+                user_id=user_id,
+                bonus_days=bonus_days,
+                regular_traffic_gb=effects.regular_traffic_gb,
+                premium_traffic_gb=effects.premium_traffic_gb,
+            )
+            new_end_date = grant_result.get("end_date") if grant_result else None
+        else:
+            new_end_date = await self.subscription_service.extend_active_subscription_days(
+                session=session,
+                user_id=user_id,
+                bonus_days=bonus_days,
+                reason=f"promo code {applied_code}",
+                tariff_key=default_tariff_key,
+            )
 
         if not new_end_date:
             await promo_code_dal.release_promo_activation(
@@ -431,6 +467,8 @@ class PromoCodeService:
                 user_id=user_id,
                 code=applied_code,
                 bonus_days=bonus_days,
+                regular_traffic_gb=effects.regular_traffic_gb,
+                premium_traffic_gb=effects.premium_traffic_gb,
                 new_end_date=new_end_date,
             )
         )

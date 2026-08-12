@@ -14,6 +14,7 @@ from bot.app.web.admin_api_impl import promos as promos_module
 from bot.app.web.admin_api_impl.schemas import (
     PromoActivationOut,
     PromoCreateBody,
+    PromoOptionOut,
     PromoOut,
     PromoUpdateBody,
 )
@@ -49,6 +50,8 @@ def _promo(**overrides):
         "promo_code_id": 5,
         "code": "GIFT",
         "bonus_days": 7,
+        "regular_traffic_gb": None,
+        "premium_traffic_gb": None,
         "max_activations": 3,
         "current_activations": 1,
         "is_active": True,
@@ -117,7 +120,12 @@ def test_promo_list_pages_each_kind_separately_and_names_the_owner():
                 "settings": _settings(),
                 "bot_username": "shop_bot",
             },
-            query={"kind": "personal", "page": "0", "page_size": "25"},
+            query={
+                "kind": "personal",
+                "page": "0",
+                "page_size": "25",
+                "sort": "code_desc",
+            },
         )
         with (
             patch.object(promos_module, "_require_admin_user_id", return_value=100),
@@ -148,6 +156,7 @@ def test_promo_list_pages_each_kind_separately_and_names_the_owner():
 
     # The tab is a server-side filter, so its paging and total never mix kinds.
     assert list_promos.await_args.kwargs["personal"] is True
+    assert list_promos.await_args.kwargs["sort"] == "code_desc"
     assert count_promos.await_args.kwargs["personal"] is True
     assert labels.await_args.args[1] == [77]
     row = _json_body(response)["promos"][0]
@@ -187,6 +196,65 @@ def test_promo_list_without_a_kind_lists_every_code():
             return list_promos
 
     assert asyncio.run(run()).await_args.kwargs["personal"] is None
+
+
+def test_promo_options_reserve_space_for_shared_codes_before_personal_codes():
+    shared = _promo(code="SHARED", user_id=None)
+    personal = _promo(code="PERSONAL", user_id=77)
+
+    async def run():
+        session = _FakeSession()
+        request = _FakeRequest(
+            {},
+            app={"async_session_factory": lambda: session},
+            query={},
+        )
+        with (
+            patch.object(promos_module, "_require_admin_user_id", return_value=100),
+            patch.object(
+                promos_module.promo_code_dal,
+                "get_usable_promo_codes_for_picker",
+                AsyncMock(side_effect=[[shared], [personal]]),
+            ) as list_promos,
+        ):
+            response = await promos_module.admin_promo_options_route(request)
+            return response, list_promos
+
+    response, list_promos = asyncio.run(run())
+
+    assert [call.kwargs["personal"] for call in list_promos.await_args_list] == [False, True]
+    assert [call.kwargs["limit"] for call in list_promos.await_args_list] == [50, 50]
+    assert [item["code"] for item in _json_body(response)["promos"]] == ["SHARED", "PERSONAL"]
+    assert _json_body(response)["promos"] == [
+        PromoOptionOut.from_orm_promo(shared).model_dump(mode="json"),
+        PromoOptionOut.from_orm_promo(personal).model_dump(mode="json"),
+    ]
+
+
+def test_promo_options_searches_all_ownership_kinds_with_a_bounded_query():
+    promo = _promo(code="PERSONAL", user_id=77)
+
+    async def run():
+        session = _FakeSession()
+        request = _FakeRequest(
+            {},
+            app={"async_session_factory": lambda: session},
+            query={"query": "  person  "},
+        )
+        with (
+            patch.object(promos_module, "_require_admin_user_id", return_value=100),
+            patch.object(
+                promos_module.promo_code_dal,
+                "get_usable_promo_codes_for_picker",
+                AsyncMock(return_value=[promo]),
+            ) as list_promos,
+        ):
+            await promos_module.admin_promo_options_route(request)
+            return list_promos
+
+    call = asyncio.run(run()).await_args
+
+    assert call.kwargs == {"search": "person", "personal": None, "limit": 100}
 
 
 def test_promo_owner_is_read_only_for_the_admin_api():
@@ -249,6 +317,8 @@ def test_promo_create_uses_typed_body_and_response_model():
     assert created_payload == {
         "code": "GIFT",
         "bonus_days": 7,
+        "regular_traffic_gb": None,
+        "premium_traffic_gb": None,
         "discount_percent": None,
         "duration_multiplier": None,
         "traffic_multiplier": None,
@@ -268,26 +338,23 @@ def test_promo_create_uses_typed_body_and_response_model():
     assert _json_body(response)["promo"] == PromoOut.from_orm_promo(promo).model_dump(mode="json")
 
 
-def test_promo_create_rejects_multiple_effects():
-    async def run():
-        request = _FakeRequest(
-            {
-                "code": "gift",
-                "bonus_days": 7,
-                "discount_percent": 10,
-                "max_activations": 3,
-            }
-        )
+def test_promo_create_accepts_multiple_effects():
+    body = PromoCreateBody.model_validate(
+        {
+            "code": "gift",
+            "bonus_days": 7,
+            "regular_traffic_gb": 50,
+            "premium_traffic_gb": 20,
+            "discount_percent": 10,
+            "applies_to": "subscription",
+            "max_activations": 3,
+        }
+    )
 
-        with patch.object(promos_module, "_require_admin_user_id", return_value=100):
-            return await promos_module.admin_promo_create_route(request)
-
-    response = _run_direct_bad_request(run())
-
-    assert response.status == 400
-    body = _json_body(response)
-    assert body["error"] == "invalid_payload"
-    assert "multiple_effects" in body["message"]
+    effects = body.to_effects()
+    assert effects.active_effect_count == 4
+    assert effects.regular_traffic_gb == 50
+    assert effects.premium_traffic_gb == 20
 
 
 def test_promo_create_keeps_invalid_valid_days_error_code():
@@ -377,7 +444,7 @@ def test_promo_update_can_disable_existing_multiple_effects():
     session.commit.assert_awaited_once()
 
 
-def test_promo_update_rejects_enabling_existing_multiple_effects():
+def test_promo_update_allows_enabling_existing_multiple_effects():
     async def run():
         session = _FakeSession()
         promo = _promo(is_active=False, bonus_days=7, discount_percent=10)
@@ -397,7 +464,7 @@ def test_promo_update_rejects_enabling_existing_multiple_effects():
             patch.object(
                 promos_module.promo_code_dal,
                 "update_promo_code",
-                AsyncMock(),
+                AsyncMock(return_value=promo),
             ) as update_promo,
         ):
             response = await promos_module.admin_promo_update_route(request)
@@ -405,10 +472,9 @@ def test_promo_update_rejects_enabling_existing_multiple_effects():
 
     response, session, update_promo = asyncio.run(run())
 
-    assert response.status == 400
-    assert _json_body(response)["error"] == "multiple_effects"
-    update_promo.assert_not_awaited()
-    session.commit.assert_not_awaited()
+    assert response.status == 200
+    update_promo.assert_awaited_once_with(session, 5, {"is_active": True})
+    session.commit.assert_awaited_once()
 
 
 def test_promo_update_returns_no_changes_for_empty_typed_body():
@@ -577,7 +643,7 @@ def test_promo_activations_route_returns_user_and_payment_context():
             {},
             app={"async_session_factory": lambda: session},
             match_info={"promo_id": "5"},
-            query={"page": "0", "page_size": "25"},
+            query={"page": "0", "page_size": "25", "sort": "provider_asc"},
         )
 
         with (
@@ -604,7 +670,7 @@ def test_promo_activations_route_returns_user_and_payment_context():
     response, session, activation, get_activations = asyncio.run(run())
 
     assert response.status == 200
-    get_activations.assert_awaited_once_with(session, 5, limit=25, offset=0)
+    get_activations.assert_awaited_once_with(session, 5, limit=25, offset=0, sort="provider_asc")
     body = _json_body(response)
     assert body["total"] == 1
     serialized = PromoActivationOut.from_orm_activation(activation).model_dump(mode="json")

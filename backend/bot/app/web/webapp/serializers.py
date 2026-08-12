@@ -17,7 +17,6 @@ from bot.app.web.context import (
     get_subscription_service,
 )
 from bot.app.web.webapp.auth import (
-    _referral_welcome_telegram_required_reason,
     _trial_telegram_required_reason,
     _user_has_linked_telegram,
 )
@@ -26,6 +25,7 @@ from bot.infra.promo_policies import (
     resolve_promo_checkout_suggestion,
 )
 from bot.services.device_topup_availability import resolve_device_topup_availability
+from bot.services.partner_program_service import PartnerProgramService
 from bot.services.referral_service import ReferralService
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.services.telegram_notifications import (
@@ -57,6 +57,9 @@ from .common import (
     _normalize_language,
     _telegram_avatar_url,
 )
+from .referral_links import visible_referral_links
+from .referral_welcome_state import resolve_referral_welcome_state
+from .serializers_auto_renew import resolve_auto_renew_capabilities
 from .serializers_billing_options import (
     _attach_payment_methods_to_plans,
     _serialize_hwid_device_packages,
@@ -65,6 +68,7 @@ from .serializers_billing_options import (
     _serialize_topup_packages,
     _traffic_percent,
 )
+from .serializers_payments import _serialize_pending_promo_payment
 
 logger = logging.getLogger(__name__)
 _MAX_PENDING_PROMO_REFRESHES = 10
@@ -78,45 +82,6 @@ __all__ = [
     "_serialize_topup_packages",
     "_traffic_percent",
 ]
-
-
-def _serialize_pending_promo_payment(payment: Any | None) -> dict[str, Any] | None:
-    if payment is None:
-        return None
-
-    promo = getattr(payment, "promo_code_used", None)
-    promo_code = str(
-        getattr(promo, "archived_code", None) or getattr(promo, "code", None) or ""
-    ).strip()
-    amount = float(getattr(payment, "amount", 0) or 0)
-    discount_amount = max(
-        0.0,
-        float(getattr(payment, "checkout_discount_amount", 0) or 0),
-    )
-    base_amount_raw = getattr(payment, "checkout_base_amount", None)
-    base_amount = (
-        float(base_amount_raw) if base_amount_raw is not None else amount + discount_amount
-    )
-    created_at = getattr(payment, "created_at", None)
-    return {
-        "payment_id": int(payment.payment_id),
-        "payment_url": str(payment.provider_payment_url),
-        "provider": str(payment.provider or ""),
-        "status": str(payment.status or ""),
-        "amount": amount,
-        "base_amount": max(amount, base_amount),
-        "currency": str(payment.currency or ""),
-        "discount_amount": discount_amount,
-        "discount_percent": float(getattr(payment, "promo_discount_percent", 0) or 0),
-        "months": getattr(payment, "subscription_duration_months", None),
-        "purchased_gb": getattr(payment, "purchased_gb", None),
-        "purchased_hwid_devices": getattr(payment, "purchased_hwid_devices", None),
-        "sale_mode": str(getattr(payment, "sale_mode", None) or ""),
-        "tariff_key": getattr(payment, "tariff_key", None),
-        "promo_code": promo_code,
-        "promo_effect_summary": str(getattr(payment, "promo_effect_summary", None) or ""),
-        "created_at": created_at.isoformat() if created_at is not None else "",
-    }
 
 
 async def _suggested_checkout_promo(
@@ -207,6 +172,16 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             )
 
         active = await subscription_service.get_active_subscription_details(session, user_id)
+        partner_program = PartnerProgramService(settings)
+        await partner_program.auto_enroll_user(session, user=db_user)
+        referral_program_enabled = await partner_program.referral_program_enabled_for_user(
+            session,
+            user_id=user_id,
+        )
+        partner_client_welcome_eligible = await partner_program.client_welcome_bonus_eligible(
+            session,
+            user_id=user_id,
+        )
         referral_code = await user_dal.ensure_referral_code(session, db_user)
         referral_service: ReferralService | None = get_referral_service(request)
         bot_username = get_bot_username(request)
@@ -220,6 +195,11 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
         webapp_referral_link = _build_webapp_referral_link(
             get_settings(request).SUBSCRIPTION_MINI_APP_URL,
             referral_code,
+        )
+        referral_link, webapp_referral_link = visible_referral_links(
+            referral_settings,
+            bot_link=referral_link,
+            webapp_link=webapp_referral_link,
         )
         referral_stats = (
             await referral_service.get_referral_stats(session, user_id)
@@ -286,11 +266,14 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
     admin_ids = {int(x) for x in (settings.ADMIN_IDS or [])}
     is_admin = bool(db_user.telegram_id and int(db_user.telegram_id) in admin_ids)
     telegram_linked = _user_has_linked_telegram(db_user)
-    referral_welcome_days = max(0, int(referral_settings.welcome_bonus_days or 0))
-    referral_welcome_telegram_required_reason = (
-        _referral_welcome_telegram_required_reason(settings, db_user)
-        if db_user.referred_by_id and not active and referral_welcome_days > 0
-        else None
+    referral_welcome_days, referral_welcome_telegram_required_reason = (
+        resolve_referral_welcome_state(
+            settings,
+            db_user,
+            ordinary_referral_enabled_for_user=referral_program_enabled,
+            partner_client_eligible=partner_client_welcome_eligible,
+            has_active_subscription=bool(active),
+        )
     )
     telegram_notifications_status = normalize_telegram_notification_status(
         getattr(db_user, "telegram_notifications_status", None)
@@ -368,6 +351,8 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             ),
             "traffic_mode": bool(settings.traffic_sale_mode),
             "my_devices_enabled": bool(settings.MY_DEVICES_SECTION_ENABLED),
+            "partner_program_enabled": bool(settings.partner_settings.enabled),
+            "referral_program_enabled": referral_program_enabled,
             "subscription_reissue_enabled": bool(
                 settings.SUBSCRIPTION_REISSUE_ENABLED and settings.email_auth_configured
             ),
@@ -389,6 +374,7 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             ),
             "subscription_guides_enabled": subscription_guides_available(settings),
             "email_auth_enabled": settings.email_auth_configured,
+            "auth_providers": settings.webapp_auth_providers,
         },
     }
 
@@ -546,6 +532,13 @@ def _serialize_subscription(
             int((end_date - datetime.now(UTC)).total_seconds()),
         )
 
+    provider = str(getattr(local_sub, "provider", "") or "").strip().lower()
+    local_status = (
+        str(getattr(local_sub, "status_from_panel", "") or active.get("status_from_panel") or "")
+        .strip()
+        .upper()
+    )
+    is_trial = provider == "trial" or local_status == "TRIAL"
     can_topup_regular_traffic = False
     can_topup_premium_traffic = False
     can_topup_traffic = False
@@ -556,6 +549,7 @@ def _serialize_subscription(
         subscription_active=True,
         tariff_key=active.get("tariff_key"),
         max_devices=active.get("max_devices"),
+        subscription_is_trial=is_trial,
     )
     can_topup_devices = device_topup_availability.allowed
     if settings.tariffs_config and active.get("tariff_key"):
@@ -595,31 +589,15 @@ def _serialize_subscription(
         and end_date
         and extra_hwid_valid_until < end_date
     )
-    provider = str(getattr(local_sub, "provider", "") or "").strip().lower()
     auto_renew_enabled = bool(getattr(local_sub, "auto_renew_enabled", False))
-    auto_renew_supported = False
-    auto_renew_service_active = False
-    auto_renew_provider_label = provider or None
-    if provider:
-        try:
-            from bot.payment_providers import provider_label_map, provider_supports_recurring
-            from bot.payment_providers.shared import service_supports_recurring
-
-            auto_renew_supported = provider_supports_recurring(provider)
-            if request is not None:
-                subscription_service = get_optional_subscription_service(request)
-                recurring_service_for = getattr(subscription_service, "recurring_service_for", None)
-                service = (
-                    recurring_service_for(provider) if callable(recurring_service_for) else None
-                )
-                auto_renew_service_active = service_supports_recurring(service)
-            auto_renew_provider_label = provider_label_map(settings, language=lang).get(
-                provider,
-                provider,
-            )
-        except Exception:
-            auto_renew_supported = False
-            auto_renew_service_active = False
+    auto_renew = resolve_auto_renew_capabilities(
+        provider,
+        settings=settings,
+        language=lang,
+        subscription_service=(
+            get_optional_subscription_service(request) if request is not None else None
+        ),
+    )
     return {
         "active": seconds_left > 0,
         "status": active.get("status_from_panel") or "UNKNOWN",
@@ -649,7 +627,10 @@ def _serialize_subscription(
         ),
         "tier_baseline_bytes": _coerce_int_or_none(active.get("tier_baseline_bytes")),
         "topup_balance_bytes": _coerce_int_or_none(active.get("topup_balance_bytes")),
-        "premium_limit": _format_bytes(active.get("premium_limit_bytes"), zero_as_unlimited=True),
+        "premium_limit": _format_bytes(
+            active.get("premium_limit_bytes"),
+            zero_as_unlimited=not bool(active.get("premium_traffic_limited")),
+        ),
         "premium_used": _format_bytes(active.get("premium_used_bytes")),
         "premium_limit_bytes": _coerce_int_or_none(active.get("premium_limit_bytes")),
         "premium_used_bytes": _coerce_int_or_none(active.get("premium_used_bytes")),
@@ -662,7 +643,9 @@ def _serialize_subscription(
         "regular_bonus_bytes": _coerce_int_or_none(active.get("regular_bonus_bytes")) or 0,
         "regular_unlimited_override": bool(active.get("regular_unlimited_override")),
         "premium_unlimited_override": bool(active.get("premium_unlimited_override")),
+        "premium_traffic_limited": bool(active.get("premium_traffic_limited")),
         "premium_is_limited": bool(active.get("premium_is_limited")),
+        "premium_traffic_limit_strategy": str(active.get("premium_traffic_limit_strategy") or ""),
         "premium_next_reset_at": _webapp_iso_datetime(active.get("premium_next_reset_at")),
         "premium_next_reset_text": _webapp_reset_date_text(
             active.get("premium_next_reset_at"),
@@ -675,9 +658,7 @@ def _serialize_subscription(
         "can_topup_premium_traffic": can_topup_premium_traffic,
         "can_topup_devices": can_topup_devices,
         "device_topup_unavailable_reason": (
-            device_topup_availability.reason.value
-            if device_topup_availability.reason is not None
-            else None
+            device_topup_availability.reason.value if device_topup_availability.reason else None
         ),
         "device_topup_available_currencies": list(device_topup_availability.available_currencies),
         "topup_always_available": topup_always_available,
@@ -700,11 +681,7 @@ def _serialize_subscription(
         else None,
         "device_topup_renewal_available": device_topup_renewal_available,
         "auto_renew_enabled": auto_renew_enabled,
-        "auto_renew_available": bool(
-            auto_renew_supported and (auto_renew_enabled or auto_renew_service_active)
-        ),
-        "auto_renew_can_enable": bool(auto_renew_supported and auto_renew_service_active),
-        "auto_renew_provider_label": auto_renew_provider_label,
+        **auto_renew.payload_fields(enabled=auto_renew_enabled),
         "provider": getattr(local_sub, "provider", None),
     }
 

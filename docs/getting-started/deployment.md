@@ -39,7 +39,9 @@ Wizard работает через меню с цифрами и подтвер�
   Docker-сети Minishop (или проксирует на локальные порты для host-network),
   дописывает managed-блоки конфига с маркерами `BEGIN/END remnawave-minishop`,
   проверяет конфиг (`nginx -t` / `angie -t` / `caddy validate`) и откатывает
-  изменения при ошибке;
+  изменения при ошибке. Для eGames он повторяет фактическую схему TLS из
+  существующего конфига (`TCP/443` или Unix socket с PROXY protocol) и принимает
+  только сертификат, SAN которого покрывает добавляемый hostname;
 - подключить публикацию Web App через Pangolin (Newt) отдельным обратимым
   шагом: пункты меню «Подключить Web App к Pangolin (Newt)» и «Отключить
   Web App от Pangolin (Newt)» добавляют/убирают `docker-compose.pangolin.yml`
@@ -97,15 +99,18 @@ Wizard старается предлагать безопасные значен
 | --- | --- | --- |
 | `Папка установки` | Каталог, куда будут скачаны `docker-compose.yml`, `.env`, прокси-конфиги и где появятся `data/` и `backups/`. | Оставьте `/opt/remnawave-minishop`, если на сервере нет особой схемы каталогов. |
 | `Профиль деплоя` | Как приложение будет опубликовано наружу. | `Caddy HTTPS` для нового публичного сервера; `Angie HTTPS` - те же автоматические сертификаты, но конфигурация в Nginx-синтаксисе; `Nginx HTTPS`, если уже управляете сертификатами; `Pangolin/Newt`, если входящие порты закрыты; `Без прокси`, если TLS завершается внешней платформой; профиль существующего reverse proxy, если на этом же хосте уже работает Remnawave через eGames или любой другой Nginx/Angie/Caddy контейнер. |
-| `Подключение к существующему reverse proxy` | Для профиля существующего прокси: схема eGames (unix socket), универсальное подключение к любому запущенному Nginx/Angie/Caddy контейнеру или пропуск. | Схему eGames — для установки Remnawave скриптом eGames; универсальное подключение — для остальных случаев. Wizard сам определит host/bridge-сеть контейнера, переиспользует найденный `ssl_certificate` и откатит конфиг, если `nginx -t`/`angie -t`/`caddy validate` не пройдет. |
+| `Подключение к существующему reverse proxy` | Для профиля существующего прокси: автоопределяемая схема eGames (`TCP/443` или Unix socket), универсальное подключение к любому запущенному Nginx/Angie/Caddy контейнеру или пропуск. | Схему eGames — для установки Remnawave скриптом eGames; универсальное подключение — для остальных случаев. Wizard повторит фактический TLS-listener, проверит SAN найденных сертификатов для обоих новых hostname и откатит конфиг, если `nginx -t`/`angie -t`/`caddy validate` не пройдет. |
 | `Имя Docker Compose проекта` | Префикс Docker-сети, volumes и контейнеров. | Оставьте `remnawave-minishop`. Меняйте только если на одном сервере нужно несколько независимых стеков. |
 | `Тег Docker-образа` | Версия backend/worker/frontend образов. | Для обычной установки оставьте `latest` или укажите конкретный опубликованный релизный тег. |
 | `Токен Telegram бота` | `BOT_TOKEN` из BotFather. | Вставьте токен бота, через которого пользователи будут открывать Mini App. |
+| `SOCKS5 proxy для исходящих запросов Telegram Bot API` | Необязательный `TELEGRAM_BOT_PROXY_URL` для `backend` и `worker`. | Оставьте пустым для прямого подключения либо укажите `socks5://host:port`; значение с credentials wizard показывает только в маскированном виде. |
+| `Использовать SOCKS5 proxy для server-side Telegram OAuth token/JWKS` | Необязательный `TELEGRAM_OAUTH_USE_BOT_PROXY` для `backend`. | По умолчанию «да», если proxy заполнен. Выберите «нет» только для прямого OAuth-маршрута; браузер пользователя этот выбор не затрагивает. |
 | `Telegram ID администраторов` | Список Telegram ID, которым доступна админка и сервисные уведомления. | Укажите свой ID; несколько ID разделяйте запятыми. |
 | `Пользователь/пароль/база PostgreSQL` | Учетные данные внутренней базы Minishop. | Пользователя и имя базы можно оставить по умолчанию; пароль wizard генерирует сам, его можно принять Enter. |
 | `Название Web App` | Название приложения в интерфейсе. | Можно оставить `remnawave-minishop` и позже поменять в настройках. |
 | `URL API Remnawave Panel` | Адрес API панели, обычно `https://panel.example.com/api`. | Укажите публичный URL панели с `/api` в конце. |
 | `API-ключ Remnawave Panel` | Token из Remnawave Panel для чтения/изменения пользователей. | Вставьте API token с нужными правами. Если панель закрыта cookie-proxy, заполните и вопрос про Cookie. |
+| `Способ доступа к Remnawave Panel` | Прямой Panel API или удалённая Panel за eGames reverse proxy. Этот выбор не зависит от профиля публикации самого Minishop. | Для Panel на другом сервере, установленной скриптом eGames, выберите второй вариант и вставьте access-cookie либо полный access URL. |
 | `Webhook-секрет Remnawave Panel` | Секрет, которым панель подписывает webhook в Minishop. | Можно принять сгенерированный секрет, но тот же секрет нужно указать в Remnawave Panel. |
 | `Telegram OAuth client secret` | Секрет BotFather Web Login для входа через браузер вне Telegram. | Можно оставить пустым, если нужен только Telegram Mini App. |
 | `WEBHOOK_HOST` / `MINIAPP_HOST` | Публичные домены без `https://`, пути и порта. | Например `webhooks.example.com` и `app.example.com`. Для Caddy/Angie/Nginx/eGames DNS должен указывать на сервер или на прокси перед ним. |
@@ -122,10 +127,18 @@ Minishop запустится, но синхронизация, выдача п�
 недоступны до настройки.
 
 Если параметры введены, wizard делает безопасный запрос к `/system/stats` и проверяет HTTP-статус,
-`Content-Type: application/json` и структуру ответа. `PANEL_API_COOKIE` должен быть пустым либо
-иметь вид `name=value`; JWT без имени cookie обычно относится к `PANEL_API_KEY`. После неуспешной
-проверки по умолчанию предлагается пропустить интеграцию. Сохранить непроверенные значения можно
-только отдельным явным выбором — это полезно, когда Panel временно недоступна во время установки.
+`Content-Type: application/json` и структуру ответа. Для удалённой Panel за eGames можно вставить
+каноническое `name=value`, строку `Cookie: name=value`, `Set-Cookie: name=value; ...` или полный
+access URL вида `https://panel.example.com/auth/login?name=value`. Wizard извлекает и сохраняет
+только Cookie header; URL с несколькими query-параметрами, управляющие символы и JWT вместо cookie
+отклоняются. Access-cookie проходит внешний reverse proxy, но не заменяет `PANEL_API_KEY`.
+
+Профиль `Уже установленная Remnawave через eGames` нужен только тогда, когда Minishop встраивается
+в eGames Nginx на том же сервере. Для Panel на отдельном сервере можно выбрать любой подходящий
+профиль публикации Minishop, а eGames-защиту указать позже на отдельном шаге подключения Panel API.
+После неуспешной проверки по умолчанию предлагается пропустить интеграцию. Сохранить непроверенные
+значения можно только отдельным явным выбором — это полезно, когда Panel временно недоступна во
+время установки.
 
 Формат bind-полей (`HTTP_BIND`, `HTTPS_BIND`, `WEB_SERVER_BIND`,
 `FRONTEND_BIND`) особенно важен: используйте `PORT` или `IP:PORT`, например
@@ -133,12 +146,30 @@ Minishop запустится, но синхронизация, выдача п�
 с одним IP без порта некорректно: Docker Compose воспринимает его как
 порт хоста и падает с ошибкой `invalid hostPort`.
 
-Если Docker Compose не найден, wizard предложит установить его автоматически.
-Он сначала пробует системный пакетный менеджер (`apt`, `dnf/yum`, `apk`,
-`pacman`), затем, если Docker CLI уже установлен, пробует поставить Compose как
-Docker CLI plugin. Если автоматическая установка не подходит вашему серверу,
-установите Docker Engine и Docker Compose plugin вручную и запустите wizard
+В начале новой установки wizard проверяет Docker Engine и Docker Compose. Минимальные версии —
+Docker Engine `25.0.0` и Docker Compose `2.20.2`: они нужны для
+`healthcheck.start_interval` в актуальных Compose-профилях. Standalone-команда
+`docker-compose` больше не считается совместимым runtime: wizard требует современный Docker CLI
+plugin и использует только команду `docker compose`.
+
+Если runtime совместим, wizard показывает найденные версии и один раз предлагает обновить Docker
+Engine и Compose до latest stable; для уже рабочего сервера этот вопрос по умолчанию отвечает
+«нет», потому что обновление Engine может перезапустить daemon и кратковременно затронуть другие
+контейнеры. Если версии отсутствуют или ниже минимальных, обновление предлагается как рекомендуемое,
+а при отказе установка останавливается до скачивания и запуска стека.
+
+Engine обновляется до последнего пакета из настроенного системного репозитория (`apt`, `dnf/yum`,
+`apk`, `pacman`). Официальный Docker convenience installer используется только при чистой
+установке Engine: он не предназначен для обновления уже существующего production runtime. Compose
+plugin дополнительно скачивается из последнего официального GitHub release, проверяется по
+опубликованному SHA-256 и устанавливается атомарно. Если автоматическая установка не подходит
+серверу, установите актуальные Docker Engine и Docker Compose plugin вручную и запустите wizard
 повторно.
+
+После записи `.env` и compose-файлов wizard обязательно выполняет `docker compose config --quiet`.
+При несовместимой схеме, неизвестном `start_interval`, слишком старом Engine API или другой ошибке
+конфигурации команды `pull` и `up` не запускаются. Найденные версии и предметная подсказка печатаются
+сразу, а полный вывод сохраняется в `.installer/compose-last-error.log`.
 
 При ошибке `docker compose pull` или `docker compose up -d` wizard печатает не
 только сырой вывод Docker, но и русское объяснение для частых случаев:
@@ -146,6 +177,24 @@ Docker CLI plugin. Если автоматическая установка не
 Docker daemon, нет прав на Docker socket, недоступен registry или указан
 несуществующий `IMAGE_TAG`. Полный вывод последней Compose-ошибки сохраняется в
 `.installer/compose-last-error.log` внутри папки установки.
+
+### Telegram Bot API через SOCKS5
+
+Wizard принимает только `socks5://host:port` или
+`socks5://username:password@host:port`; специальные символы credentials должны быть
+percent-encoded. Значение сохраняется как `TELEGRAM_BOT_PROXY_URL` и применяется после рестарта
+к исходящим Bot API вызовам обоих процессов — `backend` и `worker`. Если proxy заполнен, wizard
+отдельно предлагает `backend` использовать его для OAuth token endpoint и JWKS; ответ по
+умолчанию — «да». Отказ записывает `TELEGRAM_OAUTH_USE_BOT_PROXY=False` как явный opt-out.
+
+Это не туннель для входящего webhook: Telegram по-прежнему должен достигать публичного HTTPS
+`WEBHOOK_PUBLIC_URL`/`WEBHOOK_BASE_URL`. Страница авторизации OAuth открывается сетью браузера,
+даже когда server-side token/JWKS идут через proxy. Panel API и платежные клиенты используют свои
+маршруты. В Docker не используйте `127.0.0.1` для proxy на host без отдельно настроенного host
+gateway: loopback принадлежит контейнеру. Проверяйте endpoint из обоих контейнеров.
+
+Подробные примеры, ограничения схем и rollback:
+[SOCKS5 proxy для Telegram Bot API](../configuration/env-vars.md#socks5-proxy-для-telegram-bot-api).
 
 Обычный `docker compose up -d --build` поднимает:
 

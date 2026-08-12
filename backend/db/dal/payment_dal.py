@@ -4,13 +4,23 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy import Date, and_, case, cast, func, or_, update
+from sqlalchemy import and_, func, or_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload, selectinload
 
-from db.models import Payment, User
+from db.models import Payment
+
+from .payment_reporting_dal import (
+    get_financial_statistics as get_financial_statistics,
+)
+from .payment_reporting_dal import (
+    get_referral_revenue as get_referral_revenue,
+)
+from .payment_reporting_dal import (
+    get_user_total_paid as get_user_total_paid,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -568,6 +578,7 @@ async def find_recent_pending_provider_payment(
     tariff_key: str | None = None,
     promo_code_id: int | None = None,
     promo_effect_summary: str | None = None,
+    requested_partner_balance: bool | None = None,
     tariff_change_quote_snapshot: str | None = None,
     entitlement_context_snapshot: str | None = None,
     since_minutes: int | None = None,
@@ -617,6 +628,11 @@ async def find_recent_pending_provider_payment(
             conditions.append(Payment.promo_effect_summary == promo_effect_summary)
     else:
         conditions.append(Payment.promo_code_id.is_(None))
+    if requested_partner_balance is not None:
+        partner_balance_amount = func.coalesce(Payment.partner_balance_amount_minor, 0)
+        conditions.append(
+            partner_balance_amount > 0 if requested_partner_balance else partner_balance_amount == 0
+        )
     if months is not None:
         conditions.append(Payment.subscription_duration_months == months)
     else:
@@ -657,7 +673,10 @@ async def get_latest_resumable_promo_payment(
         select(Payment)
         .where(
             Payment.user_id == user_id,
-            Payment.promo_code_id.isnot(None),
+            or_(
+                Payment.promo_code_id.isnot(None),
+                Payment.partner_balance_amount_minor > 0,
+            ),
             Payment.provider_payment_url.isnot(None),
             func.length(func.trim(Payment.provider_payment_url)) > 0,
             or_(
@@ -692,9 +711,13 @@ async def update_payment_status_by_db_id(
     yk_payment_id: str | None = None,
     provider_payment_url: str | None = None,
     checkout_expires_at: datetime | None = None,
+    failure_kind: str | None = None,
+    failure_http_status: int | None = None,
+    failure_provider_code: str | None = None,
 ) -> Payment | None:
     payment = await get_payment_by_db_id_for_update(session, payment_db_id)
     if payment:
+        previous_status = _normalize_payment_status(payment.status)
         preserve_succeeded = _would_overwrite_succeeded_payment(payment.status, new_status)
         if preserve_succeeded:
             logger.info(
@@ -705,6 +728,68 @@ async def update_payment_status_by_db_id(
         else:
             payment.status = new_status
             payment.updated_at = func.now()
+            if failure_kind is not None:
+                payment.failure_kind = str(failure_kind)[:64]
+            if failure_http_status is not None:
+                payment.failure_http_status = int(failure_http_status)
+            if failure_provider_code is not None:
+                payment.failure_provider_code = str(failure_provider_code)[:128]
+            normalized_new_status = _normalize_payment_status(new_status)
+            if normalized_new_status == _PAYMENT_STATUS_SUCCEEDED:
+                from bot.services.partner_checkout_balance import (
+                    PartnerCheckoutBalanceService,
+                )
+
+                await PartnerCheckoutBalanceService.ensure_consumed(
+                    session,
+                    payment_id=payment_db_id,
+                )
+            try:
+                balance_savepoint = await session.begin_nested()
+                try:
+                    from bot.services.partner_checkout_balance import (
+                        PartnerCheckoutBalanceService,
+                    )
+
+                    await PartnerCheckoutBalanceService.release_if_terminal(
+                        session,
+                        payment_id=payment_db_id,
+                        status=new_status,
+                    )
+                except Exception:
+                    await balance_savepoint.rollback()
+                    raise
+                else:
+                    await balance_savepoint.commit()
+            except Exception:
+                logger.exception(
+                    "Partner checkout balance release failed for payment %s; "
+                    "the reconciler will retry it.",
+                    payment_db_id,
+                )
+            if (
+                previous_status == "succeeded"
+                and _normalize_payment_status(new_status) == "refunded"
+            ):
+                try:
+                    reversal_savepoint = await session.begin_nested()
+                    try:
+                        from bot.services.partner_commission_service import (
+                            PartnerCommissionService,
+                        )
+
+                        await PartnerCommissionService.reverse_payment(session, payment_db_id)
+                    except Exception:
+                        await reversal_savepoint.rollback()
+                        raise
+                    else:
+                        await reversal_savepoint.commit()
+                except Exception:
+                    logger.exception(
+                        "Partner commission reversal failed for refunded payment %s; "
+                        "the reconciler will retry it.",
+                        payment_db_id,
+                    )
         if yk_payment_id and payment.yookassa_payment_id is None:
             payment.yookassa_payment_id = yk_payment_id
         if provider_payment_url:
@@ -842,6 +927,13 @@ async def transition_provider_payment_to_terminal(
     payment_db_id: int,
     provider_payment_id: str,
     new_status: str,
+    *,
+    failure_kind: str | None = None,
+    failure_http_status: int | None = None,
+    failure_provider_code: str | None = None,
+    provider_cancellation_party: str | None = None,
+    provider_cancellation_reason: str | None = None,
+    suppress_failure_notification: bool = False,
 ) -> tuple[Payment | None, bool]:
     """Lock and finalize a payment once, returning whether this call changed it."""
 
@@ -865,6 +957,25 @@ async def transition_provider_payment_to_terminal(
     payment.status = normalized_new_status
     payment.updated_at = func.now()
     payment.provider_payment_id = provider_payment_id
+    if failure_kind is not None:
+        payment.failure_kind = str(failure_kind)[:64]
+    if failure_http_status is not None:
+        payment.failure_http_status = int(failure_http_status)
+    if failure_provider_code is not None:
+        payment.failure_provider_code = str(failure_provider_code)[:128]
+    if provider_cancellation_party is not None:
+        payment.provider_cancellation_party = str(provider_cancellation_party)[:64]
+    if provider_cancellation_reason is not None:
+        payment.provider_cancellation_reason = str(provider_cancellation_reason)[:128]
+    if suppress_failure_notification:
+        payment.failure_notified_at = func.now()
+    from .payment_checkout_dal import release_partner_balance_safely
+
+    await release_partner_balance_safely(
+        session,
+        payment_id=payment_db_id,
+        status=normalized_new_status,
+    )
     await session.flush()
     await session.refresh(payment)
     logger.info(
@@ -873,108 +984,3 @@ async def transition_provider_payment_to_terminal(
         normalized_new_status,
     )
     return payment, True
-
-
-async def _daily_revenue_series_utc(session: AsyncSession, days: int = 14) -> list[dict[str, Any]]:
-    """Succeeded payment totals per calendar day (UTC) for the last `days` days."""
-    from datetime import date, datetime, timedelta
-
-    now = datetime.now(UTC)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    range_start = today_start - timedelta(days=days - 1)
-
-    day_col = cast(func.date_trunc("day", Payment.created_at), Date).label("d")
-    stmt = (
-        select(day_col, func.coalesce(func.sum(Payment.amount), 0.0))
-        .where(
-            and_(
-                Payment.status == "succeeded",
-                Payment.created_at >= range_start,
-            )
-        )
-        .group_by(day_col)
-        .order_by(day_col)
-    )
-    result = await session.execute(stmt)
-    by_day: dict[date, float] = {}
-    for row in result.all():
-        d_key = row[0]
-        if isinstance(d_key, datetime):
-            d_key = d_key.date()
-        by_day[d_key] = float(row[1] or 0)
-
-    out: list[dict[str, Any]] = []
-    for i in range(days):
-        d = (range_start + timedelta(days=i)).date()
-        out.append({"date": d.isoformat(), "amount": float(by_day.get(d, 0.0) or 0.0)})
-    return out
-
-
-async def get_financial_statistics(session: AsyncSession) -> dict[str, Any]:
-    """Get comprehensive financial statistics."""
-    from datetime import datetime, timedelta
-
-    now = datetime.now(UTC)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    week_start = today_start - timedelta(days=7)
-    month_start = today_start - timedelta(days=30)
-
-    revenue_stmt = select(
-        func.coalesce(
-            func.sum(case((Payment.created_at >= today_start, Payment.amount), else_=0)), 0
-        ),
-        func.coalesce(
-            func.sum(case((Payment.created_at >= week_start, Payment.amount), else_=0)), 0
-        ),
-        func.coalesce(
-            func.sum(case((Payment.created_at >= month_start, Payment.amount), else_=0)),
-            0,
-        ),
-        func.coalesce(func.sum(Payment.amount), 0),
-        func.coalesce(func.sum(case((Payment.created_at >= today_start, 1), else_=0)), 0),
-    ).where(Payment.status == "succeeded")
-    revenue_row = (await session.execute(revenue_stmt)).one()
-    today_amount = revenue_row[0] or 0
-    week_amount = revenue_row[1] or 0
-    month_amount = revenue_row[2] or 0
-    all_amount = revenue_row[3] or 0
-    today_payments_count = int(revenue_row[4] or 0)
-
-    # Longer tail for admin dashboard charts (presets up to 1y + custom range on the client).
-    daily_series = await _daily_revenue_series_utc(session, days=730)
-
-    return {
-        "today_revenue": float(today_amount),
-        "week_revenue": float(week_amount),
-        "month_revenue": float(month_amount),
-        "all_time_revenue": float(all_amount),
-        "today_payments_count": today_payments_count,
-        "daily_series": daily_series,
-    }
-
-
-async def get_user_total_paid(session: AsyncSession, user_id: int) -> float:
-    """Get total amount paid by a specific user (sum of all succeeded payments)."""
-    stmt = select(func.sum(Payment.amount)).where(
-        and_(Payment.user_id == user_id, Payment.status == "succeeded")
-    )
-    result = await session.execute(stmt)
-    total = result.scalar()
-    return float(total or 0)
-
-
-async def get_referral_revenue(session: AsyncSession, referrer_id: int) -> float:
-    """Get total revenue generated from referred users' payments.
-
-    This calculates the sum of all succeeded payments made by users
-    where referred_by_id equals the referrer_id.
-    """
-
-    stmt = (
-        select(func.sum(Payment.amount))
-        .join(User, Payment.user_id == User.user_id)
-        .where(and_(User.referred_by_id == referrer_id, Payment.status == "succeeded"))
-    )
-    result = await session.execute(stmt)
-    total = result.scalar()
-    return float(total or 0)

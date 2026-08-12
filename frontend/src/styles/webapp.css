@@ -1116,6 +1116,11 @@ a {
   font-weight: 900;
 }
 
+.payment-submit-button .promo-price-pair s,
+.payment-submit-button .promo-price-pair b {
+  color: inherit;
+}
+
 .period-card em {
   color: var(--muted);
   font-size: 10px;
@@ -1373,7 +1378,7 @@ a {
   height: 32px;
   place-items: center;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel-2));
   color: var(--accent);
 }
 
@@ -1390,7 +1395,7 @@ a {
   padding: 8px;
   border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--surface) 74%, transparent);
+  background: color-mix(in srgb, var(--panel-2) 74%, transparent);
 }
 
 .pending-payment-facts small {
@@ -1683,7 +1688,7 @@ a {
   max-width: min(280px, calc(100vw - 32px));
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--surface);
+  background: var(--panel-2);
   color: var(--text);
   box-shadow: var(--shadow-popover);
   padding: 8px 10px;
@@ -1855,6 +1860,21 @@ a {
   align-items: stretch;
 }
 
+.referral-link-list,
+.referral-link-item {
+  display: grid;
+  gap: 8px;
+}
+
+.referral-link-list {
+  gap: 12px;
+}
+
+.referral-link-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .referral-copy-button {
   height: 100%;
 }
@@ -1862,6 +1882,69 @@ a {
 .bonus-card {
   display: grid;
   gap: 10px;
+}
+
+.referral-program-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.referral-program-content {
+  transition:
+    filter 160ms ease,
+    opacity 160ms ease;
+}
+
+.referral-program-shell.is-disabled .referral-program-content {
+  pointer-events: none;
+  user-select: none;
+  filter: blur(1.2px) saturate(0.45);
+  opacity: 0.32;
+}
+
+.referral-program-disabled-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  width: min(calc(100% - 32px), 420px);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 11px;
+  padding: 15px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: calc(var(--radius) + 2px);
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  box-shadow:
+    0 18px 45px color-mix(in srgb, #000 34%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent);
+  transform: translate(-50%, -50%);
+  backdrop-filter: blur(12px);
+}
+
+.referral-program-disabled-overlay > svg {
+  color: var(--accent);
+}
+
+.referral-program-disabled-overlay strong {
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.referral-program-disabled-overlay p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .referral-program-content {
+    transition: none;
+  }
 }
 
 .bonus-card-head {
@@ -1996,7 +2079,7 @@ a {
 }
 
 .referral-bonus-row-nested {
-  background: var(--surface);
+  background: var(--panel-2);
 }
 
 .settings-profile {
@@ -2352,7 +2435,7 @@ a {
   width: 100%;
   border-color: color-mix(in srgb, #ff4b4b 46%, var(--border));
   background:
-    linear-gradient(135deg, rgba(255, 75, 75, 0.11), rgba(0, 254, 122, 0.05)), var(--card);
+    linear-gradient(135deg, rgba(255, 75, 75, 0.11), rgba(0, 254, 122, 0.05)), var(--panel);
 }
 
 .home-layout > .telegram-notifications-card {
@@ -2371,7 +2454,7 @@ a {
   height: 38px;
   place-items: center;
   border-radius: 10px;
-  background: color-mix(in srgb, #ff4b4b 16%, var(--surface));
+  background: color-mix(in srgb, #ff4b4b 16%, var(--panel-2));
   color: #ff6b6b;
 }
 
@@ -3615,6 +3698,106 @@ a {
   .settings-row-support,
   .settings-row-logout {
     grid-column: 1 / -1;
+  }
+
+  /* Devices: the phone layout stacks full-width cards, which leaves a column of
+     tall, mostly empty boxes on desktop. Lay the list out as a card grid, put
+     the facts into chips side by side, and pin the action to the bottom edge so
+     the cards in a row stay aligned. */
+  .devices-summary-card > .btn.wide {
+    width: auto;
+    min-width: 260px;
+    justify-self: start;
+  }
+
+  .devices-list {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+    gap: 12px;
+  }
+
+  .device-card {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 14px;
+    padding: 16px;
+    transition:
+      border-color 0.16s ease,
+      background 0.16s ease;
+  }
+
+  .device-card:hover {
+    border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  }
+
+  .device-card .device-card-head {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .device-card .device-icon {
+    width: 46px;
+    height: 46px;
+  }
+
+  .device-card .device-glyph {
+    width: 28px;
+    height: 28px;
+  }
+
+  .device-card .device-card-head strong {
+    font-size: 15px;
+  }
+
+  .device-card .device-card-head small {
+    justify-self: start;
+    max-width: 100%;
+    overflow: hidden;
+    padding: 2px 8px;
+    border: 1px solid var(--surface-subtle-border);
+    border-radius: 999px;
+    background: var(--surface-subtle);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .device-meta {
+    align-content: start;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .device-meta > div {
+    gap: 3px;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--surface-subtle-border);
+    border-radius: 12px;
+    background: var(--surface-subtle);
+  }
+
+  .device-user-agent {
+    grid-column: 1 / -1;
+  }
+
+  .device-card .device-disconnect-button {
+    min-height: 42px;
+    font-size: 13px;
+  }
+
+  /* Empty/inactive states keep their generous vertical spacing while spanning
+     the same desktop content width as the surrounding device cards. */
+  .devices-empty-card {
+    width: 100%;
+    margin-inline: 0;
+    padding: 30px 22px;
+    gap: 10px;
+  }
+
+  /* The chips only exist on desktop, so their light-tone tint lives here too
+     (mirrors the .trial-card-facts override in base.css). */
+  .theme-light .device-meta > div,
+  .theme-light .device-card .device-card-head small {
+    border-color: rgba(15, 23, 42, 0.12);
+    background: rgba(15, 23, 42, 0.025);
   }
 
   /* Wider modals on desktop. */

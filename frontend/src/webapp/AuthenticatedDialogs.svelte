@@ -2,6 +2,7 @@
   import type { AccountStore } from "../lib/webapp/stores/accountStore.js";
   import type { ActionsStore } from "../lib/webapp/stores/actionsStore.js";
   import type { BillingStore } from "../lib/webapp/stores/billingStore.js";
+  import type { ApiClient } from "../lib/webapp/publicApi.js";
 
   import { CheckCircle2, Gift, Info, TriangleAlert } from "$components/ui/icons.js";
   import Button from "$components/ui/button.svelte";
@@ -23,6 +24,7 @@
   } from "$lib/webapp/types.js";
 
   type Props = {
+    api: ApiClient["api"];
     accountStore: AccountStore;
     actionsStore: ActionsStore;
     activationSuccessDialogOpen?: boolean;
@@ -59,6 +61,7 @@
   };
 
   let {
+    api,
     accountStore,
     actionsStore,
     activationSuccessDialogOpen = false,
@@ -114,6 +117,7 @@
 </script>
 
 <PaymentDialogs
+  {api}
   bind:linkEmailCode={accountStore.linkEmailCode}
   bind:linkEmailFieldError={accountStore.linkEmailFieldError}
   bind:linkEmailValue={accountStore.linkEmailValue}
@@ -149,6 +153,7 @@
   checkoutPromoAppliedCode={billingStore.checkoutPromoAppliedCode}
   checkoutPromoIsError={billingStore.checkoutPromoIsError}
   checkoutPromoPriceText={billingStore.checkoutPromoPriceText}
+  checkoutPromoEffectiveAmount={billingStore.checkoutPromoEffectiveAmount}
   checkoutPromoStatus={billingStore.checkoutPromoStatus}
   checkoutPromoDiscountPercent={billingStore.checkoutPromoDiscountPercent}
   checkoutPromoAppliesTo={billingStore.checkoutPromoAppliesTo}
@@ -194,6 +199,7 @@
 />
 
 <TariffDialogs
+  {api}
   bind:changeConfirmOpen={billingStore.changeConfirmOpen}
   bind:changeModalOpen={billingStore.changeModalOpen}
   bind:deviceTopupModalOpen={billingStore.deviceTopupModalOpen}
@@ -213,6 +219,7 @@
   checkoutPromoAppliedCode={billingStore.checkoutPromoAppliedCode}
   checkoutPromoIsError={billingStore.checkoutPromoIsError}
   checkoutPromoPriceText={billingStore.checkoutPromoPriceText}
+  checkoutPromoEffectiveAmount={billingStore.checkoutPromoEffectiveAmount}
   checkoutPromoStatus={billingStore.checkoutPromoStatus}
   checkoutPromoDiscountPercent={billingStore.checkoutPromoDiscountPercent}
   checkoutPromoAppliesTo={billingStore.checkoutPromoAppliesTo}

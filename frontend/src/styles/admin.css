@@ -863,7 +863,7 @@
 
 .admin-revenue-rcal__cell {
   flex: 1;
-  padding: 0;
+  padding: 2px 0;
   text-align: center;
   min-width: 0;
 }
@@ -991,10 +991,135 @@
   width: 100%;
 }
 
+.admin-revenue-chart-body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-revenue-uplot-wrap {
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
 .admin-revenue-uplot-host {
   width: 100%;
   min-width: 0;
   display: block;
+}
+
+/* The hover highlight is a canvas laid over uPlot's own. The component clips
+   uPlot's rendered `Path2D` to a window around the active period, so the bright
+   line and the lit area under it sit on the curve by construction rather than
+   by re-deriving the spline. */
+.admin-chart-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  display: block;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+.admin-chart-highlight.is-visible {
+  opacity: 1;
+}
+
+/* uPlot's own crosshair would double the overlay's drop line. */
+.admin-revenue-uplot-host .u-cursor-x,
+.admin-revenue-uplot-host .u-cursor-y {
+  display: none;
+}
+
+/* Reserved lane below the plot: the readout never covers the graph and its
+   vertical position stays stable while the active period changes. */
+.admin-chart-tooltip-lane {
+  position: relative;
+  min-width: 0;
+  height: 70px;
+  overflow: hidden;
+}
+
+/* Compact readout follows only the active period's horizontal position. */
+/* Surface, border and notch come from the shared `Plate`; everything here is
+   the chart-specific part — where it sits and how it slides. */
+.admin-chart-tooltip {
+  --ui-plate-bg: color-mix(in srgb, var(--admin-surface-2) 92%, var(--admin-bg));
+  --ui-plate-border: color-mix(in srgb, var(--accent) 42%, var(--admin-border));
+  --ui-plate-position: absolute;
+  --ui-plate-radius: 9px;
+  --ui-plate-arrow: 9px;
+  --ui-plate-transition:
+    transform 0.2s cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.13s ease, visibility 0s linear 0.13s;
+  top: 6px;
+  left: 0;
+  z-index: 4;
+  width: min(190px, calc(100% - 16px));
+  display: grid;
+  gap: 5px;
+  padding: 8px 10px 9px;
+  color: var(--admin-text);
+  box-shadow:
+    0 12px 30px color-mix(in srgb, var(--admin-bg) 72%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.admin-chart-tooltip-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--admin-muted);
+  font-size: 10px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.admin-chart-tooltip-meta .is-up {
+  color: var(--success-text);
+}
+
+.admin-chart-tooltip-meta .is-down {
+  color: var(--danger-text);
+}
+
+.admin-chart-tooltip-value {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.admin-chart-tooltip-value small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--admin-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-chart-tooltip-value strong {
+  flex: 0 0 auto;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-chart-tooltip {
+    transition: opacity 0.16s ease;
+  }
 }
 
 /* uPlot ships `width: min-content` on `.uplot`, which can prevent full-width layout */
@@ -1044,6 +1169,47 @@
   width: 100%;
   height: min(204px, 36vw);
   min-height: 120px;
+}
+
+.admin-chart-tooltip-lane--skeleton {
+  display: flex;
+  align-items: flex-start;
+  padding: 6px 8px 0;
+}
+
+.admin-chart-skeleton-control {
+  height: 34px;
+  max-width: 100%;
+}
+
+.admin-chart-tooltip-skeleton {
+  width: min(190px, calc(100% - 16px));
+  display: grid;
+  gap: 7px;
+  padding: 8px 10px 9px;
+  border: 1px solid var(--admin-border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--admin-surface-2) 92%, var(--admin-bg));
+}
+
+.admin-chart-empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--admin-muted);
+  text-align: center;
+}
+
+.admin-chart-empty svg {
+  opacity: 0.68;
+}
+
+.admin-chart-empty strong {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .admin-revenue-xlabels {
@@ -1427,6 +1593,49 @@
 
 .admin-table tbody tr:hover {
   background: var(--surface-hover);
+}
+
+/* Denser rows for detail panels, where several lists are stacked and vertical
+   room is the scarce resource. */
+.admin-table-compact thead th,
+.admin-table-compact tbody td {
+  padding: 8px 14px;
+}
+
+/* Shared footer for card/panel action rows — see AdminCardActions.svelte. */
+.admin-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--admin-border);
+}
+
+.admin-card-actions-between {
+  justify-content: space-between;
+}
+
+.admin-card-actions-flush {
+  border-top: 0;
+}
+
+.admin-card-actions > .admin-btn {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 720px) {
+  /* Reversed, so the primary action (last in the markup) lands on top. */
+  .admin-card-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .admin-card-actions > .admin-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 .admin-table td.admin-cell-mono {
@@ -2096,7 +2305,7 @@
   border-radius: 10px;
   background: var(--admin-surface);
   box-shadow:
-    var(--shadow-floating),
+    var(--shadow-popover),
     0 18px 60px rgba(15, 23, 42, 0.18);
 }
 
@@ -2562,6 +2771,14 @@
 
 .admin-settings-field-group-body .admin-setting:last-child {
   border-bottom: 0;
+}
+
+.admin-settings-field-group-note {
+  display: block;
+  margin: 0;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--admin-border);
+  line-height: 1.4;
 }
 
 .admin-setting:last-child {
@@ -4312,6 +4529,10 @@
     padding-inline: 12px;
   }
 
+  .admin-settings-field-group-note {
+    padding-inline: 12px;
+  }
+
   .admin-card-head {
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
@@ -4553,6 +4774,19 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+
+  /* A badge is an inline pill, but as a direct grid item in the value column it
+     would stretch to the full track width and stop reading as a pill. */
+  .admin-table:not(.admin-table-skeleton) tbody td > .admin-badge {
+    justify-self: start;
+  }
+
+  /* Column widths belong to the desktop table. Kept here, the 80px id column
+     squeezes the card's label/value grid until the id wraps one character
+     per line. */
+  .admin-table:not(.admin-table-skeleton) tbody td.admin-cell-id {
+    width: auto;
   }
 
   /* Cells without a label span the full card width instead of leaving an
@@ -4884,7 +5118,9 @@
   opacity: 0;
 }
 
-.admin-select-item[data-state="checked"] .admin-select-item-check {
+/* bits-ui marks the current option with `data-selected`, not a `data-state`
+   value — the old selector never matched, so the tick never appeared. */
+.admin-select-item[data-selected] .admin-select-item-check {
   opacity: 1;
 }
 
@@ -7142,7 +7378,7 @@
 }
 
 .admin-promo-owner:hover {
-  color: var(--admin-accent);
+  color: var(--accent);
   text-decoration: underline;
 }
 
@@ -7360,8 +7596,8 @@
   height: 18px;
   padding: 0 5px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--warning, #f59e0b) 18%, transparent);
-  color: color-mix(in srgb, var(--warning, #f59e0b) 72%, var(--admin-text));
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: color-mix(in srgb, var(--warning) 72%, var(--admin-text));
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
@@ -7372,8 +7608,8 @@
 }
 
 .admin-promo-editor-section.is-dirty {
-  border-color: color-mix(in srgb, var(--warning, #f59e0b) 70%, var(--admin-border));
-  background: color-mix(in srgb, var(--warning, #f59e0b) 6%, var(--admin-surface-2));
+  border-color: color-mix(in srgb, var(--warning) 70%, var(--admin-border));
+  background: color-mix(in srgb, var(--warning) 6%, var(--admin-surface-2));
 }
 
 .admin-promo-editor-section .admin-editor-section-head {
@@ -7390,8 +7626,8 @@
 }
 
 .admin-promo-field-shell.is-dirty {
-  border-color: color-mix(in srgb, var(--warning, #f59e0b) 64%, var(--admin-border));
-  background: color-mix(in srgb, var(--warning, #f59e0b) 7%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 64%, var(--admin-border));
+  background: color-mix(in srgb, var(--warning) 7%, transparent);
 }
 
 .admin-promo-field-shell .admin-badge {

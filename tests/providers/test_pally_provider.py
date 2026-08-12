@@ -175,6 +175,39 @@ def test_create_bill_rejects_unsupported_currency(monkeypatch):
     assert data["message"] == "unsupported_currency"
 
 
+def test_pally_enforces_configurable_rub_minimum_before_api(monkeypatch):
+    service = _make_service(MIN_PAYMENT_AMOUNT_RUB=30)
+    monkeypatch.setattr(
+        service,
+        "_get_session",
+        AsyncMock(side_effect=AssertionError("minimum must be enforced before the API call")),
+    )
+
+    success, data = asyncio.run(service.create_bill(payment_db_id=1, amount=2.0, currency="RUB"))
+
+    assert not success
+    assert data == {
+        "status": 400,
+        "message": "payment_amount_below_minimum",
+        "minimum_amount": "30.00",
+        "currency": "RUB",
+    }
+    assert pally_service._pally_payment_minimum_metadata(service.config, "RUB") == {
+        "min_amount": "30.00",
+        "min_currency": "RUB",
+    }
+    assert not pally_service._pally_payment_amount_supported(service.config, "RUB", 29.99)
+    assert pally_service._pally_payment_amount_supported(service.config, "RUB", 30)
+
+
+def test_pally_other_currency_minimums_are_independently_configurable():
+    config = PallyConfig(MIN_PAYMENT_AMOUNT_USD=5, MIN_PAYMENT_AMOUNT_EUR=0)
+
+    assert not pally_service._pally_payment_amount_supported(config, "USD", 4.99)
+    assert pally_service._pally_payment_amount_supported(config, "USD", 5)
+    assert pally_service._pally_payment_amount_supported(config, "EUR", 0.01)
+
+
 def test_signature_uses_outsum_invid_and_signature_token():
     service = _make_service()
     expected = _md5_upper("123.45:order-1:signature-token")
@@ -357,6 +390,18 @@ def test_reuse_rejects_terminal_or_foreign_bill(monkeypatch):
     monkeypatch.setattr(
         service,
         "get_bill_status",
+        AsyncMock(
+            return_value=(
+                True,
+                {"id": "bill-1", "order_id": "77", "status": "NEW", "active": False},
+            )
+        ),
+    )
+    assert asyncio.run(service.try_reuse_pending_bill(payment)) is None
+
+    monkeypatch.setattr(
+        service,
+        "get_bill_status",
         AsyncMock(return_value=(True, {"id": "other", "order_id": "77", "status": "NEW"})),
     )
     assert asyncio.run(service.try_reuse_pending_bill(payment)) is None
@@ -367,3 +412,44 @@ def test_reuse_rejects_terminal_or_foreign_bill(monkeypatch):
         AsyncMock(return_value=(True, {"id": "bill-1", "order_id": "99", "status": "NEW"})),
     )
     assert asyncio.run(service.try_reuse_pending_bill(payment)) is None
+
+
+def test_cancel_pending_bill_deactivates_only_a_new_bill(monkeypatch):
+    service = _make_service()
+    monkeypatch.setattr(
+        service,
+        "get_bill_status",
+        AsyncMock(
+            return_value=(
+                True,
+                {"id": "bill-1", "order_id": "77", "status": "NEW", "active": True},
+            )
+        ),
+    )
+    post = AsyncMock(return_value=(True, {"id": "bill-1", "status": "NEW", "activity": False}))
+    monkeypatch.setattr(service, "_post_form", post)
+
+    success, _data = asyncio.run(service.cancel_pending_bill("bill-1"))
+
+    assert success
+    post.assert_awaited_once_with(
+        "/bill/toggle_activity",
+        {"id": "bill-1", "active": "0"},
+    )
+
+
+def test_cancel_pending_bill_does_not_touch_finished_bill(monkeypatch):
+    service = _make_service()
+    monkeypatch.setattr(
+        service,
+        "get_bill_status",
+        AsyncMock(return_value=(True, {"id": "bill-1", "status": "SUCCESS"})),
+    )
+    post = AsyncMock()
+    monkeypatch.setattr(service, "_post_form", post)
+
+    success, data = asyncio.run(service.cancel_pending_bill("bill-1"))
+
+    assert not success
+    assert data["message"] == "bill_not_pending"
+    post.assert_not_awaited()

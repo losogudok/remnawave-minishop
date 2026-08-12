@@ -64,6 +64,7 @@ class WebappBootstrapConfigOut(HttpResponseModel):
     language: str
     languages: list[WebappBootstrapLanguageOut]
     email_auth_enabled: bool = Field(alias="emailAuthEnabled")
+    auth_providers: list[str] = Field(alias="authProviders")
     registration_invite_only_enabled: bool = Field(alias="registrationInviteOnlyEnabled")
     app_version: str = Field(alias="appVersion")
     app_repository_url: str = Field(alias="appRepositoryUrl")
@@ -150,6 +151,7 @@ PAYMENT_PROVIDER_SCHEMA: dict[str, Any] = {
 }
 PAYMENT_RESPONSE_SCHEMA: dict[str, Any] = ok_envelope_with(
     {
+        "action": STRING_SCHEMA,
         "payment_id": INTEGER_SCHEMA,
         "status": STRING_SCHEMA,
         "paid": BOOLEAN_SCHEMA,
@@ -190,6 +192,9 @@ PENDING_PAYMENT_SCHEMA: dict[str, Any] = {
         "currency",
         "discount_amount",
         "discount_percent",
+        "partner_balance_amount",
+        "partner_balance_amount_minor",
+        "partner_balance_currency_scale",
         "months",
         "purchased_gb",
         "purchased_hwid_devices",
@@ -209,6 +214,9 @@ PENDING_PAYMENT_SCHEMA: dict[str, Any] = {
         "currency": STRING_SCHEMA,
         "discount_amount": NUMBER_SCHEMA,
         "discount_percent": NUMBER_SCHEMA,
+        "partner_balance_amount": NUMBER_SCHEMA,
+        "partner_balance_amount_minor": INTEGER_SCHEMA,
+        "partner_balance_currency_scale": INTEGER_SCHEMA,
         "months": NULLABLE_INTEGER_SCHEMA,
         "purchased_gb": NULLABLE_NUMBER_SCHEMA,
         "purchased_hwid_devices": NULLABLE_INTEGER_SCHEMA,
@@ -309,6 +317,7 @@ PLAN_OPTIONS_RESPONSE_SCHEMA: dict[str, Any] = ok_envelope_with(
         "premium_topup_used_bytes": INTEGER_SCHEMA,
         "premium_bonus_bytes": INTEGER_SCHEMA,
         "premium_unlimited_override": BOOLEAN_SCHEMA,
+        "premium_traffic_limited": BOOLEAN_SCHEMA,
         "premium_is_limited": BOOLEAN_SCHEMA,
         "premium_squad_labels": STRING_ARRAY_SCHEMA,
         "premium_node_labels": STRING_ARRAY_SCHEMA,
@@ -448,7 +457,9 @@ WEBAPP_SUBSCRIPTION_SCHEMA: dict[str, Any] = {
         "regular_bonus_bytes": INTEGER_SCHEMA,
         "regular_unlimited_override": BOOLEAN_SCHEMA,
         "premium_unlimited_override": BOOLEAN_SCHEMA,
+        "premium_traffic_limited": BOOLEAN_SCHEMA,
         "premium_is_limited": BOOLEAN_SCHEMA,
+        "premium_traffic_limit_strategy": STRING_SCHEMA,
         "premium_next_reset_at": NULLABLE_STRING_SCHEMA,
         "premium_next_reset_text": NULLABLE_STRING_SCHEMA,
         "premium_squad_labels": STRING_ARRAY_SCHEMA,
@@ -542,6 +553,8 @@ WEBAPP_SETTINGS_SCHEMA: dict[str, Any] = {
         "support_ticket_max_subject_length": INTEGER_SCHEMA,
         "traffic_mode": BOOLEAN_SCHEMA,
         "my_devices_enabled": BOOLEAN_SCHEMA,
+        "partner_program_enabled": BOOLEAN_SCHEMA,
+        "referral_program_enabled": BOOLEAN_SCHEMA,
         "subscription_reissue_enabled": BOOLEAN_SCHEMA,
         "user_hwid_device_limit": NULLABLE_INTEGER_SCHEMA,
         "trial_enabled": BOOLEAN_SCHEMA,
@@ -555,6 +568,7 @@ WEBAPP_SETTINGS_SCHEMA: dict[str, Any] = {
         "subscription_purchase_description": STRING_SCHEMA,
         "subscription_guides_enabled": BOOLEAN_SCHEMA,
         "email_auth_enabled": BOOLEAN_SCHEMA,
+        "auth_providers": STRING_ARRAY_SCHEMA,
     },
 }
 ME_RESPONSE_SCHEMA: dict[str, Any] = ok_envelope_with(

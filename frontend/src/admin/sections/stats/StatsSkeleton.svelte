@@ -2,6 +2,7 @@
   import { ScrollArea } from "$components/ui/index.js";
   import * as Card from "$components/ui/card/index.js";
   import {
+    AdminChartSkeleton,
     AdminDashboardGrid,
     AdminDashboardStack,
     AdminTableSkeleton,
@@ -76,25 +77,25 @@
         </div>
       </div>
       <div class="admin-revenue-chart">
-        <div class="admin-revenue-chart-title">
-          <span
-            class="admin-skeleton admin-skeleton-line admin-skeleton-line-tiny"
-            style="width:42%"
-          ></span>
-        </div>
-        <div class="admin-revenue-svg-frame">
-          <div
-            class="admin-skeleton admin-revenue-chart-skeleton"
-            style="display:block;width:100%;border-radius:0"
-          ></div>
-        </div>
-        <div class="admin-revenue-xlabels" aria-hidden="true">
-          {#each Array(4) as _, j (j)}
+        <div class="admin-revenue-chart-head">
+          <div class="admin-revenue-chart-title">
             <span
-              class="admin-skeleton admin-skeleton-line"
-              style="display:block;height:8px;flex:1;max-width:24%"
+              class="admin-skeleton admin-skeleton-line admin-skeleton-line-tiny"
+              style="width:138px"
+            ></span>
+          </div>
+          <span class="admin-skeleton admin-chart-skeleton-control" style="width:292px"></span>
+        </div>
+        <div class="admin-revenue-granularity" aria-hidden="true">
+          {#each [52, 68, 64] as width (width)}
+            <span class="admin-skeleton admin-skeleton-badge" style={`width:${width}px;height:26px`}
             ></span>
           {/each}
+        </div>
+        <span class="admin-skeleton admin-skeleton-line" style="width:66%;height:9px"></span>
+        <span class="admin-skeleton admin-skeleton-line" style="width:46%;height:9px"></span>
+        <div class="admin-revenue-svg-frame admin-revenue-svg-frame--chart">
+          <AdminChartSkeleton plotHeight={204} />
         </div>
       </div>
     </Card.Content>

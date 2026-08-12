@@ -68,6 +68,42 @@ describe("app load flow decisions", () => {
     });
   });
 
+  it("applies the live partner-program flag to partner routes", () => {
+    expect(
+      resolveLoadedWebappRoute({
+        fallbackAdminSection: "stats",
+        payload: {
+          settings: { partner_program_enabled: false },
+          user: { is_admin: false },
+        },
+        routeSection: "partner",
+      }).section
+    ).toBe("home");
+
+    expect(
+      resolveLoadedWebappRoute({
+        fallbackAdminSection: "stats",
+        payload: {
+          settings: { partner_program_enabled: true },
+          user: { is_admin: false },
+        },
+        routeSection: "partner",
+      }).section
+    ).toBe("partner");
+
+    expect(
+      resolveLoadedWebappRoute({
+        fallbackAdminSection: "stats",
+        partnerProgramPreview: true,
+        payload: {
+          settings: { partner_program_enabled: false },
+          user: { is_admin: false },
+        },
+        routeSection: "partner",
+      }).section
+    ).toBe("partner");
+  });
+
   it("keeps admin routes for admin users and carries the section forward", () => {
     expect(
       resolveLoadedWebappRoute({

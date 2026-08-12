@@ -67,6 +67,7 @@ export type AppActionRuntimeDeps = {
   getIsFileProtocol: AdminPanelDeps["isFileProtocol"];
   getMethods: BillingModalDeps["methods"];
   getOrigin: InstallRuntimeDeps["getOrigin"];
+  getPartnerProgramEnabled: () => boolean;
   getPlans: BillingModalDeps["plans"] & TariffActionDeps["getPlans"];
   getSuggestedPromoCode: BillingModalDeps["suggestedPromoCode"];
   getPreloadHost: InstallRuntimeDeps["getPreloadHost"];
@@ -117,6 +118,7 @@ export function createAppActionRuntime({
   getIsFileProtocol,
   getMethods,
   getOrigin,
+  getPartnerProgramEnabled,
   getPlans,
   getSuggestedPromoCode,
   getPreloadHost,
@@ -197,6 +199,7 @@ export function createAppActionRuntime({
       supportStore.startPolling({ includeList: true });
     },
     openConnectLink: connectActions.openConnectLink,
+    partnerProgramEnabled: getPartnerProgramEnabled,
     setActiveTab,
     setScreen,
     supportEnabled: getSupportEnabled,

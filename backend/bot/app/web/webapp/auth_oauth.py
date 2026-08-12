@@ -22,13 +22,13 @@ from bot.app.web.webapp_auth import (
 )
 from bot.services.registration_invite_gate import RegistrationInviteRequiredError
 from config.settings import Settings
+from config.telegram_proxy import safe_telegram_network_error_detail
 from db.dal import user_dal
 from db.dal.user_dal import UserMergeConflictError
 from db.models import User
 
 from .assets import (
     _enforce_webapp_rate_limit,
-    _get_shared_http_session,
 )
 from .auth_common import (
     _build_webapp_auth_response,
@@ -68,6 +68,7 @@ from .payloads import (
 )
 from .response_helpers import json_response
 from .telegram_notifications import _probe_telegram_notifications_for_user_id
+from .telegram_oauth_transport import get_telegram_oauth_http_session
 
 logger = logging.getLogger(__name__)
 
@@ -100,8 +101,8 @@ async def _exchange_telegram_oauth_code(
         return None
 
     credentials = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode("ascii")
-    session = await _get_shared_http_session()
     try:
+        session = await get_telegram_oauth_http_session(settings)
         async with session.post(
             "https://oauth.telegram.org/token",
             data={
@@ -119,15 +120,23 @@ async def _exchange_telegram_oauth_code(
         ) as response:
             payload = await response.json(content_type=None)
             if response.status >= 400:
+                error_code = (
+                    str(payload.get("error") or "unknown")
+                    if isinstance(payload, dict)
+                    else "unknown"
+                )
                 logger.warning(
-                    "Telegram OAuth token exchange failed with HTTP %s: %s",
+                    "Telegram OAuth token exchange failed with HTTP %s (%s)",
                     response.status,
-                    payload,
+                    error_code,
                 )
                 return None
             return payload if isinstance(payload, dict) else None
     except Exception as exc:
-        logger.warning("Telegram OAuth token exchange failed: %s", exc)
+        logger.warning(
+            "Telegram OAuth token exchange failed: %s",
+            safe_telegram_network_error_detail(exc),
+        )
         return None
 
 
@@ -229,6 +238,7 @@ async def telegram_oauth_callback_route(request: web.Request) -> web.Response:
     id_token = str(token_payload.get("id_token") or "") if token_payload else ""
     telegram_user = await validate_telegram_oauth_id_token(
         id_token,
+        settings=settings,
         client_id=int(_resolve_telegram_oauth_client_id(settings) or 0),
         expected_nonce=str(state.get("nonce") or ""),
         max_age_seconds=_webapp_auth_max_age_seconds(settings),
@@ -363,6 +373,7 @@ async def _validate_telegram_auth_payload(
             return None
         return await validate_telegram_oauth_id_token(
             oauth_id_token,
+            settings=settings,
             client_id=client_id,
             expected_nonce=nonce,
             max_age_seconds=_webapp_auth_max_age_seconds(settings),

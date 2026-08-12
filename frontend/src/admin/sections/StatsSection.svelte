@@ -10,8 +10,12 @@
     AdminDashboardStack,
     AdminBadge,
     AdminButton,
+    AdminChartEmptyState,
+    AdminChartSkeleton,
     AdminEmptyState,
     AdminRevenueCustomRangePopover,
+    AdminRevenueTabs,
+    AdminSortableHeader,
     AdminTable,
     AdminTableSkeleton,
   } from "$components/patterns/admin/index.js";
@@ -21,8 +25,15 @@
   import {
     aggregateRevenueSeries,
     filterDailyByIsoRange,
+    filterRevenueByPreset,
+    hasChartValues,
     inclusiveDaySpan,
-    sliceLastDays,
+    isRevenueGranularity,
+    isRevenuePreset,
+    REVENUE_GRANULARITIES,
+    REVENUE_PRESETS,
+    type RevenueGranularity,
+    type RevenuePreset,
   } from "../../lib/admin/revenueSeriesAgg.js";
   import {
     computeRevenueKpis,
@@ -43,18 +54,19 @@
   import type { PaymentOut } from "$lib/admin/stores/paymentsStore";
   import type { StatsState } from "$lib/admin/stores/statsStore";
   import type { UsersFilter } from "$lib/admin/usersRouteFilters";
+  import { sortAdminRows, type AdminSortColumn } from "$lib/admin/tableSort.js";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
   type FormatterFn = (value: unknown, currency?: string) => string;
   type DateFormatterFn = (value: unknown) => string;
   type AdminBadgeVariant = "success" | "danger" | "warning" | "muted";
-  type RevenueGranularity = "day" | "week" | "month";
   type RevenueRangeMode = "preset" | "custom";
   type IsoRange = { from: string; to: string };
   type DynamicComponent = ComponentType<SvelteComponent<Record<string, unknown>>>;
 
   let {
     at,
+    currentLang = "en",
     fmtDate = (value) => String(value ?? ""),
     fmtDateShort = (value) => String(value ?? ""),
     fmtMoney = (value) => String(value ?? ""),
@@ -63,6 +75,7 @@
     onOpenUsersFilter = () => {},
   }: {
     at: TranslateFn;
+    currentLang?: string;
     fmtDate?: DateFormatterFn;
     fmtDateShort?: DateFormatterFn;
     fmtMoney?: FormatterFn;
@@ -99,17 +112,21 @@
 
   const REVENUE_CHART_MAX_CSS_HEIGHT = 204;
 
-  const REVENUE_PRESET_DAYS = [7, 14, 30, 90, 180, 365];
+  const emptyRevenuePreview =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("stats_scenario") === "empty_revenue";
 
   let revenueRangeMode = $state<RevenueRangeMode>("preset");
-  let revenuePresetDays = $state(14);
+  let revenuePreset = $state<RevenuePreset>(14);
   let revenueCustomIso = $state<IsoRange | null>(null);
   let revenueGranularity = $state<RevenueGranularity>("day");
   let revenueCustomPopoverOpen = $state(false);
   let AdminRevenueChartComponent = $state<DynamicComponent | null>(null);
 
   const dailySeries: RevenuePoint[] = $derived(
-    Array.isArray(fin.daily_series) ? fin.daily_series : []
+    Array.isArray(fin.daily_series)
+      ? fin.daily_series.map((point) => (emptyRevenuePreview ? { ...point, amount: 0 } : point))
+      : []
   );
   const revenueBoundsIso: { min: string; max: string } | null = $derived(
     dailySeries.length > 0
@@ -122,7 +139,7 @@
     if (revenueRangeMode === "custom" && revenueCustomIso) {
       return filterDailyByIsoRange(dailySeries, revenueCustomIso.from, revenueCustomIso.to);
     }
-    return sliceLastDays(dailySeries, revenuePresetDays);
+    return filterRevenueByPreset(dailySeries, revenuePreset, revenueBoundsIso?.max);
   });
 
   const revenueChartSeries: RevenuePoint[] = $derived(
@@ -130,6 +147,7 @@
   );
 
   const revenueKpis: RevenueKpis = $derived(computeRevenueKpis(fin, dailySeries));
+  const revenueHasValues = $derived(hasChartValues(revenueChartSeries));
   const chartRangeSum = $derived(
     revenueChartSeries.reduce((a, p) => a + (Number(p.amount) || 0), 0)
   );
@@ -142,14 +160,14 @@
   }
 
   $effect(() => {
-    if (revenueChartSeries.length) loadRevenueChart();
+    if (revenueHasValues) loadRevenueChart();
   });
 
-  function setRevenuePresetDays(days: number): void {
-    const next = Number(days);
-    if (!REVENUE_PRESET_DAYS.includes(next)) return;
+  function setRevenuePreset(value: unknown): void {
+    const next = value === "all" ? "all" : Number(value);
+    if (!isRevenuePreset(next)) return;
     revenueRangeMode = "preset";
-    revenuePresetDays = next;
+    revenuePreset = next;
     revenueCustomPopoverOpen = false;
   }
 
@@ -159,23 +177,23 @@
   }
 
   function setRevenueGranularity(next: unknown): void {
-    const g = String(next);
-    if (g !== "day" && g !== "week" && g !== "month") return;
-    revenueGranularity = g;
+    if (!isRevenueGranularity(next)) return;
+    revenueGranularity = next;
   }
 
-  function revenuePeriodLabel(days: number): string {
-    return at(`stats_revenue_period_${days}`, {}, `${days}d`);
+  function revenuePeriodLabel(preset: RevenuePreset): string {
+    return at(`stats_revenue_period_${preset}`, {}, preset === "all" ? "All time" : `${preset}d`);
   }
 
   function revenueChartHintKey(): string {
     if (revenueGranularity === "week") return "stats_revenue_chart_hint_week";
     if (revenueGranularity === "month") return "stats_revenue_chart_hint_month";
+    if (revenueGranularity === "year") return "stats_revenue_chart_hint_year";
     return "stats_revenue_chart_hint";
   }
 
   const revenueChartShortfall = $derived(
-    revenueRangeMode === "preset" && dailySeries.length < revenuePresetDays
+    revenueRangeMode === "preset" && revenuePreset !== "all" && dailySeries.length < revenuePreset
   );
   const revenueCustomDaySpan = $derived(
     revenueRangeMode === "custom" && revenueCustomIso
@@ -194,7 +212,61 @@
     at("status", {}, "Status"),
     at("date", {}, "Date"),
   ]);
-  const recentPayments: PaymentOut[] = $derived((stats?.recent_payments || []).slice(0, 10));
+  let recentPaymentsSort = $state("date_desc");
+  const recentPaymentSortColumns = [
+    { asc: "id_asc", desc: "id_desc", defaultDirection: "desc", value: (row) => row.payment_id },
+    { asc: "user_asc", desc: "user_desc", defaultDirection: "asc", value: (row) => row.user_label },
+    {
+      asc: "user_id_asc",
+      desc: "user_id_desc",
+      defaultDirection: "desc",
+      value: (row) => row.user_id,
+    },
+    {
+      asc: "traffic_regular_asc",
+      desc: "traffic_regular_desc",
+      defaultDirection: "desc",
+      value: (row) => row.traffic_regular_gb,
+    },
+    {
+      asc: "traffic_premium_asc",
+      desc: "traffic_premium_desc",
+      defaultDirection: "desc",
+      value: (row) => row.traffic_premium_gb,
+    },
+    {
+      asc: "amount_asc",
+      desc: "amount_desc",
+      defaultDirection: "desc",
+      value: (row) => row.amount,
+    },
+    {
+      asc: "provider_asc",
+      desc: "provider_desc",
+      defaultDirection: "asc",
+      value: (row) => row.provider,
+    },
+    {
+      asc: "description_asc",
+      desc: "description_desc",
+      defaultDirection: "asc",
+      value: (row) => paymentDescriptionDisplay(row, at),
+    },
+    { asc: "status_asc", desc: "status_desc", defaultDirection: "asc", value: (row) => row.status },
+    {
+      asc: "date_asc",
+      desc: "date_desc",
+      defaultDirection: "desc",
+      value: (row) => row.created_at,
+    },
+  ] satisfies AdminSortColumn<PaymentOut>[];
+  const recentPayments: PaymentOut[] = $derived(
+    sortAdminRows(
+      (stats?.recent_payments || []).slice(0, 10),
+      recentPaymentsSort,
+      recentPaymentSortColumns
+    )
+  );
 
   function userFilterActionLabel(label: string): string {
     return at("stats_open_user_filter", { label }, `Show users: ${label}`);
@@ -439,24 +511,15 @@
           <div class="admin-revenue-chart-head">
             <div class="admin-revenue-chart-title">{at("stats_revenue_chart_title", {}, "")}</div>
             <div class="admin-revenue-chart-toolbar">
-              <div
-                class="admin-revenue-period"
-                role="tablist"
-                aria-label={at("stats_revenue_chart_aria", {}, "")}
-              >
-                {#each REVENUE_PRESET_DAYS as d (d)}
-                  <button
-                    type="button"
-                    class="admin-revenue-period-btn"
-                    class:is-active={revenueRangeMode === "preset" && revenuePresetDays === d}
-                    role="tab"
-                    aria-selected={revenueRangeMode === "preset" && revenuePresetDays === d}
-                    onclick={() => setRevenuePresetDays(d)}
-                  >
-                    {revenuePeriodLabel(d)}
-                  </button>
-                {/each}
-              </div>
+              <AdminRevenueTabs
+                value={revenueRangeMode === "preset" ? String(revenuePreset) : ""}
+                items={REVENUE_PRESETS.map((preset) => ({
+                  value: String(preset),
+                  label: revenuePeriodLabel(preset),
+                }))}
+                ariaLabel={at("stats_revenue_chart_aria", {}, "")}
+                onValueChange={setRevenuePreset}
+              />
               <AdminRevenueCustomRangePopover
                 bind:open={revenueCustomPopoverOpen}
                 minIso={revenueBoundsIso?.min ?? ""}
@@ -466,31 +529,24 @@
                 title={at("stats_revenue_custom_range_title", {}, "")}
                 triggerLabel={at("stats_revenue_period_custom", {}, "Custom")}
                 applyLabel={at("stats_revenue_custom_range_apply", {}, "Apply")}
+                locale={currentLang}
                 isActive={revenueRangeMode === "custom"}
                 onApply={onCustomRangeApply}
               />
             </div>
           </div>
-          <div
-            class="admin-revenue-granularity"
-            role="tablist"
-            aria-label={at("stats_revenue_granularity_aria", {}, "")}
-          >
-            {#each ["day", "week", "month"] as g (g)}
-              <button
-                type="button"
-                class="admin-revenue-period-btn admin-revenue-period-btn--compact"
-                class:is-active={revenueGranularity === g}
-                role="tab"
-                aria-selected={revenueGranularity === g}
-                onclick={() => setRevenueGranularity(g)}
-              >
-                {at(`stats_revenue_granularity_${g}`, {}, g)}
-              </button>
-            {/each}
-          </div>
+          <AdminRevenueTabs
+            value={revenueGranularity}
+            items={REVENUE_GRANULARITIES.map((value) => ({
+              value,
+              label: at(`stats_revenue_granularity_${value}`, {}, value),
+            }))}
+            ariaLabel={at("stats_revenue_granularity_aria", {}, "")}
+            variant="granularity"
+            onValueChange={setRevenueGranularity}
+          />
           <p class="admin-revenue-chart-hint admin-muted">{at(revenueChartHintKey(), {}, "")}</p>
-          {#if revenueChartSeries.length}
+          {#if revenueHasValues}
             <div class="admin-revenue-chart-meta admin-muted">
               <span
                 >{at(
@@ -532,18 +588,23 @@
                   plotHeight={REVENUE_CHART_MAX_CSS_HEIGHT}
                   {fmtMoney}
                   {currency}
+                  locale={currentLang}
+                  granularity={revenueGranularity}
                   legendTimeLabel={at("stats_revenue_chart_uplot_time", {}, "Time")}
                   legendValueLabel={at("stats_revenue_chart_uplot_value", {}, "Value")}
+                  legendDeltaLabel={at("stats_revenue_chart_uplot_delta", {}, "Change")}
                 />
               {:else}
-                <span
-                  class="admin-skeleton admin-revenue-chart-skeleton"
-                  style={`height:${REVENUE_CHART_MAX_CSS_HEIGHT}px`}
-                ></span>
+                <AdminChartSkeleton plotHeight={REVENUE_CHART_MAX_CSS_HEIGHT} />
               {/if}
             </div>
           {:else}
-            <p class="admin-muted">{at("stats_revenue_no_chart", {}, "")}</p>
+            <div class="admin-revenue-svg-frame admin-revenue-svg-frame--chart">
+              <AdminChartEmptyState
+                label={at("stats_revenue_no_chart", {}, "No data yet")}
+                plotHeight={REVENUE_CHART_MAX_CSS_HEIGHT}
+              />
+            </div>
           {/if}
         </div>
       </Card.Content>
@@ -590,16 +651,76 @@
             <AdminTable>
               <thead>
                 <tr>
-                  <th>{at("id", {}, "ID")}</th>
-                  <th>{at("user", {}, "User")}</th>
-                  <th>{at("payments_col_user_id", {}, "ID")}</th>
-                  <th>{at("payments_col_traffic_regular", {}, "Main traffic")}</th>
-                  <th>{at("payments_col_traffic_premium", {}, "Premium traffic")}</th>
-                  <th>{at("amount", {}, "Amount")}</th>
-                  <th>{at("provider", {}, "Provider")}</th>
-                  <th>{at("description", {}, "Description")}</th>
-                  <th>{at("status", {}, "Status")}</th>
-                  <th>{at("date", {}, "Date")}</th>
+                  <AdminSortableHeader
+                    label={at("id", {}, "ID")}
+                    column={recentPaymentSortColumns[0]}
+                    currentSort={recentPaymentsSort}
+                    {at}
+                    onSort={(sort) => (recentPaymentsSort = sort)}
+                  />
+                  <AdminSortableHeader
+                    label={at("user", {}, "User")}
+                    column={recentPaymentSortColumns[1]}
+                    currentSort={recentPaymentsSort}
+                    {at}
+                    onSort={(sort) => (recentPaymentsSort = sort)}
+                  />
+                  <AdminSortableHeader
+                    label={at("payments_col_user_id", {}, "ID")}
+                    column={recentPaymentSortColumns[2]}
+                    currentSort={recentPaymentsSort}
+                    {at}
+                    onSort={(sort) => (recentPaymentsSort = sort)}
+                  />
+                  <AdminSortableHeader
+                    label={at("payments_col_traffic_regular", {}, "Main traffic")}
+                    column={recentPaymentSortColumns[3]}
+                    currentSort={recentPaymentsSort}
+                    {at}
+                    onSort={(sort) => (recentPaymentsSort = sort)}
+                  />
+                  <AdminSortableHeader
+                    label={at("payments_col_traffic_premium", {}, "Premium traffic")}
+                    column={recentPaymentSortColumns[4]}
+                    currentSort={recentPaymentsSort}
+                    {at}
+                    onSort={(sort) => (recentPaymentsSort = sort)}
+                  />
+                  <AdminSortableHeader
+                    label={at("amount", {}, "Amount")}
+                    column={recentPaymentSortColumns[5]}
+                    currentSort={recentPaymentsSort}
+                    {at}
+                    onSort={(sort) => (recentPaymentsSort = sort)}
+                  />
+                  <AdminSortableHeader
+                    label={at("provider", {}, "Provider")}
+                    column={recentPaymentSortColumns[6]}
+                    currentSort={recentPaymentsSort}
+                    {at}
+                    onSort={(sort) => (recentPaymentsSort = sort)}
+                  />
+                  <AdminSortableHeader
+                    label={at("description", {}, "Description")}
+                    column={recentPaymentSortColumns[7]}
+                    currentSort={recentPaymentsSort}
+                    {at}
+                    onSort={(sort) => (recentPaymentsSort = sort)}
+                  />
+                  <AdminSortableHeader
+                    label={at("status", {}, "Status")}
+                    column={recentPaymentSortColumns[8]}
+                    currentSort={recentPaymentsSort}
+                    {at}
+                    onSort={(sort) => (recentPaymentsSort = sort)}
+                  />
+                  <AdminSortableHeader
+                    label={at("date", {}, "Date")}
+                    column={recentPaymentSortColumns[9]}
+                    currentSort={recentPaymentsSort}
+                    {at}
+                    onSort={(sort) => (recentPaymentsSort = sort)}
+                  />
                 </tr>
               </thead>
               <tbody>

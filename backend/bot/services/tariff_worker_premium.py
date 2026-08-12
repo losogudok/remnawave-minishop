@@ -14,15 +14,15 @@ from bot.services.message_audit import log_user_message_delivery
 from bot.services.panel_api_service import PanelApiService
 from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.utils.date_utils import month_start
-from bot.utils.traffic_reset import (
-    panel_traffic_limit_strategy,
-    previous_traffic_reset,
-    traffic_period_starts_match,
-)
+from bot.utils.traffic_reset import previous_traffic_reset, traffic_period_starts_match
 from config.settings import Settings
 from db.dal import tariff_dal
 from db.models import Subscription
 
+from .tariff_worker_premium_batches import (
+    PremiumSquadMutationPlan,
+    TariffWorkerPremiumBatchMixin,
+)
 from .tariff_worker_premium_usage import TariffWorkerPremiumUsageMixin
 from .tariff_worker_shared import (
     PREMIUM_WARNING_DEPLETED_LEVEL,
@@ -43,7 +43,7 @@ class _PremiumTariff(Protocol):
     def name(self, lang: str, fallback: str = "ru") -> str: ...
 
 
-class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
+class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin, TariffWorkerPremiumBatchMixin):
     settings: Settings
     panel_service: PanelApiService
     subscription_service: SubscriptionService
@@ -56,6 +56,13 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
 
         async def _user_lang(self, session: AsyncSession, user_id: int) -> str: ...
         def _period_tariff_traffic_strategy(self, tariff: Any | None = None) -> str: ...
+        def _premium_traffic_strategy_for_subscription(
+            self,
+            sub: Any | None,
+            *,
+            panel_user_data: dict[str, Any] | None = None,
+            tariff: Any | None = None,
+        ) -> str: ...
         def _usage_placeholders(self, used_bytes: int, limit_bytes: int) -> dict: ...
         def _traffic_next_reset_note(
             self,
@@ -74,6 +81,13 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
             *,
             now: datetime | None = None,
             fallback_strategy: str | None = None,
+        ) -> datetime | None: ...
+        def _next_traffic_reset_after(
+            self,
+            period_start_at: datetime | None,
+            strategy: str,
+            *,
+            now: datetime | None = None,
         ) -> datetime | None: ...
         def _traffic_topup_markup(
             self, user_lang: str, kind: str
@@ -145,11 +159,16 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
                 sub.premium_is_limited = False
             return
 
-        tariff_has_premium_limit = bool(
-            int(getattr(tariff, "premium_monthly_bytes", 0) or 0) > 0
-            or getattr(tariff, "premium_topup_packages", None)
+        configured_unlimited = getattr(tariff, "premium_unlimited", None)
+        tariff_has_premium_limit = (
+            not bool(configured_unlimited)
+            if configured_unlimited is not None
+            else bool(
+                int(getattr(tariff, "premium_monthly_bytes", 0) or 0) > 0
+                or getattr(tariff, "premium_topup_packages", None)
+            )
         )
-        premium_panel_user_dict = (
+        regular_panel_user_dict = (
             panel_user_dict
             if str(getattr(tariff, "billing_model", "") or "").lower() == "period"
             else None
@@ -157,11 +176,13 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
         premium_period_start = self.subscription_service._premium_accounting_period_start(
             sub,
             now,
-            panel_user_data=premium_panel_user_dict,
+            panel_user_data=regular_panel_user_dict,
+            tariff=tariff,
         )
-        effective_strategy = panel_traffic_limit_strategy(
-            premium_panel_user_dict,
-            self._period_tariff_traffic_strategy(tariff),
+        effective_strategy = self._premium_traffic_strategy_for_subscription(
+            sub,
+            panel_user_data=regular_panel_user_dict,
+            tariff=tariff,
         )
         is_trial_premium_tariff = bool(getattr(tariff, "key", "") == "trial")
         previous_premium_period_start = getattr(sub, "premium_period_start_at", None)
@@ -224,10 +245,19 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
                 same_period=same_period,
             )
 
-        panel_next_reset_at = self._panel_next_traffic_reset_at(
-            premium_panel_user_dict,
+        premium_next_reset_at = self._panel_next_traffic_reset_at(
+            regular_panel_user_dict
+            if self.subscription_service._premium_traffic_strategy_inherits_regular(
+                sub,
+                tariff=tariff,
+            )
+            else None,
             now=now,
             fallback_strategy=effective_strategy,
+        ) or self._next_traffic_reset_after(
+            premium_period_start,
+            effective_strategy,
+            now=now,
         )
 
         if not premium_unlimited_override and not unmetered_premium_access:
@@ -255,6 +285,16 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
             tariff,
             include_premium=not should_limit,
         )
+        override_detection_managed_squads = self.subscription_service._panel_squads_for_tariff(
+            tariff,
+            include_premium=True,
+        )
+        await self.subscription_service.deactivate_panel_managed_internal_overrides(
+            session,
+            user_id=int(sub.user_id),
+            panel_user_uuid=sub.panel_user_uuid,
+            managed_internal_squads=override_detection_managed_squads,
+        )
         effective_payload = {
             "uuid": sub.panel_user_uuid,
             **(
@@ -263,6 +303,7 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
                     user_id=int(sub.user_id),
                     panel_user_uuid=sub.panel_user_uuid,
                     managed_internal_squads=managed_squads,
+                    override_detection_managed_internal_squads=(override_detection_managed_squads),
                     panel_user_snapshot=panel_user_dict,
                     discover_panel_overrides=True,
                     fetch_panel_snapshot=False,
@@ -309,6 +350,9 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
                                     user_id=int(sub.user_id),
                                     panel_user_uuid=sub.panel_user_uuid,
                                     managed_internal_squads=managed_squads,
+                                    override_detection_managed_internal_squads=(
+                                        override_detection_managed_squads
+                                    ),
                                     panel_user_snapshot=full_panel_user,
                                     discover_panel_overrides=True,
                                     fetch_panel_snapshot=False,
@@ -360,7 +404,8 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
                 premium_used,
                 premium_limit,
                 premium_period_start,
-                next_reset_at=panel_next_reset_at,
+                next_reset_at=premium_next_reset_at,
+                traffic_strategy=effective_strategy,
             )
         if not panel_needs_update:
             if (
@@ -399,45 +444,38 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
             reasons=panel_update_reasons or ["premium_squad_sync"],
             panel_view=panel_view_for_report,
         )
+        mutation_plan = PremiumSquadMutationPlan(
+            sub=sub,
+            tariff=tariff,
+            desired_squads=tuple(sorted(desired_set)),
+            effective_payload=effective_payload,
+            squad_match_cache_key=squad_match_cache_key,
+            should_limit=should_limit,
+            newly_limited=access_state_changed and should_limit,
+            node_uuids=list(node_uuids),
+            start_date=start_date,
+            end_date=end_date,
+            panel_username=panel_username,
+            send_reset_notice=bool(
+                not premium_unlimited_override
+                and not unmetered_premium_access
+                and not is_trial_premium_tariff
+            ),
+            premium_used=int(premium_used),
+            premium_limit=int(premium_limit),
+            premium_period_start=premium_period_start,
+            previous_period_start=previous_premium_period_start,
+            traffic_strategy=effective_strategy,
+        )
+        if self._queue_premium_squad_mutation(mutation_plan):
+            return
         updated_panel_user = await self.panel_service.update_user_details_on_panel(
             sub.panel_user_uuid,
             effective_payload,
             log_response=False,
         )
         if updated_panel_user and not updated_panel_user.get("error"):
-            self._remember_premium_squad_match(squad_match_cache_key)
-            if (
-                not premium_unlimited_override
-                and not unmetered_premium_access
-                and not is_trial_premium_tariff
-            ):
-                await self._maybe_send_premium_reset_notice(
-                    session,
-                    sub,
-                    tariff,
-                    used=int(premium_used),
-                    limit=int(premium_limit),
-                    period_start_at=premium_period_start,
-                    previous_period_start=previous_premium_period_start,
-                    traffic_strategy=effective_strategy,
-                )
-            await self._sync_premium_connection_state(
-                sub,
-                should_limit=should_limit,
-                newly_limited=access_state_changed and should_limit,
-                node_uuids=node_uuids,
-                start_date=start_date,
-                end_date=end_date,
-                panel_username=panel_username,
-            )
-        logger.info(
-            "Premium squad access %s for user %s tariff %s: %s/%s bytes",
-            "limited" if should_limit else "restored",
-            sub.user_id,
-            tariff.key,
-            premium_used,
-            premium_limit,
-        )
+            await self._complete_premium_squad_mutation(session, mutation_plan)
 
     async def _maybe_send_premium_reset_notice(
         self,
@@ -627,7 +665,7 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
             total = await tariff_dal.sum_traffic_topups(
                 session,
                 subscription_id=subscription_id,
-                kinds=["premium_topup", "admin_premium_topup"],
+                kinds=["premium_topup", "admin_premium_topup", "promo_premium_topup"],
                 created_at_gte=premium_period_start,
             )
             return int(total) if total is not None else None
@@ -764,6 +802,7 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
         period_start_at: datetime,
         *,
         next_reset_at: datetime | None = None,
+        traffic_strategy: str,
     ) -> None:
         if limit <= 0:
             return
@@ -804,7 +843,7 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
                 reset_available_bytes=self._premium_next_period_available_bytes(sub, tariff),
                 user_lang=user_lang,
                 next_reset_at=next_reset_at,
-                traffic_strategy=self._period_tariff_traffic_strategy(tariff),
+                traffic_strategy=traffic_strategy,
             )
             text = _(
                 "traffic_warning_premium_depleted",
@@ -876,7 +915,7 @@ class TariffWorkerPremiumMixin(TariffWorkerPremiumUsageMixin):
                 reset_available_bytes=self._premium_next_period_available_bytes(sub, tariff),
                 user_lang=user_lang,
                 next_reset_at=next_reset_at,
-                traffic_strategy=self._period_tariff_traffic_strategy(tariff),
+                traffic_strategy=traffic_strategy,
             )
             text = _(
                 "traffic_warning_premium_almost",

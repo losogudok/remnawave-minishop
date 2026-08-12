@@ -45,6 +45,7 @@ import {
   type PlanView,
   type SubscriptionView,
   type TariffView,
+  type TermUnitLabel,
   type UserProfile,
   type WebappConfig,
   type WebappData,
@@ -116,6 +117,7 @@ export type AppFactoriesDeps = {
   stripTopupQueryFromUrl: () => void;
   syncAppSectionPath: SyncAppSectionPath;
   t: (key: string, params?: Record<string, unknown>, fallback?: string) => string;
+  termUnitLabel: TermUnitLabel;
   telegramNotificationsResumeCooldownMs: number;
   telegramSdk: TelegramSdk;
   tick: Tick;
@@ -177,6 +179,7 @@ export function createAppFactories({
   stripTopupQueryFromUrl,
   syncAppSectionPath,
   t,
+  termUnitLabel,
   telegramNotificationsResumeCooldownMs,
   telegramSdk,
   tick,
@@ -337,6 +340,7 @@ export function createAppFactories({
     showToast,
     loadData,
     maybeShowActivationSuccessDialog: activation.maybeShowActivationSuccessDialog,
+    termUnitLabel,
     startCheckoutPromo: (code) => {
       shellState.activeTab = "home";
       shellState.screen = "home";
@@ -410,6 +414,7 @@ export function createAppFactories({
     refreshTelegramNotificationsOnResume: () => {
       void bootRuntime.refreshTelegramNotificationsOnResume();
     },
+    suspendBackgroundWork: activation.stopPendingActivationWatch,
   });
   accountStore = createAccountStore({
     api,
@@ -553,6 +558,7 @@ export function createShellAppActions({
     getIsFileProtocol: () => window.location.protocol === "file:",
     getMethods: () => getShellView().appDataView.methods,
     getOrigin: () => (typeof window !== "undefined" ? window.location.origin : ""),
+    getPartnerProgramEnabled: () => getShellView().appDataView.partnerProgramEnabled,
     getPlans: () => getShellView().appDataView.plans,
     getSuggestedPromoCode: () => getShellView().appDataView.suggestedPromoCode,
     getPreloadHost: () => (typeof window !== "undefined" ? asWebappRecord(window) : null),

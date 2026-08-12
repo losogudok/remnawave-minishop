@@ -13,6 +13,8 @@
 | Переменная | Где менять | Назначение |
 | --- | --- | --- |
 | `BOT_TOKEN` | Только `.env` | Токен Telegram-бота. |
+| `TELEGRAM_BOT_PROXY_URL` | Только `.env` | Необязательный SOCKS5 proxy для исходящих запросов Telegram Bot API из `backend` и `worker`; может также использоваться server-side частью OAuth. |
+| `TELEGRAM_OAUTH_USE_BOT_PROXY` | Только `.env` | Разрешает server-side запросам Telegram OAuth использовать `TELEGRAM_BOT_PROXY_URL`. По умолчанию `True`; без URL сохраняется прямой маршрут. |
 | `ADMIN_IDS` | Только `.env` | Telegram ID администраторов через запятую. Нужен для первого входа в админку. |
 | `WEBHOOK_BASE_URL` | `.env` | Публичный URL backend/webhook-домена. Используется для URL вебхуков Telegram, платежных провайдеров и Remnawave. |
 | `POSTGRES_USER` | `.env` / Compose | Пользователь PostgreSQL. |
@@ -21,6 +23,74 @@
 | `WEBAPP_ENABLED` | `.env` / админка | Включает Web App и админку. Держите `True` для первого запуска; если выключить, вернуть доступ можно только через `.env` и рестарт. |
 | `WEBAPP_SESSION_SECRET` | `.env` | Стабильный HMAC-секрет сессий Web App. Если пустой, генерируется на процесс, но сессии сбросятся после рестарта. |
 | `WEBHOOK_SECRET_TOKEN` | `.env` | Секрет вебхука Telegram. Если пустой, генерируется на процесс. |
+
+### SOCKS5 proxy для Telegram Bot API
+
+Без proxy Telegram Bot API и server-side часть Telegram OAuth вызываются напрямую. Чтобы
+направить исходящие запросы `aiogram.Bot` из `backend` и `worker` через один SOCKS5 endpoint,
+задайте:
+
+```dotenv
+TELEGRAM_BOT_PROXY_URL=socks5://proxy.example.com:1080
+```
+
+С авторизацией:
+
+```dotenv
+TELEGRAM_BOT_PROXY_URL=socks5://username:password@proxy.example.com:1080
+```
+
+Логин и пароль задаются только парой. Специальные символы в credentials нужно кодировать через
+percent-encoding: например, `user@example.com` становится `user%40example.com`, а `p:a/ss` —
+`p%3Aa%2Fss`. Обязательны hostname и порт `1..65535`; IPv6 указывается в квадратных скобках:
+`socks5://[2001:db8::10]:1080`.
+
+Поддерживается только `socks5://`. Схемы `socks5h://`, SOCKS4, HTTP/HTTPS proxy, цепочки proxy и
+алиасы `PROXY_URL`, `ALL_PROXY`, `HTTPS_PROXY` не поддерживаются. Пустое или отсутствующее значение
+сохраняет прямой маршрут.
+
+Проксируются все исходящие Bot API методы, включая `get_me`, `get_webhook_info`, `set_webhook`,
+сообщения, файлы и worker-уведомления. По умолчанию тот же маршрут автоматически используют два
+server-side запроса Telegram OAuth: token exchange и загрузка JWKS. Чтобы оставить только OAuth
+на прямом маршруте, задайте явный opt-out:
+
+```dotenv
+TELEGRAM_OAUTH_USE_BOT_PROXY=False
+```
+
+При стандартном `True` `backend` отправляет через SOCKS5
+`POST https://oauth.telegram.org/token` и загрузку
+`https://oauth.telegram.org/.well-known/jwks.json`. TLS остается end-to-end до Telegram, а
+DNS-имена разрешаются на стороне SOCKS5 proxy. Если URL не задан, значение `True` безопасно
+сохраняет прямой маршрут.
+
+Не проксируются:
+
+- входящая доставка Telegram webhook на `WEBHOOK_BASE_URL`;
+- открытие `https://oauth.telegram.org/auth` в браузере пользователя: сервер не управляет сетевым
+  маршрутом браузера;
+- Remnawave Panel, платежные провайдеры, SMTP и другие HTTP-клиенты.
+
+Webhook-режим по-прежнему требует публичного HTTPS endpoint, доступного Telegram. SOCKS5 меняет
+только исходящие маршруты Bot API и, если не задан opt-out, server-side OAuth.
+
+Proxy должен быть достижим из обоих контейнеров — `backend` и `worker`. Адрес `127.0.0.1` внутри
+контейнера указывает на сам контейнер, а не на Docker host. Для proxy-контейнера используйте его
+Compose service name и общую сеть; для внешнего proxy — доступный из контейнеров DNS/IP.
+
+После изменения пересоздайте оба процесса:
+
+```bash
+docker compose up -d --force-recreate backend worker
+docker compose logs --tail=100 backend worker
+```
+
+Startup-лог показывает только замаскированный endpoint. Не публикуйте `.env` и полный proxy URL
+при диагностике. Если менялся только `TELEGRAM_OAUTH_USE_BOT_PROXY`, достаточно пересоздать
+`backend`. Если менялся URL или маршрут Bot API, пересоздайте `backend` и `worker`. Для полного
+rollback OAuth установите `TELEGRAM_OAUTH_USE_BOT_PROXY=False` и пересоздайте `backend`. Для
+полного возврата всех Telegram-запросов на прямой маршрут удалите или очистите
+`TELEGRAM_BOT_PROXY_URL` и пересоздайте `backend` и `worker`.
 
 ## Инфраструктура и Compose
 
@@ -137,7 +207,7 @@ Trust-all вариант записывается как
 | `TARIFF_PREMIUM_FAST_TICK_SECONDS` | Интервал быстрой проверки premium-лимита между полными тиками tariff worker. По умолчанию `60`; `0` или значение не меньше `TARIFF_WORKER_TICK_SECONDS` отключает быструю проверку. |
 | `TARIFF_PREMIUM_FAST_WATCH_PERCENT` | Процент израсходованного premium-трафика, с которого подписка попадает в быструю проверку. По умолчанию `80`. |
 | `TARIFF_PREMIUM_FAST_BATCH_LIMIT` | Максимум подписок в одном быстром тике. По умолчанию `200`, `0` снимает ограничение. |
-| `TARIFF_PREMIUM_DROP_CONNECTIONS` | Разрывать живые сессии на premium-нодах после исчерпания premium-лимита через `POST /api/ip-control/drop-connections`. По умолчанию `True`. Требует `CAP_NET_ADMIN` у нод Remnawave. |
+| `TARIFF_PREMIUM_DROP_CONNECTIONS` | Разрывать живые сессии на premium-нодах после исчерпания premium-лимита. Core выбирает совместимый маршрут автоматически: `POST /api/ip-control/drop-connections` на Remnawave 2.8.1 или `POST /api/connections/drop` на 3.x. По умолчанию `True`. Требует `CAP_NET_ADMIN` у нод Remnawave. |
 | `TARIFF_PREMIUM_DROP_CONNECTIONS_COOLDOWN_SECONDS` | Минимальный интервал между разрывами сессий одной подписки. По умолчанию `300`. |
 | `BACKUP_ENABLED` | Включает периодические бэкапы в worker-контейнере. По умолчанию `False`. |
 | `BACKUP_INTERVAL_SECONDS` | Интервал между бэкапами. По умолчанию `3600`; запуск выравнивается на границу часа: 12:00, 13:00 и т.д. |
@@ -183,7 +253,7 @@ Trust-all вариант записывается как
 | --- | --- |
 | `PANEL_API_URL` | URL API панели, например `https://panel.example.com/api`. |
 | `PANEL_API_KEY` | API-ключ панели. |
-| `PANEL_API_COOKIE` | Необязательный Cookie header для панелей, защищённых `eGamesAPI/remnawave-reverse-proxy`. |
+| `PANEL_API_COOKIE` | Необязательное содержимое Cookie header (`name=value`) для панелей, защищённых `eGamesAPI/remnawave-reverse-proxy`. Install wizard также принимает строку `Cookie:`/`Set-Cookie:` или полный eGames access URL с одной query-парой и сохраняет каноническое значение. Cookie не заменяет `PANEL_API_KEY`. |
 | `APP_RUNTIME_MODE` | Профиль запуска: `production`, `development`, `staging`, `test`. |
 | `PANEL_WRITE_MODE` | `auto`, `live` или `dry_run`. В `dry_run` приложение читает живую Remnawave Panel, но мутации пользователей только валидируются и логируются. `auto` включает dry-run для `development`/`test`, а в production остается live. |
 | `PANEL_DRY_RUN_VALIDATE_REMOTE` | При dry-run проверять ссылки на panel users/internal squads через live `GET`. |
@@ -247,6 +317,7 @@ Xray-Core 26.3.27+, `NET_ADMIN`, nftables, корректный sniffing и вк
 | `TELEGRAM_OAUTH_CLIENT_ID` | `.env` | Идентификатор клиента Telegram OAuth / OpenID Connect. Если пусто, берется bot ID из `BOT_TOKEN`. |
 | `TELEGRAM_OAUTH_CLIENT_SECRET` | `.env` | Секрет клиента Telegram OAuth / OpenID Connect. |
 | `TELEGRAM_OAUTH_REQUEST_ACCESS` | `.env` | Дополнительные разрешения, например `write`. |
+| `TELEGRAM_OAUTH_USE_BOT_PROXY` | `.env` | Разрешить server-side OAuth token/JWKS запросам автоматически использовать настроенный `TELEGRAM_BOT_PROXY_URL`. По умолчанию `True`; браузерный redirect не проксируется. |
 | `WEBAPP_PRIMARY_COLOR` | Админка | Устаревшее env-поле, игнорируется. |
 | `WEBAPP_LOGO_URL` | Админка | Устаревшее env-поле, игнорируется. |
 | `WEBAPP_FAVICON_USE_CUSTOM` | Админка | Устаревшее env-поле, игнорируется. |
@@ -286,10 +357,11 @@ Xray-Core 26.3.27+, `NET_ADMIN`, nftables, корректный sniffing и вк
 
 | Переменная | Назначение |
 | --- | --- |
-| `PAYMENT_METHODS_ORDER` | Порядок кнопок оплаты: `severpay,wata,freekassa,platega,yookassa,stars,cryptopay,heleket,paykilla,lava,pally,cloudpayments,stripe,tribute`. |
+| `PAYMENT_METHODS_ORDER` | Порядок кнопок оплаты. Для Platega доступны `platega_sbp`, `platega_crypto`, `platega_international`, `platega_all_methods`, `platega_subscription`; legacy-значение `platega` разворачивается во все варианты. |
 | `SUBSCRIPTION_PURCHASE_DESCRIPTION_ENABLED` | Показывать описание подписки перед выбором срока. |
 | `SUBSCRIPTION_PURCHASE_DESCRIPTION_RU` / `SUBSCRIPTION_PURCHASE_DESCRIPTION_EN` | Локализованное описание подписки. |
 | `PAYMENT_REQUEST_TIMEOUT_SECONDS` | Общий таймаут одного API-запроса к платёжному провайдеру, в секундах. По умолчанию `20`. |
+| `PAYMENT_FAILURE_NOTIFICATION_GRACE_SECONDS` | Задержка уведомления о неуспешной оплате. По умолчанию `300`: успешная повторная оплата за это время подавляет устаревшие ошибки; `0` отключает задержку. |
 | `PAYMENT_<METHOD>_WEBAPP_LABEL_RU` / `PAYMENT_<METHOD>_WEBAPP_LABEL_EN` | Текст кнопки провайдера в Web App. |
 | `PAYMENT_<METHOD>_WEBAPP_ICON` | Lucide-иконка кнопки в Web App. |
 | `PAYMENT_<METHOD>_TELEGRAM_LABEL_RU` / `PAYMENT_<METHOD>_TELEGRAM_LABEL_EN` | Текст кнопки в Telegram. |
@@ -299,6 +371,9 @@ Xray-Core 26.3.27+, `NET_ADMIN`, nftables, корректный sniffing и вк
 | `FREEKASSA_ENABLED` | Включает FreeKassa. |
 | `PLATEGA_ENABLED` | Включает Platega. |
 | `PLATEGA_SBP_ENABLED` / `PLATEGA_CRYPTO_ENABLED` | Отдельные кнопки СБП/крипто Platega. |
+| `PLATEGA_INTERNATIONAL_ENABLED` | Кнопка международных карт (`paymentMethod: 12` по умолчанию). |
+| `PLATEGA_ALL_METHODS_ENABLED` | Единая ссылка Platega, где плательщик сам выбирает способ оплаты. |
+| `PLATEGA_SUBSCRIPTION_ENABLED` | Кнопка рекуррентной СБП-подписки Platega. |
 | `SEVERPAY_ENABLED` | Включает SeverPay. |
 | `WATA_ENABLED` | Включает Wata. |
 | `CRYPTOPAY_ENABLED` | Включает CryptoPay. |
@@ -337,6 +412,24 @@ PAYMENT_PLATEGA_CRYPTO_WEBAPP_ICON
 PAYMENT_PLATEGA_CRYPTO_TELEGRAM_LABEL_RU
 PAYMENT_PLATEGA_CRYPTO_TELEGRAM_LABEL_EN
 PAYMENT_PLATEGA_CRYPTO_TELEGRAM_EMOJI
+PAYMENT_PLATEGA_INTERNATIONAL_WEBAPP_LABEL_RU
+PAYMENT_PLATEGA_INTERNATIONAL_WEBAPP_LABEL_EN
+PAYMENT_PLATEGA_INTERNATIONAL_WEBAPP_ICON
+PAYMENT_PLATEGA_INTERNATIONAL_TELEGRAM_LABEL_RU
+PAYMENT_PLATEGA_INTERNATIONAL_TELEGRAM_LABEL_EN
+PAYMENT_PLATEGA_INTERNATIONAL_TELEGRAM_EMOJI
+PAYMENT_PLATEGA_ALL_METHODS_WEBAPP_LABEL_RU
+PAYMENT_PLATEGA_ALL_METHODS_WEBAPP_LABEL_EN
+PAYMENT_PLATEGA_ALL_METHODS_WEBAPP_ICON
+PAYMENT_PLATEGA_ALL_METHODS_TELEGRAM_LABEL_RU
+PAYMENT_PLATEGA_ALL_METHODS_TELEGRAM_LABEL_EN
+PAYMENT_PLATEGA_ALL_METHODS_TELEGRAM_EMOJI
+PAYMENT_PLATEGA_SUBSCRIPTION_WEBAPP_LABEL_RU
+PAYMENT_PLATEGA_SUBSCRIPTION_WEBAPP_LABEL_EN
+PAYMENT_PLATEGA_SUBSCRIPTION_WEBAPP_ICON
+PAYMENT_PLATEGA_SUBSCRIPTION_TELEGRAM_LABEL_RU
+PAYMENT_PLATEGA_SUBSCRIPTION_TELEGRAM_LABEL_EN
+PAYMENT_PLATEGA_SUBSCRIPTION_TELEGRAM_EMOJI
 PAYMENT_SEVERPAY_WEBAPP_LABEL_RU
 PAYMENT_SEVERPAY_WEBAPP_LABEL_EN
 PAYMENT_SEVERPAY_WEBAPP_ICON
@@ -439,9 +532,17 @@ PAYMENT_TRIBUTE_TELEGRAM_EMOJI
 | `FREEKASSA_MERCHANT_ID` | ID магазина. |
 | `FREEKASSA_API_KEY` | API-ключ. |
 | `FREEKASSA_SECOND_SECRET` | Секрет уведомлений. |
-| `FREEKASSA_PAYMENT_IP` | Публичный IP сервера для запроса оплаты. |
+| `FREEKASSA_PAYMENT_IP` | Стабильный публичный исходящий IPv4 `backend`, передаваемый как резервный IP плательщика при создании заказа. |
 | `FREEKASSA_PAYMENT_METHOD_ID` | ID метода оплаты. |
 | `FREEKASSA_TRUSTED_IPS` | Список доверенных IP webhook-источников. |
+
+FreeKassa требует поле `ip` в API создания заказа, но Telegram не сообщает боту IP пользователя. Поэтому текущая интеграция использует исходящий адрес `backend`. Получите его из работающего контейнера:
+
+```bash
+docker compose exec backend sh -lc 'curl -4fsS https://api.ipify.org; echo'
+```
+
+Не подставляйте внутренний Docker/Kubernetes IP, адрес reverse proxy или значения из `FREEKASSA_TRUSTED_IPS`. Если трафик выходит через NAT, VPN либо отдельный шлюз, нужен адрес, который показывает команда выше. Подробная последовательность настройки приведена в разделе [Платежи → FreeKassa](../features/payments.md#freekassa).
 
 ### Platega
 
@@ -453,6 +554,9 @@ PAYMENT_TRIBUTE_TELEGRAM_EMOJI
 | `PLATEGA_PAYMENT_METHOD` | Устаревший/резервный ID метода оплаты. |
 | `PLATEGA_SBP_METHOD` | ID метода оплаты для СБП. |
 | `PLATEGA_CRYPTO_METHOD` | ID метода оплаты для крипто. |
+| `PLATEGA_INTERNATIONAL_METHOD` | ID метода оплаты международными картами (по умолчанию `12`). |
+| `PLATEGA_SUBSCRIPTION_METHOD` | ID метода оплаты для рекуррентной СБП-подписки (по умолчанию `6`). |
+| `PLATEGA_SUPPORTED_CURRENCIES` | Валюты, включённые для мерчанта и выбранных методов, через запятую. |
 | `PLATEGA_RETURN_URL` | URL успешного возврата. |
 | `PLATEGA_FAILED_URL` | URL неуспешного возврата. |
 
@@ -586,6 +690,9 @@ Pally / PayPalych создает счета через `POST /api/v1/bill/create
 | `PALLY_SUCCESS_URL` | URL успешного возврата после оплаты. |
 | `PALLY_FAIL_URL` | URL возврата после неуспешной оплаты. |
 | `PALLY_TTL_SECONDS` | Время жизни счета в секундах. |
+| `PALLY_MIN_PAYMENT_AMOUNT_RUB` | Минимальная внешняя сумма счета в рублях. По умолчанию `30`; при оплате с партнерского баланса Minishop оставляет эту сумму провайдеру. `0` отключает ограничение. |
+| `PALLY_MIN_PAYMENT_AMOUNT_USD` | Минимальная внешняя сумма счета в долларах. По умолчанию `0`. |
+| `PALLY_MIN_PAYMENT_AMOUNT_EUR` | Минимальная внешняя сумма счета в евро. По умолчанию `0`. |
 | `PALLY_PAYER_PAYS_COMMISSION` | Передает `payer_pays_commission=1`, если комиссию должен платить покупатель. |
 | `PALLY_PAYMENT_METHOD` | Необязательный предвыбор способа оплаты: `BANK_CARD` или `SBP`. |
 | `PALLY_LOCALE` | Локаль платежной формы: `ru` или `en`; если пусто, бот пробует передать язык пользователя. |
@@ -690,12 +797,16 @@ Stripe создает hosted Checkout Sessions и подтверждает ав�
 | `TRIAL_WITHOUT_TELEGRAM_ENABLED` | Разрешает активацию trial пользователям без привязанного Telegram. Disposable email домены всё равно требуют Telegram. |
 | `TRIAL_SQUAD_UUIDS` | Internal Squads для trial через запятую. Если пусто, используется `USER_SQUAD_UUIDS`. |
 | `TRIAL_PREMIUM_SQUAD_UUIDS` | Premium Internal Squads для trial через запятую. Если пусто, premium-доступ в trial не выдаётся. |
+| `REFERRAL_PROGRAM_ENABLED` | Глобально включает обычные реферальные ссылки, атрибуцию, приветственные и платёжные бонусы. По умолчанию `True`. При выключении в разделе «Бонусы» остаётся ввод промокода; партнёрская программа работает независимо. |
 | `REFERRAL_ONE_BONUS_PER_REFEREE` | Если включено, реферальные бонусы за оплату начисляются только за первый успешный платёж приглашенного; повторные покупки того же пользователя не дают бонус ни ему, ни пригласившему. |
 | `REFERRAL_WELCOME_BONUS_DAYS` | Приветственный бонус пришедшему по реферальной ссылке. |
 | `REFERRAL_WELCOME_BONUS_WITHOUT_TELEGRAM_ENABLED` | Разрешает начислять реферальный приветственный бонус пользователям без привязанного Telegram. Disposable email домены всё равно требуют Telegram. |
+| `REFERRAL_WEBAPP_LINK_ENABLED` | Показывать реферальную ссылку на сайт в разделе бонусов Web App. Хотя бы один из двух флагов показа ссылок должен быть включён. |
+| `REFERRAL_TELEGRAM_LINK_ENABLED` | Показывать реферальную ссылку на Telegram-бота в разделе бонусов Web App. Хотя бы один из двух флагов показа ссылок должен быть включён. |
 | `LEGACY_REFS` | Разрешить старые ссылки вида `/start ref_<telegram_id>`, где payload содержит Telegram/user ID пригласившего. |
 | `DISPOSABLE_EMAIL_DOMAINS` | Домены одноразовой почты через запятую. Для таких email trial и реферальный welcome bonus доступны только после привязки Telegram. |
 | `REFERRAL_BONUS_DAYS_1_MONTH`, `REFERRAL_BONUS_DAYS_3_MONTHS`, `REFERRAL_BONUS_DAYS_6_MONTHS`, `REFERRAL_BONUS_DAYS_12_MONTHS` | Legacy-бонусы пригласившему без JSON-каталога. В JSON-тарифах используйте `referral_bonus_days_inviter`. |
+
 | `REFEREE_BONUS_DAYS_1_MONTH`, `REFEREE_BONUS_DAYS_3_MONTHS`, `REFEREE_BONUS_DAYS_6_MONTHS`, `REFEREE_BONUS_DAYS_12_MONTHS` | Legacy-бонусы приглашенному без JSON-каталога. В JSON-тарифах используйте `referral_bonus_days_referee`. |
 | `SUBSCRIPTION_NOTIFICATIONS_ENABLED` | Включает напоминания о подписке. |
 | `SUBSCRIPTION_EMAIL_NOTIFICATIONS_ENABLED` | Дублирует пользовательские уведомления жизненного цикла подписки на email, если SMTP настроен и у пользователя есть email. |
@@ -704,6 +815,48 @@ Stripe создает hosted Checkout Sessions и подтверждает ав�
 | `SUBSCRIPTION_NOTIFY_DAYS_BEFORE` | За сколько дней предупреждать. |
 | `SUBSCRIPTION_NOTIFY_HOURS_BEFORE` | За сколько часов предупреждать дополнительно. |
 | `SUBSCRIPTION_NOTIFICATION_WORKER_TICK_SECONDS` | Период локальной проверки уведомлений. |
+
+### Партнёрская программа
+
+Партнёрская программа по умолчанию выключена. Обычные параметры меняются в Web App админке:
+**Настройки → Маркетинговые программы → Партнёрская программа**. Секрет шифрования реквизитов
+задаётся только через окружение и не возвращается admin API. Настройки из админки применяются к
+работающему backend сразу; при переключении `PARTNER_PROGRAM_ENABLED` текущая админская сессия
+перечитывает публичные данные Mini App без перезапуска и полной перезагрузки страницы.
+
+| Переменная | Назначение |
+| --- | --- |
+| `PARTNER_PROGRAM_ENABLED` | Включает новые заявки, атрибуцию и начисления. По умолчанию `False`. История и обработка уже созданных обязательств остаются доступны после выключения. |
+| `PARTNER_AUTO_ENROLLMENT_ENABLED` | По умолчанию `False`. При применении через админку вместе с включённой партнёрской программой создаёт active-профили всем существующим неблокированным пользователям без заявок. При конфигурации из окружения, а также для новых пользователей, профиль создаётся в первом bot/Web App flow. Существующие paused/closed-профили, индивидуальные ставки и финансовая история не меняются. Выключение останавливает только последующие автоматические подключения и не удаляет созданные профили. |
+| `PARTNER_REFERRAL_PROGRAM_DISABLED` | По умолчанию `False`. При включённой партнёрской программе блокирует обычные реферальные действия только у пользователей с партнёрским профилем. Их старые реферальные ссылки active-партнёра создают партнёрскую first-touch атрибуцию; ссылки paused/closed партнёра не создают атрибуцию. Остальные пользователи продолжают пользоваться обычной реферальной программой. Переключение не меняет существующие связи и бонусы задним числом. |
+| `PARTNER_WITHDRAWALS_ENABLED` | Разрешает активным партнёрам создавать новые заявки на вывод; по умолчанию `True`. Обработка уже созданных заявок остаётся доступной после выключения. |
+| `PARTNER_BALANCE_PAYMENT_ENABLED` | Разрешает active-партнёру полностью или частично оплачивать покупки партнёрским балансом. При частичной оплате остаток передаётся выбранному внешнему провайдеру с учётом его минимальной суммы; по умолчанию `True`. |
+| `PARTNER_CLIENT_WELCOME_BONUS_ENABLED` | Разрешает один приветственный бонус новым клиентам, зарегистрированным по active партнёрской ссылке. Использует размер и тариф обычного реферального welcome-бонуса; по умолчанию `False`. |
+| `PARTNER_CLIENT_PAYMENT_BONUS_ENABLED` | Начисляет клиенту партнёра дни из колонки бонуса приглашённому в матрице его тарифа; по умолчанию `False`. Старые платежи не обрабатываются задним числом. |
+| `PARTNER_ONE_BONUS_PER_CLIENT` | Если включено, бонусные дни по тарифной матрице начисляются только за первый успешный платёж пользователя во всей истории, даже если он был до атрибуции или включения бонуса. Не влияет на обычную реферальную программу; по умолчанию `True`. |
+| `PARTNER_DEFAULT_COMMISSION_BPS` | Ставка по умолчанию в базисных пунктах: `3000` означает 30%. Допустимо `0..10000`; индивидуальная ставка сохраняется в профиле партнёра и снимке начисления. |
+| `PARTNER_COMMISSION_HOLD_DAYS` | Сколько дней начисление остаётся pending до перехода в доступный баланс: `0..365`, по умолчанию `0`. |
+| `PARTNER_ELIGIBLE_CURRENCIES` | JSON-массив валют, например `["RUB","USD"]`; по умолчанию `["RUB"]`. Список не может быть пустым, балансы разных валют никогда не складываются. |
+| `PARTNER_EXCLUDED_SALE_MODES` | JSON-массив внутренних sale mode, за которые комиссия не начисляется; по умолчанию `[]`. |
+| `PARTNER_WITHDRAWAL_METHODS_JSON` | JSON-массив методов ручной выплаты; по умолчанию `[]`. Рекомендуется редактировать специализированной формой в админке. |
+| `PARTNER_TELEGRAM_LINK_ENABLED`, `PARTNER_WEBAPP_LINK_ENABLED` | Включают независимые Telegram/Web App партнёрские ссылки; оба по умолчанию `True`, хотя бы один канал должен оставаться включённым. |
+| `PARTNER_APPLICATION_MESSAGE_MAX_LENGTH` | Максимальная длина текста заявки: `10..10000`, по умолчанию `2000` символов. Минимальная длина самой заявки — 10 символов. |
+| `PARTNER_MAX_ACTIVE_WITHDRAWALS` | Максимум одновременно активных заявок на вывод у партнёра: `1..50`, по умолчанию `3`. |
+| `PARTNER_REAPPLICATION_ENABLED`, `PARTNER_REAPPLICATION_COOLDOWN_DAYS` | Разрешают повторную заявку после отказа и задают задержку `0..3650` дней. По умолчанию повторная подача выключена, задержка — `0`. Явное повторное открытие администратором учитывается отдельно. |
+| `PARTNER_LIST_PAGE_LIMIT` | Верхняя граница размера страницы пользовательских и административных списков: `10..200`, по умолчанию `50`. |
+| `PARTNER_APPLICATION_RATE_LIMIT_HOURS`, `PARTNER_WITHDRAWAL_RATE_LIMIT_SECONDS` | Серверные per-user ограничения частоты заявок: `1..8760` часов (по умолчанию `24`) и `1..3600` секунд (по умолчанию `10`) соответственно. |
+| `PARTNER_AUDIT_RETENTION_DAYS`, `PARTNER_REQUISITES_RETENTION_DAYS` | Сроки хранения аудита (`30..3650`, по умолчанию `1095` дней) и ciphertext реквизитов завершённых выплат (`1..3650`, по умолчанию `90` дней). Маска и финансовая история сохраняются. |
+| `PARTNER_REQUISITES_ENCRYPTION_KEY` | Только `.env`: urlsafe-base64 ключ AES длиной 16/24/32 байта. Для production используйте 32 байта. Без валидного ключа создание и раскрытие реквизитов fail-safe отключены. |
+| `PARTNER_REQUISITES_KEY_ID` | Несекретная версия текущего ключа длиной до 32 символов, по умолчанию `v1`. Меняется только после атомарной ротации данных. |
+
+Сгенерировать 32-байтовый ключ:
+
+```bash
+openssl rand -base64 32 | tr '+/' '-_'
+```
+
+Полная настройка, обработка выплат, отчёт сверки, ротация ключа и rollback описаны в
+[руководстве по партнёрской программе](../features/partner-program.md).
 
 ## Поддержка
 

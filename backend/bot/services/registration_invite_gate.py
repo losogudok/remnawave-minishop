@@ -8,7 +8,7 @@ from typing import Literal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import Settings
-from db.dal import user_dal
+from db.dal import partner_dal, user_dal
 from db.models import User
 
 ReferralLookupSource = Literal["webapp", "telegram_start"]
@@ -32,6 +32,8 @@ class RegistrationInviteCheck:
     enabled: bool
     status: RegistrationInviteStatus
     referrer_user_id: int | None = None
+    partner_id: int | None = None
+    partner_code: str | None = None
 
     @property
     def allowed(self) -> bool:
@@ -46,6 +48,8 @@ class RegistrationInviteCheck:
 class _ReferralLookupResult:
     status: RegistrationInviteStatus
     referrer_user_id: int | None = None
+    partner_id: int | None = None
+    partner_code: str | None = None
 
 
 def registration_invite_only_enabled(settings: Settings) -> bool:
@@ -53,6 +57,13 @@ def registration_invite_only_enabled(settings: Settings) -> bool:
         return bool(settings.registration_settings.invite_only_enabled)
     except AttributeError:
         return bool(settings.REGISTRATION_INVITE_ONLY_ENABLED)
+
+
+def referral_program_enabled(settings: Settings) -> bool:
+    try:
+        return bool(settings.referral_settings.enabled)
+    except AttributeError:
+        return bool(settings.REFERRAL_PROGRAM_ENABLED)
 
 
 def _remnashop_referral_compat_enabled(settings: Settings) -> bool:
@@ -67,6 +78,43 @@ def _legacy_refs_enabled(settings: Settings) -> bool:
         return bool(settings.LEGACY_REFS)
     except AttributeError:
         return True
+
+
+def _partner_referral_redirect_enabled(settings: Settings) -> bool:
+    try:
+        config = settings.partner_settings
+    except (AttributeError, ValueError):
+        return False
+    return bool(
+        getattr(config, "enabled", False) and getattr(config, "referral_program_disabled", False)
+    )
+
+
+async def _resolved_referrer_result(
+    session: AsyncSession,
+    *,
+    settings: Settings,
+    referrer_user_id: int,
+) -> _ReferralLookupResult:
+    if not _partner_referral_redirect_enabled(settings):
+        return _ReferralLookupResult(
+            RegistrationInviteStatus.VALID,
+            referrer_user_id=referrer_user_id,
+        )
+
+    profile = await partner_dal.get_profile_by_user_id(session, referrer_user_id)
+    if profile is None:
+        return _ReferralLookupResult(
+            RegistrationInviteStatus.VALID,
+            referrer_user_id=referrer_user_id,
+        )
+    if profile.status != "active" or profile.user_id is None:
+        return _ReferralLookupResult(RegistrationInviteStatus.INVALID)
+    return _ReferralLookupResult(
+        RegistrationInviteStatus.VALID,
+        partner_id=int(profile.partner_id),
+        partner_code=str(profile.partner_code),
+    )
 
 
 def strip_referral_param_prefix(
@@ -194,6 +242,8 @@ async def _lookup_referrer(
     value = str(raw_referral_param or "").strip()
     if not value:
         return _ReferralLookupResult(RegistrationInviteStatus.MISSING)
+    if not referral_program_enabled(settings):
+        return _ReferralLookupResult(RegistrationInviteStatus.INVALID)
 
     remnashop_compat = _remnashop_referral_compat_enabled(settings)
     legacy_refs_enabled = _legacy_refs_enabled(settings)
@@ -207,7 +257,11 @@ async def _lookup_referrer(
                 current_user_id=current_user_id,
             )
             if referrer_id is not None:
-                return _ReferralLookupResult(RegistrationInviteStatus.VALID, referrer_id)
+                return await _resolved_referrer_result(
+                    session,
+                    settings=settings,
+                    referrer_user_id=referrer_id,
+                )
             self_referral_seen = self_referral_seen or is_self
         candidates = telegram_start_referral_lookup_candidates(
             value,
@@ -235,7 +289,11 @@ async def _lookup_referrer(
                 current_user_id=current_user_id,
             )
             if referrer_id is not None:
-                return _ReferralLookupResult(RegistrationInviteStatus.VALID, referrer_id)
+                return await _resolved_referrer_result(
+                    session,
+                    settings=settings,
+                    referrer_user_id=referrer_id,
+                )
             self_referral_seen = self_referral_seen or is_self
 
         referrer_id, is_self = await _lookup_referrer_by_code(
@@ -245,7 +303,11 @@ async def _lookup_referrer(
             include_legacy=remnashop_compat,
         )
         if referrer_id is not None:
-            return _ReferralLookupResult(RegistrationInviteStatus.VALID, referrer_id)
+            return await _resolved_referrer_result(
+                session,
+                settings=settings,
+                referrer_user_id=referrer_id,
+            )
         self_referral_seen = self_referral_seen or is_self
 
         if source == "webapp" and candidate.isdigit() and legacy_refs_enabled and remnashop_compat:
@@ -255,7 +317,11 @@ async def _lookup_referrer(
                 current_user_id=current_user_id,
             )
             if referrer_id is not None:
-                return _ReferralLookupResult(RegistrationInviteStatus.VALID, referrer_id)
+                return await _resolved_referrer_result(
+                    session,
+                    settings=settings,
+                    referrer_user_id=referrer_id,
+                )
             self_referral_seen = self_referral_seen or is_self
 
     if self_referral_seen:
@@ -289,6 +355,37 @@ async def evaluate_registration_invite(
     current_user_id: int | None,
     source: ReferralLookupSource = "webapp",
 ) -> RegistrationInviteCheck:
+    raw_value = str(raw_referral_param or "").strip()
+    if raw_value == "ambiguous_invite":
+        return RegistrationInviteCheck(
+            enabled=True,
+            status=RegistrationInviteStatus.INVALID,
+        )
+    if raw_value.lower().startswith("p_"):
+        code = raw_value[2:]
+        profile = None
+        try:
+            partner_enabled = bool(settings.partner_settings.enabled)
+        except (AttributeError, ValueError):
+            partner_enabled = False
+        if partner_enabled and re.fullmatch(r"[A-Za-z0-9_-]{8,64}", code):
+            profile = await partner_dal.get_profile_by_code(session, code)
+        partner_id: int | None = None
+        partner_code: str | None = None
+        if not profile or profile.status != "active" or profile.user_id is None:
+            status = RegistrationInviteStatus.INVALID
+        elif current_user_id is not None and int(profile.user_id) == int(current_user_id):
+            status = RegistrationInviteStatus.SELF_REFERRAL
+        else:
+            status = RegistrationInviteStatus.VALID
+            partner_id = int(profile.partner_id)
+            partner_code = str(profile.partner_code)
+        return RegistrationInviteCheck(
+            enabled=registration_invite_only_enabled(settings),
+            status=status,
+            partner_id=partner_id,
+            partner_code=partner_code,
+        )
     lookup = await _lookup_referrer(
         session,
         raw_referral_param,
@@ -300,4 +397,6 @@ async def evaluate_registration_invite(
         enabled=registration_invite_only_enabled(settings),
         status=lookup.status,
         referrer_user_id=lookup.referrer_user_id,
+        partner_id=lookup.partner_id,
+        partner_code=lookup.partner_code,
     )

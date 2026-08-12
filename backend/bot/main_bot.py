@@ -36,6 +36,7 @@ from bot.services.event_reactions import register_core_reactions
 from bot.services.message_log_notifier import configure_message_log_notifier
 from bot.utils.message_queue import init_queue_manager
 from config.settings import Settings
+from config.telegram_proxy import safe_telegram_network_error_detail
 
 logger = logging.getLogger(__name__)
 
@@ -58,13 +59,7 @@ def redact_token(value: str, token: str | None) -> str:
 
 
 def _telegram_network_error_detail(exc: TelegramNetworkError) -> str:
-    root_cause = exc.__cause__ or exc.__context__
-    detail = str(exc)
-    if root_cause:
-        root_detail = f"{type(root_cause).__name__}: {root_cause}"
-        if root_detail not in detail:
-            detail = f"{detail} ({root_detail})"
-    return detail
+    return safe_telegram_network_error_detail(exc)
 
 
 async def _run_telegram_startup_step(

@@ -436,6 +436,7 @@ async def get_top_users_by_referral_revenue(
             and_(
                 Payment.user_id == referred_user.user_id,
                 Payment.status == "succeeded",
+                Payment.funding_source == "external",
             ),
             isouter=True,
         )

@@ -31,10 +31,10 @@ type PromoDraft = Omit<components["schemas"]["PromoCreateBody"], "valid_days"> &
   valid_days: number;
 };
 type PromoPatch = components["schemas"]["PromoUpdateBody"];
-type PromoEffectKind =
-  "bonus_days" | "discount_percent" | "duration_multiplier" | "traffic_multiplier";
 type PromoEffectPayload = {
   bonus_days?: number | null;
+  regular_traffic_gb?: number | null;
+  premium_traffic_gb?: number | null;
   discount_percent?: number | null;
   duration_multiplier?: number | null;
   traffic_multiplier?: number | null;
@@ -46,6 +46,7 @@ type PromosState = {
   promos: Promo[];
   promosTotal: number;
   promosPage: number;
+  promosSort: string;
   promoKind: PromoKind;
   promoOwnedTotal: number;
   promosLoading: boolean;
@@ -59,6 +60,7 @@ type PromosState = {
   promoActivations: PromoActivation[];
   promoActivationsTotal: number;
   promoActivationsPage: number;
+  promoActivationsSort: string;
   promoActivationsLoading: boolean;
 };
 type PromosStoreOptions = {
@@ -82,6 +84,8 @@ export type PromosStore = PromosState & {
   loadActivations: (page?: number) => Promise<void>;
   setActivationsPage: (page: number) => void;
   setPage: (page: number) => void;
+  setSort: (sort: string) => void;
+  setActivationsSort: (sort: string) => void;
   setPromoKind: (kind: PromoKind) => void;
   setCreateOpen: (open: boolean) => void;
   updateDraft: (fields: Partial<PromoDraft>) => void;
@@ -108,6 +112,8 @@ class AdminPromosError extends Error {
 const defaultPromoDraft = (): PromoDraft => ({
   code: "",
   bonus_days: 7,
+  regular_traffic_gb: 0,
+  premium_traffic_gb: 0,
   discount_percent: null,
   duration_multiplier: null,
   traffic_multiplier: null,
@@ -123,6 +129,8 @@ const defaultPromoDraft = (): PromoDraft => ({
 const defaultPromoPatchDraft = (): PromoPatch => ({
   is_active: null,
   bonus_days: null,
+  regular_traffic_gb: null,
+  premium_traffic_gb: null,
   discount_percent: null,
   duration_multiplier: null,
   traffic_multiplier: null,
@@ -140,6 +148,8 @@ function promoToPatchDraft(promo: Promo): PromoPatch {
   return {
     is_active: promo.is_active,
     bonus_days: promo.bonus_days,
+    regular_traffic_gb: promo.regular_traffic_gb,
+    premium_traffic_gb: promo.premium_traffic_gb,
     discount_percent: promo.discount_percent,
     duration_multiplier: promo.duration_multiplier,
     traffic_multiplier: promo.traffic_multiplier,
@@ -159,24 +169,25 @@ function finiteNumber(value: number | null | undefined, fallback: number): numbe
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function effectKindFromPayload(payload: PromoEffectPayload): PromoEffectKind {
-  if (finiteNumber(payload.bonus_days, 0) > 0) return "bonus_days";
-  if (finiteNumber(payload.discount_percent, 0) > 0) return "discount_percent";
-  if (finiteNumber(payload.duration_multiplier, 1) > 1) return "duration_multiplier";
-  if (finiteNumber(payload.traffic_multiplier, 1) > 1) return "traffic_multiplier";
-  return "bonus_days";
-}
-
 function normalizeEffectPayload<T extends PromoEffectPayload>(payload: T): T {
-  const kind = effectKindFromPayload(payload);
+  const bonusDays = Math.max(0, Math.trunc(finiteNumber(payload.bonus_days, 0)));
+  const regularTrafficGb = Math.max(0, finiteNumber(payload.regular_traffic_gb, 0));
+  const premiumTrafficGb = Math.max(0, finiteNumber(payload.premium_traffic_gb, 0));
+  const discountPercent = finiteNumber(payload.discount_percent, 0);
+  const durationMultiplier = finiteNumber(payload.duration_multiplier, 1);
+  const trafficMultiplier = finiteNumber(payload.traffic_multiplier, 1);
   return {
     ...payload,
-    bonus_days:
-      kind === "bonus_days" ? Math.max(0, Math.trunc(finiteNumber(payload.bonus_days, 0))) : 0,
-    discount_percent: kind === "discount_percent" ? payload.discount_percent : null,
-    duration_multiplier: kind === "duration_multiplier" ? payload.duration_multiplier : null,
-    traffic_multiplier: kind === "traffic_multiplier" ? payload.traffic_multiplier : null,
-    bonus_requires_payment: kind === "bonus_days" ? Boolean(payload.bonus_requires_payment) : false,
+    bonus_days: bonusDays,
+    regular_traffic_gb: regularTrafficGb,
+    premium_traffic_gb: premiumTrafficGb,
+    discount_percent: discountPercent > 0 ? discountPercent : null,
+    duration_multiplier: durationMultiplier > 1 ? durationMultiplier : null,
+    traffic_multiplier: trafficMultiplier > 1 ? trafficMultiplier : null,
+    bonus_requires_payment:
+      bonusDays > 0 || regularTrafficGb > 0 || premiumTrafficGb > 0
+        ? Boolean(payload.bonus_requires_payment)
+        : false,
   } as T;
 }
 
@@ -191,6 +202,7 @@ export function createPromosStore({
   const state = $state<Omit<PromosState, "promos" | "promoActivations">>({
     promosTotal: 0,
     promosPage: 0,
+    promosSort: "",
     promoKind: "shared",
     promoOwnedTotal: 0,
     promosLoading: false,
@@ -203,6 +215,7 @@ export function createPromosStore({
     promoActivationsPromo: null,
     promoActivationsTotal: 0,
     promoActivationsPage: 0,
+    promoActivationsSort: "date_desc",
     promoActivationsLoading: false,
   });
   const store = Object.create(state) as PromosStore;
@@ -221,22 +234,30 @@ export function createPromosStore({
 
   const PROMOS_PAGE_SIZE = 25;
   const ACTIVATIONS_PAGE_SIZE = 25;
+  let promosRequestSeq = 0;
+  let activationsRequestSeq = 0;
 
-  function promosQueryKey(page: number, kind: PromoKind): AdminQueryKey {
+  function promosQueryKey(page: number, kind: PromoKind, sort: string): AdminQueryKey {
     return [
       PROMOS_QUERY_KEY[0],
       PROMOS_QUERY_KEY[1],
       {
         page,
         kind,
+        sort,
       },
     ];
   }
 
-  async function requestPromos(page: number, kind: PromoKind): Promise<PromosListResponse> {
+  async function requestPromos(
+    page: number,
+    kind: PromoKind,
+    sort: string
+  ): Promise<PromosListResponse> {
     const params = new URLSearchParams({
       page: String(page),
       page_size: String(PROMOS_PAGE_SIZE),
+      sort,
     });
     // The backend pages each kind on its own, so a tab never mixes the two.
     if (kind !== "all") params.set("kind", kind);
@@ -247,23 +268,26 @@ export function createPromosStore({
     return data;
   }
 
-  function promoActivationsQueryKey(promoId: number, page: number): AdminQueryKey {
+  function promoActivationsQueryKey(promoId: number, page: number, sort: string): AdminQueryKey {
     return [
       PROMO_ACTIVATIONS_QUERY_KEY[0],
       PROMO_ACTIVATIONS_QUERY_KEY[1],
       PROMO_ACTIVATIONS_QUERY_KEY[2],
       promoId,
       page,
+      sort,
     ];
   }
 
   async function requestPromoActivations(
     promoId: number,
-    page: number
+    page: number,
+    sort: string
   ): Promise<PromoActivationsResponse> {
     const params = new URLSearchParams({
       page: String(page),
       page_size: String(ACTIVATIONS_PAGE_SIZE),
+      sort,
     });
     const data = await api(buildAdminPromoActivationsPath(promoId, params));
     if (!isOkResponse(data)) {
@@ -278,17 +302,20 @@ export function createPromosStore({
   }
 
   async function loadPromos({ refresh = false }: { refresh?: boolean } = {}): Promise<void> {
+    const requestSeq = ++promosRequestSeq;
     state.promosLoading = true;
     const currentPage = state.promosPage;
     const currentKind = state.promoKind;
+    const currentSort = state.promosSort;
     try {
       const data = await fetchAdminQuery({
         queryClient,
-        queryKey: promosQueryKey(currentPage, currentKind),
-        queryFn: () => requestPromos(currentPage, currentKind),
+        queryKey: promosQueryKey(currentPage, currentKind, currentSort),
+        queryFn: () => requestPromos(currentPage, currentKind, currentSort),
         refresh,
       });
       const payload = unwrap(data);
+      if (requestSeq !== promosRequestSeq) return;
       promos = payload.promos || [];
       state.promosTotal = payload.total || 0;
       state.promoOwnedTotal = payload.owned_total || 0;
@@ -300,13 +327,14 @@ export function createPromosStore({
         void loadPromos({ refresh });
       }
     } catch (error) {
+      if (requestSeq !== promosRequestSeq) return;
       if (error instanceof AdminPromosError) {
         onToast(adminErrorMessage(error.payload, at, "Error"));
       } else {
         onToast(error instanceof Error ? error.message : String(error || "Error"));
       }
     } finally {
-      state.promosLoading = false;
+      if (requestSeq === promosRequestSeq) state.promosLoading = false;
     }
   }
 
@@ -416,6 +444,7 @@ export function createPromosStore({
   }
 
   function closeActivations(): void {
+    activationsRequestSeq += 1;
     state.promoActivationsOpen = false;
     state.promoActivationsPromo = null;
     promoActivations = [];
@@ -426,25 +455,29 @@ export function createPromosStore({
   async function loadActivations(page = state.promoActivationsPage): Promise<void> {
     const promo = state.promoActivationsPromo;
     if (!promo) return;
+    const requestSeq = ++activationsRequestSeq;
     state.promoActivationsLoading = true;
     state.promoActivationsPage = page;
     try {
       const data = await fetchAdminQuery({
         queryClient,
-        queryKey: promoActivationsQueryKey(promo.id, page),
-        queryFn: () => requestPromoActivations(promo.id, page),
+        queryKey: promoActivationsQueryKey(promo.id, page, state.promoActivationsSort),
+        queryFn: () => requestPromoActivations(promo.id, page, state.promoActivationsSort),
       });
       const payload = unwrap(data);
+      if (requestSeq !== activationsRequestSeq || state.promoActivationsPromo?.id !== promo.id)
+        return;
       promoActivations = payload.activations || [];
       state.promoActivationsTotal = payload.total || 0;
     } catch (error) {
+      if (requestSeq !== activationsRequestSeq) return;
       if (error instanceof AdminPromosError) {
         onToast(adminErrorMessage(error.payload, at, "Error"));
       } else {
         onToast(error instanceof Error ? error.message : String(error || "Error"));
       }
     } finally {
-      state.promoActivationsLoading = false;
+      if (requestSeq === activationsRequestSeq) state.promoActivationsLoading = false;
     }
   }
 
@@ -455,6 +488,17 @@ export function createPromosStore({
   function setPage(page: number): void {
     state.promosPage = page;
     void loadPromos();
+  }
+
+  function setSort(sort: string): void {
+    state.promosSort = sort;
+    state.promosPage = 0;
+    void loadPromos();
+  }
+
+  function setActivationsSort(sort: string): void {
+    state.promoActivationsSort = sort;
+    void loadActivations(0);
   }
 
   function setPromoKind(kind: PromoKind): void {
@@ -492,6 +536,8 @@ export function createPromosStore({
     loadActivations,
     setActivationsPage,
     setPage,
+    setSort,
+    setActivationsSort,
     setPromoKind,
     setCreateOpen,
     updateDraft,

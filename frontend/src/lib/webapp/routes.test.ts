@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { adminSectionFromPath, normalizeAdminSection } from "./routes";
+import {
+  adminPartnersDeepLinkFromPath,
+  adminSectionFromPath,
+  normalizeAdminSection,
+} from "./routes";
 
 describe("normalizeAdminSection", () => {
   it("keeps known core sections", () => {
@@ -31,5 +35,40 @@ describe("adminSectionFromPath", () => {
   it("normalizes unknown malformed segments and the bare admin path", () => {
     expect(adminSectionFromPath("/admin")).toBe("stats");
     expect(adminSectionFromPath("/admin/")).toBe("stats");
+  });
+});
+
+describe("adminPartnersDeepLinkFromPath", () => {
+  it("preserves partner-program list routes", () => {
+    expect(adminPartnersDeepLinkFromPath("/admin/partners/partners")).toBe(
+      "/admin/partners/partners"
+    );
+    expect(
+      adminPartnersDeepLinkFromPath("/demo/runtime/admin/partners/applications/", "/demo/runtime")
+    ).toBe("/admin/partners/applications");
+    expect(adminPartnersDeepLinkFromPath("/admin/partners/withdrawals")).toBe(
+      "/admin/partners/withdrawals"
+    );
+  });
+
+  it("preserves supported partner-program detail routes", () => {
+    expect(adminPartnersDeepLinkFromPath("/admin/partners/partner/PT-104")).toBe(
+      "/admin/partners/partner/PT-104"
+    );
+    expect(
+      adminPartnersDeepLinkFromPath(
+        "/demo/runtime/admin/partners/applications/APP-1042",
+        "/demo/runtime"
+      )
+    ).toBe("/admin/partners/applications/APP-1042");
+    expect(adminPartnersDeepLinkFromPath("/admin/partners/withdrawals/WD-502/")).toBe(
+      "/admin/partners/withdrawals/WD-502"
+    );
+  });
+
+  it("rejects the base route, unknown detail kinds and nested identifiers", () => {
+    expect(adminPartnersDeepLinkFromPath("/admin/partners")).toBe("");
+    expect(adminPartnersDeepLinkFromPath("/admin/partners/unknown/PT-104")).toBe("");
+    expect(adminPartnersDeepLinkFromPath("/admin/partners/partner/PT-104/more")).toBe("");
   });
 });

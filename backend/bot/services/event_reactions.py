@@ -17,6 +17,7 @@ from bot.payment_providers.shared.common import (
 )
 from bot.plugins import PluginContext
 from bot.services.email_templates import render_account_merged
+from bot.services.event_reactions_partner import PartnerEventReactionsMixin
 from bot.services.notification_service import NotificationService
 from bot.services.user_email_notifications import send_user_notification_email
 from db.dal import payment_dal, payment_reconciliation_dal, subscription_dal, user_dal
@@ -383,7 +384,7 @@ def _format_failed_payment_details(
     return "\n".join(details)
 
 
-class CoreEventReactions:
+class CoreEventReactions(PartnerEventReactionsMixin):
     def __init__(self, ctx: PluginContext) -> None:
         self.ctx = ctx
 
@@ -543,6 +544,8 @@ class CoreEventReactions:
                 user_id=int(user_id),
                 promo_code=str(payload.get("code") or ""),
                 bonus_days=int(payload.get("bonus_days") or 0),
+                regular_traffic_gb=float(payload.get("regular_traffic_gb") or 0),
+                premium_traffic_gb=float(payload.get("premium_traffic_gb") or 0),
                 username=getattr(user, "username", None),
                 email=getattr(user, "email", None),
             )
@@ -602,6 +605,20 @@ class CoreEventReactions:
             return
         user = await self._load_user(user_id)
         payment = await self._load_payment(payload.get("payment_db_id"))
+        if self.ctx.session_factory is not None:
+            try:
+                async with self.ctx.session_factory() as session:
+                    await payment_reconciliation_dal.mark_user_failures_superseded_by_success(
+                        session,
+                        user_id=int(user_id),
+                        succeeded_at=_payment_status_timestamp(payment) or datetime.now(UTC),
+                    )
+                    await session.commit()
+            except Exception:
+                logger.exception(
+                    "Failed to suppress stale payment failures after success for user %s.",
+                    user_id,
+                )
         service = self._notification_service()
         if service is not None:
             try:
@@ -665,6 +682,10 @@ class CoreEventReactions:
                 "a newer successful payment already superseded it.",
                 user_id,
                 getattr(payment, "payment_id", None),
+            )
+            await _mark_payment_failure_notification_sent(
+                self.ctx,
+                payload.get("payment_db_id"),
             )
             return
         if not await _claim_payment_failure_notification(self.ctx, payload.get("payment_db_id")):
@@ -864,6 +885,11 @@ def register_core_reactions(ctx: PluginContext) -> None:
         (events.PAYMENT_CANCELED, reactions.on_payment_canceled),
         (events.REFERRAL_BONUS_GRANTED, reactions.on_referral_bonus_granted),
         (events.ACCOUNT_MERGED, reactions.on_account_merged),
+        (events.PARTNER_APPLICATION_SUBMITTED, reactions.on_partner_application_submitted),
+        (events.PARTNER_APPLICATION_DECIDED, reactions.on_partner_application_decided),
+        (events.PARTNER_STATUS_CHANGED, reactions.on_partner_status_changed),
+        (events.PARTNER_WITHDRAWAL_REQUESTED, reactions.on_partner_withdrawal_requested),
+        (events.PARTNER_WITHDRAWAL_STATUS_CHANGED, reactions.on_partner_withdrawal_status_changed),
     ]
     for event_name, handler in subscriptions:
         events.subscribe(event_name, handler)

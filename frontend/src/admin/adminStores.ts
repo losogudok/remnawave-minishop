@@ -30,9 +30,9 @@ import {
   setUsersStore,
 } from "../lib/admin/context";
 import type { TariffsCatalog } from "../lib/admin/stores/tariffsStore";
+import type { ApiClient } from "../lib/webapp/publicApi";
 
-export type AdminApi = Parameters<typeof createAdsStore>[0]["api"] &
-  Parameters<typeof createThemesStore>[0]["api"];
+export type AdminApi = ApiClient["api"];
 type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
 
 type AdminStoresOptions = {
@@ -61,27 +61,64 @@ export function createAdminStores({
       },
     },
   });
-  const settingsStore = createSettingsStore({ api, onToast, at });
-  const adsStore = createAdsStore({ api, onToast, at });
-  const backupsStore = createBackupsStore({ api, onToast, at });
-  const broadcastStore = createBroadcastStore({ api, onToast, at });
-  const healthStore = createHealthStore({ api, at, queryClient: adminQueryClient });
-  const logsStore = createLogsStore({ api, onToast, at, queryClient: adminQueryClient });
+  // Keep each store's narrower endpoint contract at this composition boundary.
+  // Expanding every route into one contextual union exceeds TypeScript's
+  // representable-union limit as the generated OpenAPI surface grows.
+  const settingsStore = createSettingsStore({ api: api as never, onToast, at });
+  const adsStore = createAdsStore({ api: api as never, onToast, at });
+  const backupsStore = createBackupsStore({ api: api as never, onToast, at });
+  const broadcastStore = createBroadcastStore({ api: api as never, onToast, at });
+  const healthStore = createHealthStore({
+    api: api as never,
+    at,
+    queryClient: adminQueryClient,
+  });
+  const logsStore = createLogsStore({
+    api: api as never,
+    onToast,
+    at,
+    queryClient: adminQueryClient,
+  });
   const paymentsStore = createPaymentsStore({
-    api,
+    api: api as never,
     onToast,
     at,
     routePrefix,
     queryClient: adminQueryClient,
   });
-  const promosStore = createPromosStore({ api, onToast, at, queryClient: adminQueryClient });
-  const statsStore = createStatsStore({ api, onToast, at, queryClient: adminQueryClient });
-  const supportStore = createAdminSupportStore({ api, onToast, at, routePrefix });
-  const tariffsStore = createTariffsStore({ api, onTariffsSaved, flash: onToast, at });
-  const themesStore = createThemesStore({ api, onThemesSaved, flash: onToast, at });
-  const translationsStore = createTranslationsStore({ api, onToast, at });
+  const promosStore = createPromosStore({
+    api: api as never,
+    onToast,
+    at,
+    queryClient: adminQueryClient,
+  });
+  const statsStore = createStatsStore({
+    api: api as never,
+    onToast,
+    at,
+    queryClient: adminQueryClient,
+  });
+  const supportStore = createAdminSupportStore({
+    api: api as never,
+    onToast,
+    at,
+    routePrefix,
+  });
+  const tariffsStore = createTariffsStore({
+    api: api as never,
+    onTariffsSaved,
+    flash: onToast,
+    at,
+  });
+  const themesStore = createThemesStore({
+    api: api as never,
+    onThemesSaved,
+    flash: onToast,
+    at,
+  });
+  const translationsStore = createTranslationsStore({ api: api as never, onToast, at });
   const usersStore = createUsersStore({
-    api,
+    api: api as never,
     onToast,
     at,
     routePrefix,

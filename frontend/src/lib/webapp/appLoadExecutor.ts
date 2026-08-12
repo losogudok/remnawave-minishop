@@ -134,6 +134,7 @@ export function createAppLoadExecutor({
     });
     const loadedRoute = resolveLoadedWebappRoute({
       fallbackAdminSection: initialAdminSectionFromLocation(),
+      partnerProgramPreview: currentSearchParams().has("partner_scenario"),
       payload,
       preservedAdminSection: currentRoute.preservedAdminSection,
       routeSection: currentRoute.routeSection,

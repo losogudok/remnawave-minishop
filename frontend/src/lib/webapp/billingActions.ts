@@ -37,6 +37,7 @@ type BillingApi = ApiClient["api"];
 type BillingPlan = WebappBillingPlan;
 type BillingAction = WebappBillingAction;
 type BillingTarget = WebappBillingTarget;
+export type PartnerBalancePaymentOptions = { usePartnerBalance?: boolean };
 
 export type BillingActions = {
   fetchTopupOptions(kind: string): Promise<TariffTopupOptionsResponse>;
@@ -55,24 +56,31 @@ export type BillingActions = {
   planPaymentBody(
     plan: BillingPlan,
     method: string,
-    options?: { renewHwidDevices?: boolean; promoCode?: string | null }
+    options?: {
+      renewHwidDevices?: boolean;
+      promoCode?: string | null;
+      usePartnerBalance?: boolean;
+    }
   ): PostPayload<"/api/payments">;
   topupPaymentBody(
     plan: BillingPlan,
     method: string,
     fallbackTariffKey?: string | null,
-    promoCode?: string | null
+    promoCode?: string | null,
+    usePartnerBalance?: boolean
   ): PostPayload<"/api/payments">;
   deviceTopupPaymentBody(
     plan: BillingPlan,
     method: string,
     fallbackTariffKey?: string | null,
-    promoCode?: string | null
+    promoCode?: string | null,
+    usePartnerBalance?: boolean
   ): PostPayload<"/api/payments">;
   changePaymentBody(
     action: BillingAction,
     target: BillingTarget,
-    method: string
+    method: string,
+    usePartnerBalance?: boolean
   ): PostPayload<"/api/tariffs/change-payment">;
 };
 
@@ -144,13 +152,18 @@ export function createBillingActions({ api }: { api: BillingApi }): BillingActio
   function planPaymentBody(
     plan: BillingPlan,
     method: string,
-    options: { renewHwidDevices?: boolean; promoCode?: string | null } = {}
+    options: {
+      renewHwidDevices?: boolean;
+      promoCode?: string | null;
+      usePartnerBalance?: boolean;
+    } = {}
   ): PostPayload<"/api/payments"> {
     const body: WebappRecord = {
       months: plan.months,
       traffic_gb: plan.traffic_gb,
       device_count: plan.device_count,
       renew_hwid_devices: Boolean(options.renewHwidDevices),
+      use_partner_balance: Boolean(options.usePartnerBalance),
       method,
     };
     setOptionalString(body, "tariff_key", plan.tariff_key);
@@ -163,12 +176,14 @@ export function createBillingActions({ api }: { api: BillingApi }): BillingActio
     plan: BillingPlan,
     method: string,
     fallbackTariffKey?: string | null,
-    promoCode?: string | null
+    promoCode?: string | null,
+    usePartnerBalance?: boolean
   ): PostPayload<"/api/payments"> {
     const body: WebappRecord = {
       months: plan.months,
       traffic_gb: plan.traffic_gb,
       sale_mode: String(plan.sale_mode || "topup"),
+      use_partner_balance: Boolean(usePartnerBalance),
       method,
     };
     setOptionalString(body, "tariff_key", plan.tariff_key || fallbackTariffKey);
@@ -180,12 +195,14 @@ export function createBillingActions({ api }: { api: BillingApi }): BillingActio
     plan: BillingPlan,
     method: string,
     fallbackTariffKey?: string | null,
-    promoCode?: string | null
+    promoCode?: string | null,
+    usePartnerBalance?: boolean
   ): PostPayload<"/api/payments"> {
     const body: WebappRecord = {
       months: plan.device_count || plan.months,
       device_count: plan.device_count || plan.months,
       sale_mode: String(plan.sale_mode || "hwid_devices"),
+      use_partner_balance: Boolean(usePartnerBalance),
       method,
     };
     setOptionalString(body, "tariff_key", plan.tariff_key || fallbackTariffKey);
@@ -196,7 +213,8 @@ export function createBillingActions({ api }: { api: BillingApi }): BillingActio
   function changePaymentBody(
     action: BillingAction,
     target: BillingTarget,
-    method: string
+    method: string,
+    usePartnerBalance?: boolean
   ): PostPayload<"/api/tariffs/change-payment"> {
     const withTarget = (body: WebappRecord): PostPayload<"/api/tariffs/change-payment"> => {
       setOptionalString(body, "tariff_key", target.tariff_key);
@@ -208,16 +226,18 @@ export function createBillingActions({ api }: { api: BillingApi }): BillingActio
         traffic_gb: action.traffic_gb,
         months: action.traffic_gb,
         sale_mode: "topup",
+        use_partner_balance: Boolean(usePartnerBalance),
         method,
       });
     }
     if (action.mode === "buy_period") {
       return withTarget({
         months: action.months,
+        use_partner_balance: Boolean(usePartnerBalance),
         method,
       });
     }
-    return withTarget({ method });
+    return withTarget({ method, use_partner_balance: Boolean(usePartnerBalance) });
   }
 
   return {

@@ -5,7 +5,11 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.utils.traffic_reset import traffic_accounting_period_start, traffic_period_starts_match
+from bot.utils.traffic_reset import (
+    panel_traffic_limit_strategy,
+    traffic_accounting_period_start,
+    traffic_period_starts_match,
+)
 from config.tariffs_config import (
     Tariff,
     TariffsConfig,
@@ -180,6 +184,20 @@ class TariffMixin(SubscriptionServiceMixinContract):
             return 0
         return int(tariff.premium_monthly_bytes + max(0, topup_balance_bytes))
 
+    def _premium_access_should_be_limited(
+        self,
+        tariff: Tariff | None,
+        *,
+        premium_limit_bytes: Any,
+        premium_used_bytes: Any,
+        premium_unlimited_override: bool = False,
+    ) -> bool:
+        if not tariff or premium_unlimited_override or not tariff.has_premium_squad_limit():
+            return False
+        limit = self._nonnegative_bytes(premium_limit_bytes)
+        used = self._nonnegative_bytes(premium_used_bytes)
+        return used >= limit
+
     def _period_tariff_traffic_strategy(self, tariff: Tariff | None = None) -> str:
         configured_strategy = getattr(tariff, "traffic_limit_strategy", None)
         return normalize_traffic_limit_strategy(
@@ -197,7 +215,26 @@ class TariffMixin(SubscriptionServiceMixinContract):
             logger.debug("Unable to resolve tariff %r for traffic strategy", tariff_key)
             return None
 
-    def _premium_traffic_strategy_for_subscription(self, sub: Any | None) -> str:
+    def _premium_traffic_strategy_inherits_regular(
+        self,
+        sub: Any | None,
+        *,
+        tariff: Tariff | None = None,
+    ) -> bool:
+        provider = str(getattr(sub, "provider", "") or "").strip().lower()
+        status = str(getattr(sub, "status_from_panel", "") or "").strip().upper()
+        if provider == "trial" or status == "TRIAL":
+            return False
+        effective_tariff = tariff or self._tariff_for_subscription(sub)
+        return getattr(effective_tariff, "premium_traffic_limit_strategy", None) is None
+
+    def _premium_traffic_strategy_for_subscription(
+        self,
+        sub: Any | None,
+        *,
+        panel_user_data: dict[str, Any] | None = None,
+        tariff: Tariff | None = None,
+    ) -> str:
         provider = str(getattr(sub, "provider", "") or "").strip().lower()
         status = str(getattr(sub, "status_from_panel", "") or "").strip().upper()
         if provider == "trial" or status == "TRIAL":
@@ -205,7 +242,16 @@ class TariffMixin(SubscriptionServiceMixinContract):
                 getattr(self.settings, "TRIAL_TRAFFIC_STRATEGY", "NO_RESET"),
                 default="NO_RESET",
             )
-        return self._period_tariff_traffic_strategy(self._tariff_for_subscription(sub))
+
+        effective_tariff = tariff or self._tariff_for_subscription(sub)
+        configured_strategy = getattr(effective_tariff, "premium_traffic_limit_strategy", None)
+        if configured_strategy is not None:
+            return normalize_traffic_limit_strategy(configured_strategy, default="MONTH")
+        if str(getattr(effective_tariff, "billing_model", "") or "").lower() == "traffic":
+            return "NO_RESET"
+
+        regular_strategy = self._period_tariff_traffic_strategy(effective_tariff)
+        return panel_traffic_limit_strategy(panel_user_data, regular_strategy)
 
     def _premium_accounting_period_start(
         self,
@@ -213,13 +259,40 @@ class TariffMixin(SubscriptionServiceMixinContract):
         now: datetime,
         *,
         panel_user_data: dict[str, Any] | None = None,
+        tariff: Tariff | None = None,
     ) -> datetime:
+        inherit_regular = self._premium_traffic_strategy_inherits_regular(sub, tariff=tariff)
+        strategy = self._premium_traffic_strategy_for_subscription(
+            sub,
+            panel_user_data=panel_user_data if inherit_regular else None,
+            tariff=tariff,
+        )
+        current = self._aware_utc(now) or datetime.now(UTC)
+        subscription_start = self._aware_utc(getattr(sub, "start_date", None))
+        previous_period_start = self._aware_utc(getattr(sub, "premium_period_start_at", None))
+        if not inherit_regular and strategy in {"DAY", "WEEK", "MONTH"}:
+            # Explicit calendar strategies must move immediately to their
+            # canonical boundary, even when an older inherited strategy left a
+            # different anchor on the subscription.
+            previous_period_start = None
+        elif (
+            not inherit_regular
+            and strategy == "MONTH_ROLLING"
+            and subscription_start is not None
+            and subscription_start <= current
+        ):
+            # A configured premium rolling month is defined by the immutable
+            # subscription start. ``premium_period_start_at`` is only the
+            # current accounting window and may have been written under an
+            # older strategy. Keep it solely as a compatibility fallback for
+            # legacy subscriptions without a usable start date.
+            previous_period_start = None
         return traffic_accounting_period_start(
-            self._premium_traffic_strategy_for_subscription(sub),
-            now,
-            subscription_start_at=self._aware_utc(getattr(sub, "start_date", None)),
-            previous_period_start_at=self._aware_utc(getattr(sub, "premium_period_start_at", None)),
-            panel_user_data=panel_user_data,
+            strategy,
+            current,
+            subscription_start_at=subscription_start,
+            previous_period_start_at=previous_period_start,
+            panel_user_data=panel_user_data if inherit_regular else None,
         )
 
     def _same_premium_accounting_period(

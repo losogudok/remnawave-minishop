@@ -8,6 +8,8 @@
   import type { BillingStore } from "../lib/webapp/stores/billingStore.js";
   import type { DevicesStore } from "../lib/webapp/stores/devicesStore.js";
   import type { SupportStore } from "../lib/webapp/stores/supportStore.js";
+  import type { ApiClient } from "../lib/webapp/publicApi.js";
+  import type { WebappDataClient } from "../lib/webapp/dataClient.js";
   import AppLaunchScreen from "./screens/AppLaunchScreen.svelte";
   import AuthenticatedDialogs from "./AuthenticatedDialogs.svelte";
   import { lazyScreen } from "$lib/webapp/lazyScreen.svelte.js";
@@ -30,6 +32,8 @@
   type SubmitEmailOnEnterAction = (event: KeyboardEvent) => void;
 
   type AppModeStores = {
+    api: ApiClient["api"];
+    dataClient: WebappDataClient;
     accountStore: AccountStore;
     actionsStore: ActionsStore;
     authStore: AuthStore;
@@ -176,6 +180,7 @@
   const profileEmail = $derived(accountView.profileEmail);
   const profileTelegramId = $derived(accountView.profileTelegramId);
   const serverStatusUrl = $derived(accountView.serverStatusUrl);
+  const showTelegramLinkedStatus = $derived(accountView.showTelegramLinkedStatus);
   const supportUrl = $derived(accountView.supportUrl);
   const telegramNotificationsNeedPrompt = $derived(accountView.telegramNotificationsNeedPrompt);
   const telegramNotificationsStartLink = $derived(accountView.telegramNotificationsStartLink);
@@ -195,10 +200,12 @@
   const referral = $derived(appDataView.referral);
   const referralBonusDetails = $derived(appDataView.referralBonusDetails);
   const referralOneBonusPerReferee = $derived(appDataView.referralOneBonusPerReferee);
+  const referralProgramEnabled = $derived(appDataView.referralProgramEnabled);
   const referralWelcomeBonusDays = $derived(appDataView.referralWelcomeBonusDays);
   const subscription = $derived(appDataView.subscription);
   const subscriptionPurchaseDescription = $derived(appDataView.subscriptionPurchaseDescription);
   const supportEnabled = $derived(appDataView.supportEnabled);
+  const partnerEnabled = $derived(appDataView.partnerProgramEnabled);
 
   const canChangeTariff = $derived(billingView.canChangeTariff);
   const currentTariffName = $derived(billingView.currentTariffName);
@@ -246,6 +253,7 @@
   const goDevices = $derived(appActions.goDevices);
   const goHome = $derived(appActions.goHome);
   const goInvite = $derived(appActions.goInvite);
+  const goPartner = $derived(appActions.goPartner);
   const goSettings = $derived(appActions.goSettings);
   const goSupport = $derived(appActions.goSupport);
   const linkTelegramAndActivateTrial = $derived(appActions.linkTelegramAndActivateTrial);
@@ -380,6 +388,7 @@
     {/if}
   {:else}
     <AuthenticatedScreens
+      api={stores.api}
       {accountStore}
       {activateTrial}
       {activeTab}
@@ -410,6 +419,8 @@
       {goDevices}
       {goHome}
       {goInvite}
+      {goPartner}
+      {partnerEnabled}
       {goSettings}
       {goSupport}
       {hasActiveTariffSubscription}
@@ -456,11 +467,13 @@
       {referral}
       {referralBonusDetails}
       {referralOneBonusPerReferee}
+      {referralProgramEnabled}
       {referralWelcomeBonusDays}
       {regularTrafficTopupBarClickable}
       {regularTrafficTopupUnlocked}
       {screen}
       {serverStatusUrl}
+      {showTelegramLinkedStatus}
       {setLanguageMenuOpen}
       {setPromoCode}
       {subscription}
@@ -489,6 +502,7 @@
     />
 
     <AuthenticatedDialogs
+      api={stores.api}
       {accountStore}
       {actionsStore}
       {activationSuccessDialogOpen}

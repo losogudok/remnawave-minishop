@@ -285,6 +285,10 @@
             "default": false,
             "title": "Confirm"
           },
+          "confirmation": {
+            "default": "",
+            "title": "Confirmation"
+          },
           "restore_compose": {
             "default": false,
             "title": "Restore Compose"
@@ -354,9 +358,28 @@
             "title": "Database Migrations Applied",
             "type": "array"
           },
+          "database_pre_restore_archive": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Database Pre Restore Archive"
+          },
           "database_restored": {
             "title": "Database Restored",
             "type": "boolean"
+          },
+          "database_sequences_normalized": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Database Sequences Normalized",
+            "type": "array"
           },
           "started_at": {
             "title": "Started At",
@@ -755,6 +778,17 @@
             "format": "date-time",
             "title": "Checked At",
             "type": "string"
+          },
+          "panel_compatibility": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdminPanelCompatibilityOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -814,6 +848,60 @@
           "admin_ids"
         ],
         "title": "AdminMeOut",
+        "type": "object"
+      },
+      "AdminPanelCompatibilityOut": {
+        "properties": {
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "certified_versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Certified Versions",
+            "type": "array"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "string"
+          },
+          "observed_capabilities": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Observed Capabilities",
+            "type": "object"
+          },
+          "support_status": {
+            "title": "Support Status",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
+          }
+        },
+        "required": [
+          "generation",
+          "support_status",
+          "certified_versions",
+          "capabilities",
+          "observed_capabilities"
+        ],
+        "title": "AdminPanelCompatibilityOut",
         "type": "object"
       },
       "AdminPanelExternalSquadOverrideOut": {
@@ -1079,6 +1167,782 @@
           "subscriptions_synced"
         ],
         "title": "AdminPanelSyncOut",
+        "type": "object"
+      },
+      "AdminPartnerApplicationDecisionIn": {
+        "additionalProperties": false,
+        "properties": {
+          "commission_bps": {
+            "anyOf": [
+              {
+                "maximum": 10000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Commission Bps"
+          },
+          "decision_message": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decision Message"
+          },
+          "welcome_message": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Welcome Message"
+          }
+        },
+        "title": "AdminPartnerApplicationDecisionIn",
+        "type": "object"
+      },
+      "AdminPartnerApplicationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "application_id": {
+            "title": "Application Id",
+            "type": "integer"
+          },
+          "approved_commission_bps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Approved Commission Bps"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Avatar Url"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decided At"
+          },
+          "decision_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decision Message"
+          },
+          "display_label": {
+            "title": "Display Label",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "reapply_allowed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reapply Allowed At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Id"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Username"
+          },
+          "welcome_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Welcome Message"
+          }
+        },
+        "required": [
+          "application_id",
+          "display_label",
+          "status",
+          "submitted_at"
+        ],
+        "title": "AdminPartnerApplicationOut",
+        "type": "object"
+      },
+      "AdminPartnerBalanceAdjustmentIn": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_negative": {
+            "default": false,
+            "title": "Allow Negative",
+            "type": "boolean"
+          },
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "maxLength": 16,
+            "minLength": 2,
+            "title": "Currency",
+            "type": "string"
+          },
+          "currency_scale": {
+            "maximum": 8,
+            "minimum": 0,
+            "title": "Currency Scale",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "internal_reference": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Internal Reference"
+          },
+          "mode": {
+            "enum": [
+              "add",
+              "subtract",
+              "set"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "currency",
+          "currency_scale",
+          "mode",
+          "amount_minor",
+          "idempotency_key"
+        ],
+        "title": "AdminPartnerBalanceAdjustmentIn",
+        "type": "object"
+      },
+      "AdminPartnerBulkReferralImportPreviewOut": {
+        "additionalProperties": false,
+        "properties": {
+          "already_this_partner": {
+            "title": "Already This Partner",
+            "type": "integer"
+          },
+          "found": {
+            "title": "Found",
+            "type": "integer"
+          },
+          "historical_payments": {
+            "title": "Historical Payments",
+            "type": "integer"
+          },
+          "importable": {
+            "title": "Importable",
+            "type": "integer"
+          },
+          "other_partner": {
+            "title": "Other Partner",
+            "type": "integer"
+          },
+          "partners": {
+            "title": "Partners",
+            "type": "integer"
+          },
+          "self_conflict": {
+            "title": "Self Conflict",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "found",
+          "importable",
+          "already_this_partner",
+          "other_partner",
+          "self_conflict",
+          "historical_payments",
+          "partners"
+        ],
+        "title": "AdminPartnerBulkReferralImportPreviewOut",
+        "type": "object"
+      },
+      "AdminPartnerBulkReferralImportResultOut": {
+        "additionalProperties": false,
+        "properties": {
+          "conflicts": {
+            "title": "Conflicts",
+            "type": "integer"
+          },
+          "existing": {
+            "title": "Existing",
+            "type": "integer"
+          },
+          "imported": {
+            "title": "Imported",
+            "type": "integer"
+          },
+          "partners_updated": {
+            "title": "Partners Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "imported",
+          "existing",
+          "conflicts",
+          "partners_updated"
+        ],
+        "title": "AdminPartnerBulkReferralImportResultOut",
+        "type": "object"
+      },
+      "AdminPartnerCreateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "commission_bps": {
+            "anyOf": [
+              {
+                "maximum": 10000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Commission Bps"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          },
+          "welcome_message": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Welcome Message"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "AdminPartnerCreateIn",
+        "type": "object"
+      },
+      "AdminPartnerRateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "commission_bps": {
+            "maximum": 10000,
+            "minimum": 0,
+            "title": "Commission Bps",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "commission_bps",
+          "reason"
+        ],
+        "title": "AdminPartnerRateIn",
+        "type": "object"
+      },
+      "AdminPartnerReferralImportIn": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm_without_retroactive_commission": {
+            "title": "Confirm Without Retroactive Commission",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "confirm_without_retroactive_commission"
+        ],
+        "title": "AdminPartnerReferralImportIn",
+        "type": "object"
+      },
+      "AdminPartnerReferralImportPreviewOut": {
+        "additionalProperties": false,
+        "properties": {
+          "already_this_partner": {
+            "title": "Already This Partner",
+            "type": "integer"
+          },
+          "found": {
+            "title": "Found",
+            "type": "integer"
+          },
+          "historical_payments": {
+            "title": "Historical Payments",
+            "type": "integer"
+          },
+          "importable": {
+            "title": "Importable",
+            "type": "integer"
+          },
+          "other_partner": {
+            "title": "Other Partner",
+            "type": "integer"
+          },
+          "self_conflict": {
+            "title": "Self Conflict",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "found",
+          "importable",
+          "already_this_partner",
+          "other_partner",
+          "self_conflict",
+          "historical_payments"
+        ],
+        "title": "AdminPartnerReferralImportPreviewOut",
+        "type": "object"
+      },
+      "AdminPartnerReferralImportResultOut": {
+        "additionalProperties": false,
+        "properties": {
+          "conflicts": {
+            "title": "Conflicts",
+            "type": "integer"
+          },
+          "existing": {
+            "title": "Existing",
+            "type": "integer"
+          },
+          "imported": {
+            "title": "Imported",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "imported",
+          "existing",
+          "conflicts"
+        ],
+        "title": "AdminPartnerReferralImportResultOut",
+        "type": "object"
+      },
+      "AdminPartnerRequisitesOut": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "title": "AdminPartnerRequisitesOut",
+        "type": "object"
+      },
+      "AdminPartnerStatusIn": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
+          }
+        },
+        "title": "AdminPartnerStatusIn",
+        "type": "object"
+      },
+      "AdminPartnerWithdrawalOut": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Avatar Url"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "currency_scale": {
+            "title": "Currency Scale",
+            "type": "integer"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decided At"
+          },
+          "display_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Display Label"
+          },
+          "external_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "External Reference"
+          },
+          "masked_requisites": {
+            "title": "Masked Requisites",
+            "type": "string"
+          },
+          "method_id": {
+            "title": "Method Id",
+            "type": "string"
+          },
+          "method_snapshot": {
+            "additionalProperties": true,
+            "title": "Method Snapshot",
+            "type": "object"
+          },
+          "method_type": {
+            "title": "Method Type",
+            "type": "string"
+          },
+          "network": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Network"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Paid At"
+          },
+          "partner_id": {
+            "title": "Partner Id",
+            "type": "integer"
+          },
+          "processing_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Processing At"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "settlement_amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Settlement Amount"
+          },
+          "settlement_asset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Settlement Asset"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status Message"
+          },
+          "status_version": {
+            "title": "Status Version",
+            "type": "integer"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Id"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Username"
+          },
+          "withdrawal_id": {
+            "title": "Withdrawal Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "withdrawal_id",
+          "partner_id",
+          "method_id",
+          "method_type",
+          "method_snapshot",
+          "amount_minor",
+          "currency",
+          "currency_scale",
+          "status",
+          "status_version",
+          "masked_requisites",
+          "requested_at"
+        ],
+        "title": "AdminPartnerWithdrawalOut",
+        "type": "object"
+      },
+      "AdminPartnerWithdrawalTransitionIn": {
+        "additionalProperties": false,
+        "properties": {
+          "external_reference": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "External Reference"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "settlement_amount": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Settlement Amount"
+          },
+          "status_version": {
+            "minimum": 1,
+            "title": "Status Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status_version"
+        ],
+        "title": "AdminPartnerWithdrawalTransitionIn",
         "type": "object"
       },
       "AdminPaymentsListOut": {
@@ -1529,6 +2393,10 @@
             "title": "Features",
             "type": "array"
           },
+          "partner_encryption_available": {
+            "title": "Partner Encryption Available",
+            "type": "boolean"
+          },
           "sections": {
             "items": {
               "$ref": "#/components/schemas/AdminSettingsSectionOut"
@@ -1539,7 +2407,8 @@
         },
         "required": [
           "sections",
-          "features"
+          "features",
+          "partner_encryption_available"
         ],
         "title": "AdminSettingsOut",
         "type": "object"
@@ -2813,6 +3682,18 @@
           "default_tariff": {
             "title": "Default Tariff",
             "type": "string"
+          },
+          "referral_welcome_bonus_tariff": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Referral Welcome Bonus Tariff"
           },
           "tariffs": {
             "items": {
@@ -4156,6 +5037,973 @@
         "title": "PackageSet",
         "type": "object"
       },
+      "PartnerApplicationCreateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "maxLength": 10000,
+            "minLength": 10,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "PartnerApplicationCreateIn",
+        "type": "object"
+      },
+      "PartnerApplicationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "application_id": {
+            "title": "Application Id",
+            "type": "integer"
+          },
+          "approved_commission_bps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Approved Commission Bps"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decided At"
+          },
+          "decision_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decision Message"
+          },
+          "display_label": {
+            "title": "Display Label",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "reapply_allowed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reapply Allowed At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Id"
+          },
+          "welcome_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Welcome Message"
+          }
+        },
+        "required": [
+          "application_id",
+          "display_label",
+          "status",
+          "submitted_at"
+        ],
+        "title": "PartnerApplicationOut",
+        "type": "object"
+      },
+      "PartnerBalanceOut": {
+        "additionalProperties": false,
+        "properties": {
+          "available_minor": {
+            "title": "Available Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "currency_scale": {
+            "title": "Currency Scale",
+            "type": "integer"
+          },
+          "lifetime_earned_minor": {
+            "title": "Lifetime Earned Minor",
+            "type": "integer"
+          },
+          "pending_minor": {
+            "title": "Pending Minor",
+            "type": "integer"
+          },
+          "reserved_minor": {
+            "title": "Reserved Minor",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "currency",
+          "currency_scale",
+          "available_minor",
+          "pending_minor",
+          "reserved_minor",
+          "lifetime_earned_minor"
+        ],
+        "title": "PartnerBalanceOut",
+        "type": "object"
+      },
+      "PartnerBalanceRenewIn": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "months": {
+            "maximum": 60,
+            "minimum": 1,
+            "title": "Months",
+            "type": "integer"
+          },
+          "promo_code": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Promo Code"
+          },
+          "tariff_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Tariff Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tariff_key",
+          "months",
+          "idempotency_key"
+        ],
+        "title": "PartnerBalanceRenewIn",
+        "type": "object"
+      },
+      "PartnerClientOut": {
+        "additionalProperties": false,
+        "properties": {
+          "attributed_at": {
+            "format": "date-time",
+            "title": "Attributed At",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Currency"
+          },
+          "currency_scale": {
+            "title": "Currency Scale",
+            "type": "integer"
+          },
+          "eligible_from": {
+            "format": "date-time",
+            "title": "Eligible From",
+            "type": "string"
+          },
+          "gross_minor": {
+            "title": "Gross Minor",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "partner_client_id": {
+            "title": "Partner Client Id",
+            "type": "integer"
+          },
+          "payments_count": {
+            "title": "Payments Count",
+            "type": "integer"
+          },
+          "public_client_id": {
+            "title": "Public Client Id",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "partner_client_id",
+          "public_client_id",
+          "label",
+          "source",
+          "attributed_at",
+          "eligible_from",
+          "payments_count",
+          "gross_minor",
+          "currency_scale"
+        ],
+        "title": "PartnerClientOut",
+        "type": "object"
+      },
+      "PartnerCommissionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "available_at": {
+            "format": "date-time",
+            "title": "Available At",
+            "type": "string"
+          },
+          "client_label": {
+            "title": "Client Label",
+            "type": "string"
+          },
+          "client_public_id": {
+            "title": "Client Public Id",
+            "type": "string"
+          },
+          "commission_amount_minor": {
+            "title": "Commission Amount Minor",
+            "type": "integer"
+          },
+          "commission_bps": {
+            "title": "Commission Bps",
+            "type": "integer"
+          },
+          "commission_id": {
+            "title": "Commission Id",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "currency_scale": {
+            "title": "Currency Scale",
+            "type": "integer"
+          },
+          "exclusion_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exclusion Reason"
+          },
+          "gross_amount_minor": {
+            "title": "Gross Amount Minor",
+            "type": "integer"
+          },
+          "payment_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Payment Id"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Provider"
+          },
+          "reversed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reversed At"
+          },
+          "sale_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sale Mode"
+          },
+          "source_paid_at": {
+            "format": "date-time",
+            "title": "Source Paid At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "commission_id",
+          "client_public_id",
+          "client_label",
+          "gross_amount_minor",
+          "commission_amount_minor",
+          "currency",
+          "currency_scale",
+          "commission_bps",
+          "status",
+          "source_paid_at",
+          "available_at",
+          "created_at"
+        ],
+        "title": "PartnerCommissionOut",
+        "type": "object"
+      },
+      "PartnerLinksOut": {
+        "additionalProperties": false,
+        "properties": {
+          "telegram": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Telegram"
+          },
+          "telegram_enabled": {
+            "title": "Telegram Enabled",
+            "type": "boolean"
+          },
+          "web": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Web"
+          },
+          "web_enabled": {
+            "title": "Web Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "telegram_enabled",
+          "web_enabled"
+        ],
+        "title": "PartnerLinksOut",
+        "type": "object"
+      },
+      "PartnerOverviewOut": {
+        "additionalProperties": false,
+        "properties": {
+          "application": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PartnerApplicationOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "application_message_max_length": {
+            "title": "Application Message Max Length",
+            "type": "integer"
+          },
+          "balance_payment_enabled": {
+            "title": "Balance Payment Enabled",
+            "type": "boolean"
+          },
+          "balances": {
+            "items": {
+              "$ref": "#/components/schemas/PartnerBalanceOut"
+            },
+            "title": "Balances",
+            "type": "array"
+          },
+          "encryption_available": {
+            "title": "Encryption Available",
+            "type": "boolean"
+          },
+          "links": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PartnerLinksOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PartnerProfileOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "program_enabled": {
+            "title": "Program Enabled",
+            "type": "boolean"
+          },
+          "withdrawal_methods": {
+            "items": {
+              "$ref": "#/components/schemas/PartnerWithdrawalMethodOut"
+            },
+            "title": "Withdrawal Methods",
+            "type": "array"
+          },
+          "withdrawals_enabled": {
+            "title": "Withdrawals Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "program_enabled",
+          "withdrawals_enabled",
+          "balance_payment_enabled",
+          "encryption_available",
+          "application_message_max_length",
+          "balances",
+          "withdrawal_methods"
+        ],
+        "title": "PartnerOverviewOut",
+        "type": "object"
+      },
+      "PartnerProfileOut": {
+        "additionalProperties": false,
+        "properties": {
+          "activated_at": {
+            "format": "date-time",
+            "title": "Activated At",
+            "type": "string"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Avatar Url"
+          },
+          "commission_bps": {
+            "title": "Commission Bps",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_label": {
+            "title": "Display Label",
+            "type": "string"
+          },
+          "partner_id": {
+            "title": "Partner Id",
+            "type": "integer"
+          },
+          "pause_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Pause Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Id"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Username"
+          },
+          "welcome_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Welcome Message"
+          }
+        },
+        "required": [
+          "partner_id",
+          "display_label",
+          "status",
+          "commission_bps",
+          "activated_at",
+          "created_at"
+        ],
+        "title": "PartnerProfileOut",
+        "type": "object"
+      },
+      "PartnerWithdrawalCreateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_minor": {
+            "exclusiveMinimum": 0,
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "maxLength": 16,
+            "minLength": 2,
+            "title": "Currency",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "method_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Method Id",
+            "type": "string"
+          },
+          "network": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Network"
+          },
+          "requisites": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Requisites",
+            "type": "object"
+          }
+        },
+        "required": [
+          "method_id",
+          "amount_minor",
+          "currency",
+          "requisites",
+          "idempotency_key"
+        ],
+        "title": "PartnerWithdrawalCreateIn",
+        "type": "object"
+      },
+      "PartnerWithdrawalMethodOut": {
+        "additionalProperties": false,
+        "properties": {
+          "currency_scale": {
+            "title": "Currency Scale",
+            "type": "integer"
+          },
+          "debit_currency": {
+            "title": "Debit Currency",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "fields": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "help_text": {
+            "title": "Help Text",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "max_amount_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Max Amount Minor"
+          },
+          "min_amount_minor": {
+            "title": "Min Amount Minor",
+            "type": "integer"
+          },
+          "networks": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Networks",
+            "type": "array"
+          },
+          "settlement_asset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Settlement Asset"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "enabled",
+          "label",
+          "debit_currency",
+          "currency_scale",
+          "min_amount_minor",
+          "fields",
+          "networks",
+          "sort_order",
+          "help_text"
+        ],
+        "title": "PartnerWithdrawalMethodOut",
+        "type": "object"
+      },
+      "PartnerWithdrawalOut": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "currency_scale": {
+            "title": "Currency Scale",
+            "type": "integer"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decided At"
+          },
+          "external_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "External Reference"
+          },
+          "masked_requisites": {
+            "title": "Masked Requisites",
+            "type": "string"
+          },
+          "method_id": {
+            "title": "Method Id",
+            "type": "string"
+          },
+          "method_snapshot": {
+            "additionalProperties": true,
+            "title": "Method Snapshot",
+            "type": "object"
+          },
+          "method_type": {
+            "title": "Method Type",
+            "type": "string"
+          },
+          "network": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Network"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Paid At"
+          },
+          "partner_id": {
+            "title": "Partner Id",
+            "type": "integer"
+          },
+          "processing_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Processing At"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "settlement_amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Settlement Amount"
+          },
+          "settlement_asset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Settlement Asset"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status Message"
+          },
+          "status_version": {
+            "title": "Status Version",
+            "type": "integer"
+          },
+          "withdrawal_id": {
+            "title": "Withdrawal Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "withdrawal_id",
+          "partner_id",
+          "method_id",
+          "method_type",
+          "method_snapshot",
+          "amount_minor",
+          "currency",
+          "currency_scale",
+          "status",
+          "status_version",
+          "masked_requisites",
+          "requested_at"
+        ],
+        "title": "PartnerWithdrawalOut",
+        "type": "object"
+      },
       "PaymentDetailOut": {
         "properties": {
           "amount": {
@@ -4198,6 +6046,11 @@
             ],
             "default": null,
             "title": "Description"
+          },
+          "funding_source": {
+            "default": "external",
+            "title": "Funding Source",
+            "type": "string"
           },
           "idempotence_key": {
             "anyOf": [
@@ -4436,6 +6289,11 @@
             ],
             "default": null,
             "title": "Description"
+          },
+          "funding_source": {
+            "default": "external",
+            "title": "Funding Source",
+            "type": "string"
           },
           "payment_id": {
             "title": "Payment Id",
@@ -4734,6 +6592,30 @@
             "default": null,
             "title": "Granted Gb"
           },
+          "granted_premium_traffic_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Granted Premium Traffic Gb"
+          },
+          "granted_regular_traffic_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Granted Regular Traffic Gb"
+          },
           "payment_amount": {
             "anyOf": [
               {
@@ -4831,9 +6713,33 @@
             "default": null,
             "title": "Payment Status"
           },
+          "premium_traffic_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Premium Traffic Gb"
+          },
           "promo_id": {
             "title": "Promo Id",
             "type": "integer"
+          },
+          "regular_traffic_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regular Traffic Gb"
           },
           "telegram_id": {
             "anyOf": [
@@ -4970,6 +6876,20 @@
             "title": "Origin",
             "type": "string"
           },
+          "premium_traffic_gb": {
+            "default": 0,
+            "maximum": 1000000.0,
+            "minimum": 0,
+            "title": "Premium Traffic Gb",
+            "type": "number"
+          },
+          "regular_traffic_gb": {
+            "default": 0,
+            "maximum": 1000000.0,
+            "minimum": 0,
+            "title": "Regular Traffic Gb",
+            "type": "number"
+          },
           "traffic_multiplier": {
             "anyOf": [
               {
@@ -4992,6 +6912,41 @@
           "max_activations"
         ],
         "title": "PromoCreateBody",
+        "type": "object"
+      },
+      "PromoOptionOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "current_activations": {
+            "title": "Current Activations",
+            "type": "integer"
+          },
+          "max_activations": {
+            "title": "Max Activations",
+            "type": "integer"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "code",
+          "max_activations",
+          "current_activations"
+        ],
+        "title": "PromoOptionOut",
         "type": "object"
       },
       "PromoOut": {
@@ -5121,6 +7076,16 @@
           "origin": {
             "title": "Origin",
             "type": "string"
+          },
+          "premium_traffic_gb": {
+            "default": 0,
+            "title": "Premium Traffic Gb",
+            "type": "number"
+          },
+          "regular_traffic_gb": {
+            "default": 0,
+            "title": "Regular Traffic Gb",
+            "type": "number"
           },
           "traffic_multiplier": {
             "anyOf": [
@@ -5334,6 +7299,34 @@
             ],
             "default": null,
             "title": "Origin"
+          },
+          "premium_traffic_gb": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Premium Traffic Gb"
+          },
+          "regular_traffic_gb": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regular Traffic Gb"
           },
           "traffic_multiplier": {
             "anyOf": [
@@ -6116,6 +8109,30 @@
               }
             ],
             "default": null
+          },
+          "premium_traffic_limit_strategy": {
+            "anyOf": [
+              {
+                "enum": [
+                  "NO_RESET",
+                  "DAY",
+                  "WEEK",
+                  "MONTH",
+                  "MONTH_ROLLING"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Premium Traffic Limit Strategy"
+          },
+          "premium_unlimited": {
+            "default": false,
+            "title": "Premium Unlimited",
+            "type": "boolean"
           },
           "prices": {
             "additionalProperties": {
@@ -7523,6 +9540,11 @@
           "traffic_gb": {
             "default": null,
             "title": "Traffic Gb"
+          },
+          "use_partner_balance": {
+            "default": false,
+            "title": "Use Partner Balance",
+            "type": "boolean"
           }
         },
         "title": "WebAppPaymentCreatePayload",
@@ -7663,6 +9685,11 @@
           "traffic_gb": {
             "default": null,
             "title": "Traffic Gb"
+          },
+          "use_partner_balance": {
+            "default": false,
+            "title": "Use Partner Balance",
+            "type": "boolean"
           }
         },
         "required": [
@@ -7800,6 +9827,13 @@
             "title": "Appversion",
             "type": "string"
           },
+          "authProviders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Authproviders",
+            "type": "array"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
@@ -7919,6 +9953,7 @@
           "language",
           "languages",
           "emailAuthEnabled",
+          "authProviders",
           "registrationInviteOnlyEnabled",
           "appVersion",
           "appRepositoryUrl"
@@ -9690,6 +11725,1459 @@
         ]
       }
     },
+    "/api/admin/partner-applications": {
+      "get": {
+        "operationId": "get_admin_partner_applications_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Applications",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partner-applications/{id}": {
+      "get": {
+        "operationId": "get_admin_partner_application_detail_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "application": {
+                      "$ref": "#/components/schemas/AdminPartnerApplicationOut"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "application"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Application Detail",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partner-applications/{id}/approve": {
+      "post": {
+        "operationId": "post_admin_partner_application_approve_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerApplicationDecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Application Approve",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partner-applications/{id}/reject": {
+      "post": {
+        "operationId": "post_admin_partner_application_reject_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerApplicationDecisionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "application": {
+                      "$ref": "#/components/schemas/AdminPartnerApplicationOut"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "application"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Application Reject",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partner-applications/{id}/reopen": {
+      "post": {
+        "operationId": "post_admin_partner_application_reopen_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "application": {
+                      "$ref": "#/components/schemas/AdminPartnerApplicationOut"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "application"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Application Reopen",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partner-withdrawals": {
+      "get": {
+        "operationId": "get_admin_partner_withdrawals_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Withdrawals",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partner-withdrawals/{id}": {
+      "get": {
+        "operationId": "get_admin_partner_withdrawal_detail_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "withdrawal": {
+                      "$ref": "#/components/schemas/AdminPartnerWithdrawalOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "withdrawal"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Withdrawal Detail",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partner-withdrawals/{id}/fail": {
+      "post": {
+        "operationId": "post_admin_partner_withdrawal_fail_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerWithdrawalTransitionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "withdrawal": {
+                      "$ref": "#/components/schemas/AdminPartnerWithdrawalOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "withdrawal"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Withdrawal Fail",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partner-withdrawals/{id}/paid": {
+      "post": {
+        "operationId": "post_admin_partner_withdrawal_paid_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerWithdrawalTransitionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "withdrawal": {
+                      "$ref": "#/components/schemas/AdminPartnerWithdrawalOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "withdrawal"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Withdrawal Paid",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partner-withdrawals/{id}/processing": {
+      "post": {
+        "operationId": "post_admin_partner_withdrawal_processing_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerWithdrawalTransitionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "withdrawal": {
+                      "$ref": "#/components/schemas/AdminPartnerWithdrawalOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "withdrawal"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Withdrawal Processing",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partner-withdrawals/{id}/reject": {
+      "post": {
+        "operationId": "post_admin_partner_withdrawal_reject_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerWithdrawalTransitionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "withdrawal": {
+                      "$ref": "#/components/schemas/AdminPartnerWithdrawalOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "withdrawal"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Withdrawal Reject",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partner-withdrawals/{id}/reveal": {
+      "post": {
+        "operationId": "post_admin_partner_withdrawal_reveal_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "requisites": {
+                      "$ref": "#/components/schemas/AdminPartnerRequisitesOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "requisites"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Withdrawal Reveal",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partners": {
+      "get": {
+        "operationId": "get_admin_partners_list_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partners List",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "post_admin_partner_create_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "partner": {
+                      "$ref": "#/components/schemas/PartnerProfileOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "partner"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Create",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partners/attention": {
+      "get": {
+        "operationId": "get_admin_partner_attention_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Attention",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partners/overview": {
+      "get": {
+        "operationId": "get_admin_partner_overview_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Overview",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partners/referral-import": {
+      "get": {
+        "operationId": "get_admin_partner_bulk_referral_import_preview_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "preview": {
+                      "$ref": "#/components/schemas/AdminPartnerBulkReferralImportPreviewOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "preview"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Bulk Referral Import Preview",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "post_admin_partner_bulk_referral_import_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerReferralImportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "result": {
+                      "$ref": "#/components/schemas/AdminPartnerBulkReferralImportResultOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "result"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Bulk Referral Import",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partners/{id}": {
+      "get": {
+        "operationId": "get_admin_partner_detail_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Detail",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partners/{id}/balance-adjustments": {
+      "post": {
+        "operationId": "post_admin_partner_balance_adjustment_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerBalanceAdjustmentIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Balance Adjustment",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partners/{id}/close": {
+      "post": {
+        "operationId": "post_admin_partner_close_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerStatusIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "partner": {
+                      "$ref": "#/components/schemas/PartnerProfileOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "partner"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Close",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partners/{id}/commission-rate": {
+      "post": {
+        "operationId": "post_admin_partner_rate_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerRateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "partner": {
+                      "$ref": "#/components/schemas/PartnerProfileOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "partner"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Rate",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partners/{id}/link/rotate": {
+      "post": {
+        "operationId": "post_admin_partner_link_rotate_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "partner": {
+                      "$ref": "#/components/schemas/PartnerProfileOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "partner"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Link Rotate",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partners/{id}/pause": {
+      "post": {
+        "operationId": "post_admin_partner_pause_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerStatusIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "partner": {
+                      "$ref": "#/components/schemas/PartnerProfileOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "partner"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Pause",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partners/{id}/referral-import": {
+      "get": {
+        "operationId": "get_admin_partner_referral_import_preview_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "preview": {
+                      "$ref": "#/components/schemas/AdminPartnerReferralImportPreviewOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "preview"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Referral Import Preview",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "post_admin_partner_referral_import_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerReferralImportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "result": {
+                      "$ref": "#/components/schemas/AdminPartnerReferralImportResultOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "result"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Referral Import",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/partners/{id}/resume": {
+      "post": {
+        "operationId": "post_admin_partner_resume_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPartnerStatusIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "partner": {
+                      "$ref": "#/components/schemas/PartnerProfileOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "partner"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Partner Resume",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/admin/payments": {
       "get": {
         "operationId": "get_admin_payments_list_route",
@@ -9932,6 +13420,52 @@
           }
         ],
         "summary": "Admin Promo Create",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/promos/options": {
+      "get": {
+        "operationId": "get_admin_promo_options_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "promos": {
+                      "items": {
+                        "$ref": "#/components/schemas/PromoOptionOut"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "promos"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Promo Options",
         "tags": [
           "admin"
         ]
@@ -13617,6 +17151,9 @@
                     "premium_topup_used_bytes": {
                       "type": "integer"
                     },
+                    "premium_traffic_limited": {
+                      "type": "boolean"
+                    },
                     "premium_traffic_percent": {
                       "type": "integer"
                     },
@@ -13798,6 +17335,15 @@
                                 "null"
                               ]
                             },
+                            "partner_balance_amount": {
+                              "type": "number"
+                            },
+                            "partner_balance_amount_minor": {
+                              "type": "integer"
+                            },
+                            "partner_balance_currency_scale": {
+                              "type": "integer"
+                            },
                             "payment_id": {
                               "type": "integer"
                             },
@@ -13848,6 +17394,9 @@
                             "currency",
                             "discount_amount",
                             "discount_percent",
+                            "partner_balance_amount",
+                            "partner_balance_amount_minor",
+                            "partner_balance_currency_scale",
                             "months",
                             "purchased_gb",
                             "purchased_hwid_devices",
@@ -14201,10 +17750,22 @@
                     "settings": {
                       "additionalProperties": false,
                       "properties": {
+                        "auth_providers": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
                         "email_auth_enabled": {
                           "type": "boolean"
                         },
                         "my_devices_enabled": {
+                          "type": "boolean"
+                        },
+                        "partner_program_enabled": {
+                          "type": "boolean"
+                        },
+                        "referral_program_enabled": {
                           "type": "boolean"
                         },
                         "server_status_url": {
@@ -14483,6 +18044,12 @@
                             "null"
                           ]
                         },
+                        "premium_traffic_limit_strategy": {
+                          "type": "string"
+                        },
+                        "premium_traffic_limited": {
+                          "type": "boolean"
+                        },
                         "premium_unlimited_override": {
                           "type": "boolean"
                         },
@@ -14722,6 +18289,380 @@
         ]
       }
     },
+    "/api/partner/applications": {
+      "post": {
+        "operationId": "post_partner_application_create_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartnerApplicationCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "application": {
+                      "$ref": "#/components/schemas/PartnerApplicationOut"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "application"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "summary": "Partner Application Create",
+        "tags": [
+          "partner"
+        ]
+      }
+    },
+    "/api/partner/balance/renew": {
+      "post": {
+        "operationId": "post_partner_balance_renew_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartnerBalanceRenewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "payment_id": {
+                      "type": "integer"
+                    },
+                    "remaining_balance_minor": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "payment_id",
+                    "status",
+                    "remaining_balance_minor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "summary": "Partner Balance Renew",
+        "tags": [
+          "partner"
+        ]
+      }
+    },
+    "/api/partner/clients": {
+      "get": {
+        "operationId": "get_partner_clients_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "clients": {
+                      "items": {
+                        "$ref": "#/components/schemas/PartnerClientOut"
+                      },
+                      "type": "array"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "type": "integer"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "clients",
+                    "total",
+                    "limit",
+                    "offset"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "summary": "Partner Clients",
+        "tags": [
+          "partner"
+        ]
+      }
+    },
+    "/api/partner/commissions": {
+      "get": {
+        "operationId": "get_partner_commissions_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "commissions": {
+                      "items": {
+                        "$ref": "#/components/schemas/PartnerCommissionOut"
+                      },
+                      "type": "array"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "type": "integer"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "commissions",
+                    "total",
+                    "limit",
+                    "offset"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "summary": "Partner Commissions",
+        "tags": [
+          "partner"
+        ]
+      }
+    },
+    "/api/partner/overview": {
+      "get": {
+        "operationId": "get_partner_overview_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ok": {
+                          "const": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PartnerOverviewOut"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "summary": "Partner Overview",
+        "tags": [
+          "partner"
+        ]
+      }
+    },
+    "/api/partner/withdrawals": {
+      "get": {
+        "operationId": "get_partner_withdrawals_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "limit": {
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "type": "integer"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "withdrawals": {
+                      "items": {
+                        "$ref": "#/components/schemas/PartnerWithdrawalOut"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "withdrawals",
+                    "total",
+                    "limit",
+                    "offset"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "summary": "Partner Withdrawals",
+        "tags": [
+          "partner"
+        ]
+      },
+      "post": {
+        "operationId": "post_partner_withdrawal_create_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartnerWithdrawalCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "withdrawal": {
+                      "$ref": "#/components/schemas/PartnerWithdrawalOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "withdrawal"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "summary": "Partner Withdrawal Create",
+        "tags": [
+          "partner"
+        ]
+      }
+    },
+    "/api/partner/withdrawals/{id}/cancel": {
+      "post": {
+        "operationId": "post_partner_withdrawal_cancel_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "withdrawal": {
+                      "$ref": "#/components/schemas/PartnerWithdrawalOut"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "withdrawal"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "summary": "Partner Withdrawal Cancel",
+        "tags": [
+          "partner"
+        ]
+      }
+    },
     "/api/payments": {
       "post": {
         "operationId": "post_create_payment_route",
@@ -14742,6 +18683,9 @@
                 "schema": {
                   "additionalProperties": false,
                   "properties": {
+                    "action": {
+                      "type": "string"
+                    },
                     "confirmation_url": {
                       "type": [
                         "string",
@@ -14818,6 +18762,9 @@
                 "schema": {
                   "additionalProperties": false,
                   "properties": {
+                    "action": {
+                      "type": "string"
+                    },
                     "confirmation_url": {
                       "type": [
                         "string",
@@ -15063,6 +19010,12 @@
                     "ok": {
                       "const": true,
                       "type": "boolean"
+                    },
+                    "premium_traffic_gb": {
+                      "type": "number"
+                    },
+                    "regular_traffic_gb": {
+                      "type": "number"
                     },
                     "status": {
                       "type": "string"
@@ -16103,6 +20056,9 @@
                 "schema": {
                   "additionalProperties": false,
                   "properties": {
+                    "action": {
+                      "type": "string"
+                    },
                     "confirmation_url": {
                       "type": [
                         "string",
@@ -16459,6 +20415,9 @@
                     },
                     "premium_topup_used_bytes": {
                       "type": "integer"
+                    },
+                    "premium_traffic_limited": {
+                      "type": "boolean"
                     },
                     "premium_traffic_percent": {
                       "type": "integer"

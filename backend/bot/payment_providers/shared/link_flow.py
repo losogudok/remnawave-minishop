@@ -51,6 +51,7 @@ from .common import (
     create_webapp_payment_record,
     detached_payment_snapshot,
     make_translator,
+    mark_payment_failed_creation,
     payment_failed,
     payment_record_amounts,
     payment_unavailable,
@@ -236,6 +237,7 @@ async def run_callback_payment[ServiceT: LinkFlowService](
         subscription_service=service.subscription_service,
         currency=default_currency_key_for_settings(settings),
         settings=settings,
+        provider_spec=descriptor.spec,
     )
     if not parts:
         await notify_callback_parse_error(callback, translator)
@@ -269,6 +271,7 @@ async def run_callback_payment[ServiceT: LinkFlowService](
         sale_mode=parts.sale_mode,
         hwid_quote=hwid_quote,
         entitlement_context_snapshot=entitlement_context_snapshot,
+        checkout_promo=getattr(parts, "checkout_promo", None),
     )
 
     reusable_payment = None
@@ -394,6 +397,7 @@ async def run_webapp_payment[ServiceT: LinkFlowService](
     provider_context = (
         descriptor.webapp_context(ctx) if descriptor.webapp_context is not None else None
     )
+    payment = None
     try:
         payment = await create_webapp_payment_record(
             ctx,
@@ -426,6 +430,20 @@ async def run_webapp_payment[ServiceT: LinkFlowService](
         )
     except Exception:
         await ctx.session.rollback()
+        if payment is not None:
+            try:
+                await mark_payment_failed_creation(
+                    ctx.session,
+                    int(payment.payment_id),
+                    failure_kind="local_creation_exception",
+                )
+            except Exception:
+                await ctx.session.rollback()
+                logger.exception(
+                    "%s: failed to release checkout after provider creation error for payment %s",
+                    descriptor.display_name,
+                    payment.payment_id,
+                )
         logger.exception("%s WebApp payment failed", descriptor.display_name)
         return payment_failed()
 

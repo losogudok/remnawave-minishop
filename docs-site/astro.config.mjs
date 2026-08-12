@@ -14,7 +14,7 @@ export default defineConfig({
         starlightThemeNova({
           nav: [
             { label: 'Демо', href: '/demo/home' },
-            { label: 'Установка', href: '/getting-started/setup/' },
+            { label: 'Документация', href: '/getting-started/overview/' },
             { label: 'API', href: '/api/' },
             { label: 'GitHub', href: 'https://github.com/3252a8/remnawave-minishop' },
             { label: 'GitLab', href: 'https://gitlab.com/3252a8/remnawave-minishop' },
@@ -63,6 +63,7 @@ export default defineConfig({
           items: [
             { label: 'Обзор', slug: 'getting-started/overview' },
             { label: 'Демо-режим', slug: 'getting-started/demo' },
+            { label: 'Системные требования', slug: 'getting-started/system-requirements' },
             { label: 'Установка', slug: 'getting-started/setup' },
             { label: 'Развертывание', slug: 'getting-started/deployment' },
             { label: 'Настройка окружения', slug: 'getting-started/configuration' },
@@ -82,6 +83,7 @@ export default defineConfig({
             { label: 'Основные', slug: 'features/core' },
             { label: 'Платежи', slug: 'features/payments' },
             { label: 'Промокоды', slug: 'features/promocodes' },
+            { label: 'Партнёрская программа', slug: 'features/partner-program' },
             { label: 'Подписки', slug: 'features/subscriptions' },
             { label: 'Уведомления', slug: 'features/notifications' },
             { label: 'Тарифы', slug: 'features/tariffs' },

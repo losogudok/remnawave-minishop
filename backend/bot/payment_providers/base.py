@@ -127,6 +127,8 @@ class WebAppPaymentContext:
     promo_code_id: int | None = None
     promo_effect_summary: str | None = None
     promo_bonus_days: int | None = None
+    promo_regular_traffic_gb: float | None = None
+    promo_premium_traffic_gb: float | None = None
     promo_discount_percent: float | None = None
     promo_duration_multiplier: float | None = None
     promo_traffic_multiplier: float | None = None
@@ -138,6 +140,10 @@ class WebAppPaymentContext:
     checkout_charged_months: int | None = None
     checkout_charged_gb: float | None = None
     checkout_quoted_at: Any | None = None
+    checkout_total_amount: float | None = None
+    partner_balance_partner_id: int | None = None
+    partner_balance_amount_minor: int | None = None
+    partner_balance_currency_scale: int | None = None
     tariff_change_quote_snapshot: str | None = None
     entitlement_context_snapshot: str | None = None
 
@@ -259,6 +265,12 @@ class PaymentProviderSpec:
     admin_only_config_attr: str = "ADMIN_ONLY_ENABLED"
     admin_only_enabled: EnabledPredicate | None = None
     supports_recurring: bool = False
+    # True when the *provider* owns the renewal schedule (it charges the payer
+    # on its own and reports every attempt through the webhook), as opposed to
+    # ``supports_recurring``, which means our renewal worker can initiate a
+    # charge against a saved payment method. The two are mutually exclusive in
+    # practice: a provider-managed mandate must never be charged by the worker.
+    manages_recurring: bool = False
     supported_currencies: Sequence[str] | None = ("RUB",)
     supported_currencies_resolver: CurrencySupportResolver | None = None
     payment_amount_resolver: PaymentAmountResolver | None = None

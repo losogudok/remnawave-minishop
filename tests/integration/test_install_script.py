@@ -1,9 +1,16 @@
 import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+
+from bot.services.compose_data_mounts import (
+    APP_DATA_SERVICES,
+    app_data_mounts_are_aligned,
+    compose_app_data_mounts,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install.sh"
@@ -57,9 +64,116 @@ def test_shell_installer_exits_on_stdin_eof():
     assert "Ввод завершился во время выбора пункта" in result.stderr
 
 
+def test_shell_installer_validates_telegram_socks5_proxy_urls(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    shell_body = r"""
+for value in \
+    'socks5://proxy.example.com:1080' \
+    'socks5://192.0.2.10:1080' \
+    'socks5://[2001:db8::10]:1080' \
+    'socks5://user%40example:p%3A%2F%23@proxy.example.com:1080'
+do
+    is_valid_socks5_url "$value" || exit 20
+done
+for value in \
+    'http://proxy.example.com:1080' \
+    'socks5h://proxy.example.com:1080' \
+    'SOCKS5://proxy.example.com:1080' \
+    'socks5://proxy.example.com' \
+    'socks5://proxy.example.com:0' \
+    'socks5://proxy.example.com:65536' \
+    'socks5://user@proxy.example.com:1080' \
+    'socks5://user:@proxy.example.com:1080' \
+    'socks5://user:raw/password@proxy.example.com:1080' \
+    'socks5://proxy.example.com:1080/path' \
+    'socks5://proxy.example.com:1080?' \
+    'socks5://proxy.example.com:1080#'
+do
+    if is_valid_socks5_url "$value"; then exit 21; fi
+done
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_shell_installer_masks_telegram_proxy_summary(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    proxy_url = "socks5://proxy-user:proxy-password@proxy.example.com:1080"
+    result = _run_installer_function(
+        tmp_path,
+        f"show_env_value TELEGRAM_BOT_PROXY_URL '{proxy_url}'",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "TELEGRAM_BOT_PROXY_URL=" in result.stdout
+    assert proxy_url not in result.stdout
+    assert "proxy-password" not in result.stdout
+
+
+def test_telegram_proxy_deploy_contract_is_backend_only():
+    backend_env_examples = (
+        REPO_ROOT / ".env.example",
+        REPO_ROOT / "deploy" / "dev" / "remnawave-dev.env.example",
+        REPO_ROOT / "deploy" / "examples" / "angie" / ".env.example",
+        REPO_ROOT / "deploy" / "examples" / "caddy" / ".env.example",
+        REPO_ROOT / "deploy" / "examples" / "nginx" / ".env.example",
+        REPO_ROOT / "deploy" / "examples" / "newt" / ".env.example",
+        REPO_ROOT / "deploy" / "examples" / "no-proxy" / ".env.example",
+        REPO_ROOT / "deploy" / "examples" / "split-protected-upstream" / ".env.backend.example",
+    )
+    for env_path in backend_env_examples:
+        env_example = env_path.read_text(encoding="utf-8")
+        assert "TELEGRAM_BOT_PROXY_URL" in env_example, env_path
+        assert "TELEGRAM_OAUTH_USE_BOT_PROXY=True" in env_example, env_path
+
+    frontend_env = (
+        REPO_ROOT / "deploy" / "examples" / "split-protected-upstream" / ".env.frontend.example"
+    ).read_text(encoding="utf-8")
+    assert "TELEGRAM_BOT_PROXY_URL" not in frontend_env
+    assert "TELEGRAM_OAUTH_USE_BOT_PROXY" not in frontend_env
+
+    split_compose = (
+        REPO_ROOT
+        / "deploy"
+        / "examples"
+        / "split-protected-upstream"
+        / "backend.docker-compose.yml"
+    ).read_text(encoding="utf-8")
+    assert "TELEGRAM_BOT_PROXY_URL: ${TELEGRAM_BOT_PROXY_URL:-}" in split_compose
+    assert "TELEGRAM_OAUTH_USE_BOT_PROXY: ${TELEGRAM_OAUTH_USE_BOT_PROXY:-True}" in split_compose
+
+
+def test_shell_installer_manages_only_core_telegram_proxy_key():
+    script = INSTALL_SCRIPT.read_text(encoding="utf-8")
+
+    assert "TELEGRAM_BOT_PROXY_URL_VALUE" in script
+    assert 'env_get TELEGRAM_BOT_PROXY_URL ""' in script
+    assert 'env_line TELEGRAM_BOT_PROXY_URL "$TELEGRAM_BOT_PROXY_URL_VALUE"' in script
+    assert "TELEGRAM_OAUTH_USE_BOT_PROXY_VALUE" in script
+    assert "env_get TELEGRAM_OAUTH_USE_BOT_PROXY True" in script
+    assert 'env_line TELEGRAM_OAUTH_USE_BOT_PROXY "$TELEGRAM_OAUTH_USE_BOT_PROXY_VALUE"' in script
+    assert "\nPROXY_URL_VALUE=" not in script
+
+
 def test_shell_installer_is_the_only_install_entrypoint():
     assert INSTALL_SCRIPT.exists()
     assert not (REPO_ROOT / "scripts" / "install.py").exists()
+
+
+@pytest.mark.parametrize("profile", ["angie", "caddy", "newt", "nginx", "no-proxy"])
+def test_install_wizard_profiles_share_application_data_mount(profile: str):
+    compose_path = REPO_ROOT / "deploy" / "examples" / profile / "docker-compose.yml"
+
+    mounts = compose_app_data_mounts(compose_path.read_text(encoding="utf-8"))
+
+    assert set(mounts) == set(APP_DATA_SERVICES)
+    assert app_data_mounts_are_aligned(mounts)
 
 
 def test_shell_installer_downloads_raw_files_and_runs_import_in_container():
@@ -88,10 +202,14 @@ def test_shell_installer_downloads_raw_files_and_runs_import_in_container():
 def test_shell_installer_installs_compose_and_explains_bind_errors():
     script = INSTALL_SCRIPT.read_text(encoding="utf-8")
 
-    assert "install_docker_compose" in script
-    assert "Попробовать установить Docker Compose автоматически" in script
+    assert "Установить или обновить Docker Engine и Docker Compose до latest stable" in script
     assert "docker-compose-plugin" in script
     assert "install_compose_binary_plugin" in script
+    assert 'MIN_DOCKER_ENGINE_VERSION="25.0.0"' in script
+    assert 'MIN_DOCKER_COMPOSE_VERSION="2.20.2"' in script
+    assert "docker_runtime_preflight" in script
+    assert "SHA-256 checksum Docker Compose" in script
+    assert "config --quiet" in script
     assert "validate_bind_settings" in script
     assert (
         'prompt_value "Адрес привязки HTTP" "$(env_get HTTP_BIND \'0.0.0.0:80\')" 0 0 "bind"'
@@ -100,6 +218,180 @@ def test_shell_installer_installs_compose_and_explains_bind_errors():
     assert "IP без порта" in script
     assert "<IP_СЕРВЕРА>:80" in script
     assert "compose-last-error.log" in script
+
+    install_flow = script.split("install_flow() {", 1)[1].split("\n}", 1)[0]
+    assert install_flow.index("docker_runtime_preflight 1") < install_flow.index(
+        "installation_directory"
+    )
+
+
+def test_shell_installer_compares_docker_versions_semantically(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    shell_body = r"""
+version_at_least v2.20.2 2.20.2 || exit 10
+version_at_least 2.20.10 2.20.2 || exit 11
+version_at_least 25.0.0-ce 25.0.0 || exit 12
+version_at_least 26 25.0.0 || exit 13
+if version_at_least 2.19.9 2.20.2; then exit 14; fi
+if version_at_least 24.0.9 25.0.0; then exit 15; fi
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_shell_installer_preflight_updates_incompatible_runtime_after_consent(
+    tmp_path: Path,
+):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    shell_body = r"""
+runtime_ready=0
+docker_runtime_compatible() { [ "$runtime_ready" = "1" ]; }
+print_docker_runtime_versions() { :; }
+explain_docker_runtime_incompatibility() { :; }
+confirm() { return 0; }
+update_docker_runtime_latest() { runtime_ready=1; }
+
+docker_runtime_preflight 1 || exit 16
+[ "$runtime_ready" = "1" ] || exit 17
+[ "$DOCKER_PREFLIGHT_DONE" = "1" ] || exit 18
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_shell_installer_preflight_stops_when_incompatible_update_is_declined(
+    tmp_path: Path,
+):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    shell_body = r"""
+docker_runtime_compatible() { return 1; }
+print_docker_runtime_versions() { :; }
+explain_docker_runtime_incompatibility() { :; }
+confirm() { return 1; }
+update_docker_runtime_latest() { exit 90; }
+
+if docker_runtime_preflight 1; then exit 19; fi
+[ "$DOCKER_PREFLIGHT_DONE" = "0" ] || exit 20
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_shell_installer_rejects_legacy_compose_v1(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    legacy_compose = tmp_path / "docker-compose"
+    legacy_compose.write_text(
+        """#!/bin/sh
+if [ "$1" = "version" ] && [ "${2:-}" = "--short" ]; then
+    printf '1.29.2\n'
+    exit 0
+fi
+if [ "$1" = "version" ]; then
+    printf 'docker-compose version 1.29.2\n'
+    exit 0
+fi
+exit 1
+""",
+        encoding="utf-8",
+    )
+    legacy_compose.chmod(0o755)
+
+    shell_body = f"""
+PATH={shlex.quote(str(tmp_path))}:$PATH
+docker() {{
+    if [ "$1" = "compose" ]; then return 1; fi
+    if [ "$1" = "version" ]; then printf '26.1.4\n'; return 0; fi
+    if [ "$1" = "info" ]; then return 0; fi
+    return 1
+}}
+if detect_compose_command; then exit 20; fi
+[ -z "$COMPOSE_VERSION_VALUE" ] || exit 21
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_shell_installer_preserves_compose_failure_status(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    shell_body = f"""
+TARGET_DIR='{runtime_dir.as_posix()}'
+run_compose() {{ printf 'compose failed\\n'; return 37; }}
+explain_compose_failure() {{ :; }}
+info() {{ :; }}
+run_compose_checked pull
+status=$?
+[ "$status" -eq 37 ] || exit 30
+grep -q 'compose failed' "$TARGET_DIR/$INSTALL_STATE_DIR/compose-last-error.log" || exit 31
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_shell_installer_explains_start_interval_compatibility_error(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    error_path = tmp_path / "compose-error.log"
+    error_path.write_text(
+        "services.backend.healthcheck value 'start_interval' does not match any of the "
+        "regexes: '^x-'\n",
+        encoding="utf-8",
+    )
+    shell_body = f"""
+print_docker_runtime_versions() {{ :; }}
+explain_compose_failure '{error_path.as_posix()}' config --quiet
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stderr
+    assert "не поддерживает healthcheck.start_interval" in result.stderr
+    assert "Docker Compose 2.20.2+" in result.stdout
+    assert "Docker Engine 25.0.0+" in result.stdout
+
+
+def test_shell_installer_does_not_pull_when_compose_config_is_invalid(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    marker_path = tmp_path / "compose-command.txt"
+    shell_body = f"""
+TARGET_DIR='{tmp_path.as_posix()}'
+ENV_PATH="$TARGET_DIR/.env"
+INSTALL_NODE_ROLE_VALUE=full-stack
+validate_bind_settings() {{ :; }}
+validate_compose_configuration() {{ return 1; }}
+run_compose_checked() {{ printf '%s\\n' "$*" > '{marker_path.as_posix()}'; }}
+
+if start_stack 1; then exit 40; fi
+[ ! -e '{marker_path.as_posix()}' ] || exit 41
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_shell_installer_prints_migrate_logs_after_compose_failure():
@@ -119,7 +411,9 @@ def test_deployment_docs_explain_install_wizard_prompts():
     assert "split-protected-upstream" in docs
     assert "Rathole" in docs
     assert "с одним IP без порта некорректно" in docs
-    assert "Docker Compose не найден" in docs
+    assert "Docker Engine `25.0.0`" in docs
+    assert "Docker Compose `2.20.2`" in docs
+    assert "docker compose config --quiet" in docs
     assert ".installer/compose-last-error.log" in docs
 
 
@@ -146,9 +440,317 @@ def test_shell_installer_supports_egames_reverse_proxy_profile():
     assert "TELEGRAM_OAUTH_CLIENT_SECRET" in script
     assert 'cat "$tmp" > "$nginx_conf"' in script
     assert 'mv "$tmp" "$nginx_conf"' not in script
+    assert "egames_nginx_tls_mode" in script
+    assert "egames_nginx_listen_directives" in script
+    assert "container_certificate_covers_host" in script
+    assert "render_egames_server_block" in script
     assert "egames_container_has_routes" in script
     assert 'docker restart "$nginx_container" >/dev/null' in script
     assert 'docker exec "$nginx_container" nginx -s reload' in script
+
+
+def test_shell_installer_detects_supported_egames_tls_listener_modes(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    tcp_config = tmp_path / "tcp.conf"
+    tcp_config.write_text(
+        """
+server {
+    server_name control.example.test;
+    listen 443 ssl;
+}
+server {
+    listen 443 ssl default_server;
+    server_name _;
+}
+""",
+        encoding="utf-8",
+    )
+    unix_config = tmp_path / "unix.conf"
+    unix_config.write_text(
+        """
+server {
+    server_name control.example.test;
+    listen unix:/run/edge/tls.sock ssl proxy_protocol;
+}
+""",
+        encoding="utf-8",
+    )
+    mixed_config = tmp_path / "mixed.conf"
+    mixed_config.write_text(
+        tcp_config.read_text(encoding="utf-8") + unix_config.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    managed_config = tmp_path / "managed.conf"
+    managed_config.write_text(
+        tcp_config.read_text(encoding="utf-8")
+        + """
+# BEGIN remnawave-minishop managed by install.sh
+server {
+    server_name old-route.example.test;
+    listen unix:/run/edge/tls.sock ssl proxy_protocol;
+}
+# END remnawave-minishop managed by install.sh
+""",
+        encoding="utf-8",
+    )
+
+    shell_body = f"""
+tcp_config={shlex.quote(tcp_config.as_posix())}
+unix_config={shlex.quote(unix_config.as_posix())}
+mixed_config={shlex.quote(mixed_config.as_posix())}
+managed_config={shlex.quote(managed_config.as_posix())}
+
+[ "$(egames_nginx_tls_mode "$tcp_config")" = tcp ] || exit 30
+[ "$(egames_nginx_listen_directives tcp "$tcp_config")" = "    listen 443 ssl;" ] || exit 31
+[ "$(egames_nginx_tls_mode "$unix_config")" = unix ] || exit 32
+[ "$(egames_nginx_listen_directives unix "$unix_config")" = \
+    "    listen unix:/run/edge/tls.sock ssl proxy_protocol;" ] || exit 33
+mixed_mode=$(egames_nginx_tls_mode "$mixed_config" 2>/dev/null || true)
+[ "$mixed_mode" = mixed ] || exit 34
+[ "$(egames_nginx_tls_mode "$managed_config")" = tcp ] || exit 35
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_shell_installer_selects_a_certificate_pair_by_hostname(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    nginx_config = tmp_path / "nginx.conf"
+    nginx_config.write_text(
+        """
+server {
+    server_name control.example.test;
+    listen 443 ssl;
+    ssl_certificate "/tls/control.pem";
+    ssl_certificate_key "/tls/control.key";
+}
+server {
+    server_name services.example.test;
+    listen 443 ssl;
+    ssl_certificate "/tls/services.pem";
+    ssl_certificate_key "/tls/services.key";
+    ssl_trusted_certificate "/tls/services-chain.pem";
+}
+""",
+        encoding="utf-8",
+    )
+
+    config_path = shlex.quote(nginx_config.as_posix())
+    shell_body = f"""
+container_certificate_covers_host() {{
+    [ "$2" = /tls/services.pem ] && [ "$3" = events.example.test ]
+}}
+pair=$(egames_certificate_pair_for_host edge-nginx \
+    {config_path} events.example.test)
+[ "$pair" = "/tls/services.pem|/tls/services.key|/tls/services-chain.pem" ] || exit 40
+if egames_certificate_pair_for_host edge-nginx \
+    {config_path} missing.example.test; then
+    exit 41
+fi
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_shell_installer_validates_certificate_san_with_openssl(tmp_path: Path):
+    if not shutil.which("sh") or not shutil.which("openssl"):
+        pytest.skip("sh and openssl are required")
+
+    certificate = tmp_path / "certificate.pem"
+    private_key = tmp_path / "private-key.pem"
+    openssl_config = tmp_path / "openssl.cnf"
+    openssl_config.write_text("[req]\ndistinguished_name=dn\n[dn]\n", encoding="utf-8")
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-config",
+            str(openssl_config),
+            "-keyout",
+            str(private_key),
+            "-out",
+            str(certificate),
+            "-days",
+            "1",
+            "-subj",
+            "/CN=control.example.test",
+            "-addext",
+            "subjectAltName=DNS:services.example.test",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    shell_body = f"""
+certificate_path={shlex.quote(certificate.as_posix())}
+docker() {{
+    if [ "$1" = exec ] && [ "$3" = sh ]; then
+        return 127
+    fi
+    if [ "$1" = exec ] && [ "$3" = cat ] && [ "$4" = /tls/certificate.pem ]; then
+        cat "$certificate_path"
+        return 0
+    fi
+    return 1
+}}
+container_certificate_covers_host edge-nginx /tls/certificate.pem services.example.test || exit 45
+if container_certificate_covers_host edge-nginx /tls/certificate.pem control.example.test; then
+    exit 46
+fi
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_shell_installer_rejects_legacy_openssl_zero_exit_hostname_mismatch(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    shell_body = """
+docker() {
+    if [ "$1" = exec ] && [ "$3" = sh ]; then
+        return 127
+    fi
+    if [ "$1" = exec ] && [ "$3" = cat ] && [ "$4" = /tls/certificate.pem ]; then
+        printf '%s\n' certificate
+        return 0
+    fi
+    return 1
+}
+openssl() {
+    if [ "$4" = services.example.test ]; then
+        printf '%s\n' "Hostname services.example.test does match certificate"
+    else
+        printf '%s\n' "Hostname $4 does NOT match certificate"
+    fi
+    return 0
+}
+container_certificate_covers_host edge-nginx /tls/certificate.pem services.example.test || exit 47
+if container_certificate_covers_host edge-nginx /tls/certificate.pem control.example.test; then
+    exit 48
+fi
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    ("listen_line", "expected_real_ip", "expected_forwarded_for", "unexpected_ip"),
+    [
+        ("listen 443 ssl;", "$remote_addr", "$proxy_add_x_forwarded_for", "$proxy_protocol_addr"),
+        (
+            "listen unix:/run/edge/tls.sock ssl proxy_protocol;",
+            "$proxy_protocol_addr",
+            "$proxy_protocol_addr",
+            "$remote_addr",
+        ),
+    ],
+)
+def test_shell_installer_renders_egames_routes_for_detected_tls_listener(
+    tmp_path: Path,
+    listen_line: str,
+    expected_real_ip: str,
+    expected_forwarded_for: str,
+    unexpected_ip: str,
+):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    nginx_config = tmp_path / "nginx.conf"
+    nginx_config.write_text(
+        f"""
+server {{
+    server_name control.example.test;
+    {listen_line}
+    ssl_certificate "/tls/shared.pem";
+    ssl_certificate_key "/tls/shared.key";
+    ssl_trusted_certificate "/tls/shared.pem";
+}}
+""",
+        encoding="utf-8",
+    )
+
+    shell_body = f"""
+PROFILE_KEY=egames
+WEBHOOK_HOST_VALUE=events.example.test
+MINIAPP_HOST_VALUE=workspace.example.test
+WEB_SERVER_BIND_VALUE=127.0.0.1:8080
+FRONTEND_BIND_VALUE=127.0.0.1:8082
+detect_egames_nginx_conf() {{ printf '%s' {shlex.quote(nginx_config.as_posix())}; }}
+detect_egames_nginx_container() {{ printf '%s' edge-nginx; }}
+prompt_value() {{ PROMPT_VALUE="$2"; }}
+require_docker() {{ return 0; }}
+container_certificate_covers_host() {{ return 0; }}
+egames_container_has_routes() {{ return 0; }}
+docker() {{ return 0; }}
+configure_egames_reverse_proxy
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    rendered = nginx_config.read_text(encoding="utf-8").split(
+        "# BEGIN remnawave-minishop managed by install.sh", 1
+    )[1]
+    assert listen_line in rendered
+    assert "server_name events.example.test;" in rendered
+    assert "server_name workspace.example.test;" in rendered
+    assert f"proxy_set_header X-Real-IP {expected_real_ip};" in rendered
+    assert f"proxy_set_header X-Forwarded-For {expected_forwarded_for};" in rendered
+    assert f"proxy_set_header X-Real-IP {unexpected_ip};" not in rendered
+
+
+def test_shell_installer_keeps_egames_config_when_certificate_is_unverified(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    nginx_config = tmp_path / "nginx.conf"
+    original_config = """
+server {
+    server_name control.example.test;
+    listen 443 ssl;
+    ssl_certificate "/tls/control.pem";
+    ssl_certificate_key "/tls/control.key";
+}
+"""
+    nginx_config.write_text(original_config, encoding="utf-8")
+
+    shell_body = f"""
+PROFILE_KEY=egames
+WEBHOOK_HOST_VALUE=events.example.test
+MINIAPP_HOST_VALUE=workspace.example.test
+detect_egames_nginx_conf() {{ printf '%s' {shlex.quote(nginx_config.as_posix())}; }}
+detect_egames_nginx_container() {{ printf '%s' edge-nginx; }}
+prompt_value() {{ PROMPT_VALUE="$2"; }}
+require_docker() {{ return 0; }}
+container_certificate_covers_host() {{ return 1; }}
+docker() {{ return 0; }}
+if configure_egames_reverse_proxy; then
+    exit 50
+fi
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert nginx_config.read_text(encoding="utf-8") == original_config
 
 
 def test_shell_installer_requires_an_explicit_choice_for_unverified_panel_settings():
@@ -166,6 +768,9 @@ def test_shell_installer_validates_panel_cookie_and_live_json_response():
     script = INSTALL_SCRIPT.read_text(encoding="utf-8")
 
     assert "panel_configuration_shape_ready" in script
+    assert 'choose "Способ доступа к Remnawave Panel"' in script
+    assert "Удалённая Panel за eGames reverse proxy" in script
+    assert "normalize_panel_api_cookie" in script
     assert "PANEL_API_COOKIE похож на JWT/API-ключ" in script
     assert "Cookie должен иметь формат name=value" in script
     assert "probe_panel_api_configuration" in script
@@ -205,6 +810,116 @@ PANEL_API_URL_VALUE=https://panel.local/api
 PANEL_API_KEY_VALUE=valid-key
 PANEL_API_COOKIE_VALUE=rw_session=session-value
 panel_configuration_shape_ready
+""",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    ("provided_value", "expected_cookie"),
+    [
+        ("access_key=access_value", "access_key=access_value"),
+        ("Cookie: access_key=access_value", "access_key=access_value"),
+        (
+            "Cookie: access_key=access_value; session_id=session_value",
+            "access_key=access_value; session_id=session_value",
+        ),
+        (
+            "Set-Cookie: access_key=access_value; Path=/; HttpOnly",
+            "access_key=access_value",
+        ),
+        (
+            "https://panel.remote.invalid/auth/login?access_key=access_value",
+            "access_key=access_value",
+        ),
+    ],
+)
+def test_shell_installer_normalizes_remote_panel_cookie_inputs(
+    tmp_path: Path,
+    provided_value: str,
+    expected_cookie: str,
+):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    result = _run_installer_function(
+        tmp_path,
+        f"""
+provided_value={shlex.quote(provided_value)}
+expected_cookie={shlex.quote(expected_cookie)}
+normalized=$(normalize_panel_api_cookie "$provided_value") || exit 20
+[ "$normalized" = "$expected_cookie" ] || exit 21
+""",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    "provided_value",
+    [
+        "header.payload.signature",
+        "https://panel.remote.invalid/auth/login",
+        "https://panel.remote.invalid/auth/login?access_key=access_value&next=dashboard",
+        "access_key=",
+        "=access_value",
+        "access_key=access_value; Path=/",
+        "access_key=value$HOME",
+        "Cookie: access_key=access_value\nInjected=header",
+    ],
+)
+def test_shell_installer_rejects_ambiguous_or_unsafe_panel_cookie_inputs(
+    tmp_path: Path,
+    provided_value: str,
+):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    result = _run_installer_function(
+        tmp_path,
+        f"""
+provided_value={shlex.quote(provided_value)}
+if normalize_panel_api_cookie "$provided_value" >/dev/null; then exit 20; fi
+""",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_shell_installer_remote_panel_access_mode_extracts_cookie_from_access_url(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    result = _run_installer_function(
+        tmp_path,
+        """
+detected_panel_api_cookie=
+detected_panel_api_cookie_prefilled=0
+choose() { CHOICE_VALUE=2; }
+prompt_value() { PROMPT_VALUE=https://panel.remote.invalid/auth/login?access_key=access_value; }
+prompt_panel_access_cookie || exit 20
+[ "$PANEL_API_COOKIE_VALUE" = access_key=access_value ] || exit 21
+""",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_shell_installer_direct_panel_access_mode_clears_a_saved_cookie(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    result = _run_installer_function(
+        tmp_path,
+        """
+detected_panel_api_cookie=access_key=stale_value
+detected_panel_api_cookie_prefilled=1
+PANEL_API_COOKIE_VALUE=access_key=stale_value
+choose() { CHOICE_VALUE=1; }
+prompt_panel_access_cookie || exit 20
+[ -z "$PANEL_API_COOKIE_VALUE" ] || exit 21
+[ -z "$detected_panel_api_cookie" ] || exit 22
 """,
     )
 
@@ -319,7 +1034,8 @@ def test_shell_installer_checks_dns_and_can_prepare_nginx_certificates():
     assert "python3-certbot-dns-cloudflare" in script
     assert "--preferred-challenges http" in script
     assert "remember_nginx_cert_mapping" in script
-    assert "docker-compose exec -T nginx nginx -s reload" in script
+    assert "docker compose exec -T nginx nginx -s reload" in script
+    assert "docker-compose exec -T nginx nginx -s reload" not in script
     assert "configure_nginx_certificates || return 1" in script
     assert "check_public_dns_records || return 1" in script
 

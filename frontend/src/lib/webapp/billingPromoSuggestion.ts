@@ -2,6 +2,7 @@ import type { WebappRecord } from "./types";
 
 export function emptyCheckoutPromoQuote() {
   return {
+    checkoutPromoEffectiveAmount: 0,
     checkoutPromoDiscountPercent: 0,
     checkoutPromoAppliesTo: "all",
     checkoutPromoMinSubscriptionMonths: null,
