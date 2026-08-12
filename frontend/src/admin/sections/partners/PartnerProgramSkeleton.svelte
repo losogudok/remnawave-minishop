@@ -43,6 +43,20 @@
             at("partners_col_available", {}, "Available"),
           ]
   );
+  const dashboardTableHeaders = $derived([
+    [
+      at("partners_col_partner", {}, "Partner"),
+      at("partners_col_method", {}, "Method"),
+      at("partners_col_amount", {}, "Amount"),
+      at("partners_col_status", {}, "Status"),
+    ],
+    [
+      at("partners_col_user", {}, "User"),
+      at("partners_col_clients", {}, "Clients"),
+      at("partners_col_earned", {}, "Net commission"),
+      at("partners_col_status", {}, "Status"),
+    ],
+  ]);
 </script>
 
 <div class="partners-skeleton" role="status" aria-label={at("partners_loading", {}, "Loading")}>
@@ -86,26 +100,41 @@
     </article>
 
     <section class="partners-preview-grid">
-      {#each [false, false, true] as wide, cardIndex (cardIndex)}
-        <article class="admin-card partners-preview-card" class:partners-preview-wide={wide}>
+      {#each dashboardTableHeaders as headers}
+        <article class="admin-card partners-preview-card partners-dashboard-table-card">
           <header>
             <div>
               <Skeleton variant="dot" width="17px" height="17px" />
-              <Skeleton variant="line" width={cardIndex === 2 ? "184px" : "132px"} />
+              <Skeleton variant="line" width="132px" />
             </div>
             <Skeleton variant="line" width="72px" />
           </header>
-          {#each Array(3) as _, rowIndex (rowIndex)}
-            <div class="partners-preview-row">
-              <span>
-                <Skeleton variant="line" width={`${112 + rowIndex * 14}px`} />
-                <Skeleton variant="tiny" width={`${82 + rowIndex * 9}px`} />
-              </span>
-              <Skeleton variant="line" width="74px" />
-            </div>
-          {/each}
+          <AdminTableSkeleton
+            {headers}
+            rows={6}
+            rowHeight={40}
+            class="admin-table-compact partners-dashboard-table"
+          />
         </article>
       {/each}
+      <article class="admin-card partners-preview-card partners-preview-wide">
+        <header>
+          <div>
+            <Skeleton variant="dot" width="17px" height="17px" />
+            <Skeleton variant="line" width="184px" />
+          </div>
+          <Skeleton variant="line" width="72px" />
+        </header>
+        {#each Array(3) as _, rowIndex (rowIndex)}
+          <div class="partners-preview-row">
+            <span>
+              <Skeleton variant="line" width={`${112 + rowIndex * 14}px`} />
+              <Skeleton variant="tiny" width={`${82 + rowIndex * 9}px`} />
+            </span>
+            <Skeleton variant="line" width="74px" />
+          </div>
+        {/each}
+      </article>
     </section>
   {:else if isList}
     <section class="partners-list-view">
@@ -120,14 +149,12 @@
         <Skeleton class="partners-skeleton-control" height="38px" />
         <Skeleton class="partners-skeleton-control" width="220px" height="38px" />
       </div>
-      <div class="admin-table-wrap">
-        <AdminTableSkeleton
-          headers={listHeaders}
-          rows={6}
-          rowHeight={54}
-          actionColumn={view === "applications" || view === "withdrawals"}
-        />
-      </div>
+      <AdminTableSkeleton
+        headers={listHeaders}
+        rows={6}
+        rowHeight={54}
+        actionColumn={view === "applications" || view === "withdrawals"}
+      />
     </section>
   {:else}
     <section class="partners-detail-view">

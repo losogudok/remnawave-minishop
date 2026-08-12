@@ -21,10 +21,11 @@
     AdminBadge,
     AdminButton,
     AdminEmptyState,
-    AdminEntityLink,
     AdminSelect,
   } from "$components/patterns/admin/index.js";
+  import { partnerSortColumns } from "$lib/admin/partnerProgramSort.js";
   import { formatPartnerMoney, partnerStatusVariant } from "$lib/admin/partnerProgramUi.js";
+  import { sortAdminRows } from "$lib/admin/tableSort.js";
   import { stripRoutePrefix, withRoutePrefix } from "$lib/webapp/routes.js";
   import { getSettingsStore } from "$lib/admin/context.js";
   import {
@@ -59,6 +60,7 @@
     type PartnerLinkRow,
   } from "$lib/admin/partnerProgramApi.js";
   import PartnerProgramCharts from "./partners/PartnerProgramCharts.svelte";
+  import PartnerDashboardTables from "./partners/PartnerDashboardTables.svelte";
   import PartnerProgramSkeleton from "./partners/PartnerProgramSkeleton.svelte";
   import PartnerProgramTables from "./partners/PartnerProgramTables.svelte";
   import PartnerActionDialog from "./partners/PartnerActionDialog.svelte";
@@ -99,6 +101,7 @@
   const adminScenario = initialScenario();
   const previewMode = Boolean(adminScenario);
   const emptyChartsPreview = adminScenario === "empty_charts";
+  const emptyListsPreview = adminScenario === "empty_lists";
   const settingsStore = getSettingsStore();
   const referralProgramEnabled = $derived.by(() => {
     const field = settingsStore.settingsSections
@@ -112,20 +115,18 @@
   );
   let partnerTotal = $state(previewMode ? previewPartners.length : 0);
   let partnerQuery = $state<AdminPartnerListQuery>({ ...DEFAULT_PARTNER_LIST_QUERY });
-  const topPartnerQuery: AdminPartnerListQuery = {
-    ...DEFAULT_PARTNER_LIST_QUERY,
-    sort: "earned_desc",
-    limit: 3,
-  };
+  let topPartnerSort = $state("earned_desc");
   let topPartners = $state<PartnerRow[]>(
-    previewMode ? [...previewPartners].sort((left, right) => right.earned - left.earned) : []
+    previewMode && !emptyListsPreview
+      ? sortAdminRows(previewPartners, "earned_desc", partnerSortColumns).slice(0, 6)
+      : []
   );
   let partnerListRequestId = 0;
   let applications = $state<ApplicationRow[]>(
     previewMode ? previewApplications.map((item) => ({ ...item })) : []
   );
   let withdrawals = $state<WithdrawalRow[]>(
-    previewMode ? previewWithdrawals.map((item) => ({ ...item })) : []
+    previewMode && !emptyListsPreview ? previewWithdrawals.map((item) => ({ ...item })) : []
   );
   let partnerLinks = $state<PartnerLinkRow[]>(
     previewMode
@@ -312,6 +313,7 @@
   let approvalWelcome = $state("");
   let rejectMessage = $state("");
   let actionStatus = $state("");
+  let actionError = $state(false);
   let actionBusy = $state(false);
   let createUserId = $state("");
   let createRate = $state("30");
@@ -319,6 +321,17 @@
   let importOnCreate = $state(false);
   let importPreview = $state({ found: 0, new_clients: 0, existing: 0, conflicts: 0 });
   let revealedRequisites = $state("");
+  let withdrawalExternalReference = $state("");
+  let withdrawalSettlementAmount = $state("");
+  let withdrawalSettlementError = $state("");
+
+  function topPartnerQuery(): AdminPartnerListQuery {
+    return {
+      ...DEFAULT_PARTNER_LIST_QUERY,
+      sort: topPartnerSort,
+      limit: 6,
+    };
+  }
 
   function initialScenario(): string {
     if (typeof window === "undefined") return "populated";
@@ -374,6 +387,9 @@
       selectedWithdrawal =
         withdrawals.find((withdrawal) => withdrawal.id.toLowerCase() === routeId) ||
         selectedWithdrawal;
+      withdrawalExternalReference = selectedWithdrawal.externalReference || "";
+      withdrawalSettlementAmount = selectedWithdrawal.settlementAmount || "";
+      withdrawalSettlementError = "";
     }
     view = route.view;
     if (!previewMode && route.view === "partner_detail" && route.id) {
@@ -441,7 +457,7 @@
       const [nextDashboard, lists, topPartnerPage] = await Promise.all([
         loadPartnerDashboard(api, currency),
         loadPartnerLists(api, currency, partnerQuery),
-        loadPartnerPage(api, currency, topPartnerQuery),
+        loadPartnerPage(api, currency, topPartnerQuery()),
       ]);
       dashboard = nextDashboard;
       partnerRevenueDaily = nextDashboard.revenue;
@@ -485,6 +501,23 @@
       partnerTotal = page.total;
       selectedPartner =
         partners.find((item) => item.id === selectedPartner.id) || partners[0] || emptyPartner;
+    } catch {
+      loadError = true;
+    }
+  }
+
+  async function updateTopPartnerSort(sort: string): Promise<void> {
+    topPartnerSort = sort;
+    if (previewMode) {
+      topPartners = emptyListsPreview
+        ? []
+        : sortAdminRows(previewPartners, sort, partnerSortColumns).slice(0, 6);
+      return;
+    }
+    try {
+      const page = await loadPartnerPage(api, currency, topPartnerQuery());
+      if (sort !== topPartnerSort) return;
+      topPartners = page.partners;
     } catch {
       loadError = true;
     }
@@ -538,10 +571,14 @@
   function openWithdrawal(withdrawal: (typeof withdrawals)[number]): void {
     revealedRequisites = "";
     selectedWithdrawal = withdrawal;
+    withdrawalExternalReference = withdrawal.externalReference || "";
+    withdrawalSettlementAmount = withdrawal.settlementAmount || "";
+    withdrawalSettlementError = "";
     navigate("withdrawal_detail", withdrawal.id);
   }
 
   async function completeDialog(): Promise<void> {
+    actionError = false;
     if (previewMode) {
       actionStatus = at("partners_action_saved", {}, "Changes saved in the prototype");
       dialog = "";
@@ -599,6 +636,7 @@
       await refreshAll();
       actionStatus = at("partners_action_saved", {}, "Changes saved");
     } catch (error) {
+      actionError = true;
       actionStatus =
         error instanceof Error ? error.message : at("partners_action_failed", {}, "Action failed");
     } finally {
@@ -607,6 +645,7 @@
   }
 
   async function decideApplication(status: "approved" | "rejected"): Promise<void> {
+    actionError = false;
     if (previewMode) {
       selectedApplication.status = status;
     } else {
@@ -622,6 +661,7 @@
         );
         await refreshAll();
       } catch (error) {
+        actionError = true;
         actionStatus =
           error instanceof Error
             ? error.message
@@ -640,24 +680,44 @@
   async function transitionWithdrawal(
     status: "processing" | "paid" | "reject" | "fail"
   ): Promise<void> {
+    actionError = false;
+    withdrawalSettlementError = "";
+    if (
+      status === "paid" &&
+      selectedWithdrawal.method === "crypto" &&
+      !withdrawalSettlementAmount.trim()
+    ) {
+      withdrawalSettlementError = at(
+        "partners_settlement_amount_required",
+        {},
+        "Enter the actual crypto settlement amount before marking the withdrawal as paid."
+      );
+      actionStatus = withdrawalSettlementError;
+      actionError = true;
+      return;
+    }
     if (previewMode) {
       selectedWithdrawal.status =
         status === "reject" ? "rejected" : status === "fail" ? "failed" : status;
+      selectedWithdrawal.externalReference = withdrawalExternalReference.trim();
+      selectedWithdrawal.settlementAmount = withdrawalSettlementAmount.trim();
+      actionStatus = at("partners_action_saved", {}, "Changes saved in the prototype");
       return;
     }
     actionBusy = true;
     try {
       await post(`/admin/partner-withdrawals/${selectedWithdrawal.id}/${status}`, {
-        status_version: selectedWithdrawal.statusVersion || 1,
+        status_version: selectedWithdrawal.statusVersion ?? 1,
         message: dialogReason.trim() || null,
-        external_reference: selectedWithdrawal.externalReference || null,
-        settlement_amount: selectedWithdrawal.settlementAmount || null,
+        external_reference: withdrawalExternalReference.trim() || null,
+        settlement_amount: withdrawalSettlementAmount.trim() || null,
       });
       await refreshAll();
       selectedWithdrawal =
         withdrawals.find((item) => item.id === selectedWithdrawal.id) || selectedWithdrawal;
       actionStatus = at("partners_action_saved", {}, "Changes saved");
     } catch (error) {
+      actionError = true;
       actionStatus =
         error instanceof Error ? error.message : at("partners_action_failed", {}, "Action failed");
     } finally {
@@ -666,6 +726,7 @@
   }
 
   async function revealWithdrawalRequisites(): Promise<void> {
+    actionError = false;
     if (previewMode) {
       revealedRequisites = selectedWithdrawal.masked;
       return;
@@ -674,6 +735,7 @@
       const response = await post(`/admin/partner-withdrawals/${selectedWithdrawal.id}/reveal`);
       revealedRequisites = JSON.stringify(response.requisites || {}, null, 2);
     } catch (error) {
+      actionError = true;
       actionStatus =
         error instanceof Error ? error.message : at("partners_action_failed", {}, "Action failed");
     }
@@ -756,8 +818,13 @@
   </header>
 
   {#if actionStatus}
-    <div class="partners-success-banner" role="status">
-      <CheckCircle2 size={16} />{actionStatus}
+    <div
+      class="partners-success-banner"
+      class:partners-error-banner={actionError}
+      role={actionError ? "alert" : "status"}
+    >
+      {#if actionError}<TriangleAlert size={16} />{:else}<CheckCircle2 size={16} />{/if}
+      {actionStatus}
     </div>
   {/if}
 
@@ -820,63 +887,19 @@
       />
 
       <section class="partners-preview-grid">
-        <article class="admin-card partners-preview-card">
-          <header>
-            <div>
-              <WalletCards size={17} /><strong
-                >{at("partners_withdrawal_queue", {}, "Withdrawal queue")}</strong
-              >
-            </div>
-            <button type="button" onclick={() => navigate("withdrawals")}
-              >{at("partners_view_all", {}, "View all")}<ArrowRight size={14} /></button
-            >
-          </header>
-          {#each withdrawals.slice(0, 3) as withdrawal (withdrawal.id)}<button
-              type="button"
-              class="partners-preview-row"
-              onclick={() => openWithdrawal(withdrawal)}
-              ><span
-                ><strong>{withdrawal.partner}</strong><small
-                  >{at(`partners_method_${withdrawal.method}`, {}, withdrawal.method)} · {withdrawal.masked}</small
-                ></span
-              ><span
-                ><strong>{money(withdrawal.amount)}</strong><AdminBadge
-                  variant={partnerStatusVariant(withdrawal.status)}
-                  >{statusLabel(withdrawal.status)}</AdminBadge
-                ></span
-              ></button
-            >{/each}
-        </article>
-        <article class="admin-card partners-preview-card">
-          <header>
-            <div>
-              <TrendingUp size={17} /><strong
-                >{at("partners_top_partners", {}, "Top partners")}</strong
-              >
-            </div>
-            <button type="button" onclick={() => navigate("partners")}
-              >{at("partners_view_all", {}, "View all")}<ArrowRight size={14} /></button
-            >
-          </header>
-          {#each topPartners.slice(0, 3) as partner (partner.id)}
-            <div class="partners-preview-row partners-top-partner-row">
-              <AdminEntityLink
-                kind="user"
-                label={partner.name}
-                secondary={partner.handle}
-                idText={`#${partner.userId}`}
-                avatarUrl={partner.avatarUrl}
-                title={at("partners_open_partner_card", {}, "Open partner card")}
-                onclick={() => openPartner(partner)}
-              />
-              <span class="partners-preview-stats">
-                <small>{partner.clients} {at("partners_clients_short", {}, "clients")}</small>
-                <strong>{money(partner.earned)}</strong>
-                <small>{at("partners_col_earned", {}, "Net commission")}</small>
-              </span>
-            </div>
-          {/each}
-        </article>
+        <PartnerDashboardTables
+          {at}
+          partners={topPartners}
+          {withdrawals}
+          partnerSort={topPartnerSort}
+          {money}
+          {statusLabel}
+          onPartnerSort={(sort) => void updateTopPartnerSort(sort)}
+          onOpenPartner={openPartner}
+          onOpenWithdrawal={openWithdrawal}
+          onViewPartners={() => navigate("partners")}
+          onViewWithdrawals={() => navigate("withdrawals")}
+        />
         <article class="admin-card partners-preview-card partners-preview-wide">
           <header>
             <div>
@@ -948,6 +971,9 @@
       {transitionWithdrawal}
       {revealWithdrawalRequisites}
       {revealedRequisites}
+      bind:withdrawalExternalReference
+      bind:withdrawalSettlementAmount
+      bind:withdrawalSettlementError
       bind:dialog
       bind:decisionOutcome
       bind:approvalRate

@@ -920,7 +920,7 @@ test("partner admin tabs keep stable routes and share the users page size", asyn
 
   await partnerPage.getByRole("tab", { name: /Выводы/ }).click();
   await expect(page).toHaveURL(/\/demo\/runtime\/admin\/partners\/withdrawals\?/);
-  await expect(partnerPage.locator("tbody tr")).toHaveCount(5);
+  await expect(partnerPage.locator("tbody tr")).toHaveCount(6);
 
   await page.goBack();
   await expect(page).toHaveURL(/\/demo\/runtime\/admin\/partners\/partners\?/);
@@ -1109,7 +1109,30 @@ test("partner account stays compact, table-driven, and keeps the tour ring local
   const withdrawalDialog = page.locator(".dialog-card.partner-withdraw-dialog");
   await expect(withdrawalDialog).toBeVisible();
   await expect(withdrawalDialog.locator(".partner-method-options button")).toHaveCount(3);
-  await closeDialog(withdrawalDialog);
+  await withdrawalDialog
+    .locator(".partner-method-options button")
+    .filter({ hasText: "Криптовалюта" })
+    .click();
+  const networkTrigger = withdrawalDialog.locator(".partner-network-select-trigger");
+  await networkTrigger.click();
+  const networkOptions = page.locator(".partner-network-select-item");
+  await expect(networkOptions).toHaveCount(2);
+  const networkTypography = await networkOptions.evaluateAll((options) =>
+    options.map((option) => {
+      const style = window.getComputedStyle(option);
+      return [style.fontFamily, style.fontSize, style.fontWeight, style.lineHeight].join("|");
+    })
+  );
+  expect(new Set(networkTypography).size).toBe(1);
+  const triggerTypography = await networkTrigger.evaluate((element) => {
+    const style = window.getComputedStyle(element);
+    return [style.fontFamily, style.fontSize, style.fontWeight, style.lineHeight].join("|");
+  });
+  expect(networkTypography[0]).toBe(triggerTypography);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".partner-network-select-content")).toBeHidden();
+  await page.keyboard.press("Escape");
+  await expect(withdrawalDialog).toBeHidden();
 
   const firstLink = overview.locator(".partner-link-item").first();
   const linkField = firstLink.locator("code");
@@ -1260,10 +1283,61 @@ test("partner loading and empty chart states preserve their final geometry", asy
     .evaluate((element) => element.getBoundingClientRect().height);
   expect(Math.abs(emptyPartnerChartHeight - finalChartHeight)).toBeLessThanOrEqual(1);
 
+  await page.goto(
+    "/demo/runtime/admin/partners?partner_admin_scenario=empty_lists&theme_preview=dark"
+  );
+  const emptyDashboardTables = page.locator(".partners-dashboard-table-card > .admin-chart-empty");
+  await expect(emptyDashboardTables).toHaveCount(2);
+  await expect(emptyDashboardTables).toHaveText(["Заявок на вывод пока нет", "Партнёров пока нет"]);
+
   await page.goto("/demo/runtime/admin/stats?stats_scenario=empty_revenue&theme_preview=dark");
   const emptyRevenueChart = page.locator(".admin-revenue-chart .admin-chart-empty");
   await expect(emptyRevenueChart).toHaveText("Нет данных для графика");
   await expect(page.locator(".admin-revenue-chart .admin-revenue-chart-body")).toHaveCount(0);
+});
+
+test("partner dashboard tables stay compact, sortable, and show six rows", async ({ page }) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto(
+    "/demo/runtime/admin/partners?partner_admin_scenario=populated&theme_preview=dark"
+  );
+
+  const dashboardTables = page.locator(".partners-dashboard-table-card");
+  await expect(dashboardTables).toHaveCount(2);
+  await expect(dashboardTables.nth(0).locator("tbody tr")).toHaveCount(6);
+  await expect(dashboardTables.nth(1).locator("tbody tr")).toHaveCount(6);
+
+  const earnedHeader = dashboardTables
+    .nth(1)
+    .getByRole("columnheader", { name: /Чистая комиссия/ });
+  await expect(earnedHeader).toHaveAttribute("aria-sort", "descending");
+  await earnedHeader.getByRole("button").click();
+  await expect(earnedHeader).toHaveAttribute("aria-sort", "ascending");
+
+  const rowHeights = await dashboardTables
+    .first()
+    .locator("tbody tr")
+    .evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
+  expect(Math.max(...rowHeights)).toBeLessThanOrEqual(44);
+});
+
+test("crypto withdrawals require settlement data before they can be marked paid", async ({
+  page,
+}) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto(
+    "/demo/runtime/admin/partners/withdrawals/WD-499?partner_admin_scenario=populated&theme_preview=dark"
+  );
+
+  const settlement = page.getByLabel("Фактическая сумма в криптовалюте");
+  await expect(settlement).toBeVisible();
+  await page.getByRole("button", { name: "Отметить выплаченным" }).click();
+  await expect(settlement).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("alert")).toContainText("Укажите фактическую сумму");
+
+  await settlement.fill("125.50 USDT");
+  await page.getByRole("button", { name: "Отметить выплаченным" }).click();
+  await expect(page.locator(".partners-record-card > header")).toContainText("Выплачен");
 });
 
 test("broadcast promo picker fills its mobile editor row", async ({ page }) => {

@@ -59,6 +59,9 @@
     transitionWithdrawal,
     revealWithdrawalRequisites,
     revealedRequisites,
+    withdrawalExternalReference = $bindable(),
+    withdrawalSettlementAmount = $bindable(),
+    withdrawalSettlementError = $bindable(),
     dialog = $bindable(),
     decisionOutcome = $bindable(),
     approvalRate = $bindable(),
@@ -89,6 +92,9 @@
     transitionWithdrawal: (status: "processing" | "paid" | "reject" | "fail") => Promise<void>;
     revealWithdrawalRequisites: () => Promise<void>;
     revealedRequisites: string;
+    withdrawalExternalReference: string;
+    withdrawalSettlementAmount: string;
+    withdrawalSettlementError: string;
     dialog: DialogKind;
     decisionOutcome: "approved" | "rejected";
     approvalRate: string;
@@ -371,6 +377,43 @@
           </div>
         {/if}
       </dl>
+      {#if selectedWithdrawal.status === "processing"}
+        <div class="partners-withdrawal-settlement">
+          <AdminField
+            label={at("partners_external_reference", {}, "Transaction reference (optional)")}
+            hint={at(
+              "partners_external_reference_hint",
+              {},
+              "Bank operation ID or blockchain transaction hash."
+            )}
+          >
+            <Input class="input" autocomplete="off" bind:value={withdrawalExternalReference} />
+          </AdminField>
+          {#if selectedWithdrawal.method === "crypto"}
+            <div
+              class="partners-settlement-field"
+              class:has-error={Boolean(withdrawalSettlementError)}
+            >
+              <AdminField
+                label={at("partners_settlement_amount", {}, "Crypto settlement amount")}
+                hint={withdrawalSettlementError ||
+                  at(
+                    "partners_settlement_amount_hint",
+                    {},
+                    "Required to mark a crypto withdrawal as paid. Include the asset symbol if needed."
+                  )}
+              >
+                <Input
+                  class={withdrawalSettlementError ? "input partners-input-error" : "input"}
+                  aria-invalid={Boolean(withdrawalSettlementError)}
+                  bind:value={withdrawalSettlementAmount}
+                  oninput={() => (withdrawalSettlementError = "")}
+                />
+              </AdminField>
+            </div>
+          {/if}
+        </div>
+      {/if}
       <AdminCardActions>
         <AdminButton
           variant="primary"

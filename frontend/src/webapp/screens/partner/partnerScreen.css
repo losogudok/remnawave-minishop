@@ -176,8 +176,10 @@
   border-radius: var(--radius);
   background: var(--panel-2);
   color: var(--text);
-  font: inherit;
+  font-family: var(--font-sans, system-ui, sans-serif);
   font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
   text-align: left;
 }
 .partner-network-select-trigger:focus-visible {
@@ -196,6 +198,10 @@
   background: var(--panel-2);
   color: var(--text);
   box-shadow: var(--shadow-soft);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
 }
 .partner-network-select-viewport {
   display: grid;
@@ -210,6 +216,10 @@
   padding: 8px 10px;
   border-radius: 9px;
   outline: 0;
+  font: inherit;
+}
+.partner-network-select-item > span {
+  font: inherit;
 }
 .partner-network-select-item[data-highlighted] {
   background: var(--surface-hover);

@@ -282,6 +282,19 @@ export const withdrawals: WithdrawalRow[] = [
     processedAt: "2026-07-21 19:44",
     noteKey: "",
   },
+  {
+    id: "WD-452",
+    partnerId: "PT-052",
+    partner: nameOf(910031),
+    handle: handleOf(910031),
+    method: "bank_card",
+    masked: "•••• 9086",
+    amount: 1750,
+    status: "failed",
+    requested: "2026-07-16 13:28",
+    processedAt: "2026-07-16 14:03",
+    noteKey: "",
+  },
 ];
 
 /** Rows behind the partner-detail tabs; each tab shows a different entity. */
