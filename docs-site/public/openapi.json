@@ -1216,6 +1216,146 @@
         "title": "AdminPartnerApplicationDecisionIn",
         "type": "object"
       },
+      "AdminPartnerApplicationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "application_id": {
+            "title": "Application Id",
+            "type": "integer"
+          },
+          "approved_commission_bps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Approved Commission Bps"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Avatar Url"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decided At"
+          },
+          "decision_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decision Message"
+          },
+          "display_label": {
+            "title": "Display Label",
+            "type": "string"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Message"
+          },
+          "reapply_allowed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reapply Allowed At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "submitted_at": {
+            "format": "date-time",
+            "title": "Submitted At",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Id"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Username"
+          },
+          "welcome_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Welcome Message"
+          }
+        },
+        "required": [
+          "application_id",
+          "display_label",
+          "status",
+          "submitted_at"
+        ],
+        "title": "AdminPartnerApplicationOut",
+        "type": "object"
+      },
       "AdminPartnerBalanceAdjustmentIn": {
         "additionalProperties": false,
         "properties": {
@@ -1531,6 +1671,224 @@
           }
         },
         "title": "AdminPartnerStatusIn",
+        "type": "object"
+      },
+      "AdminPartnerWithdrawalOut": {
+        "additionalProperties": false,
+        "properties": {
+          "amount_minor": {
+            "title": "Amount Minor",
+            "type": "integer"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Avatar Url"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "currency_scale": {
+            "title": "Currency Scale",
+            "type": "integer"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decided At"
+          },
+          "display_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Display Label"
+          },
+          "external_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "External Reference"
+          },
+          "masked_requisites": {
+            "title": "Masked Requisites",
+            "type": "string"
+          },
+          "method_id": {
+            "title": "Method Id",
+            "type": "string"
+          },
+          "method_snapshot": {
+            "additionalProperties": true,
+            "title": "Method Snapshot",
+            "type": "object"
+          },
+          "method_type": {
+            "title": "Method Type",
+            "type": "string"
+          },
+          "network": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Network"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Paid At"
+          },
+          "partner_id": {
+            "title": "Partner Id",
+            "type": "integer"
+          },
+          "processing_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Processing At"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "settlement_amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Settlement Amount"
+          },
+          "settlement_asset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Settlement Asset"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status Message"
+          },
+          "status_version": {
+            "title": "Status Version",
+            "type": "integer"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Id"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Username"
+          },
+          "withdrawal_id": {
+            "title": "Withdrawal Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "withdrawal_id",
+          "partner_id",
+          "method_id",
+          "method_type",
+          "method_snapshot",
+          "amount_minor",
+          "currency",
+          "currency_scale",
+          "status",
+          "status_version",
+          "masked_requisites",
+          "requested_at"
+        ],
+        "title": "AdminPartnerWithdrawalOut",
         "type": "object"
       },
       "AdminPartnerWithdrawalTransitionIn": {
@@ -11427,7 +11785,7 @@
                   "additionalProperties": false,
                   "properties": {
                     "application": {
-                      "$ref": "#/components/schemas/PartnerApplicationOut"
+                      "$ref": "#/components/schemas/AdminPartnerApplicationOut"
                     },
                     "ok": {
                       "const": true,
@@ -11549,7 +11907,7 @@
                   "additionalProperties": false,
                   "properties": {
                     "application": {
-                      "$ref": "#/components/schemas/PartnerApplicationOut"
+                      "$ref": "#/components/schemas/AdminPartnerApplicationOut"
                     },
                     "ok": {
                       "const": true,
@@ -11602,7 +11960,7 @@
                   "additionalProperties": false,
                   "properties": {
                     "application": {
-                      "$ref": "#/components/schemas/PartnerApplicationOut"
+                      "$ref": "#/components/schemas/AdminPartnerApplicationOut"
                     },
                     "ok": {
                       "const": true,
@@ -11698,7 +12056,7 @@
                       "type": "boolean"
                     },
                     "withdrawal": {
-                      "$ref": "#/components/schemas/PartnerWithdrawalOut"
+                      "$ref": "#/components/schemas/AdminPartnerWithdrawalOut"
                     }
                   },
                   "required": [
@@ -11761,7 +12119,7 @@
                       "type": "boolean"
                     },
                     "withdrawal": {
-                      "$ref": "#/components/schemas/PartnerWithdrawalOut"
+                      "$ref": "#/components/schemas/AdminPartnerWithdrawalOut"
                     }
                   },
                   "required": [
@@ -11824,7 +12182,7 @@
                       "type": "boolean"
                     },
                     "withdrawal": {
-                      "$ref": "#/components/schemas/PartnerWithdrawalOut"
+                      "$ref": "#/components/schemas/AdminPartnerWithdrawalOut"
                     }
                   },
                   "required": [
@@ -11887,7 +12245,7 @@
                       "type": "boolean"
                     },
                     "withdrawal": {
-                      "$ref": "#/components/schemas/PartnerWithdrawalOut"
+                      "$ref": "#/components/schemas/AdminPartnerWithdrawalOut"
                     }
                   },
                   "required": [
@@ -11950,7 +12308,7 @@
                       "type": "boolean"
                     },
                     "withdrawal": {
-                      "$ref": "#/components/schemas/PartnerWithdrawalOut"
+                      "$ref": "#/components/schemas/AdminPartnerWithdrawalOut"
                     }
                   },
                   "required": [

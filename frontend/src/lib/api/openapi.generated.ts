@@ -2828,6 +2828,65 @@ export interface components {
        */
       welcome_message: string | null;
     };
+    /** AdminPartnerApplicationOut */
+    AdminPartnerApplicationOut: {
+      /** Application Id */
+      application_id: number;
+      /**
+       * Approved Commission Bps
+       * @default null
+       */
+      approved_commission_bps: number | null;
+      /**
+       * Avatar Url
+       * @default null
+       */
+      avatar_url: string | null;
+      /**
+       * Decided At
+       * @default null
+       */
+      decided_at: string | null;
+      /**
+       * Decision Message
+       * @default null
+       */
+      decision_message: string | null;
+      /** Display Label */
+      display_label: string;
+      /**
+       * Message
+       * @default null
+       */
+      message: string | null;
+      /**
+       * Reapply Allowed At
+       * @default null
+       */
+      reapply_allowed_at: string | null;
+      /** Status */
+      status: string;
+      /**
+       * Submitted At
+       * Format: date-time
+       */
+      submitted_at: string;
+      /**
+       * User Id
+       * @default null
+       */
+      user_id: number | null;
+      /**
+       * Username
+       * @default null
+       */
+      username: string | null;
+      /**
+       * Welcome Message
+       * @default null
+       */
+      welcome_message: string | null;
+    };
     /** AdminPartnerBalanceAdjustmentIn */
     AdminPartnerBalanceAdjustmentIn: {
       /**
@@ -2949,6 +3008,98 @@ export interface components {
        * @default null
        */
       reason: string | null;
+    };
+    /** AdminPartnerWithdrawalOut */
+    AdminPartnerWithdrawalOut: {
+      /** Amount Minor */
+      amount_minor: number;
+      /**
+       * Avatar Url
+       * @default null
+       */
+      avatar_url: string | null;
+      /** Currency */
+      currency: string;
+      /** Currency Scale */
+      currency_scale: number;
+      /**
+       * Decided At
+       * @default null
+       */
+      decided_at: string | null;
+      /**
+       * Display Label
+       * @default null
+       */
+      display_label: string | null;
+      /**
+       * External Reference
+       * @default null
+       */
+      external_reference: string | null;
+      /** Masked Requisites */
+      masked_requisites: string;
+      /** Method Id */
+      method_id: string;
+      /** Method Snapshot */
+      method_snapshot: {
+        [key: string]: unknown;
+      };
+      /** Method Type */
+      method_type: string;
+      /**
+       * Network
+       * @default null
+       */
+      network: string | null;
+      /**
+       * Paid At
+       * @default null
+       */
+      paid_at: string | null;
+      /** Partner Id */
+      partner_id: number;
+      /**
+       * Processing At
+       * @default null
+       */
+      processing_at: string | null;
+      /**
+       * Requested At
+       * Format: date-time
+       */
+      requested_at: string;
+      /**
+       * Settlement Amount
+       * @default null
+       */
+      settlement_amount: string | null;
+      /**
+       * Settlement Asset
+       * @default null
+       */
+      settlement_asset: string | null;
+      /** Status */
+      status: string;
+      /**
+       * Status Message
+       * @default null
+       */
+      status_message: string | null;
+      /** Status Version */
+      status_version: number;
+      /**
+       * User Id
+       * @default null
+       */
+      user_id: number | null;
+      /**
+       * Username
+       * @default null
+       */
+      username: string | null;
+      /** Withdrawal Id */
+      withdrawal_id: number;
     };
     /** AdminPartnerWithdrawalTransitionIn */
     AdminPartnerWithdrawalTransitionIn: {
@@ -7377,7 +7528,7 @@ export interface operations {
         };
         content: {
           "application/json": {
-            application: components["schemas"]["PartnerApplicationOut"];
+            application: components["schemas"]["AdminPartnerApplicationOut"];
             /** @constant */
             ok: true;
           };
@@ -7436,7 +7587,7 @@ export interface operations {
         };
         content: {
           "application/json": {
-            application: components["schemas"]["PartnerApplicationOut"];
+            application: components["schemas"]["AdminPartnerApplicationOut"];
             /** @constant */
             ok: true;
           };
@@ -7462,7 +7613,7 @@ export interface operations {
         };
         content: {
           "application/json": {
-            application: components["schemas"]["PartnerApplicationOut"];
+            application: components["schemas"]["AdminPartnerApplicationOut"];
             /** @constant */
             ok: true;
           };
@@ -7513,7 +7664,7 @@ export interface operations {
           "application/json": {
             /** @constant */
             ok: true;
-            withdrawal: components["schemas"]["PartnerWithdrawalOut"];
+            withdrawal: components["schemas"]["AdminPartnerWithdrawalOut"];
           };
         };
       };
@@ -7543,7 +7694,7 @@ export interface operations {
           "application/json": {
             /** @constant */
             ok: true;
-            withdrawal: components["schemas"]["PartnerWithdrawalOut"];
+            withdrawal: components["schemas"]["AdminPartnerWithdrawalOut"];
           };
         };
       };
@@ -7573,7 +7724,7 @@ export interface operations {
           "application/json": {
             /** @constant */
             ok: true;
-            withdrawal: components["schemas"]["PartnerWithdrawalOut"];
+            withdrawal: components["schemas"]["AdminPartnerWithdrawalOut"];
           };
         };
       };
@@ -7603,7 +7754,7 @@ export interface operations {
           "application/json": {
             /** @constant */
             ok: true;
-            withdrawal: components["schemas"]["PartnerWithdrawalOut"];
+            withdrawal: components["schemas"]["AdminPartnerWithdrawalOut"];
           };
         };
       };
@@ -7633,7 +7784,7 @@ export interface operations {
           "application/json": {
             /** @constant */
             ok: true;
-            withdrawal: components["schemas"]["PartnerWithdrawalOut"];
+            withdrawal: components["schemas"]["AdminPartnerWithdrawalOut"];
           };
         };
       };

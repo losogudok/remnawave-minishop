@@ -913,14 +913,17 @@ test("partner admin tabs keep stable routes and share the users page size", asyn
     "active"
   );
   await expect(partnerPage.locator("tbody tr")).toHaveCount(4);
+  await expect(partnerPage.locator("tbody .admin-entity-link.is-person img")).toHaveCount(4);
 
   await partnerPage.getByRole("tab", { name: "Партнёры", exact: true }).click();
   await expect(page).toHaveURL(/\/demo\/runtime\/admin\/partners\/partners\?/);
   await expect(partnerPage.locator("tbody tr")).toHaveCount(6);
+  await expect(partnerPage.locator("tbody .admin-entity-link.is-person img")).toHaveCount(6);
 
   await partnerPage.getByRole("tab", { name: /Выводы/ }).click();
   await expect(page).toHaveURL(/\/demo\/runtime\/admin\/partners\/withdrawals\?/);
   await expect(partnerPage.locator("tbody tr")).toHaveCount(6);
+  await expect(partnerPage.locator("tbody .admin-entity-link.is-person img")).toHaveCount(6);
 
   await page.goBack();
   await expect(page).toHaveURL(/\/demo\/runtime\/admin\/partners\/partners\?/);

@@ -117,7 +117,12 @@ export function mapApplication(item: JsonRecord): ApplicationRow {
     id: String(item.application_id || ""),
     userId,
     user: String(item.display_label || `#${userId}`),
-    handle: userId ? `#${userId}` : "—",
+    handle: item.username
+      ? `@${String(item.username).replace(/^@/, "")}`
+      : userId
+        ? `#${userId}`
+        : "—",
+    avatarUrl: String(item.avatar_url || ""),
     submitted: String(item.submitted_at || ""),
     status: String(item.status || "canceled") as ApplicationRow["status"],
     messageKey: String(item.message || ""),
@@ -130,11 +135,15 @@ export function mapWithdrawal(
 ): WithdrawalRow {
   const partnerId = String(item.partner_id || "");
   const partner = partnerById.get(partnerId);
+  const userId = number(item.user_id) || partner?.userId || 0;
   return {
     id: String(item.withdrawal_id || ""),
     partnerId,
-    partner: partner?.name || `#${partnerId}`,
-    handle: partner?.handle || `#${partnerId}`,
+    partner: String(item.display_label || partner?.name || `#${partnerId}`),
+    handle: item.username
+      ? `@${String(item.username).replace(/^@/, "")}`
+      : partner?.handle || (userId ? `#${userId}` : `#${partnerId}`),
+    avatarUrl: String(item.avatar_url || partner?.avatarUrl || ""),
     method: String(item.method_type || "bank_card") as WithdrawalRow["method"],
     masked: String(item.masked_requisites || ""),
     amount: major(item.amount_minor, item.currency_scale),

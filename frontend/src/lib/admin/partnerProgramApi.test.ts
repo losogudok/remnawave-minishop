@@ -5,6 +5,9 @@ import {
   DEFAULT_PARTNER_LIST_QUERY,
   loadPartnerDashboard,
   loadPartnerPage,
+  mapApplication,
+  mapPartner,
+  mapWithdrawal,
   PARTNER_LIST_PAGE_SIZE,
 } from "./partnerProgramApi.js";
 
@@ -78,6 +81,53 @@ describe("partner program admin API", () => {
 
   it("shows partners with clients first by default", () => {
     expect(DEFAULT_PARTNER_LIST_QUERY.sort).toBe("clients_desc");
+  });
+
+  it("maps live Telegram identities for applications and withdrawals", () => {
+    const partner = mapPartner(
+      {
+        partner_id: 12,
+        user_id: 34,
+        display_label: "Alice Partner",
+        username: "alice",
+        avatar_url: "/api/admin/users/34/avatar?v=1",
+        status: "active",
+        balances: [],
+      },
+      "RUB"
+    );
+    const application = mapApplication({
+      application_id: 51,
+      user_id: 35,
+      display_label: "Bob Applicant",
+      username: "bob",
+      avatar_url: "/api/admin/users/35/avatar?v=2",
+      status: "pending",
+    });
+    const withdrawal = mapWithdrawal(
+      {
+        withdrawal_id: 61,
+        partner_id: 12,
+        user_id: 34,
+        display_label: "Alice Partner",
+        username: "alice",
+        avatar_url: "/api/admin/users/34/avatar?v=1",
+        method_type: "bank_card",
+        status: "requested",
+      },
+      new Map([[partner.id, partner]])
+    );
+
+    expect(application).toMatchObject({
+      user: "Bob Applicant",
+      handle: "@bob",
+      avatarUrl: "/api/admin/users/35/avatar?v=2",
+    });
+    expect(withdrawal).toMatchObject({
+      partner: "Alice Partner",
+      handle: "@alice",
+      avatarUrl: "/api/admin/users/34/avatar?v=1",
+    });
   });
 
   it("supports a bounded top-partner page", async () => {

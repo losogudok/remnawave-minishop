@@ -1,5 +1,6 @@
 from bot.app.web.partner_schemas import (
     AdminPartnerApplicationDecisionIn,
+    AdminPartnerApplicationOut,
     AdminPartnerBalanceAdjustmentIn,
     AdminPartnerBulkReferralImportPreviewOut,
     AdminPartnerBulkReferralImportResultOut,
@@ -10,10 +11,9 @@ from bot.app.web.partner_schemas import (
     AdminPartnerReferralImportResultOut,
     AdminPartnerRequisitesOut,
     AdminPartnerStatusIn,
+    AdminPartnerWithdrawalOut,
     AdminPartnerWithdrawalTransitionIn,
-    PartnerApplicationOut,
     PartnerProfileOut,
-    PartnerWithdrawalOut,
 )
 from bot.app.web.route_contracts import (
     RouteContract,
@@ -86,8 +86,8 @@ PARTNER_ADMIN_ROUTE_CONTRACTS: dict[str, RouteContract] = {
     ),
     "admin_partner_applications_route": RouteContract(response_schema=ok_envelope_with()),
     "admin_partner_application_detail_route": RouteContract(
-        response_schema=ok_envelope_for(PartnerApplicationOut, key="application"),
-        models=(PartnerApplicationOut,),
+        response_schema=ok_envelope_for(AdminPartnerApplicationOut, key="application"),
+        models=(AdminPartnerApplicationOut,),
     ),
     "admin_partner_application_approve_route": RouteContract(
         request_model=AdminPartnerApplicationDecisionIn,
@@ -96,17 +96,17 @@ PARTNER_ADMIN_ROUTE_CONTRACTS: dict[str, RouteContract] = {
     ),
     "admin_partner_application_reject_route": RouteContract(
         request_model=AdminPartnerApplicationDecisionIn,
-        response_schema=ok_envelope_for(PartnerApplicationOut, key="application"),
-        models=(AdminPartnerApplicationDecisionIn, PartnerApplicationOut),
+        response_schema=ok_envelope_for(AdminPartnerApplicationOut, key="application"),
+        models=(AdminPartnerApplicationDecisionIn, AdminPartnerApplicationOut),
     ),
     "admin_partner_application_reopen_route": RouteContract(
-        response_schema=ok_envelope_for(PartnerApplicationOut, key="application"),
-        models=(PartnerApplicationOut,),
+        response_schema=ok_envelope_for(AdminPartnerApplicationOut, key="application"),
+        models=(AdminPartnerApplicationOut,),
     ),
     "admin_partner_withdrawals_route": RouteContract(response_schema=ok_envelope_with()),
     "admin_partner_withdrawal_detail_route": RouteContract(
-        response_schema=ok_envelope_for(PartnerWithdrawalOut, key="withdrawal"),
-        models=(PartnerWithdrawalOut,),
+        response_schema=ok_envelope_for(AdminPartnerWithdrawalOut, key="withdrawal"),
+        models=(AdminPartnerWithdrawalOut,),
     ),
     "admin_partner_withdrawal_reveal_route": RouteContract(
         response_schema=ok_envelope_for(AdminPartnerRequisitesOut, key="requisites"),
@@ -114,22 +114,22 @@ PARTNER_ADMIN_ROUTE_CONTRACTS: dict[str, RouteContract] = {
     ),
     "admin_partner_withdrawal_processing_route": RouteContract(
         request_model=AdminPartnerWithdrawalTransitionIn,
-        response_schema=ok_envelope_for(PartnerWithdrawalOut, key="withdrawal"),
-        models=(AdminPartnerWithdrawalTransitionIn, PartnerWithdrawalOut),
+        response_schema=ok_envelope_for(AdminPartnerWithdrawalOut, key="withdrawal"),
+        models=(AdminPartnerWithdrawalTransitionIn, AdminPartnerWithdrawalOut),
     ),
     "admin_partner_withdrawal_paid_route": RouteContract(
         request_model=AdminPartnerWithdrawalTransitionIn,
-        response_schema=ok_envelope_for(PartnerWithdrawalOut, key="withdrawal"),
-        models=(AdminPartnerWithdrawalTransitionIn, PartnerWithdrawalOut),
+        response_schema=ok_envelope_for(AdminPartnerWithdrawalOut, key="withdrawal"),
+        models=(AdminPartnerWithdrawalTransitionIn, AdminPartnerWithdrawalOut),
     ),
     "admin_partner_withdrawal_reject_route": RouteContract(
         request_model=AdminPartnerWithdrawalTransitionIn,
-        response_schema=ok_envelope_for(PartnerWithdrawalOut, key="withdrawal"),
-        models=(AdminPartnerWithdrawalTransitionIn, PartnerWithdrawalOut),
+        response_schema=ok_envelope_for(AdminPartnerWithdrawalOut, key="withdrawal"),
+        models=(AdminPartnerWithdrawalTransitionIn, AdminPartnerWithdrawalOut),
     ),
     "admin_partner_withdrawal_fail_route": RouteContract(
         request_model=AdminPartnerWithdrawalTransitionIn,
-        response_schema=ok_envelope_for(PartnerWithdrawalOut, key="withdrawal"),
-        models=(AdminPartnerWithdrawalTransitionIn, PartnerWithdrawalOut),
+        response_schema=ok_envelope_for(AdminPartnerWithdrawalOut, key="withdrawal"),
+        models=(AdminPartnerWithdrawalTransitionIn, AdminPartnerWithdrawalOut),
     ),
 }

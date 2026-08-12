@@ -57,6 +57,18 @@ async def get_profile_by_id(
     return (await session.execute(statement)).scalar_one_or_none()
 
 
+async def get_profiles_by_ids(
+    session: AsyncSession,
+    partner_ids: list[int],
+) -> dict[int, PartnerProfile]:
+    unique = {int(value) for value in partner_ids}
+    if not unique:
+        return {}
+    statement = select(PartnerProfile).where(PartnerProfile.partner_id.in_(unique))
+    profiles = (await session.execute(statement)).scalars().all()
+    return {int(profile.partner_id): profile for profile in profiles}
+
+
 async def get_profile_by_user_id(
     session: AsyncSession,
     user_id: int,

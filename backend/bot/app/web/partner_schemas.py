@@ -24,6 +24,11 @@ class PartnerApplicationOut(PartnerModel):
     reapply_allowed_at: datetime | None = None
 
 
+class AdminPartnerApplicationOut(PartnerApplicationOut):
+    username: str | None = None
+    avatar_url: str | None = None
+
+
 class PartnerProfileOut(PartnerModel):
     partner_id: int
     user_id: int | None = None
@@ -137,6 +142,13 @@ class PartnerWithdrawalOut(PartnerModel):
     processing_at: datetime | None = None
     paid_at: datetime | None = None
     decided_at: datetime | None = None
+
+
+class AdminPartnerWithdrawalOut(PartnerWithdrawalOut):
+    user_id: int | None = None
+    display_label: str | None = None
+    username: str | None = None
+    avatar_url: str | None = None
 
 
 class PartnerApplicationCreateIn(PartnerModel):

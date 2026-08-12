@@ -13,7 +13,15 @@ import pytest
 from pydantic import SecretStr, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.app.web.admin_api_impl.partners import _profile_payload
+from bot.app.web.admin_api_impl.partners import (
+    _application_payload,
+    _profile_payload,
+    _withdrawal_payload,
+)
+from bot.app.web.partner_schemas import (
+    AdminPartnerApplicationOut,
+    AdminPartnerWithdrawalOut,
+)
 from bot.app.web.partner_serialization import withdrawal_out
 from bot.services.partner_commission_service import PartnerCommissionService
 from bot.services.partner_common import (
@@ -335,6 +343,84 @@ def test_admin_partner_payload_uses_live_user_identity(monkeypatch) -> None:
     assert payload["username"] == "alice"
     assert payload["avatar_url"] == ("/api/admin/users/42/avatar?v=2026-08-12T12:00:00+00:00")
     assert payload["clients_count"] == 5
+
+
+def test_admin_partner_application_payload_uses_live_user_identity() -> None:
+    now = datetime.now(UTC)
+    application = SimpleNamespace(
+        application_id=12,
+        user_id=42,
+        display_label_snapshot="Old applicant",
+        message="Application text",
+        status="pending",
+        submitted_at=now,
+        decided_at=None,
+        decision_message=None,
+        approved_commission_bps=None,
+        welcome_message=None,
+        reapply_allowed_at=None,
+    )
+
+    payload = asyncio.run(
+        _application_payload(
+            AsyncMock(spec=AsyncSession),
+            application,
+            user_labels={42: ("alice", "Alice Example")},
+            avatar_keys={42: "avatar-v1"},
+        )
+    )
+
+    parsed = AdminPartnerApplicationOut.model_validate(payload)
+    assert parsed.display_label == "Alice Example"
+    assert parsed.username == "alice"
+    assert parsed.avatar_url == "/api/admin/users/42/avatar?v=avatar-v1"
+
+
+def test_admin_partner_withdrawal_payload_uses_partner_user_identity() -> None:
+    now = datetime.now(UTC)
+    withdrawal = SimpleNamespace(
+        withdrawal_id=23,
+        partner_id=7,
+        method_id_snapshot="card",
+        method_type_snapshot="bank_card",
+        method_snapshot_json="{}",
+        debit_amount_minor=10_000,
+        debit_currency="RUB",
+        currency_scale=2,
+        settlement_asset=None,
+        network=None,
+        status="requested",
+        status_version=1,
+        status_message=None,
+        external_reference=None,
+        settlement_amount=None,
+        masked_requisites="•••• 1111",
+        requested_at=now,
+        processing_at=None,
+        paid_at=None,
+        decided_at=None,
+    )
+    profile = SimpleNamespace(
+        partner_id=7,
+        user_id=42,
+        display_label_snapshot="Old partner",
+    )
+
+    payload = asyncio.run(
+        _withdrawal_payload(
+            AsyncMock(spec=AsyncSession),
+            withdrawal,
+            profiles_by_id={7: profile},
+            user_labels={42: ("alice", "Alice Example")},
+            avatar_keys={42: "avatar-v1"},
+        )
+    )
+
+    parsed = AdminPartnerWithdrawalOut.model_validate(payload)
+    assert parsed.user_id == 42
+    assert parsed.display_label == "Alice Example"
+    assert parsed.username == "alice"
+    assert parsed.avatar_url == "/api/admin/users/42/avatar?v=avatar-v1"
 
 
 def _partner_settings(**overrides: object) -> SimpleNamespace:

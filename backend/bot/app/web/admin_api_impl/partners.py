@@ -112,6 +112,80 @@ async def _profile_payload(
     return payload
 
 
+def _apply_user_identity(
+    payload: dict[str, Any],
+    user_id: int | None,
+    *,
+    user_labels: dict[int, tuple[str | None, str | None]],
+    avatar_keys: dict[int, str],
+) -> dict[str, Any]:
+    payload["user_id"] = user_id
+    if user_id is None:
+        payload["username"] = None
+        payload["avatar_url"] = None
+        return payload
+    username, live_name = user_labels.get(user_id, (None, None))
+    payload["display_label"] = live_name or payload.get("display_label")
+    payload["username"] = username
+    payload["avatar_url"] = (
+        f"/api/admin/users/{user_id}/avatar?v={avatar_keys[user_id]}"
+        if user_id in avatar_keys
+        else None
+    )
+    return payload
+
+
+async def _application_payload(
+    session: Any,
+    application: Any,
+    *,
+    user_labels: dict[int, tuple[str | None, str | None]] | None = None,
+    avatar_keys: dict[int, str] | None = None,
+) -> dict[str, Any]:
+    payload = _dump(application_out(application))
+    user_id = int(application.user_id) if application.user_id is not None else None
+    if user_id is not None:
+        if user_labels is None:
+            user_labels = await user_reads_dal.get_user_labels(session, [user_id])
+        if avatar_keys is None:
+            avatar_keys = await _bulk_user_avatar_keys(session, [user_id])
+    return _apply_user_identity(
+        payload,
+        user_id,
+        user_labels=user_labels or {},
+        avatar_keys=avatar_keys or {},
+    )
+
+
+async def _withdrawal_payload(
+    session: Any,
+    withdrawal: Any,
+    *,
+    profiles_by_id: dict[int, Any] | None = None,
+    user_labels: dict[int, tuple[str | None, str | None]] | None = None,
+    avatar_keys: dict[int, str] | None = None,
+) -> dict[str, Any]:
+    payload = _dump(withdrawal_out(withdrawal))
+    partner_id = int(withdrawal.partner_id)
+    if profiles_by_id is None:
+        profiles_by_id = await partner_dal.get_profiles_by_ids(session, [partner_id])
+    profile = profiles_by_id.get(partner_id)
+    user_id = int(profile.user_id) if profile is not None and profile.user_id is not None else None
+    if profile is not None:
+        payload["display_label"] = str(profile.display_label_snapshot)
+    if user_id is not None:
+        if user_labels is None:
+            user_labels = await user_reads_dal.get_user_labels(session, [user_id])
+        if avatar_keys is None:
+            avatar_keys = await _bulk_user_avatar_keys(session, [user_id])
+    return _apply_user_identity(
+        payload,
+        user_id,
+        user_labels=user_labels or {},
+        avatar_keys=avatar_keys or {},
+    )
+
+
 async def admin_partner_attention_route(request: web.Request) -> web.Response:
     _require_admin_user_id(request)
     async_session_factory: sessionmaker = get_session_factory(request)
@@ -489,9 +563,21 @@ async def admin_partner_applications_route(request: web.Request) -> web.Response
             limit=limit,
             offset=offset,
         )
+        user_ids = [int(item.user_id) for item in rows if item.user_id is not None]
+        user_labels = await user_reads_dal.get_user_labels(session, user_ids)
+        avatar_keys = await _bulk_user_avatar_keys(session, user_ids)
+        applications = [
+            await _application_payload(
+                session,
+                item,
+                user_labels=user_labels,
+                avatar_keys=avatar_keys,
+            )
+            for item in rows
+        ]
     return _ok(
         {
-            "applications": [_dump(application_out(item)) for item in rows],
+            "applications": applications,
             "total": total,
             "limit": limit,
             "offset": offset,
@@ -505,9 +591,10 @@ async def admin_partner_application_detail_route(request: web.Request) -> web.Re
     async_session_factory: sessionmaker = get_session_factory(request)
     async with async_session_factory() as session:
         application = await partner_dal.get_application_by_id(session, application_id)
-    if not application:
-        return _error(404, "application_not_found")
-    return _ok({"application": _dump(application_out(application))})
+        if not application:
+            return _error(404, "application_not_found")
+        payload = await _application_payload(session, application)
+    return _ok({"application": payload})
 
 
 async def _application_decision_route(request: web.Request, approve: bool) -> web.Response:
@@ -528,9 +615,10 @@ async def _application_decision_route(request: web.Request, approve: bool) -> we
                 commission_bps=body.commission_bps,
                 welcome_message=body.welcome_message,
             )
+            application_payload = await _application_payload(session, application)
     except PartnerError as exc:
         return _partner_error(exc)
-    payload: dict[str, Any] = {"application": _dump(application_out(application))}
+    payload: dict[str, Any] = {"application": application_payload}
     if profile:
         payload["partner"] = _dump(profile_out(profile))
     return _ok(payload)
@@ -567,7 +655,8 @@ async def admin_partner_application_reopen_route(request: web.Request) -> web.Re
             actor_user_id=actor_id,
             new_values_json=compact_json({"reapply_allowed": True}),
         )
-    return _ok({"application": _dump(application_out(application))})
+        payload = await _application_payload(session, application)
+    return _ok({"application": payload})
 
 
 async def admin_partner_withdrawals_route(request: web.Request) -> web.Response:
@@ -589,9 +678,28 @@ async def admin_partner_withdrawals_route(request: web.Request) -> web.Response:
             limit=limit,
             offset=offset,
         )
+        partner_ids = [int(item.partner_id) for item in rows]
+        profiles_by_id = await partner_dal.get_profiles_by_ids(session, partner_ids)
+        user_ids = [
+            int(profile.user_id)
+            for profile in profiles_by_id.values()
+            if profile.user_id is not None
+        ]
+        user_labels = await user_reads_dal.get_user_labels(session, user_ids)
+        avatar_keys = await _bulk_user_avatar_keys(session, user_ids)
+        withdrawals = [
+            await _withdrawal_payload(
+                session,
+                item,
+                profiles_by_id=profiles_by_id,
+                user_labels=user_labels,
+                avatar_keys=avatar_keys,
+            )
+            for item in rows
+        ]
     return _ok(
         {
-            "withdrawals": [_dump(withdrawal_out(item)) for item in rows],
+            "withdrawals": withdrawals,
             "total": total,
             "limit": limit,
             "offset": offset,
@@ -605,9 +713,10 @@ async def admin_partner_withdrawal_detail_route(request: web.Request) -> web.Res
     async_session_factory: sessionmaker = get_session_factory(request)
     async with async_session_factory() as session:
         withdrawal = await partner_dal.get_withdrawal_by_id(session, withdrawal_id)
-    if not withdrawal:
-        return _error(404, "withdrawal_not_found")
-    return _ok({"withdrawal": _dump(withdrawal_out(withdrawal))})
+        if not withdrawal:
+            return _error(404, "withdrawal_not_found")
+        payload = await _withdrawal_payload(session, withdrawal)
+    return _ok({"withdrawal": payload})
 
 
 async def admin_partner_withdrawal_reveal_route(request: web.Request) -> web.Response:
@@ -643,9 +752,10 @@ async def _withdrawal_transition_route(request: web.Request, status: str) -> web
                 external_reference=body.external_reference,
                 settlement_amount=body.settlement_amount,
             )
+            payload = await _withdrawal_payload(session, withdrawal)
     except PartnerError as exc:
         return _partner_error(exc)
-    return _ok({"withdrawal": _dump(withdrawal_out(withdrawal))})
+    return _ok({"withdrawal": payload})
 
 
 async def admin_partner_withdrawal_processing_route(request: web.Request) -> web.Response:

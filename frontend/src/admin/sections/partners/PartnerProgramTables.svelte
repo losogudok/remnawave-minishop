@@ -329,6 +329,7 @@
                 label={partner.name}
                 secondary={partner.handle}
                 idText={partner.id}
+                avatarUrl={partner.avatarUrl}
                 title={openPartnerLabel}
                 onclick={() => onOpenPartner(partner)}
               />
@@ -504,6 +505,7 @@
                 kind="user"
                 label={application.user}
                 secondary={application.handle}
+                avatarUrl={application.avatarUrl}
                 title={openUserLabel}
                 onclick={() => onOpenUserCard(application.userId)}
               />
@@ -683,6 +685,7 @@
                 label={withdrawal.partner}
                 secondary={withdrawal.handle}
                 idText={withdrawal.partnerId}
+                avatarUrl={withdrawal.avatarUrl}
                 title={openPartnerLabel}
                 onclick={() => openPartnerById(withdrawal.partnerId)}
               />

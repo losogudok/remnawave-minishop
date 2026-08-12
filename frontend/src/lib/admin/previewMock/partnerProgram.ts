@@ -62,6 +62,7 @@ export type ApplicationRow = {
   userId: number;
   user: string;
   handle: string;
+  avatarUrl?: string;
   submitted: string;
   status: ApplicationStatus;
   messageKey: string;
@@ -72,6 +73,7 @@ export type WithdrawalRow = {
   partnerId: string;
   partner: string;
   handle: string;
+  avatarUrl?: string;
   method: WithdrawalMethod;
   masked: string;
   amount: number;
@@ -183,6 +185,7 @@ export const applications: ApplicationRow[] = [
     userId: 910019,
     user: nameOf(910019),
     handle: handleOf(910019),
+    avatarUrl: avatarOf(910019),
     submitted: "2026-08-06 21:23",
     status: "pending",
     messageKey: "partners_preview_application_guides",
@@ -192,6 +195,7 @@ export const applications: ApplicationRow[] = [
     userId: 910007,
     user: nameOf(910007),
     handle: handleOf(910007),
+    avatarUrl: avatarOf(910007),
     submitted: "2026-08-05 09:40",
     status: "pending",
     messageKey: "partners_preview_application_community",
@@ -201,6 +205,7 @@ export const applications: ApplicationRow[] = [
     userId: 910011,
     user: nameOf(910011),
     handle: handleOf(910011),
+    avatarUrl: avatarOf(910011),
     submitted: "2026-08-01 12:14",
     status: "approved",
     messageKey: "partners_preview_application_privacy",
@@ -210,6 +215,7 @@ export const applications: ApplicationRow[] = [
     userId: 910035,
     user: nameOf(910035),
     handle: handleOf(910035),
+    avatarUrl: avatarOf(910035),
     submitted: "2026-07-27 16:52",
     status: "rejected",
     messageKey: "partners_preview_application_spam",
@@ -222,6 +228,7 @@ export const withdrawals: WithdrawalRow[] = [
     partnerId: "PT-104",
     partner: nameOf(910211),
     handle: handleOf(910211),
+    avatarUrl: avatarOf(910211),
     method: "bank_card",
     masked: "•••• 4242",
     amount: 3500,
@@ -235,6 +242,7 @@ export const withdrawals: WithdrawalRow[] = [
     partnerId: "PT-098",
     partner: nameOf(910256),
     handle: handleOf(910256),
+    avatarUrl: avatarOf(910256),
     method: "crypto",
     masked: "TRC20 ••••8Fx2",
     amount: 8200,
@@ -248,6 +256,7 @@ export const withdrawals: WithdrawalRow[] = [
     partnerId: "PT-077",
     partner: nameOf(910207),
     handle: handleOf(910207),
+    avatarUrl: avatarOf(910207),
     method: "sbp",
     masked: "+7 ••• •••-12-34",
     amount: 3100,
@@ -261,6 +270,7 @@ export const withdrawals: WithdrawalRow[] = [
     partnerId: "PT-064",
     partner: nameOf(910023),
     handle: handleOf(910023),
+    avatarUrl: avatarOf(910023),
     method: "bank_card",
     masked: "•••• 1024",
     amount: 2100,
@@ -274,6 +284,7 @@ export const withdrawals: WithdrawalRow[] = [
     partnerId: "PT-104",
     partner: nameOf(910211),
     handle: handleOf(910211),
+    avatarUrl: avatarOf(910211),
     method: "sbp",
     masked: "+7 ••• •••-77-05",
     amount: 5400,
@@ -287,6 +298,7 @@ export const withdrawals: WithdrawalRow[] = [
     partnerId: "PT-052",
     partner: nameOf(910031),
     handle: handleOf(910031),
+    avatarUrl: avatarOf(910031),
     method: "bank_card",
     masked: "•••• 9086",
     amount: 1750,
