@@ -3325,13 +3325,15 @@ container_certificate_covers_host() {
     host="$3"
     if docker exec "$container" sh -c '
         command -v openssl >/dev/null 2>&1 || exit 127
-        openssl x509 -in "$1" -noout -checkhost "$2"
+        openssl x509 -in "$1" -noout -checkhost "$2" |
+            grep -F "does match certificate" >/dev/null
     ' sh "$certificate" "$host" >/dev/null 2>&1; then
         return 0
     fi
     command -v openssl >/dev/null 2>&1 || return 1
     docker exec "$container" cat "$certificate" 2>/dev/null |
-        openssl x509 -noout -checkhost "$host" >/dev/null 2>&1
+        openssl x509 -noout -checkhost "$host" 2>/dev/null |
+        grep -F "does match certificate" >/dev/null
 }
 
 egames_certificate_pair_for_host() {

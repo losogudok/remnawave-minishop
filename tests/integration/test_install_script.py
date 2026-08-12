@@ -617,6 +617,40 @@ fi
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_shell_installer_rejects_legacy_openssl_zero_exit_hostname_mismatch(tmp_path: Path):
+    if not shutil.which("sh"):
+        pytest.skip("sh is not available on this platform")
+
+    shell_body = """
+docker() {
+    if [ "$1" = exec ] && [ "$3" = sh ]; then
+        return 127
+    fi
+    if [ "$1" = exec ] && [ "$3" = cat ] && [ "$4" = /tls/certificate.pem ]; then
+        printf '%s\n' certificate
+        return 0
+    fi
+    return 1
+}
+openssl() {
+    if [ "$4" = services.example.test ]; then
+        printf '%s\n' "Hostname services.example.test does match certificate"
+    else
+        printf '%s\n' "Hostname $4 does NOT match certificate"
+    fi
+    return 0
+}
+container_certificate_covers_host edge-nginx /tls/certificate.pem services.example.test || exit 47
+if container_certificate_covers_host edge-nginx /tls/certificate.pem control.example.test; then
+    exit 48
+fi
+"""
+
+    result = _run_installer_function(tmp_path, shell_body)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 @pytest.mark.parametrize(
     ("listen_line", "expected_real_ip", "expected_forwarded_for", "unexpected_ip"),
     [
