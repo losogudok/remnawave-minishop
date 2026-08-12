@@ -23,7 +23,6 @@ export type ThemesState = {
   themesSaving: boolean;
 };
 type AdminApi = ApiClient["api"];
-type AdminErrorResponse = { ok?: false; error?: string; message?: string; detail?: string };
 type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
 type ThemesStoreOptions = {
   api: AdminApi;

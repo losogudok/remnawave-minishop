@@ -14,7 +14,6 @@ import {
 import type { components } from "../../api/openapi.generated";
 import { snapshotForPayload } from "./snapshotForPayload.svelte";
 
-type AdminErrorResponse = { ok?: false; error?: string; message?: string; detail?: string };
 type AdminApi = ApiClient["api"];
 type ToastFn = (message: string) => void;
 type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;

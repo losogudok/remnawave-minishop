@@ -80,7 +80,6 @@
 
   const broadcastTarget = $derived(broadcastStore.broadcastTarget);
   const broadcastTargetError = $derived(broadcastStore.broadcastTargetError);
-  const broadcastText = $derived(broadcastStore.broadcastText);
   const broadcastBusy = $derived(broadcastStore.broadcastBusy);
   const broadcastResult = $derived(broadcastStore.broadcastResult);
   const broadcastCounts = $derived(broadcastStore.broadcastCounts as Record<string, number> | null);
