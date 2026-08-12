@@ -513,6 +513,10 @@ Pally / PayPalych используется для оплат через hosted-�
 2. Укажите `PALLY_API_TOKEN`, `PALLY_SHOP_ID` и при необходимости отдельный `PALLY_SIGNATURE_TOKEN`.
 3. В кабинете Pally укажите Result URL: `WEBHOOK_BASE_URL` + `/webhook/pally`.
 4. При необходимости задайте `PALLY_RETURN_URL`, `PALLY_SUCCESS_URL`, `PALLY_FAIL_URL`, `PALLY_TTL_SECONDS` и `PALLY_PAYER_PAYS_COMMISSION`.
+   Для рублевых счетов действует минимальная внешняя сумма `PALLY_MIN_PAYMENT_AMOUNT_RUB=30`:
+   смешанная оплата партнерским балансом оставляет Pally не меньше этого значения. Отдельные
+   лимиты для USD и EUR задаются через `PALLY_MIN_PAYMENT_AMOUNT_USD` и
+   `PALLY_MIN_PAYMENT_AMOUNT_EUR`.
 5. Если нужна жесткая кнопка конкретного метода на стороне Pally, задайте `PALLY_PAYMENT_METHOD=BANK_CARD` или `PALLY_PAYMENT_METHOD=SBP`.
 
 ### Справочник

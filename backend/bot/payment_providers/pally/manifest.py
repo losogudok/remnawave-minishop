@@ -116,6 +116,39 @@ _CONFIG_MANIFEST = (
         attr="TTL_SECONDS",
     ),
     ProviderManifestField(
+        "PALLY_MIN_PAYMENT_AMOUNT_RUB",
+        "float",
+        "Minimum payment amount (RUB)",
+        description=(
+            "Minimum external Pally invoice in RUB. Partner balance allocation leaves at least "
+            "this amount for a mixed payment. Set 0 to disable the limit."
+        ),
+        placeholder="30",
+        subsection="Pally",
+        min=0,
+        attr="MIN_PAYMENT_AMOUNT_RUB",
+    ),
+    ProviderManifestField(
+        "PALLY_MIN_PAYMENT_AMOUNT_USD",
+        "float",
+        "Minimum payment amount (USD)",
+        description="Minimum external Pally invoice in USD. Set 0 to disable the limit.",
+        placeholder="0",
+        subsection="Pally",
+        min=0,
+        attr="MIN_PAYMENT_AMOUNT_USD",
+    ),
+    ProviderManifestField(
+        "PALLY_MIN_PAYMENT_AMOUNT_EUR",
+        "float",
+        "Minimum payment amount (EUR)",
+        description="Minimum external Pally invoice in EUR. Set 0 to disable the limit.",
+        placeholder="0",
+        subsection="Pally",
+        min=0,
+        attr="MIN_PAYMENT_AMOUNT_EUR",
+    ),
+    ProviderManifestField(
         "PALLY_PAYER_PAYS_COMMISSION",
         "bool",
         "Payer pays commission",

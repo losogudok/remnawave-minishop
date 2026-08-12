@@ -605,6 +605,20 @@ class CoreEventReactions(PartnerEventReactionsMixin):
             return
         user = await self._load_user(user_id)
         payment = await self._load_payment(payload.get("payment_db_id"))
+        if self.ctx.session_factory is not None:
+            try:
+                async with self.ctx.session_factory() as session:
+                    await payment_reconciliation_dal.mark_user_failures_superseded_by_success(
+                        session,
+                        user_id=int(user_id),
+                        succeeded_at=_payment_status_timestamp(payment) or datetime.now(UTC),
+                    )
+                    await session.commit()
+            except Exception:
+                logger.exception(
+                    "Failed to suppress stale payment failures after success for user %s.",
+                    user_id,
+                )
         service = self._notification_service()
         if service is not None:
             try:
@@ -668,6 +682,10 @@ class CoreEventReactions(PartnerEventReactionsMixin):
                 "a newer successful payment already superseded it.",
                 user_id,
                 getattr(payment, "payment_id", None),
+            )
+            await _mark_payment_failure_notification_sent(
+                self.ctx,
+                payload.get("payment_db_id"),
             )
             return
         if not await _claim_payment_failure_notification(self.ctx, payload.get("payment_db_id")):

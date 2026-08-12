@@ -705,6 +705,9 @@ async def update_payment_status_by_db_id(
     yk_payment_id: str | None = None,
     provider_payment_url: str | None = None,
     checkout_expires_at: datetime | None = None,
+    failure_kind: str | None = None,
+    failure_http_status: int | None = None,
+    failure_provider_code: str | None = None,
 ) -> Payment | None:
     payment = await get_payment_by_db_id_for_update(session, payment_db_id)
     if payment:
@@ -719,6 +722,12 @@ async def update_payment_status_by_db_id(
         else:
             payment.status = new_status
             payment.updated_at = func.now()
+            if failure_kind is not None:
+                payment.failure_kind = str(failure_kind)[:64]
+            if failure_http_status is not None:
+                payment.failure_http_status = int(failure_http_status)
+            if failure_provider_code is not None:
+                payment.failure_provider_code = str(failure_provider_code)[:128]
             normalized_new_status = _normalize_payment_status(new_status)
             if normalized_new_status == _PAYMENT_STATUS_SUCCEEDED:
                 from bot.services.partner_checkout_balance import (
@@ -912,6 +921,13 @@ async def transition_provider_payment_to_terminal(
     payment_db_id: int,
     provider_payment_id: str,
     new_status: str,
+    *,
+    failure_kind: str | None = None,
+    failure_http_status: int | None = None,
+    failure_provider_code: str | None = None,
+    provider_cancellation_party: str | None = None,
+    provider_cancellation_reason: str | None = None,
+    suppress_failure_notification: bool = False,
 ) -> tuple[Payment | None, bool]:
     """Lock and finalize a payment once, returning whether this call changed it."""
 
@@ -935,6 +951,25 @@ async def transition_provider_payment_to_terminal(
     payment.status = normalized_new_status
     payment.updated_at = func.now()
     payment.provider_payment_id = provider_payment_id
+    if failure_kind is not None:
+        payment.failure_kind = str(failure_kind)[:64]
+    if failure_http_status is not None:
+        payment.failure_http_status = int(failure_http_status)
+    if failure_provider_code is not None:
+        payment.failure_provider_code = str(failure_provider_code)[:128]
+    if provider_cancellation_party is not None:
+        payment.provider_cancellation_party = str(provider_cancellation_party)[:64]
+    if provider_cancellation_reason is not None:
+        payment.provider_cancellation_reason = str(provider_cancellation_reason)[:128]
+    if suppress_failure_notification:
+        payment.failure_notified_at = func.now()
+    from .payment_checkout_dal import release_partner_balance_safely
+
+    await release_partner_balance_safely(
+        session,
+        payment_id=payment_db_id,
+        status=normalized_new_status,
+    )
     await session.flush()
     await session.refresh(payment)
     logger.info(

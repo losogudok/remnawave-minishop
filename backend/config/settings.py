@@ -355,6 +355,7 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
         ge=1,
         description="Maximum total time for one payment provider API request, in seconds.",
     )
+    PAYMENT_FAILURE_NOTIFICATION_GRACE_SECONDS: int = Field(default=300, ge=0)
 
     MONTH_1_ENABLED: bool = Field(default=True, alias="1_MONTH_ENABLED")
     MONTH_3_ENABLED: bool = Field(default=True, alias="3_MONTHS_ENABLED")

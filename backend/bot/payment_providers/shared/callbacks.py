@@ -30,6 +30,7 @@ from .common import (
     format_human_units,
     mark_payment_failed_creation,
     parse_positive_int_units,
+    payment_creation_failure_metadata,
     sale_mode_base,
     sale_mode_is_hwid_devices,
     sale_mode_tariff_key,
@@ -672,10 +673,15 @@ async def safe_mark_failed_creation(
     payment: Payment,
     *,
     log_prefix: str,
+    failure_metadata: dict[str, Any] | None = None,
 ) -> None:
     """Mark the payment as ``failed_creation``; swallow + log on failure."""
     try:
-        await mark_payment_failed_creation(session, payment.payment_id)
+        await mark_payment_failed_creation(
+            session,
+            payment.payment_id,
+            **dict(failure_metadata or {}),
+        )
     except Exception:
         await session.rollback()
         logger.exception(
@@ -747,5 +753,16 @@ async def render_link_or_fail(
         bool(provider_payment_id),
         _short_repr(provider_response),
     )
-    await safe_mark_failed_creation(session, payment, log_prefix=log_prefix)
+    failure_metadata = payment_creation_failure_metadata(
+        provider_response,
+        api_success=api_success,
+    )
+    if not provider_id_stored:
+        failure_metadata["failure_kind"] = "provider_correlation_persist_failed"
+    await safe_mark_failed_creation(
+        session,
+        payment,
+        log_prefix=log_prefix,
+        failure_metadata=failure_metadata,
+    )
     await notify_payment_gateway_failure(callback, translator)

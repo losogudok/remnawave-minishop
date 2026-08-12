@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.dal import payment_dal, payment_reconciliation_dal
+from db.dal import payment_checkout_dal, payment_dal, payment_reconciliation_dal
 from db.models import Payment
 
 from .checkout_expiration import resolve_checkout_expiration
@@ -80,6 +80,7 @@ class ProviderLifecycle:
     state: LifecycleState
     provider_status: str = ""
     checkout_expires_at: datetime | None = None
+    failure_provider_code: str | None = None
 
 
 def _normalized(value: Any) -> str:
@@ -252,6 +253,25 @@ async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderL
         return ProviderLifecycle("unknown")
     provider_status = _normalized(status)
     state = _state_for(state_provider, provider_status)
+    failure_provider_code = None
+    if provider == "pally" and state == "failed" and hasattr(service, "get_bill_payments"):
+        details_success, details = await service.get_bill_payments(provider_id)
+        if details_success and isinstance(details, dict):
+            items = details.get("data")
+            if isinstance(items, list):
+                failed_item = next(
+                    (
+                        item
+                        for item in items
+                        if isinstance(item, dict)
+                        and _normalized(item.get("status")) in _FAILED_STATUSES["pally"]
+                    ),
+                    None,
+                )
+                if failed_item is not None:
+                    code = failed_item.get("error_code") or failed_item.get("error_message")
+                    if code not in (None, ""):
+                        failure_provider_code = str(code)[:128]
     expires_at = resolve_checkout_expiration(data)
     if (
         provider == "heleket"
@@ -260,7 +280,7 @@ async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderL
         and expires_at <= datetime.now(UTC)
     ):
         state = "failed"
-    return ProviderLifecycle(state, provider_status, expires_at)
+    return ProviderLifecycle(state, provider_status, expires_at, failure_provider_code)
 
 
 async def refresh_hosted_payment_status(
@@ -298,6 +318,53 @@ async def refresh_hosted_payment_status(
             payment_id,
         )
 
+    if (
+        lifecycle.state == "pending"
+        and lifecycle.provider_status == "new"
+        and hasattr(service, "cancel_pending_bill")
+    ):
+        superseding_payment = await payment_checkout_dal.find_later_equivalent_succeeded_payment(
+            session,
+            payment_snapshot,
+        )
+        if superseding_payment is not None:
+            superseding_payment_id = int(superseding_payment.payment_id)
+            await session.rollback()
+            canceled, _cancel_response = await service.cancel_pending_bill(
+                str(payment_snapshot.provider_payment_id or "")
+            )
+            if canceled:
+                updated, _transitioned = await payment_dal.transition_provider_payment_to_terminal(
+                    session,
+                    payment_id,
+                    str(payment_snapshot.provider_payment_id or payment_id),
+                    "canceled",
+                    failure_kind="superseded_checkout",
+                    provider_cancellation_party="merchant",
+                    provider_cancellation_reason=(
+                        f"superseded_by_payment_{superseding_payment_id}"
+                    ),
+                    suppress_failure_notification=True,
+                )
+                await session.commit()
+                logger.info(
+                    "Canceled superseded %s payment %s after successful payment %s.",
+                    provider,
+                    payment_id,
+                    superseding_payment_id,
+                )
+                return (
+                    await payment_dal.get_payment_by_db_id(session, payment_id, fresh=True)
+                    or updated
+                    or payment_snapshot
+                )
+            logger.warning(
+                "Provider %s did not cancel superseded payment %s after successful payment %s.",
+                provider,
+                payment_id,
+                superseding_payment_id,
+            )
+
     locally_expired = bool(
         provider in _EXPIRY_ONLY_PROVIDER_KEYS
         and lifecycle.state == "unknown"
@@ -311,6 +378,10 @@ async def refresh_hosted_payment_status(
             payment_id,
             provider_id,
             "failed",
+            failure_kind="provider_payment_failed",
+            failure_provider_code=(
+                lifecycle.failure_provider_code or lifecycle.provider_status or None
+            ),
         )
         await session.commit()
         if updated is None:

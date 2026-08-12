@@ -382,6 +382,19 @@ SETTINGS_MANIFEST: list[SettingField] = [
         min=1,
         subsection="checkout",
     ),
+    SettingField(
+        "PAYMENT_FAILURE_NOTIFICATION_GRACE_SECONDS",
+        "int",
+        "payments",
+        "Failed payment notification grace",
+        (
+            "Delay before notifying about a failed payment, allowing a successful retry "
+            "to suppress stale errors. Set 0 to notify immediately."
+        ),
+        optional=False,
+        min=0,
+        subsection="checkout",
+    ),
     # ─── Payment providers (toggles) ───────────────────────────────
     # Common
     SettingField("STARS_ENABLED", "bool", "payments", "Telegram Stars", subsection="common"),

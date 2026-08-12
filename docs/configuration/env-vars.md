@@ -361,6 +361,7 @@ Xray-Core 26.3.27+, `NET_ADMIN`, nftables, корректный sniffing и вк
 | `SUBSCRIPTION_PURCHASE_DESCRIPTION_ENABLED` | Показывать описание подписки перед выбором срока. |
 | `SUBSCRIPTION_PURCHASE_DESCRIPTION_RU` / `SUBSCRIPTION_PURCHASE_DESCRIPTION_EN` | Локализованное описание подписки. |
 | `PAYMENT_REQUEST_TIMEOUT_SECONDS` | Общий таймаут одного API-запроса к платёжному провайдеру, в секундах. По умолчанию `20`. |
+| `PAYMENT_FAILURE_NOTIFICATION_GRACE_SECONDS` | Задержка уведомления о неуспешной оплате. По умолчанию `300`: успешная повторная оплата за это время подавляет устаревшие ошибки; `0` отключает задержку. |
 | `PAYMENT_<METHOD>_WEBAPP_LABEL_RU` / `PAYMENT_<METHOD>_WEBAPP_LABEL_EN` | Текст кнопки провайдера в Web App. |
 | `PAYMENT_<METHOD>_WEBAPP_ICON` | Lucide-иконка кнопки в Web App. |
 | `PAYMENT_<METHOD>_TELEGRAM_LABEL_RU` / `PAYMENT_<METHOD>_TELEGRAM_LABEL_EN` | Текст кнопки в Telegram. |
@@ -689,6 +690,9 @@ Pally / PayPalych создает счета через `POST /api/v1/bill/create
 | `PALLY_SUCCESS_URL` | URL успешного возврата после оплаты. |
 | `PALLY_FAIL_URL` | URL возврата после неуспешной оплаты. |
 | `PALLY_TTL_SECONDS` | Время жизни счета в секундах. |
+| `PALLY_MIN_PAYMENT_AMOUNT_RUB` | Минимальная внешняя сумма счета в рублях. По умолчанию `30`; при оплате с партнерского баланса Minishop оставляет эту сумму провайдеру. `0` отключает ограничение. |
+| `PALLY_MIN_PAYMENT_AMOUNT_USD` | Минимальная внешняя сумма счета в долларах. По умолчанию `0`. |
+| `PALLY_MIN_PAYMENT_AMOUNT_EUR` | Минимальная внешняя сумма счета в евро. По умолчанию `0`. |
 | `PALLY_PAYER_PAYS_COMMISSION` | Передает `payer_pays_commission=1`, если комиссию должен платить покупатель. |
 | `PALLY_PAYMENT_METHOD` | Необязательный предвыбор способа оплаты: `BANK_CARD` или `SBP`. |
 | `PALLY_LOCALE` | Локаль платежной формы: `ru` или `en`; если пусто, бот пробует передать язык пользователя. |

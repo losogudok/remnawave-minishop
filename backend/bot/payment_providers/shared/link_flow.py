@@ -432,7 +432,11 @@ async def run_webapp_payment[ServiceT: LinkFlowService](
         await ctx.session.rollback()
         if payment is not None:
             try:
-                await mark_payment_failed_creation(ctx.session, int(payment.payment_id))
+                await mark_payment_failed_creation(
+                    ctx.session,
+                    int(payment.payment_id),
+                    failure_kind="local_creation_exception",
+                )
             except Exception:
                 await ctx.session.rollback()
                 logger.exception(

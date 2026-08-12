@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
@@ -50,7 +50,11 @@ class PaymentWebhookNotificationTests(IsolatedAsyncioTestCase):
 
     async def test_failed_payment_notification_emits_cancel_event(self):
         bot = SimpleNamespace(send_message=AsyncMock())
-        settings = SimpleNamespace(DEFAULT_LANGUAGE="en", SUBSCRIPTION_MINI_APP_URL="")
+        settings = SimpleNamespace(
+            DEFAULT_LANGUAGE="en",
+            SUBSCRIPTION_MINI_APP_URL="",
+            PAYMENT_FAILURE_NOTIFICATION_GRACE_SECONDS=0,
+        )
 
         with patch.object(webhooks.events, "emit", AsyncMock()) as emit_event:
             await webhooks.notify_user_payment_failed(
@@ -73,6 +77,46 @@ class PaymentWebhookNotificationTests(IsolatedAsyncioTestCase):
                 "message_key": "payment_failed",
             },
         )
+
+    async def test_failed_payment_notification_waits_for_retry_grace(self):
+        payment = SimpleNamespace(
+            payment_id=13,
+            user_id=42,
+            updated_at=datetime.now(UTC),
+            created_at=datetime.now(UTC) - timedelta(minutes=1),
+        )
+        settings = SimpleNamespace(PAYMENT_FAILURE_NOTIFICATION_GRACE_SECONDS=300)
+
+        with patch.object(webhooks.events, "emit", AsyncMock()) as emit_event:
+            await webhooks.notify_user_payment_failed(
+                bot=SimpleNamespace(),
+                settings=settings,
+                i18n=_I18n(),
+                session=AsyncMock(),
+                payment=payment,
+            )
+
+        emit_event.assert_not_awaited()
+
+    async def test_failed_payment_notification_emits_after_retry_grace(self):
+        payment = SimpleNamespace(
+            payment_id=14,
+            user_id=42,
+            updated_at=datetime.now(UTC) - timedelta(minutes=6),
+            created_at=datetime.now(UTC) - timedelta(minutes=7),
+        )
+        settings = SimpleNamespace(PAYMENT_FAILURE_NOTIFICATION_GRACE_SECONDS=300)
+
+        with patch.object(webhooks.events, "emit", AsyncMock()) as emit_event:
+            await webhooks.notify_user_payment_failed(
+                bot=SimpleNamespace(),
+                settings=settings,
+                i18n=_I18n(),
+                session=AsyncMock(),
+                payment=payment,
+            )
+
+        emit_event.assert_awaited_once()
 
     async def test_finalize_failure_marks_payment_retryable(self):
         session = AsyncMock()

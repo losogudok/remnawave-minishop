@@ -457,7 +457,13 @@ def test_webapp_link_is_not_exposed_when_provider_correlation_cannot_be_persiste
     assert b'"error": "payment_failed"' in response.body
     persist.assert_awaited_once()
     session.rollback.assert_awaited_once()
-    mark_failed.assert_awaited_once_with(session, payment.payment_id)
+    mark_failed.assert_awaited_once_with(
+        session,
+        payment.payment_id,
+        failure_kind="provider_correlation_persist_failed",
+        failure_http_status=None,
+        failure_provider_code=None,
+    )
 
 
 def test_webapp_link_is_not_exposed_without_provider_correlation(
@@ -496,7 +502,13 @@ def test_webapp_link_is_not_exposed_without_provider_correlation(
 
     assert response.status == 502
     persist.assert_not_awaited()
-    mark_failed.assert_awaited_once_with(session, payment.payment_id)
+    mark_failed.assert_awaited_once_with(
+        session,
+        payment.payment_id,
+        failure_kind="provider_response_invalid",
+        failure_http_status=None,
+        failure_provider_code=None,
+    )
 
 
 def test_webapp_link_is_not_exposed_after_unsuccessful_provider_response(
@@ -535,7 +547,13 @@ def test_webapp_link_is_not_exposed_after_unsuccessful_provider_response(
 
     assert response.status == 502
     persist.assert_not_awaited()
-    mark_failed.assert_awaited_once_with(session, payment.payment_id)
+    mark_failed.assert_awaited_once_with(
+        session,
+        payment.payment_id,
+        failure_kind="provider_request_rejected",
+        failure_http_status=None,
+        failure_provider_code="rejected",
+    )
 
 
 def test_callback_link_is_not_rendered_when_provider_correlation_cannot_be_persisted(
@@ -595,6 +613,11 @@ def test_callback_link_is_not_rendered_when_provider_correlation_cannot_be_persi
         session,
         payment,
         log_prefix="tribute",
+        failure_metadata={
+            "failure_kind": "provider_correlation_persist_failed",
+            "failure_http_status": None,
+            "failure_provider_code": None,
+        },
     )
     notify_failed.assert_awaited_once()
 
@@ -656,6 +679,11 @@ def test_callback_link_is_not_rendered_without_provider_correlation(
         session,
         payment,
         log_prefix="fake",
+        failure_metadata={
+            "failure_kind": "provider_response_invalid",
+            "failure_http_status": None,
+            "failure_provider_code": None,
+        },
     )
     notify_failed.assert_awaited_once()
 

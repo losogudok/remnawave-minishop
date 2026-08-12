@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from types import SimpleNamespace
@@ -9,7 +9,7 @@ from typing import Any
 from aiohttp import web
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.dal import payment_dal
+from db.dal import payment_checkout_dal, payment_dal
 from db.models import Payment
 
 from ..base import WebAppPaymentContext, normalize_payment_currency_code
@@ -328,6 +328,54 @@ def payment_link_response(
     )
 
 
+def _provider_failure_code(value: Any) -> str | None:
+    if isinstance(value, Mapping):
+        for key in ("code", "error_code", "message", "error"):
+            resolved = _provider_failure_code(value.get(key))
+            if resolved:
+                return resolved
+        return None
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            resolved = _provider_failure_code(item)
+            if resolved:
+                return resolved
+        return None
+    if value is None or isinstance(value, bool):
+        return None
+    text = " ".join(str(value).split()).strip()
+    return text[:128] or None
+
+
+def payment_creation_failure_metadata(
+    provider_response: Any,
+    *,
+    api_success: bool,
+) -> dict[str, Any]:
+    """Extract safe, bounded diagnostics from a failed provider creation response."""
+
+    http_status: int | None = None
+    provider_code: str | None = None
+    if isinstance(provider_response, Mapping):
+        try:
+            parsed_status = int(str(provider_response.get("status") or ""))
+        except (TypeError, ValueError):
+            parsed_status = 0
+        if 100 <= parsed_status <= 599:
+            http_status = parsed_status
+        for key in ("message", "error", "code", "error_code", "errors"):
+            provider_code = _provider_failure_code(provider_response.get(key))
+            if provider_code:
+                break
+    return {
+        "failure_kind": (
+            "provider_response_invalid" if api_success else "provider_request_rejected"
+        ),
+        "failure_http_status": http_status,
+        "failure_provider_code": provider_code,
+    }
+
+
 def detached_payment_snapshot(payment: Any) -> SimpleNamespace:
     """Copy scalar payment columns so external calls do not keep a DB transaction open."""
     return SimpleNamespace(
@@ -521,11 +569,6 @@ async def reusable_webapp_payment_response(
     *,
     since_minutes: int | None = None,
 ) -> web.Response | None:
-    if int(ctx.partner_balance_amount_minor or 0) > 0:
-        # The existing invoice already owns its balance reservation.  A new
-        # quote sees the reduced available balance, so generic amount-based
-        # reuse cannot prove that both requests represent the same allocation.
-        return None
     resolver = getattr(provider_spec, "reuse_webapp_payment", None)
     if resolver is None:
         return None
@@ -556,6 +599,31 @@ async def reusable_webapp_payment_response(
         since_minutes=since_minutes,
     )
     if payment is None:
+        relaxed_payment = (
+            await payment_checkout_dal.find_recent_pending_provider_payment_for_checkout(
+                ctx.session,
+                user_id=ctx.user_id,
+                provider=provider_spec.provider_key,
+                pending_status=provider_spec.pending_status,
+                currency=ctx.currency,
+                sale_mode=ctx.sale_mode,
+                months=amounts.months,
+                purchased_gb=amounts.purchased_gb,
+                purchased_hwid_devices=amounts.purchased_hwid_devices,
+                hwid_traffic_bonus_bytes=ctx.hwid_traffic_bonus_bytes,
+                tariff_key=amounts.tariff_key,
+                tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
+                entitlement_context_snapshot=ctx.entitlement_context_snapshot,
+                since_minutes=since_minutes,
+            )
+        )
+        if relaxed_payment is not None and (
+            int(ctx.partner_balance_amount_minor or 0) > 0
+            or int(getattr(relaxed_payment, "partner_balance_amount_minor", 0) or 0) > 0
+            or getattr(relaxed_payment, "promo_code_id", None) is not None
+        ):
+            payment = relaxed_payment
+    if payment is None:
         return None
 
     payment_snapshot = detached_payment_snapshot(payment)
@@ -566,6 +634,20 @@ async def reusable_webapp_payment_response(
     return payment_link_response(payment_url=payment_url, payment_id=payment_snapshot.payment_id)
 
 
-async def mark_payment_failed_creation(session: AsyncSession, payment_id: int) -> None:
-    await payment_dal.update_payment_status_by_db_id(session, payment_id, "failed_creation")
+async def mark_payment_failed_creation(
+    session: AsyncSession,
+    payment_id: int,
+    *,
+    failure_kind: str | None = None,
+    failure_http_status: int | None = None,
+    failure_provider_code: str | None = None,
+) -> None:
+    await payment_dal.update_payment_status_by_db_id(
+        session,
+        payment_id,
+        "failed_creation",
+        failure_kind=failure_kind,
+        failure_http_status=failure_http_status,
+        failure_provider_code=failure_provider_code,
+    )
     await session.commit()

@@ -425,7 +425,13 @@ class WebAppPaymentStatusTests(IsolatedAsyncioTestCase):
             )
 
         self.assertIs(response, failed_response)
-        mark_failed.assert_awaited_once_with(session, 88)
+        mark_failed.assert_awaited_once_with(
+            session,
+            88,
+            failure_kind="provider_request_rejected",
+            failure_http_status=400,
+            failure_provider_code="invalid_amount",
+        )
         self.assertIn(
             "Wata: WebApp payment creation failed for payment 88",
             captured_logs.output[0],
@@ -539,6 +545,54 @@ class WebAppPaymentStatusTests(IsolatedAsyncioTestCase):
         self.assertEqual(find_pending.await_args.kwargs["sale_mode"], "subscription@standard")
         self.assertEqual(find_pending.await_args.kwargs["months"], 3)
         self.assertEqual(find_pending.await_args.kwargs["tariff_key"], "standard")
+
+    async def test_reusable_payment_response_keeps_reserved_partner_checkout(self):
+        payment = SimpleNamespace(
+            payment_id=78,
+            partner_balance_amount_minor=0,
+            promo_code_id=5,
+        )
+        resolver = AsyncMock(return_value="https://provider.example/pay/78")
+        spec = PaymentProviderSpec(
+            id="provider",
+            provider_key="provider",
+            label="Provider",
+            pending_status="pending_provider",
+            enabled=lambda _config: True,
+            reuse_webapp_payment=resolver,
+        )
+        ctx = WebAppPaymentContext(
+            request=SimpleNamespace(app={}),
+            session=AsyncMock(),
+            user_id=1001,
+            method="provider",
+            months=1,
+            price=30.0,
+            stars_price=None,
+            description="Subscription",
+            sale_mode="subscription@standard",
+            currency="RUB",
+            partner_balance_amount_minor=63500,
+        )
+
+        with (
+            patch.object(
+                billing_module.payment_dal,
+                "find_recent_pending_provider_payment",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "bot.payment_providers.shared.common.payment_checkout_dal."
+                "find_recent_pending_provider_payment_for_checkout",
+                AsyncMock(return_value=payment),
+            ) as find_checkout,
+        ):
+            response = await reusable_webapp_payment_response(ctx, spec)
+
+        self.assertEqual(response.status, 200)
+        self.assertIn(b'"payment_id": 78', response.body)
+        find_checkout.assert_awaited_once()
+        resolver.assert_awaited_once()
 
     async def test_yookassa_reuses_only_matching_pending_invoice(self):
         payment = SimpleNamespace(
