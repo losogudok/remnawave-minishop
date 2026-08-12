@@ -17,13 +17,18 @@ export type PartnerLinkPreview = {
   enabled: boolean;
 };
 
+export type PartnerWithdrawalNetworkPreview = {
+  id: string;
+  label: string;
+};
+
 export type PartnerWithdrawalMethodPreview = {
   id: string;
   type: "bank_card" | "sbp" | "crypto";
   currency: PartnerCurrency;
   minimum: number;
   enabled: boolean;
-  networks?: string[];
+  networks?: PartnerWithdrawalNetworkPreview[];
   fieldId?: string;
   scale?: number;
 };
@@ -209,7 +214,10 @@ export function partnerProgramPreview(t: Translate = (key) => key): PartnerProgr
             currency: "RUB",
             minimum: 3000,
             enabled: true,
-            networks: ["TRC20", "TON"],
+            networks: [
+              { id: "tron", label: "TRC20" },
+              { id: "ton", label: "TON" },
+            ],
           },
         ]
       : [],

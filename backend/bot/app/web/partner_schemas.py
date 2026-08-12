@@ -28,6 +28,8 @@ class PartnerProfileOut(PartnerModel):
     partner_id: int
     user_id: int | None = None
     display_label: str
+    username: str | None = None
+    avatar_url: str | None = None
     status: str
     commission_bps: int
     welcome_message: str | None = None
@@ -179,7 +181,7 @@ class AdminPartnerBalanceAdjustmentIn(PartnerModel):
     currency_scale: int = Field(ge=0, le=8)
     mode: Literal["add", "subtract", "set"]
     amount_minor: int
-    reason: str = Field(min_length=1, max_length=2000)
+    reason: str | None = Field(default=None, max_length=2000)
     idempotency_key: str = Field(min_length=8, max_length=128)
     allow_negative: bool = False
     internal_reference: str | None = Field(default=None, max_length=128)

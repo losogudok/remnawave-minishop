@@ -13,6 +13,7 @@ import pytest
 from pydantic import SecretStr, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bot.app.web.admin_api_impl.partners import _profile_payload
 from bot.services.partner_commission_service import PartnerCommissionService
 from bot.services.partner_common import (
     PartnerError,
@@ -160,6 +161,48 @@ def test_partner_requisites_are_normalized_and_masked() -> None:
     assert crypto_mask.endswith("(tron)")
 
 
+@pytest.mark.parametrize(
+    "address",
+    [
+        "EQAbcdefghijklmnopqrstuvwxyz0123456789_-/+=",
+        "0:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+    ],
+)
+def test_crypto_requisites_accept_common_address_alphabets(address: str) -> None:
+    service = _withdrawal_service()
+    method = PartnerWithdrawalMethod(
+        id="crypto",
+        type="crypto",
+        debit_currency="USD",
+        min_amount_minor=100,
+        settlement_asset="USDT",
+        fields=[PartnerWithdrawalField(id="address")],
+        networks=[PartnerWithdrawalNetwork(id="ton", label="TON")],
+    )
+
+    values, _ = service._validated_requisites(method, {"address": address}, "TON")
+
+    assert values == {"address": address, "network": "ton"}
+
+
+@pytest.mark.parametrize("address", ["abc", "wallet address", "wallet\u200baddress"])
+def test_crypto_requisites_reject_short_whitespace_or_control_text(address: str) -> None:
+    service = _withdrawal_service()
+    method = PartnerWithdrawalMethod(
+        id="crypto",
+        type="crypto",
+        debit_currency="USD",
+        min_amount_minor=100,
+        settlement_asset="USDT",
+        fields=[PartnerWithdrawalField(id="address")],
+        networks=[PartnerWithdrawalNetwork(id="ton", label="TON")],
+    )
+
+    with pytest.raises(PartnerError, match="invalid_crypto_address"):
+        service._validated_requisites(method, {"address": address}, "ton")
+
+
 def test_enabled_withdrawal_method_requires_canonical_field() -> None:
     with pytest.raises(ValidationError, match="card_number"):
         PartnerWithdrawalMethod(
@@ -168,6 +211,97 @@ def test_enabled_withdrawal_method_requires_canonical_field() -> None:
             debit_currency="RUB",
             min_amount_minor=100,
         )
+
+
+def test_manual_partner_balance_adjustment_allows_empty_description(monkeypatch) -> None:
+    profile = SimpleNamespace(partner_id=7)
+    entry = SimpleNamespace(entry_id=11, amount_minor=500)
+    get_profile = AsyncMock(return_value=profile)
+    get_entry = AsyncMock(return_value=None)
+    balance_minor = AsyncMock(return_value=1_000)
+    create_entry = AsyncMock(return_value=entry)
+    create_audit = AsyncMock()
+    emit_model = AsyncMock()
+    monkeypatch.setattr(
+        "bot.services.partner_commission_service.partner_dal.get_profile_by_id", get_profile
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_commission_service.partner_dal.get_ledger_entry_by_key", get_entry
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_commission_service.partner_dal.balance_minor", balance_minor
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_commission_service.partner_dal.create_ledger_entry", create_entry
+    )
+    monkeypatch.setattr(
+        "bot.services.partner_commission_service.partner_dal.create_audit_event", create_audit
+    )
+    monkeypatch.setattr("bot.services.partner_commission_service.events.emit_model", emit_model)
+    service = PartnerCommissionService(cast(Settings, SimpleNamespace()))
+
+    result = asyncio.run(
+        service.adjust_balance(
+            AsyncMock(spec=AsyncSession),
+            partner_id=7,
+            currency="RUB",
+            scale=2,
+            mode="add",
+            amount_minor=500,
+            reason=None,
+            actor_admin_id=1,
+            idempotency_key="balance-test-key",
+        )
+    )
+
+    assert result == (entry, 1_500)
+    entry_call = create_entry.await_args
+    audit_call = create_audit.await_args
+    assert entry_call is not None
+    assert audit_call is not None
+    assert entry_call.kwargs["reason"] is None
+    assert audit_call.kwargs["reason"] is None
+
+
+def test_admin_partner_payload_uses_live_user_identity(monkeypatch) -> None:
+    now = datetime.now(UTC)
+    profile = SimpleNamespace(
+        partner_id=7,
+        user_id=42,
+        display_label_snapshot="Old snapshot",
+        status="active",
+        commission_bps=3000,
+        welcome_message=None,
+        pause_reason=None,
+        activated_at=now,
+        created_at=now,
+    )
+    monkeypatch.setattr(
+        "bot.app.web.admin_api_impl.partners.partner_dal.balance_summaries",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        "bot.app.web.admin_api_impl.partners.partner_dal.list_clients",
+        AsyncMock(return_value=([], 5)),
+    )
+    monkeypatch.setattr(
+        "bot.app.web.admin_api_impl.partners.partner_dal.profile_currency_metrics",
+        AsyncMock(return_value={}),
+    )
+
+    payload = asyncio.run(
+        _profile_payload(
+            AsyncMock(spec=AsyncSession),
+            profile,
+            user_labels={42: ("alice", "Alice Example")},
+            avatar_keys={42: "2026-08-12T12:00:00+00:00"},
+        )
+    )
+
+    assert payload["display_label"] == "Alice Example"
+    assert payload["username"] == "alice"
+    assert payload["avatar_url"] == ("/api/admin/users/42/avatar?v=2026-08-12T12:00:00+00:00")
+    assert payload["clients_count"] == 5
 
 
 def _partner_settings(**overrides: object) -> SimpleNamespace:

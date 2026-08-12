@@ -2853,8 +2853,11 @@ export interface components {
        * @enum {string}
        */
       mode: "add" | "subtract" | "set";
-      /** Reason */
-      reason: string;
+      /**
+       * Reason
+       * @default null
+       */
+      reason: string | null;
     };
     /** AdminPartnerBulkReferralImportPreviewOut */
     AdminPartnerBulkReferralImportPreviewOut: {
@@ -4546,6 +4549,11 @@ export interface components {
        * Format: date-time
        */
       activated_at: string;
+      /**
+       * Avatar Url
+       * @default null
+       */
+      avatar_url: string | null;
       /** Commission Bps */
       commission_bps: number;
       /**
@@ -4569,6 +4577,11 @@ export interface components {
        * @default null
        */
       user_id: number | null;
+      /**
+       * Username
+       * @default null
+       */
+      username: string | null;
       /**
        * Welcome Message
        * @default null

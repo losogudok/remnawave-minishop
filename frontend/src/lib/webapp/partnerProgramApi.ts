@@ -176,7 +176,10 @@ export async function loadPartnerProgram(api: Api): Promise<PartnerProgramPrevie
             currency: method.debit_currency,
             minimum: major(method.min_amount_minor, method.currency_scale),
             enabled: method.enabled,
-            networks: method.networks.map((network) => network.id),
+            networks: method.networks.map((network) => ({
+              id: network.id,
+              label: network.label || network.id,
+            })),
             fieldId: fieldId(method),
             scale: method.currency_scale,
           }))

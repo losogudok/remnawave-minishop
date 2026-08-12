@@ -110,7 +110,7 @@
       <AdminField label={at("partners_col_amount", {}, "Amount")}>
         <Input class="input" type="number" min="0" step="0.01" bind:value={dialogAmount} />
       </AdminField>
-      <AdminField label={at("partners_reason", {}, "Reason")}>
+      <AdminField label={at("partners_balance_description", {}, "Description (optional)")}>
         <Textarea bind:value={dialogReason} rows={4} />
       </AdminField>
       <div class="partners-balance-preview">

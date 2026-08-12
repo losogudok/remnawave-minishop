@@ -43,7 +43,7 @@ def localized_shortcode_error(
 
 
 async def bot_username_for_shortcodes(bot: Bot, needed: set[str]) -> str:
-    if "referral_bot_link" not in needed:
+    if needed.isdisjoint({"referral_bot_link", "partner_bot_link"}):
         return ""
     try:
         me = await bot.get_me()

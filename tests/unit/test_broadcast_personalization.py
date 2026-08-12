@@ -55,6 +55,10 @@ def _settings(**overrides: Any) -> Any:
         "SUBSCRIPTION_MINI_APP_URL": "https://app.example.test/",
         "DEFAULT_CURRENCY_SYMBOL": "₽",
         "tariffs_config": _tariffs_config(),
+        "partner_settings": SimpleNamespace(
+            telegram_link_enabled=True,
+            webapp_link_enabled=True,
+        ),
     }
     base.update(overrides)
     return settings_stub(**base)
@@ -69,6 +73,10 @@ def _full_ctx(**overrides: Any) -> BroadcastUserContext:
         "email": "alice@example.com",
         "language_code": "en",
         "referral_code": "abc123",
+        "partner_code": "partner123",
+        "partner_status": "active",
+        "partner_commission_bps": 3250,
+        "partner_clients_count": 17,
         "has_active_subscription": True,
         "has_any_subscription": True,
         "end_date": datetime(2030, 5, 1, tzinfo=UTC),
@@ -99,6 +107,7 @@ class ExtractTest(unittest.TestCase):
         self.assertIn("config_link", SHORTCODES)
         self.assertEqual(SHORTCODES["config_link"].cost, "panel")
         self.assertEqual(SHORTCODES["first_name"].cost, "db")
+        self.assertEqual(SHORTCODES["partner_bot_link"].cost, "db")
 
 
 class RenderTest(unittest.TestCase):
@@ -215,6 +224,18 @@ class RenderTest(unittest.TestCase):
             self.render("{referral_webapp_link}", ctx),
             "https://app.example.test/?ref=uabc123",
         )
+        self.assertEqual(self.render("{partner_code}", ctx), "partner123")
+        self.assertEqual(
+            self.render("{partner_bot_link}", ctx),
+            "https://t.me/demo_bot?start=p_partner123",
+        )
+        self.assertEqual(
+            self.render("{partner_webapp_link}", ctx),
+            "https://app.example.test/?partner=partner123",
+        )
+        self.assertEqual(self.render("{partner_status}", ctx), "Active")
+        self.assertEqual(self.render("{partner_commission_rate}", ctx), "32.50%")
+        self.assertEqual(self.render("{partner_clients_count}", ctx), "17")
 
     def test_config_link_fallback_when_missing(self):
         ctx = _full_ctx(config_link=None)
@@ -228,6 +249,7 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(self.render("{first_name}", None, lang="ru"), friend)
         self.assertEqual(self.render("{last_name}", None), "")
         self.assertEqual(self.render("{referral_bot_link}", None), "")
+        self.assertEqual(self.render("{partner_bot_link}", None), "")
         self.assertEqual(self.render("{miniapp_link}", None), "https://app.example.test/")
 
 
@@ -359,6 +381,37 @@ class LoaderTest(unittest.IsolatedAsyncioTestCase):
             cast(Any, session), _settings(), [1], {"frist_name"}, None
         )
         self.assertEqual(contexts, {})
+
+    async def test_loads_partner_profile_and_client_count_only_when_requested(self):
+        user = SimpleNamespace(
+            user_id=1,
+            first_name="A",
+            last_name=None,
+            username="a",
+            email=None,
+            language_code="en",
+            referral_code="r1",
+        )
+        session = _FakeSession(
+            [
+                _FakeResult(scalars=[user]),
+                _FakeResult(rows=[(7, 1, "partner-code", "active", 2750)]),
+                _FakeResult(rows=[(7, 4)]),
+            ]
+        )
+
+        contexts = await load_broadcast_contexts(
+            cast(Any, session),
+            _settings(),
+            [1],
+            {"partner_bot_link", "partner_status", "partner_clients_count"},
+            None,
+        )
+
+        self.assertEqual(contexts[1].partner_code, "partner-code")
+        self.assertEqual(contexts[1].partner_status, "active")
+        self.assertEqual(contexts[1].partner_commission_bps, 2750)
+        self.assertEqual(contexts[1].partner_clients_count, 4)
 
 
 class _FakeCommitSession:

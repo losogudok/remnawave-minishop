@@ -29,6 +29,11 @@ function handleOf(userId: number): string {
   return username ? `@${username}` : `#${userId}`;
 }
 
+function avatarOf(userId: number): string {
+  const user = demoUsers.get(userId);
+  return String(user?.avatar_url || user?.telegram_photo_url || "");
+}
+
 export type PartnerStatus = "active" | "paused" | "closed";
 export type ApplicationStatus = "pending" | "approved" | "rejected" | "canceled";
 export type WithdrawalStatus =
@@ -40,6 +45,7 @@ export type PartnerRow = {
   userId: number;
   name: string;
   handle: string;
+  avatarUrl: string;
   status: PartnerStatus;
   rate: number;
   clients: number;
@@ -84,6 +90,7 @@ export const partners: PartnerRow[] = [
     userId: 910211,
     name: nameOf(910211),
     handle: handleOf(910211),
+    avatarUrl: avatarOf(910211),
     status: "active",
     rate: 30,
     clients: 24,
@@ -98,6 +105,7 @@ export const partners: PartnerRow[] = [
     userId: 910256,
     name: nameOf(910256),
     handle: handleOf(910256),
+    avatarUrl: avatarOf(910256),
     status: "active",
     rate: 35,
     clients: 18,
@@ -112,6 +120,7 @@ export const partners: PartnerRow[] = [
     userId: 910157,
     name: nameOf(910157),
     handle: handleOf(910157),
+    avatarUrl: avatarOf(910157),
     status: "paused",
     rate: 30,
     clients: 10,
@@ -126,6 +135,7 @@ export const partners: PartnerRow[] = [
     userId: 910207,
     name: nameOf(910207),
     handle: handleOf(910207),
+    avatarUrl: avatarOf(910207),
     status: "active",
     rate: 25,
     clients: 7,
@@ -140,6 +150,7 @@ export const partners: PartnerRow[] = [
     userId: 910023,
     name: nameOf(910023),
     handle: handleOf(910023),
+    avatarUrl: avatarOf(910023),
     status: "active",
     rate: 28,
     clients: 12,
@@ -154,6 +165,7 @@ export const partners: PartnerRow[] = [
     userId: 910031,
     name: nameOf(910031),
     handle: handleOf(910031),
+    avatarUrl: avatarOf(910031),
     status: "paused",
     rate: 20,
     clients: 4,

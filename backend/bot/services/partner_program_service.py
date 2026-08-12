@@ -3,7 +3,6 @@ from __future__ import annotations
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +16,7 @@ from bot.infra.event_payloads import (
 )
 from bot.services.partner_common import PartnerError, as_utc, compact_json, safe_user_label
 from bot.services.registration_invite_gate import referral_program_enabled
+from bot.utils.partner_links import build_partner_bot_link, build_partner_webapp_link
 from config.settings import Settings
 from db.dal import partner_dal, partner_reporting_dal, user_dal
 from db.models import User
@@ -493,25 +493,16 @@ class PartnerProgramService:
 
     def links(self, profile: PartnerProfile, *, bot_username: str = "") -> dict[str, Any]:
         code = str(profile.partner_code)
-        username = str(bot_username or "").strip().lstrip("@")
-        telegram = None
-        if self.config.telegram_link_enabled and username:
-            telegram = f"https://t.me/{quote(username, safe='')}?start=p_{quote(code, safe='')}"
-        base_url = str(self.settings.SUBSCRIPTION_MINI_APP_URL or "").strip()
-        web_link = None
-        if self.config.webapp_link_enabled and base_url:
-            parts = urlsplit(base_url)
-            query = dict(parse_qsl(parts.query, keep_blank_values=True))
-            query["partner"] = code
-            web_link = urlunsplit(
-                (
-                    parts.scheme,
-                    parts.netloc,
-                    parts.path or "/",
-                    urlencode(query),
-                    parts.fragment,
-                )
-            )
+        telegram = (
+            build_partner_bot_link(bot_username, code)
+            if self.config.telegram_link_enabled
+            else None
+        )
+        web_link = (
+            build_partner_webapp_link(self.settings.SUBSCRIPTION_MINI_APP_URL, code)
+            if self.config.webapp_link_enabled
+            else None
+        )
         return {
             "telegram": telegram,
             "web": web_link,

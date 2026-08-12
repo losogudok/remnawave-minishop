@@ -20,6 +20,7 @@ export type AdminPartnerListQuery = {
   search: string;
   status: string;
   sort: string;
+  limit?: number;
 };
 
 export const DEFAULT_PARTNER_LIST_QUERY: AdminPartnerListQuery = {
@@ -92,7 +93,12 @@ export function mapPartner(profile: JsonRecord, currency: string): PartnerRow {
     id: String(profile.partner_id || ""),
     userId,
     name: String(profile.display_label || `#${userId}`),
-    handle: userId ? `#${userId}` : "—",
+    handle: profile.username
+      ? `@${String(profile.username).replace(/^@/, "")}`
+      : userId
+        ? `#${userId}`
+        : "—",
+    avatarUrl: String(profile.avatar_url || ""),
     status: String(profile.status || "closed") as PartnerRow["status"],
     rate: number(profile.commission_bps) / 100,
     clients: number(profile.clients_count),
@@ -206,10 +212,14 @@ export async function loadPartnerPage(
   currency: string,
   query: AdminPartnerListQuery
 ): Promise<{ partners: PartnerRow[]; total: number }> {
+  const pageSize = Math.min(
+    PARTNER_LIST_PAGE_SIZE,
+    Math.max(1, Number(query.limit) || PARTNER_LIST_PAGE_SIZE)
+  );
   const partnerQuery = new URLSearchParams({
     currency,
-    limit: String(PARTNER_LIST_PAGE_SIZE),
-    offset: String(Math.max(0, query.page) * PARTNER_LIST_PAGE_SIZE),
+    limit: String(pageSize),
+    offset: String(Math.max(0, query.page) * pageSize),
     sort: query.sort || "created_desc",
   });
   if (query.search.trim()) partnerQuery.set("search", query.search.trim());

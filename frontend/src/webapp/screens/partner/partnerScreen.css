@@ -658,9 +658,9 @@
   grid-template-columns: 1fr auto;
   gap: 8px;
 }
-.field-error {
-  color: var(--danger) !important;
-  justify-self: start !important;
+.partner-amount-row .input,
+.partner-field > .field-error-wrap .input {
+  width: 100%;
 }
 /* The scrim and the green ring are separate paint layers. The ring used to be
    one item in the same box-shadow list as the 9999px scrim; while the target

@@ -289,6 +289,14 @@
 .partners-preview-row small {
   color: var(--admin-muted);
 }
+.partners-top-partner-row .admin-entity-link {
+  min-width: 0;
+}
+.partners-preview-stats {
+  flex: 0 0 auto;
+  justify-items: end;
+  text-align: right;
+}
 .partners-list-view,
 .partners-detail-view {
   display: grid;

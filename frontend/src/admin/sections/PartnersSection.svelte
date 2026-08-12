@@ -21,6 +21,7 @@
     AdminBadge,
     AdminButton,
     AdminEmptyState,
+    AdminEntityLink,
     AdminSelect,
   } from "$components/patterns/admin/index.js";
   import { formatPartnerMoney, partnerStatusVariant } from "$lib/admin/partnerProgramUi.js";
@@ -111,6 +112,14 @@
   );
   let partnerTotal = $state(previewMode ? previewPartners.length : 0);
   let partnerQuery = $state<AdminPartnerListQuery>({ ...DEFAULT_PARTNER_LIST_QUERY });
+  const topPartnerQuery: AdminPartnerListQuery = {
+    ...DEFAULT_PARTNER_LIST_QUERY,
+    sort: "earned_desc",
+    limit: 3,
+  };
+  let topPartners = $state<PartnerRow[]>(
+    previewMode ? [...previewPartners].sort((left, right) => right.earned - left.earned) : []
+  );
   let partnerListRequestId = 0;
   let applications = $state<ApplicationRow[]>(
     previewMode ? previewApplications.map((item) => ({ ...item })) : []
@@ -215,6 +224,7 @@
     userId: 0,
     name: "",
     handle: "",
+    avatarUrl: "",
     status: "closed",
     rate: 0,
     clients: 0,
@@ -428,13 +438,15 @@
     loading = true;
     loadError = false;
     try {
-      const [nextDashboard, lists] = await Promise.all([
+      const [nextDashboard, lists, topPartnerPage] = await Promise.all([
         loadPartnerDashboard(api, currency),
         loadPartnerLists(api, currency, partnerQuery),
+        loadPartnerPage(api, currency, topPartnerQuery),
       ]);
       dashboard = nextDashboard;
       partnerRevenueDaily = nextDashboard.revenue;
       partnerPayoutsDaily = nextDashboard.payouts;
+      topPartners = topPartnerPage.partners;
       if (partnerRequestId === partnerListRequestId) {
         partners = lists.partners;
         partnerTotal = lists.partnerTotal;
@@ -564,7 +576,7 @@
           currency_scale: scale,
           mode: balanceMode,
           amount_minor: Math.round(Number(dialogAmount) * 10 ** scale),
-          reason: dialogReason.trim(),
+          reason: dialogReason.trim() || null,
           idempotency_key: idempotencyKey("admin-balance"),
           allow_negative: false,
           internal_reference: null,
@@ -846,17 +858,24 @@
               >{at("partners_view_all", {}, "View all")}<ArrowRight size={14} /></button
             >
           </header>
-          {#each partners.slice(0, 3) as partner (partner.id)}<button
-              type="button"
-              class="partners-preview-row"
-              onclick={() => openPartner(partner)}
-              ><span
-                ><strong>{partner.handle}</strong><small
-                  >{partner.clients}
-                  {at("partners_clients_short", {}, "clients")} · {partner.rate}%</small
-                ></span
-              ><strong>{money(partner.gross)}</strong></button
-            >{/each}
+          {#each topPartners.slice(0, 3) as partner (partner.id)}
+            <div class="partners-preview-row partners-top-partner-row">
+              <AdminEntityLink
+                kind="user"
+                label={partner.name}
+                secondary={partner.handle}
+                idText={`#${partner.userId}`}
+                avatarUrl={partner.avatarUrl}
+                title={at("partners_open_partner_card", {}, "Open partner card")}
+                onclick={() => openPartner(partner)}
+              />
+              <span class="partners-preview-stats">
+                <small>{partner.clients} {at("partners_clients_short", {}, "clients")}</small>
+                <strong>{money(partner.earned)}</strong>
+                <small>{at("partners_col_earned", {}, "Net commission")}</small>
+              </span>
+            </div>
+          {/each}
         </article>
         <article class="admin-card partners-preview-card partners-preview-wide">
           <header>

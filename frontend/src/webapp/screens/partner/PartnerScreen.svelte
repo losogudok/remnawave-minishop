@@ -22,7 +22,7 @@
   import Dialog from "$components/ui/dialog.svelte";
   import Input from "$components/ui/input.svelte";
   import Textarea from "$components/ui/textarea.svelte";
-  import { Select } from "$components/ui/primitives.js";
+  import { Select, Tooltip } from "$components/ui/primitives.js";
   import { StatusMessage } from "$components/patterns/webapp/index.js";
   import { sortAdminRows, type AdminSortColumn } from "$lib/admin/tableSort.js";
   import PartnerTour, { type PartnerTourStep } from "./PartnerTour.svelte";
@@ -39,6 +39,10 @@
   import type { CopyTextAction, Translate } from "$lib/webapp/types.js";
   import { buildPartnerWithdrawalCancelPath, type ApiClient } from "$lib/webapp/publicApi.js";
   import { loadPartnerProgram, partnerPreviewMode } from "$lib/webapp/partnerProgramApi.js";
+  import {
+    normalizePartnerWithdrawalRequisites,
+    partnerWithdrawalRequisitesError,
+  } from "$lib/webapp/partnerWithdrawalValidation.js";
 
   let {
     copyText = async () => {},
@@ -249,6 +253,14 @@
   const applicationValid = $derived(
     applicationText.trim().length >= APPLICATION_MIN && applicationText.length <= applicationMax
   );
+  const withdrawalRequisitesError = $derived.by(() => {
+    if (!selectedMethod || !withdrawalRequisites.trim()) return "";
+    const error = partnerWithdrawalRequisitesError(selectedMethod.type, withdrawalRequisites);
+    if (error === "invalid_card_number") return t("wa_partner_card_number_invalid");
+    if (error === "invalid_phone") return t("wa_partner_sbp_phone_invalid");
+    if (error === "invalid_crypto_address") return t("wa_partner_crypto_address_invalid");
+    return "";
+  });
   const methodMinimumMet = $derived(
     Boolean(
       selectedMethod &&
@@ -261,6 +273,7 @@
     Boolean(
       methodMinimumMet &&
       withdrawalRequisites.trim() &&
+      !withdrawalRequisitesError &&
       (selectedMethod?.type !== "crypto" || withdrawalNetwork)
     )
   );
@@ -306,7 +319,6 @@
         ? t("wa_partner_sbp_phone_placeholder")
         : t("wa_partner_card_number_placeholder")
   );
-
   function formatMoney(amount: number, currency: PartnerCurrency): string {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
@@ -322,6 +334,12 @@
 
   function methodLabel(method: PartnerWithdrawalMethodPreview): string {
     return t(`wa_partner_method_${method.type}`);
+  }
+
+  function networkLabel(networkId: string): string {
+    return (
+      selectedMethod?.networks?.find((network) => network.id === networkId)?.label || networkId
+    );
   }
 
   function commissionStatusLabel(item: PartnerCommissionPreview): string {
@@ -386,7 +404,7 @@
     );
     withdrawalMethodId = firstMethod?.id || preview.methods[0]?.id || "";
     withdrawalAmount = "";
-    withdrawalNetwork = firstMethod?.networks?.[0] || "";
+    withdrawalNetwork = firstMethod?.networks?.[0]?.id || "";
     withdrawalRequisites = "";
     withdrawalError = "";
     withdrawalOpen = true;
@@ -398,7 +416,7 @@
 
   function selectWithdrawalMethod(method: PartnerWithdrawalMethodPreview): void {
     withdrawalMethodId = method.id;
-    withdrawalNetwork = method.networks?.[0] || "";
+    withdrawalNetwork = method.networks?.[0]?.id || "";
     withdrawalRequisites = "";
   }
 
@@ -419,7 +437,7 @@
             method: selectedMethod.type,
             masked:
               selectedMethod.type === "crypto"
-                ? `${withdrawalNetwork} ••••${withdrawalRequisites.slice(-4)}`
+                ? `${networkLabel(withdrawalNetwork)} ••••${withdrawalRequisites.slice(-4)}`
                 : `•••• ${withdrawalRequisites.replace(/\D/g, "").slice(-4)}`,
             amount: Number(withdrawalAmount),
             currency: currentBalance.currency,
@@ -445,7 +463,10 @@
           amount_minor: Math.round(Number(withdrawalAmount) * 10 ** scale),
           currency: currentBalance.currency,
           requisites: {
-            [selectedMethod.fieldId || "requisites"]: withdrawalRequisites.trim(),
+            [selectedMethod.fieldId || "requisites"]: normalizePartnerWithdrawalRequisites(
+              selectedMethod.type,
+              withdrawalRequisites
+            ),
           },
           network: withdrawalNetwork || null,
           idempotency_key: idempotencyKey("withdrawal"),
@@ -785,19 +806,33 @@
       <label class="partner-field">
         <span>{t("wa_partner_withdrawal_amount")}</span>
         <div class="partner-amount-row">
-          <Input
-            type="number"
-            min={selectedMethod?.minimum || 0}
-            max={currentBalance.available}
-            inputmode="decimal"
-            aria-invalid={Boolean(withdrawalAmountError)}
-            bind:value={withdrawalAmount}
-          />
+          <div class="field-error-wrap">
+            <Tooltip.Root open={Boolean(withdrawalAmountError)}>
+              <Input
+                type="number"
+                min={selectedMethod?.minimum || 0}
+                max={currentBalance.available}
+                inputmode="decimal"
+                aria-invalid={Boolean(withdrawalAmountError)}
+                class={withdrawalAmountError ? "input-error" : ""}
+                bind:value={withdrawalAmount}
+              />
+              {#if withdrawalAmountError}
+                <Tooltip.Trigger class="field-error-trigger" aria-label={withdrawalAmountError}>
+                  <span class="field-error-icon" aria-hidden="true"
+                    ><TriangleAlert size={18} /></span
+                  >
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content class="field-error-tooltip"
+                    >{withdrawalAmountError}</Tooltip.Content
+                  >
+                </Tooltip.Portal>
+              {/if}
+            </Tooltip.Root>
+          </div>
           <Button variant="outline" onclick={useMaxBalance}>{t("wa_partner_max")}</Button>
         </div>
-        {#if withdrawalAmountError}
-          <small class="field-error">{withdrawalAmountError}</small>
-        {/if}
       </label>
       {#if selectedMethod?.type === "crypto"}
         <label class="partner-field">
@@ -806,8 +841,8 @@
             type="single"
             value={withdrawalNetwork}
             items={(selectedMethod.networks || []).map((network) => ({
-              value: network,
-              label: network,
+              value: network.id,
+              label: network.label,
             }))}
             onValueChange={(value) => (withdrawalNetwork = value)}
           >
@@ -815,7 +850,11 @@
               class="partner-network-select-trigger"
               aria-label={t("wa_partner_crypto_network")}
             >
-              <span>{withdrawalNetwork || t("wa_partner_crypto_network")}</span>
+              <span
+                >{withdrawalNetwork
+                  ? networkLabel(withdrawalNetwork)
+                  : t("wa_partner_crypto_network")}</span
+              >
               <ChevronsUpDown size={15} />
             </Select.Trigger>
             <Select.Portal>
@@ -828,11 +867,11 @@
                 <Select.Viewport class="partner-network-select-viewport">
                   {#each selectedMethod.networks || [] as network}
                     <Select.Item
-                      value={network}
-                      label={network}
+                      value={network.id}
+                      label={network.label}
                       class="partner-network-select-item"
                     >
-                      <span>{network}</span>
+                      <span>{network.label}</span>
                       <Check size={14} class="partner-network-select-check" />
                     </Select.Item>
                   {/each}
@@ -844,12 +883,36 @@
       {/if}
       <label class="partner-field">
         <span>{requisitesLabel}</span>
-        <Input
-          bind:value={withdrawalRequisites}
-          autocomplete="off"
-          placeholder={requisitesPlaceholder}
-          inputmode={selectedMethod?.type === "sbp" ? "tel" : undefined}
-        />
+        <div class="field-error-wrap">
+          <Tooltip.Root open={Boolean(withdrawalRequisitesError)}>
+            <Input
+              bind:value={withdrawalRequisites}
+              autocomplete={selectedMethod?.type === "bank_card"
+                ? "cc-number"
+                : selectedMethod?.type === "sbp"
+                  ? "tel"
+                  : "off"}
+              placeholder={requisitesPlaceholder}
+              inputmode={selectedMethod?.type === "bank_card"
+                ? "numeric"
+                : selectedMethod?.type === "sbp"
+                  ? "tel"
+                  : undefined}
+              aria-invalid={Boolean(withdrawalRequisitesError)}
+              class={withdrawalRequisitesError ? "input-error" : ""}
+            />
+            {#if withdrawalRequisitesError}
+              <Tooltip.Trigger class="field-error-trigger" aria-label={withdrawalRequisitesError}>
+                <span class="field-error-icon" aria-hidden="true"><TriangleAlert size={18} /></span>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content class="field-error-tooltip"
+                  >{withdrawalRequisitesError}</Tooltip.Content
+                >
+              </Tooltip.Portal>
+            {/if}
+          </Tooltip.Root>
+        </div>
         <small>{t("wa_partner_requisites_privacy")}</small>
       </label>
       {#if withdrawalError}

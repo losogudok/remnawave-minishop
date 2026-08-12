@@ -345,14 +345,13 @@ class PartnerCommissionService:
         scale: int,
         mode: str,
         amount_minor: int,
-        reason: str,
+        reason: str | None,
         actor_admin_id: int,
         idempotency_key: str,
         allow_negative: bool = False,
         internal_reference: str | None = None,
     ) -> tuple[PartnerLedgerEntry, int]:
-        if not reason.strip():
-            raise PartnerError("reason_required", 400)
+        normalized_reason = str(reason or "").strip() or None
         profile = await partner_dal.get_profile_by_id(session, partner_id, for_update=True)
         if not profile:
             raise PartnerError("partner_not_found", 404)
@@ -385,7 +384,7 @@ class PartnerCommissionService:
             reference_id=internal_reference or idempotency_key,
             idempotency_key=idempotency_key,
             actor_admin_id=actor_admin_id,
-            reason=reason.strip(),
+            reason=normalized_reason,
             metadata_json=compact_json(
                 {"mode": normalized_mode, "before_minor": current, "after_minor": result}
             ),
@@ -399,7 +398,7 @@ class PartnerCommissionService:
             actor_user_id=actor_admin_id,
             old_values_json=compact_json({"currency": currency.upper(), "balance_minor": current}),
             new_values_json=compact_json({"currency": currency.upper(), "balance_minor": result}),
-            reason=reason.strip(),
+            reason=normalized_reason,
         )
         await events.emit_model(
             PartnerBalanceAdjustedPayload(

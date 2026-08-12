@@ -1269,10 +1269,17 @@
             "type": "string"
           },
           "reason": {
-            "maxLength": 2000,
-            "minLength": 1,
-            "title": "Reason",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reason"
           }
         },
         "required": [
@@ -1280,7 +1287,6 @@
           "currency_scale",
           "mode",
           "amount_minor",
-          "reason",
           "idempotency_key"
         ],
         "title": "AdminPartnerBalanceAdjustmentIn",
@@ -5222,6 +5228,18 @@
             "title": "Activated At",
             "type": "string"
           },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Avatar Url"
+          },
           "commission_bps": {
             "title": "Commission Bps",
             "type": "integer"
@@ -5266,6 +5284,18 @@
             ],
             "default": null,
             "title": "User Id"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Username"
           },
           "welcome_message": {
             "anyOf": [

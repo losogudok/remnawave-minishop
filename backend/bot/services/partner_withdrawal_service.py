@@ -8,6 +8,7 @@ import base64
 import json
 import os
 import re
+import unicodedata
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -27,7 +28,15 @@ from db.partner_models import PartnerWithdrawal
 
 _CARD_DIGITS = re.compile(r"^\d{12,19}$")
 _PHONE_E164 = re.compile(r"^\+[1-9]\d{7,14}$")
-_CRYPTO_ADDRESS = re.compile(r"^[A-Za-z0-9:_\-.]{12,160}$")
+
+
+def _valid_crypto_address(value: str) -> bool:
+    """Accept address formats from different chains without accepting hidden text."""
+
+    return 4 <= len(value) <= 256 and all(
+        not character.isspace() and not unicodedata.category(character).startswith("C")
+        for character in value
+    )
 
 
 def _luhn_valid(value: str) -> bool:
@@ -168,7 +177,7 @@ class PartnerWithdrawalService:
         else:
             required.add("address")
             address = requisites.get("address", "")
-            if not _CRYPTO_ADDRESS.fullmatch(address):
+            if not _valid_crypto_address(address):
                 raise PartnerError("invalid_crypto_address", 400)
             allowed_networks = {item.id for item in method.networks}
             normalized_network = str(network or requisites.get("network") or "").strip().lower()
