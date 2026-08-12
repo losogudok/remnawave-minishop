@@ -372,6 +372,8 @@ class PartnerWithdrawalStatusChangedPayload(EventPayload):
     currency: str
     currency_scale: int
     amount_minor: int
+    settlement_amount: str | None = None
+    external_reference: str | None = None
     changed_at: datetime
 
 

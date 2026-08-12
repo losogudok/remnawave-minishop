@@ -380,11 +380,15 @@
       {#if selectedWithdrawal.status === "processing"}
         <div class="partners-withdrawal-settlement">
           <AdminField
-            label={at("partners_external_reference", {}, "Transaction reference (optional)")}
+            label={at(
+              "partners_external_reference",
+              {},
+              "Transaction reference or link (optional)"
+            )}
             hint={at(
               "partners_external_reference_hint",
               {},
-              "Bank operation ID or blockchain transaction hash."
+              "Bank operation ID, blockchain transaction hash, or explorer link."
             )}
           >
             <Input class="input" autocomplete="off" bind:value={withdrawalExternalReference} />

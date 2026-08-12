@@ -276,6 +276,8 @@ Core reactions: `CoreEventReactions.on_partner_withdrawal_status_changed`
 | `currency` | `str` | required |
 | `currency_scale` | `int` | required |
 | `amount_minor` | `int` | required |
+| `settlement_amount` | `str | None` | `None` |
+| `external_reference` | `str | None` | `None` |
 | `changed_at` | `datetime` | required |
 
 ## `payment.canceled`

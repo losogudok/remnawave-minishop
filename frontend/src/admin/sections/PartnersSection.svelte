@@ -24,7 +24,15 @@
     AdminSelect,
   } from "$components/patterns/admin/index.js";
   import { partnerSortColumns } from "$lib/admin/partnerProgramSort.js";
-  import { formatPartnerMoney, partnerStatusVariant } from "$lib/admin/partnerProgramUi.js";
+  import {
+    formatPartnerMoney,
+    partnerActionIdempotencyKey,
+    partnerStatusLabel,
+    partnerStatusVariant,
+    partnerTopListQuery,
+    partnerWithdrawalTransitionMessage,
+    type PartnerWithdrawalTransition,
+  } from "$lib/admin/partnerProgramUi.js";
   import { sortAdminRows } from "$lib/admin/tableSort.js";
   import { stripRoutePrefix, withRoutePrefix } from "$lib/webapp/routes.js";
   import { getSettingsStore } from "$lib/admin/context.js";
@@ -325,14 +333,6 @@
   let withdrawalSettlementAmount = $state("");
   let withdrawalSettlementError = $state("");
 
-  function topPartnerQuery(): AdminPartnerListQuery {
-    return {
-      ...DEFAULT_PARTNER_LIST_QUERY,
-      sort: topPartnerSort,
-      limit: 6,
-    };
-  }
-
   function initialScenario(): string {
     if (typeof window === "undefined") return "populated";
     return String(
@@ -374,6 +374,8 @@
   }
 
   function syncRouteView(): void {
+    actionStatus = "";
+    actionError = false;
     const route = routeStateFromLocation();
     const routeId = route.id.toLowerCase();
     if (route.view === "partner_detail") {
@@ -429,11 +431,6 @@
     });
   }
 
-  function idempotencyKey(prefix: string): string {
-    const random = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
-    return `${prefix}-${random}`;
-  }
-
   async function loadSelectedPartnerDetail(partnerId = selectedPartner.id): Promise<void> {
     if (previewMode || !partnerId) return;
     const path = `/admin/partners/${encodeURIComponent(partnerId)}?currency=${encodeURIComponent(currency)}`;
@@ -457,7 +454,7 @@
       const [nextDashboard, lists, topPartnerPage] = await Promise.all([
         loadPartnerDashboard(api, currency),
         loadPartnerLists(api, currency, partnerQuery),
-        loadPartnerPage(api, currency, topPartnerQuery()),
+        loadPartnerPage(api, currency, partnerTopListQuery(topPartnerSort)),
       ]);
       dashboard = nextDashboard;
       partnerRevenueDaily = nextDashboard.revenue;
@@ -515,7 +512,7 @@
       return;
     }
     try {
-      const page = await loadPartnerPage(api, currency, topPartnerQuery());
+      const page = await loadPartnerPage(api, currency, partnerTopListQuery(topPartnerSort));
       if (sort !== topPartnerSort) return;
       topPartners = page.partners;
     } catch {
@@ -528,11 +525,11 @@
     if (!previewMode) await refreshAll();
   }
 
-  function statusLabel(status: string): string {
-    return at(`partners_status_${status}`, {}, status);
-  }
+  const statusLabel = (status: string): string => partnerStatusLabel(at, status);
 
   function navigate(next: View, id = ""): void {
+    actionStatus = "";
+    actionError = false;
     if (next !== "withdrawal_detail") revealedRequisites = "";
     view = next;
     if (typeof window === "undefined" || window.location.protocol === "file:") return;
@@ -614,7 +611,7 @@
           mode: balanceMode,
           amount_minor: Math.round(Number(dialogAmount) * 10 ** scale),
           reason: dialogReason.trim() || null,
-          idempotency_key: idempotencyKey("admin-balance"),
+          idempotency_key: partnerActionIdempotencyKey("admin-balance"),
           allow_negative: false,
           internal_reference: null,
         });
@@ -677,10 +674,9 @@
         : at("partners_application_rejected", {}, "Application rejected");
   }
 
-  async function transitionWithdrawal(
-    status: "processing" | "paid" | "reject" | "fail"
-  ): Promise<void> {
+  async function transitionWithdrawal(status: PartnerWithdrawalTransition): Promise<void> {
     actionError = false;
+    actionStatus = "";
     withdrawalSettlementError = "";
     if (
       status === "paid" &&
@@ -701,7 +697,7 @@
         status === "reject" ? "rejected" : status === "fail" ? "failed" : status;
       selectedWithdrawal.externalReference = withdrawalExternalReference.trim();
       selectedWithdrawal.settlementAmount = withdrawalSettlementAmount.trim();
-      actionStatus = at("partners_action_saved", {}, "Changes saved in the prototype");
+      actionStatus = partnerWithdrawalTransitionMessage(at, status);
       return;
     }
     actionBusy = true;
@@ -715,7 +711,7 @@
       await refreshAll();
       selectedWithdrawal =
         withdrawals.find((item) => item.id === selectedWithdrawal.id) || selectedWithdrawal;
-      actionStatus = at("partners_action_saved", {}, "Changes saved");
+      actionStatus = partnerWithdrawalTransitionMessage(at, status);
     } catch (error) {
       actionError = true;
       actionStatus =

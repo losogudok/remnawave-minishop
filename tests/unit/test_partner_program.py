@@ -14,6 +14,7 @@ from pydantic import SecretStr, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.app.web.admin_api_impl.partners import _profile_payload
+from bot.app.web.partner_serialization import withdrawal_out
 from bot.services.partner_commission_service import PartnerCommissionService
 from bot.services.partner_common import (
     PartnerError,
@@ -35,7 +36,7 @@ from config.settings_models import (
     PartnerWithdrawalNetwork,
 )
 from db.models import Payment
-from db.partner_models import PartnerProfile
+from db.partner_models import PartnerProfile, PartnerWithdrawal
 
 
 @pytest.mark.parametrize(
@@ -158,7 +159,39 @@ def test_partner_requisites_are_normalized_and_masked() -> None:
     assert phone_values == {"phone": "+79991234567"}
     assert phone_mask == "+79••••4567"
     assert crypto_values["network"] == "tron"
-    assert crypto_mask.endswith("(tron)")
+    assert crypto_mask == "TRON · ••••23456789"
+
+
+def test_legacy_crypto_withdrawal_mask_uses_snapshot_network_label_once() -> None:
+    withdrawal = cast(
+        PartnerWithdrawal,
+        SimpleNamespace(
+            withdrawal_id=23,
+            partner_id=7,
+            method_id_snapshot="usdt",
+            method_type_snapshot="crypto",
+            method_snapshot_json=json.dumps({"networks": [{"id": "network-1", "label": "TON"}]}),
+            debit_amount_minor=10_000,
+            debit_currency="USD",
+            currency_scale=2,
+            settlement_asset="USDT",
+            network="network-1",
+            status="processing",
+            status_version=2,
+            status_message=None,
+            external_reference=None,
+            settlement_amount=None,
+            masked_requisites="0001…0001 (network-1)",
+            requested_at=datetime(2026, 8, 12, tzinfo=UTC),
+            processing_at=datetime(2026, 8, 12, tzinfo=UTC),
+            paid_at=None,
+            decided_at=None,
+        ),
+    )
+
+    serialized = withdrawal_out(withdrawal)
+
+    assert serialized.masked_requisites == "TON · ••••0001"
 
 
 @pytest.mark.parametrize(

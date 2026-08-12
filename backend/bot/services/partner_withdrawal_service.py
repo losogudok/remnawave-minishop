@@ -184,7 +184,11 @@ class PartnerWithdrawalService:
             if normalized_network not in allowed_networks:
                 raise PartnerError("invalid_crypto_network", 400)
             requisites["network"] = normalized_network
-            mask = f"{address[:6]}…{address[-6:]} ({normalized_network})"
+            selected_network = next(
+                item for item in method.networks if item.id == normalized_network
+            )
+            network_label = selected_network.label.strip() or selected_network.id
+            mask = f"{network_label} · ••••{address[-8:]}"
         missing = sorted(key for key in required if not requisites.get(key))
         if missing:
             raise PartnerError("withdrawal_requisites_incomplete", 400, ", ".join(missing))
@@ -512,6 +516,12 @@ class PartnerWithdrawalService:
                 currency=str(withdrawal.debit_currency),
                 currency_scale=int(withdrawal.currency_scale),
                 amount_minor=int(withdrawal.debit_amount_minor),
+                settlement_amount=(
+                    str(withdrawal.settlement_amount) if withdrawal.settlement_amount else None
+                ),
+                external_reference=(
+                    str(withdrawal.external_reference) if withdrawal.external_reference else None
+                ),
                 changed_at=now,
             )
         )

@@ -105,6 +105,35 @@ def commission_out(
     )
 
 
+def _withdrawal_masked_requisites(
+    withdrawal: PartnerWithdrawal,
+    method_snapshot: dict[str, Any],
+) -> str:
+    masked = str(withdrawal.masked_requisites)
+    if str(withdrawal.method_type_snapshot) != "crypto":
+        return masked
+    network_id = str(withdrawal.network or "").strip().lower()
+    if not network_id:
+        return masked
+    network_label = network_id
+    networks = method_snapshot.get("networks")
+    if isinstance(networks, list):
+        for candidate in networks:
+            if not isinstance(candidate, dict):
+                continue
+            if str(candidate.get("id") or "").strip().lower() != network_id:
+                continue
+            network_label = str(candidate.get("label") or network_id).strip() or network_id
+            break
+    legacy_suffix = f" ({network_id})"
+    if not masked.lower().endswith(legacy_suffix.lower()) or "…" not in masked:
+        return masked
+    address_tail = masked[: -len(legacy_suffix)].rsplit("…", 1)[-1].strip()
+    if not address_tail:
+        return network_label
+    return f"{network_label} · ••••{address_tail[-8:]}"
+
+
 def withdrawal_out(withdrawal: PartnerWithdrawal) -> PartnerWithdrawalOut:
     try:
         method_snapshot = json.loads(str(withdrawal.method_snapshot_json or "{}"))
@@ -126,7 +155,7 @@ def withdrawal_out(withdrawal: PartnerWithdrawal) -> PartnerWithdrawalOut:
         status_message=withdrawal.status_message,
         external_reference=withdrawal.external_reference,
         settlement_amount=withdrawal.settlement_amount,
-        masked_requisites=str(withdrawal.masked_requisites),
+        masked_requisites=_withdrawal_masked_requisites(withdrawal, method_snapshot),
         requested_at=withdrawal.requested_at,
         processing_at=withdrawal.processing_at,
         paid_at=withdrawal.paid_at,

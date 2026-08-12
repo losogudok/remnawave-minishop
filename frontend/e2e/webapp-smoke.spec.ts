@@ -1319,6 +1319,26 @@ test("partner dashboard tables stay compact, sortable, and show six rows", async
     .locator("tbody tr")
     .evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
   expect(Math.max(...rowHeights)).toBeLessThanOrEqual(44);
+
+  const dashboardGeometry = await dashboardTables.evaluateAll((cards) =>
+    cards.map((card) => ({
+      card: card.getBoundingClientRect().height,
+      header: card.querySelector("header")?.getBoundingClientRect().height ?? 0,
+    }))
+  );
+  expect(Math.abs(dashboardGeometry[0].header - dashboardGeometry[1].header)).toBeLessThanOrEqual(
+    1
+  );
+  expect(Math.abs(dashboardGeometry[0].card - dashboardGeometry[1].card)).toBeLessThanOrEqual(1);
+
+  await dashboardTables
+    .first()
+    .locator("tbody tr")
+    .evaluateAll((rows) => rows.slice(2).forEach((row) => row.remove()));
+  const unequalListHeights = await dashboardTables.evaluateAll((cards) =>
+    cards.map((card) => card.getBoundingClientRect().height)
+  );
+  expect(Math.abs(unequalListHeights[0] - unequalListHeights[1])).toBeLessThanOrEqual(1);
 });
 
 test("crypto withdrawals require settlement data before they can be marked paid", async ({
@@ -1338,6 +1358,10 @@ test("crypto withdrawals require settlement data before they can be marked paid"
   await settlement.fill("125.50 USDT");
   await page.getByRole("button", { name: "Отметить выплаченным" }).click();
   await expect(page.locator(".partners-record-card > header")).toContainText("Выплачен");
+  await expect(page.getByRole("status")).toContainText("Вывод отмечен выплаченным");
+
+  await page.getByRole("tab", { name: "Партнёры", exact: true }).click();
+  await expect(page.locator(".partners-success-banner")).toHaveCount(0);
 });
 
 test("broadcast promo picker fills its mobile editor row", async ({ page }) => {

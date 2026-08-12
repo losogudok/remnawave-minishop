@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import InlineKeyboardMarkup
@@ -313,6 +314,8 @@ class NotificationPartnerMixin:
         amount_minor: int,
         currency: str,
         currency_scale: int,
+        settlement_amount: str | None = None,
+        external_reference: str | None = None,
     ) -> None:
         normalized = str(status or "").strip().lower()
         messages = {
@@ -365,4 +368,44 @@ class NotificationPartnerMixin:
             amount=hd.quote(self._partner_amount(amount_minor, currency_scale)),
             currency=hd.quote(str(currency).upper()),
         )
+        normalized_settlement = str(settlement_amount or "").strip()
+        if normalized == "paid" and normalized_settlement:
+            language = getattr(user, "language_code", None)
+            details = [
+                self._partner_text(
+                    language,
+                    "partner_withdrawal_paid_settlement_amount",
+                    "Final cryptocurrency amount: <b>{settlement_amount}</b>",
+                    settlement_amount=hd.quote(normalized_settlement),
+                )
+            ]
+            reference = str(external_reference or "").strip()
+            if reference:
+                try:
+                    parsed_reference = urlsplit(reference)
+                    reference_is_link = parsed_reference.scheme.lower() in {
+                        "http",
+                        "https",
+                    } and bool(parsed_reference.netloc)
+                except ValueError:
+                    reference_is_link = False
+                if reference_is_link:
+                    details.append(
+                        self._partner_text(
+                            language,
+                            "partner_withdrawal_paid_transaction_link",
+                            'Transaction: <a href="{transaction_url}">open in explorer</a>',
+                            transaction_url=hd.quote(reference),
+                        )
+                    )
+                else:
+                    details.append(
+                        self._partner_text(
+                            language,
+                            "partner_withdrawal_paid_transaction_reference",
+                            "Transaction hash: <code>{transaction_reference}</code>",
+                            transaction_reference=hd.quote(reference),
+                        )
+                    )
+            message = f"{message}\n\n" + "\n".join(details)
         await self._send_partner_user_notification(user, message)

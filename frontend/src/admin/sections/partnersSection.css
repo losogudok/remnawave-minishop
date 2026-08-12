@@ -319,6 +319,20 @@
   border: 0;
   border-radius: 0;
 }
+@media (min-width: 761px) {
+  .partners-dashboard-table-card {
+    display: grid;
+    grid-template-rows: 58px minmax(0, 1fr);
+    height: 100%;
+  }
+  .partners-dashboard-table-card > header {
+    height: 58px;
+  }
+  .partners-dashboard-table-card > .admin-table-wrap,
+  .partners-dashboard-table-card > .admin-chart-empty {
+    height: 100%;
+  }
+}
 .partners-preview-row {
   width: 100%;
   display: flex;

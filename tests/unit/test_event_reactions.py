@@ -1204,11 +1204,13 @@ class CoreEventReactionsTests(IsolatedAsyncioTestCase):
                     "user_id": 42,
                     "withdrawal_id": 23,
                     "old_status": "requested",
-                    "status": "processing",
+                    "status": "paid",
                     "status_version": 2,
                     "currency": "RUB",
                     "currency_scale": 2,
                     "amount_minor": 125_050,
+                    "settlement_amount": "16.75 TON",
+                    "external_reference": "https://tonviewer.com/transaction/abc123",
                     "changed_at": changed_at.isoformat(),
                 },
             )
@@ -1231,8 +1233,10 @@ class CoreEventReactionsTests(IsolatedAsyncioTestCase):
         notification_service.notify_partner_withdrawal_status_changed.assert_awaited_once_with(
             withdrawal_id=23,
             user=user,
-            status="processing",
+            status="paid",
             amount_minor=125_050,
             currency="RUB",
             currency_scale=2,
+            settlement_amount="16.75 TON",
+            external_reference="https://tonviewer.com/transaction/abc123",
         )

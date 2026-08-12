@@ -178,6 +178,8 @@ class PartnerEventReactionsMixin:
                 amount_minor=int(payload.get("amount_minor") or 0),
                 currency=str(payload.get("currency") or ""),
                 currency_scale=int(payload.get("currency_scale") or 0),
+                settlement_amount=(str(payload.get("settlement_amount") or "").strip() or None),
+                external_reference=(str(payload.get("external_reference") or "").strip() or None),
             )
         except Exception:
             logger.exception(

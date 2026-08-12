@@ -206,6 +206,43 @@ def test_partner_withdrawal_statuses_notify_user(
     assert "1250.50 RUB" in kwargs["text"]
 
 
+@pytest.mark.parametrize(
+    ("reference", "expected"),
+    [
+        (
+            "https://tonviewer.com/transaction/abc123",
+            'href="https://tonviewer.com/transaction/abc123"',
+        ),
+        ("abc123", "Хеш транзакции: <code>abc123</code>"),
+    ],
+)
+def test_paid_crypto_withdrawal_notification_includes_settlement_and_transaction(
+    monkeypatch: pytest.MonkeyPatch,
+    reference: str,
+    expected: str,
+) -> None:
+    service = _service()
+    user = _user()
+    monkeypatch.setattr(notification_partner, "get_queue_manager", lambda: None)
+
+    asyncio.run(
+        service.notify_partner_withdrawal_status_changed(
+            withdrawal_id=23,
+            user=user,
+            status="paid",
+            amount_minor=125_050,
+            currency="RUB",
+            currency_scale=2,
+            settlement_amount="16.75 TON",
+            external_reference=reference,
+        )
+    )
+
+    message = service.bot.send_message.await_args.kwargs["text"]
+    assert "Итоговая сумма в криптовалюте: <b>16.75 TON</b>" in message
+    assert expected in message
+
+
 def test_partner_notification_skips_known_unreachable_telegram(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
