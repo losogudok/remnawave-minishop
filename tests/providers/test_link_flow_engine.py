@@ -8,6 +8,7 @@ collaborators are patched on the engine module namespace.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -408,6 +409,22 @@ def test_webapp_payment_success_finalizes(monkeypatch):
     assert fin["payment_url"] == "https://pay/x"
     assert fin["provider_payment_id"] == "pid-1"
     assert fin["log_prefix"] == "Fake"
+
+
+def test_webapp_payment_persists_descriptor_ttl_when_provider_omits_expiry(monkeypatch):
+    payment = SimpleNamespace(payment_id=99, status="pending_fake")
+    monkeypatch.setattr(link_flow, "create_webapp_payment_record", AsyncMock(return_value=payment))
+    monkeypatch.setattr(link_flow, "finalize_webapp_link_payment", AsyncMock(return_value="OK"))
+    service = _FakeService()
+    started_at = datetime.now(UTC)
+    desc = _descriptor(checkout_ttl_seconds=lambda _service, _request: 600)
+
+    result = asyncio.run(run_webapp_payment(desc, _webapp_ctx(service)))
+
+    assert result == "OK"
+    expires_at = link_flow.finalize_webapp_link_payment.await_args.kwargs["checkout_expires_at"]
+    assert started_at + timedelta(seconds=600) <= expires_at
+    assert expires_at <= datetime.now(UTC) + timedelta(seconds=600)
 
 
 def test_webapp_payment_unconfigured_returns_unavailable(monkeypatch):

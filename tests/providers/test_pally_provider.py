@@ -390,6 +390,18 @@ def test_reuse_rejects_terminal_or_foreign_bill(monkeypatch):
     monkeypatch.setattr(
         service,
         "get_bill_status",
+        AsyncMock(
+            return_value=(
+                True,
+                {"id": "bill-1", "order_id": "77", "status": "NEW", "active": False},
+            )
+        ),
+    )
+    assert asyncio.run(service.try_reuse_pending_bill(payment)) is None
+
+    monkeypatch.setattr(
+        service,
+        "get_bill_status",
         AsyncMock(return_value=(True, {"id": "other", "order_id": "77", "status": "NEW"})),
     )
     assert asyncio.run(service.try_reuse_pending_bill(payment)) is None

@@ -114,6 +114,25 @@ def _id_matches(data: dict[str, Any], expected: str, *keys: str) -> bool:
     return not returned or expected in returned
 
 
+def _pally_checkout_expiration(payment: Any, service: Any) -> datetime | None:
+    expires_at = getattr(payment, "checkout_expires_at", None)
+    if expires_at is not None:
+        return expires_at
+    created_at = getattr(payment, "created_at", None)
+    ttl_seconds = getattr(service, "ttl_seconds", None)
+    if created_at is None or ttl_seconds is None:
+        return None
+    try:
+        ttl = int(ttl_seconds)
+    except (TypeError, ValueError):
+        return None
+    if ttl <= 0:
+        return None
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=UTC)
+    return created_at.astimezone(UTC) + timedelta(seconds=ttl)
+
+
 async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderLifecycle:
     provider = _normalized(payment.provider)
     provider_id = str(payment.provider_payment_id or "").strip()
@@ -305,11 +324,14 @@ async def refresh_hosted_payment_status(
         "checkout_expires_at",
         None,
     )
-    if (
+    if provider == "pally" and expires_at is None:
+        expires_at = _pally_checkout_expiration(payment_snapshot, service)
+    expired_pending = bool(
         lifecycle.state == "pending"
         and expires_at is not None
         and expires_at + timedelta(seconds=max(0, expiration_grace_seconds)) <= datetime.now(UTC)
-    ):
+    )
+    if expired_pending:
         # A provider can briefly return a stale pending state at its boundary.
         # Do not release the promo until the provider itself reports terminal.
         logger.info(
@@ -318,40 +340,52 @@ async def refresh_hosted_payment_status(
             payment_id,
         )
 
-    if (
+    can_cancel_pending = bool(
         lifecycle.state == "pending"
-        and lifecycle.provider_status == "new"
         and hasattr(service, "cancel_pending_bill")
-    ):
-        superseding_payment = await payment_checkout_dal.find_later_equivalent_succeeded_payment(
-            session,
-            payment_snapshot,
-        )
-        if superseding_payment is not None:
-            superseding_payment_id = int(superseding_payment.payment_id)
+        and (expired_pending or lifecycle.provider_status == "new")
+    )
+    if can_cancel_pending:
+        superseding_payment = None
+        if not expired_pending:
+            superseding_payment = (
+                await payment_checkout_dal.find_later_equivalent_succeeded_payment(
+                    session,
+                    payment_snapshot,
+                )
+            )
+        if expired_pending or superseding_payment is not None:
+            superseding_payment_id = (
+                int(superseding_payment.payment_id) if superseding_payment is not None else None
+            )
             await session.rollback()
             canceled, _cancel_response = await service.cancel_pending_bill(
                 str(payment_snapshot.provider_payment_id or "")
             )
             if canceled:
+                expiration_reason = f"checkout_ttl_{getattr(service, 'ttl_seconds', 0)}s"
                 updated, _transitioned = await payment_dal.transition_provider_payment_to_terminal(
                     session,
                     payment_id,
                     str(payment_snapshot.provider_payment_id or payment_id),
                     "canceled",
-                    failure_kind="superseded_checkout",
+                    failure_kind=("checkout_expired" if expired_pending else "superseded_checkout"),
                     provider_cancellation_party="merchant",
                     provider_cancellation_reason=(
-                        f"superseded_by_payment_{superseding_payment_id}"
+                        expiration_reason
+                        if expired_pending
+                        else f"superseded_by_payment_{superseding_payment_id}"
                     ),
-                    suppress_failure_notification=True,
+                    suppress_failure_notification=not expired_pending,
                 )
                 await session.commit()
                 logger.info(
-                    "Canceled superseded %s payment %s after successful payment %s.",
+                    "Canceled %s payment %s (%s).",
                     provider,
                     payment_id,
-                    superseding_payment_id,
+                    "checkout expired"
+                    if expired_pending
+                    else f"superseded by payment {superseding_payment_id}",
                 )
                 return (
                     await payment_dal.get_payment_by_db_id(session, payment_id, fresh=True)
@@ -359,10 +393,12 @@ async def refresh_hosted_payment_status(
                     or payment_snapshot
                 )
             logger.warning(
-                "Provider %s did not cancel superseded payment %s after successful payment %s.",
+                "Provider %s did not cancel payment %s (%s); checkout reservations stay held.",
                 provider,
                 payment_id,
-                superseding_payment_id,
+                "checkout expired"
+                if expired_pending
+                else f"superseded by payment {superseding_payment_id}",
             )
 
     locally_expired = bool(
@@ -373,6 +409,13 @@ async def refresh_hosted_payment_status(
     )
     if lifecycle.state == "failed" or locally_expired:
         provider_id = str(payment_snapshot.provider_payment_id or payment_id)
+        if provider == "pally" and lifecycle.failure_provider_code:
+            logger.warning(
+                "metric payment_provider_failure_total=1 provider=pally failure_code=%s "
+                "payment_id=%s",
+                lifecycle.failure_provider_code,
+                payment_id,
+            )
         updated, transitioned = await payment_dal.transition_provider_payment_to_terminal(
             session,
             payment_id,
@@ -399,7 +442,7 @@ async def refresh_hosted_payment_status(
     checked = await payment_reconciliation_dal.mark_provider_payment_checked(
         session,
         payment_id,
-        checkout_expires_at=lifecycle.checkout_expires_at,
+        checkout_expires_at=expires_at,
     )
     await session.commit()
     return checked or payment_snapshot

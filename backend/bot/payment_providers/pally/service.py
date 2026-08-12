@@ -542,6 +542,9 @@ class PallyService(HttpClientMixin):
         success, data = await self.get_bill_status(provider_payment_id)
         if not success or _status_value(data) not in _PENDING_STATUSES:
             return None
+        active = data.get("active", data.get("activity"))
+        if str(active).strip().lower() in {"0", "false", "no", "off"}:
+            return None
         returned_ids = {
             str(data.get("id") or "").strip(),
             str(data.get("bill_id") or "").strip(),

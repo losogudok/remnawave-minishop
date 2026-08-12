@@ -568,6 +568,10 @@ async def reusable_webapp_payment_response(
     provider_spec: Any,
     *,
     since_minutes: int | None = None,
+    match_reservations: bool = False,
+    requested_promo_code: str | None = None,
+    preserve_promo_code_case: bool = False,
+    requested_partner_balance: bool = False,
 ) -> web.Response | None:
     resolver = getattr(provider_spec, "reuse_webapp_payment", None)
     if resolver is None:
@@ -579,26 +583,34 @@ async def reusable_webapp_payment_response(
         traffic_gb=ctx.traffic_gb,
         hwid_device_count=ctx.hwid_device_count,
     )
-    payment = await payment_dal.find_recent_pending_provider_payment(
-        ctx.session,
-        user_id=ctx.user_id,
-        provider=provider_spec.provider_key,
-        pending_status=provider_spec.pending_status,
-        amount=ctx.price,
-        currency=ctx.currency,
-        sale_mode=ctx.sale_mode,
-        months=amounts.months,
-        purchased_gb=amounts.purchased_gb,
-        purchased_hwid_devices=amounts.purchased_hwid_devices,
-        hwid_traffic_bonus_bytes=ctx.hwid_traffic_bonus_bytes,
-        tariff_key=amounts.tariff_key,
-        promo_code_id=ctx.promo_code_id,
-        promo_effect_summary=ctx.promo_effect_summary,
-        tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
-        entitlement_context_snapshot=ctx.entitlement_context_snapshot,
-        since_minutes=since_minutes,
+    payment = None
+    if not match_reservations:
+        payment = await payment_dal.find_recent_pending_provider_payment(
+            ctx.session,
+            user_id=ctx.user_id,
+            provider=provider_spec.provider_key,
+            pending_status=provider_spec.pending_status,
+            amount=ctx.price,
+            currency=ctx.currency,
+            sale_mode=ctx.sale_mode,
+            months=amounts.months,
+            purchased_gb=amounts.purchased_gb,
+            purchased_hwid_devices=amounts.purchased_hwid_devices,
+            hwid_traffic_bonus_bytes=ctx.hwid_traffic_bonus_bytes,
+            tariff_key=amounts.tariff_key,
+            promo_code_id=ctx.promo_code_id,
+            promo_effect_summary=ctx.promo_effect_summary,
+            requested_partner_balance=int(ctx.partner_balance_amount_minor or 0) > 0,
+            tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
+            entitlement_context_snapshot=ctx.entitlement_context_snapshot,
+            since_minutes=since_minutes,
+        )
+    has_reservations = bool(
+        match_reservations
+        or ctx.promo_code_id is not None
+        or int(ctx.partner_balance_amount_minor or 0) > 0
     )
-    if payment is None:
+    if payment is None and has_reservations:
         relaxed_payment = (
             await payment_checkout_dal.find_recent_pending_provider_payment_for_checkout(
                 ctx.session,
@@ -615,13 +627,18 @@ async def reusable_webapp_payment_response(
                 tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
                 entitlement_context_snapshot=ctx.entitlement_context_snapshot,
                 since_minutes=since_minutes,
+                match_reservations=True,
+                requested_promo_code=requested_promo_code,
+                requested_promo_code_id=ctx.promo_code_id,
+                preserve_promo_code_case=preserve_promo_code_case,
+                requested_partner_balance=(
+                    requested_partner_balance
+                    if match_reservations
+                    else int(ctx.partner_balance_amount_minor or 0) > 0
+                ),
             )
         )
-        if relaxed_payment is not None and (
-            int(ctx.partner_balance_amount_minor or 0) > 0
-            or int(getattr(relaxed_payment, "partner_balance_amount_minor", 0) or 0) > 0
-            or getattr(relaxed_payment, "promo_code_id", None) is not None
-        ):
+        if relaxed_payment is not None:
             payment = relaxed_payment
     if payment is None:
         return None

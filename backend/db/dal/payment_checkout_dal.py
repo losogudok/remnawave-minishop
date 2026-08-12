@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 
-from db.models import Payment
+from db.models import Payment, PromoCode
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,11 @@ async def find_recent_pending_provider_payment_for_checkout(
     tariff_change_quote_snapshot: str | None = None,
     entitlement_context_snapshot: str | None = None,
     since_minutes: int | None = None,
+    match_reservations: bool = False,
+    requested_promo_code: str | None = None,
+    requested_promo_code_id: int | None = None,
+    preserve_promo_code_case: bool = False,
+    requested_partner_balance: bool = False,
 ) -> Payment | None:
     """Find the same pending purchase even when its funding quote has changed."""
 
@@ -75,6 +80,30 @@ async def find_recent_pending_provider_payment_for_checkout(
         conditions.append(Payment.hwid_traffic_bonus_bytes == hwid_traffic_bonus_bytes)
     else:
         conditions.append(Payment.hwid_traffic_bonus_bytes.is_(None))
+    if match_reservations:
+        normalized_promo_code = str(requested_promo_code or "").strip()
+        if normalized_promo_code:
+            public_code = func.coalesce(
+                func.nullif(func.trim(PromoCode.archived_code), ""),
+                PromoCode.code,
+            )
+            code_condition = (
+                or_(
+                    public_code == normalized_promo_code,
+                    public_code == normalized_promo_code.upper(),
+                )
+                if preserve_promo_code_case
+                else func.upper(public_code) == normalized_promo_code.upper()
+            )
+            conditions.append(Payment.promo_code_used.has(code_condition))
+        elif requested_promo_code_id is not None:
+            conditions.append(Payment.promo_code_id == int(requested_promo_code_id))
+        else:
+            conditions.append(Payment.promo_code_id.is_(None))
+        partner_balance_amount = func.coalesce(Payment.partner_balance_amount_minor, 0)
+        conditions.append(
+            partner_balance_amount > 0 if requested_partner_balance else partner_balance_amount == 0
+        )
 
     stmt = (
         select(Payment)

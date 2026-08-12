@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import bot.app.web.subscription_webapp  # noqa: F401
 from bot.app.web.webapp import billing as billing_module
+from bot.app.web.webapp import billing_payments
 from bot.app.web.webapp import billing_status as billing_status_module
 from bot.payment_providers.base import PaymentProviderSpec, WebAppPaymentContext
 from bot.payment_providers.freekassa import FreeKassaService
@@ -545,6 +546,7 @@ class WebAppPaymentStatusTests(IsolatedAsyncioTestCase):
         self.assertEqual(find_pending.await_args.kwargs["sale_mode"], "subscription@standard")
         self.assertEqual(find_pending.await_args.kwargs["months"], 3)
         self.assertEqual(find_pending.await_args.kwargs["tariff_key"], "standard")
+        self.assertFalse(find_pending.await_args.kwargs["requested_partner_balance"])
 
     async def test_reusable_payment_response_keeps_reserved_partner_checkout(self):
         payment = SimpleNamespace(
@@ -572,6 +574,7 @@ class WebAppPaymentStatusTests(IsolatedAsyncioTestCase):
             description="Subscription",
             sale_mode="subscription@standard",
             currency="RUB",
+            promo_code_id=5,
             partner_balance_amount_minor=63500,
         )
 
@@ -592,7 +595,88 @@ class WebAppPaymentStatusTests(IsolatedAsyncioTestCase):
         self.assertEqual(response.status, 200)
         self.assertIn(b'"payment_id": 78', response.body)
         find_checkout.assert_awaited_once()
+        self.assertEqual(find_checkout.await_args.kwargs["requested_promo_code_id"], 5)
+        self.assertTrue(find_checkout.await_args.kwargs["requested_partner_balance"])
         resolver.assert_awaited_once()
+
+    async def test_create_payment_reuses_reserved_checkout_before_promo_and_balance(self):
+        session = AsyncMock()
+        reusable_response = billing_module.web.json_response(
+            {
+                "ok": True,
+                "action": "open_link",
+                "payment_url": "https://provider.example/pay/78",
+                "payment_id": 78,
+            }
+        )
+        provider_spec = PaymentProviderSpec(
+            id="provider",
+            provider_key="provider",
+            label="Provider",
+            pending_status="pending_provider",
+            enabled=lambda _config: True,
+            create_webapp_payment=AsyncMock(),
+            reuse_webapp_payment=AsyncMock(),
+        )
+        settings = SimpleNamespace(
+            DEFAULT_CURRENCY_SYMBOL="RUB",
+            MIGRATION_REMNASHOP_PROMO_CODE_COMPAT_ENABLED=False,
+        )
+        request = SimpleNamespace(app={"provider_service": SimpleNamespace(configured=True)})
+
+        with (
+            patch.object(billing_payments, "get_settings", return_value=settings),
+            patch.object(billing_payments, "get_i18n", return_value=None),
+            patch.object(
+                billing_payments.subscription_dal,
+                "get_active_subscription_by_user_id",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "bot.payment_providers.get_provider_spec",
+                return_value=provider_spec,
+            ),
+            patch.object(
+                billing_payments,
+                "reuse_checkout_if_available",
+                AsyncMock(return_value=reusable_response),
+            ) as reuse_checkout,
+            patch.object(
+                billing_payments,
+                "_resolve_checkout_promo",
+                AsyncMock(),
+            ) as resolve_promo,
+            patch.object(
+                billing_payments,
+                "allocate_partner_checkout_balance",
+                AsyncMock(),
+            ) as allocate_balance,
+        ):
+            response = await billing_payments._create_subscription_payment(
+                request=request,
+                session=session,
+                user_id=1001,
+                method="provider",
+                months=1,
+                price=700.0,
+                stars_price=None,
+                lang="en",
+                currency="RUB",
+                sale_mode="subscription@standard",
+                promo_code="SAVE10",
+                entitlement_context_snapshot="entitlement-snapshot",
+                use_partner_balance=True,
+            )
+
+        self.assertIs(response, reusable_response)
+        reuse_checkout.assert_awaited_once()
+        reuse_kwargs = reuse_checkout.await_args.kwargs
+        self.assertTrue(reuse_kwargs["match_reservations"])
+        self.assertEqual(reuse_kwargs["requested_promo_code"], "SAVE10")
+        self.assertTrue(reuse_kwargs["requested_partner_balance"])
+        resolve_promo.assert_not_awaited()
+        allocate_balance.assert_not_awaited()
+        provider_spec.create_webapp_payment.assert_not_awaited()
 
     async def test_yookassa_reuses_only_matching_pending_invoice(self):
         payment = SimpleNamespace(

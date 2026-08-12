@@ -1,5 +1,5 @@
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from aiohttp import web
@@ -50,6 +50,7 @@ from .billing_partner_checkout import (
     partner_checkout_context_fields,
 )
 from .billing_payment_policy import _active_tribute_recurrence, _payment_promo_error
+from .billing_payment_reuse import reuse_checkout_if_available
 from .billing_sale_modes import (
     _sale_mode_base,
     _sale_mode_is_hwid_devices,
@@ -710,28 +711,6 @@ async def create_payment_route(request: web.Request) -> web.Response:
                     stars_price = None
         admin_ids = {int(item) for item in (settings.ADMIN_IDS or [])}
         is_admin = bool(db_user.telegram_id and int(db_user.telegram_id) in admin_ids)
-        base_price = float(price or 0)
-        base_stars_price = stars_price
-        promo_result, promo_error = await _resolve_checkout_promo(
-            session=session,
-            settings=settings,
-            user_id=user_id,
-            code_input=payment_payload.promo_code,
-            sale_mode=sale_mode,
-            payment_units=payment_units,
-            traffic_gb=traffic_gb_for_payment,
-            method=method,
-            base_amount=base_price,
-            base_stars=base_stars_price,
-            lock_for_checkout=True,
-        )
-        if promo_error is not None:
-            return _json_error(promo_error.status, promo_error.code, promo_error.message)
-        if promo_result is not None:
-            if method == "stars":
-                stars_price = promo_result.effective_stars
-            else:
-                price = promo_result.effective_amount
         return await _create_subscription_payment(
             request=request,
             session=session,
@@ -746,8 +725,7 @@ async def create_payment_route(request: web.Request) -> web.Response:
             traffic_gb=traffic_gb_for_payment,
             is_admin=is_admin,
             hwid_quote=hwid_quote,
-            promo_code_id=promo_result.promo_code_id if promo_result else None,
-            promo_result=promo_result,
+            promo_code=payment_payload.promo_code,
             entitlement_context_snapshot=quoted_entitlement_context_snapshot,
             use_partner_balance=payment_payload.use_partner_balance,
         )
@@ -768,6 +746,7 @@ async def _create_subscription_payment(
     traffic_gb: float | None = None,
     is_admin: bool = False,
     hwid_quote: dict[str, Any] | None = None,
+    promo_code: str | None = None,
     promo_code_id: int | None = None,
     promo_result: CheckoutPromoResult | None = None,
     tariff_change_quote_snapshot: str | None = None,
@@ -839,22 +818,6 @@ async def _create_subscription_payment(
                 "unsupported_currency",
                 "Payment method does not support this currency",
             )
-        try:
-            partner_allocation = await allocate_partner_checkout_balance(
-                requested=use_partner_balance,
-                settings=settings,
-                session=session,
-                user_id=user_id,
-                payment_currency=payment_currency,
-                checkout_total=price,
-                provider_spec=provider_spec,
-                months=months,
-                sale_mode=sale_mode,
-            )
-        except PartnerError as exc:
-            return _json_error(exc.status, exc.code, exc.message or str(exc))
-        if partner_allocation is not None:
-            price = partner_allocation.external_amount
         if not provider_spec.is_usable_for_payment_context(settings, months, sale_mode):
             logger.warning(
                 "WebApp payment method does not support checkout context: "
@@ -867,19 +830,6 @@ async def _create_subscription_payment(
                 400,
                 "payment_unavailable",
                 "Payment method unavailable for this plan",
-            )
-        promo_support_error = _payment_promo_error(
-            settings=settings,
-            method=method,
-            months=months,
-            sale_mode=sale_mode,
-            promo_result=promo_result,
-        )
-        if promo_support_error is not None:
-            return _json_error(
-                promo_support_error.status,
-                promo_support_error.code,
-                promo_support_error.message,
             )
         payment_context = WebAppPaymentContext(
             request=request,
@@ -896,12 +846,90 @@ async def _create_subscription_payment(
             hwid_device_count=hwid_quote.get("device_count") if hwid_quote else None,
             hwid_valid_from=hwid_quote.get("valid_from") if hwid_quote else None,
             hwid_valid_until=hwid_quote.get("valid_until") if hwid_quote else None,
-            hwid_pricing_period_months=hwid_quote.get("pricing_period_months")
-            if hwid_quote
-            else None,
+            hwid_pricing_period_months=(
+                hwid_quote.get("pricing_period_months") if hwid_quote else None
+            ),
             hwid_proration_ratio=hwid_quote.get("proration_ratio") if hwid_quote else None,
             hwid_full_price=hwid_quote.get("full_price") if hwid_quote else None,
-            hwid_traffic_bonus_bytes=hwid_quote.get("traffic_bonus_bytes") if hwid_quote else None,
+            hwid_traffic_bonus_bytes=(
+                hwid_quote.get("traffic_bonus_bytes") if hwid_quote else None
+            ),
+            promo_code_id=promo_code_id,
+            tariff_change_quote_snapshot=tariff_change_quote_snapshot,
+            entitlement_context_snapshot=entitlement_context_snapshot,
+        )
+        requested_promo_code = str(promo_code or "").strip()
+        if provider_spec.reuse_webapp_payment and (
+            requested_promo_code or promo_code_id is not None or use_partner_balance
+        ):
+            reusable_response = await reuse_checkout_if_available(
+                payment_context,
+                provider_spec,
+                match_reservations=True,
+                requested_promo_code=requested_promo_code,
+                preserve_promo_code_case=bool(
+                    settings.MIGRATION_REMNASHOP_PROMO_CODE_COMPAT_ENABLED
+                ),
+                requested_partner_balance=use_partner_balance,
+            )
+            if reusable_response is not None:
+                return reusable_response
+        if promo_result is None and requested_promo_code:
+            promo_result, promo_error = await _resolve_checkout_promo(
+                session=session,
+                settings=settings,
+                user_id=user_id,
+                code_input=requested_promo_code,
+                promo_code_id=promo_code_id,
+                sale_mode=sale_mode,
+                payment_units=months,
+                traffic_gb=traffic_gb,
+                method=method,
+                base_amount=price,
+                base_stars=stars_price,
+                lock_for_checkout=True,
+            )
+            if promo_error is not None:
+                return _json_error(promo_error.status, promo_error.code, promo_error.message)
+        if promo_result is not None:
+            promo_code_id = promo_result.promo_code_id
+            if method == "stars":
+                stars_price = promo_result.effective_stars
+            else:
+                price = promo_result.effective_amount
+        promo_support_error = _payment_promo_error(
+            settings=settings,
+            method=method,
+            months=months,
+            sale_mode=sale_mode,
+            promo_result=promo_result,
+        )
+        if promo_support_error is not None:
+            return _json_error(
+                promo_support_error.status,
+                promo_support_error.code,
+                promo_support_error.message,
+            )
+        try:
+            partner_allocation = await allocate_partner_checkout_balance(
+                requested=use_partner_balance,
+                settings=settings,
+                session=session,
+                user_id=user_id,
+                payment_currency=payment_currency,
+                checkout_total=price,
+                provider_spec=provider_spec,
+                months=months,
+                sale_mode=sale_mode,
+            )
+        except PartnerError as exc:
+            return _json_error(exc.status, exc.code, exc.message or str(exc))
+        if partner_allocation is not None:
+            price = partner_allocation.external_amount
+        payment_context = replace(
+            payment_context,
+            price=price,
+            stars_price=stars_price,
             promo_code_id=promo_code_id,
             promo_effect_summary=promo_result.effect_summary if promo_result else None,
             promo_bonus_days=promo_result.effects.bonus_days if promo_result else None,
@@ -931,8 +959,6 @@ async def _create_subscription_payment(
             checkout_charged_months=promo_result.charged_months if promo_result else None,
             checkout_charged_gb=promo_result.charged_gb if promo_result else None,
             checkout_quoted_at=promo_result.quoted_at if promo_result else None,
-            tariff_change_quote_snapshot=tariff_change_quote_snapshot,
-            entitlement_context_snapshot=entitlement_context_snapshot,
             **partner_checkout_context_fields(
                 partner_allocation,
                 promo_base_amount=promo_result.base_amount if promo_result else None,
@@ -961,20 +987,10 @@ async def _create_subscription_payment(
                 "Payment amount is below the provider minimum",
             )
         if provider_spec.reuse_webapp_payment:
-            from bot.payment_providers.shared import reusable_webapp_payment_response
-
-            try:
-                reusable_response = await reusable_webapp_payment_response(
-                    payment_context,
-                    provider_spec,
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to verify reusable payment: user_id=%s provider=%s",
-                    user_id,
-                    provider_spec.provider_key,
-                )
-                reusable_response = None
+            reusable_response = await reuse_checkout_if_available(
+                payment_context,
+                provider_spec,
+            )
             if reusable_response is not None:
                 return reusable_response
         return await provider_spec.create_webapp_payment(payment_context)

@@ -578,6 +578,7 @@ async def find_recent_pending_provider_payment(
     tariff_key: str | None = None,
     promo_code_id: int | None = None,
     promo_effect_summary: str | None = None,
+    requested_partner_balance: bool | None = None,
     tariff_change_quote_snapshot: str | None = None,
     entitlement_context_snapshot: str | None = None,
     since_minutes: int | None = None,
@@ -627,6 +628,11 @@ async def find_recent_pending_provider_payment(
             conditions.append(Payment.promo_effect_summary == promo_effect_summary)
     else:
         conditions.append(Payment.promo_code_id.is_(None))
+    if requested_partner_balance is not None:
+        partner_balance_amount = func.coalesce(Payment.partner_balance_amount_minor, 0)
+        conditions.append(
+            partner_balance_amount > 0 if requested_partner_balance else partner_balance_amount == 0
+        )
     if months is not None:
         conditions.append(Payment.subscription_duration_months == months)
     else:
