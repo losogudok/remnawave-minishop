@@ -1,6 +1,19 @@
 @layer starlight, nova, minishop;
 
 @layer minishop {
+  .sl-markdown-content .starlight-aside[aria-label='Друзья проекта'] {
+    border: 1px solid var(--sl-color-asides-border);
+    border-radius: 8px;
+    background-color: transparent;
+  }
+
+  .sl-markdown-content
+    .starlight-aside[aria-label='Друзья проекта']
+    .starlight-aside__title
+    + .starlight-aside__content {
+    margin-top: 1.25rem;
+  }
+
   .site-title,
   .site-title span {
     color: #00fe7a;

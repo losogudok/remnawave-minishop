@@ -12,6 +12,7 @@ const descriptions = {
   'getting-started/demo.md': 'Как устроен статический демо-режим Remnawave Minishop и почему он собирается только вместе с документацией.',
   'index.md': 'Документация по запуску, настройке и сопровождению Telegram Mini App для Remnawave.',
   'getting-started/overview.md': 'Что входит в Remnawave Minishop и как связаны бот, Mini App, backend, worker и Remnawave Panel.',
+  'getting-started/system-requirements.md': 'Требования к VPS, Docker, сети и внешним зависимостям Remnawave Minishop.',
   'getting-started/setup.md': 'Минимальный путь запуска Remnawave Minishop через Docker Compose.',
   'getting-started/configuration.md': 'Минимальный .env, bootstrap-секреты и настройка через Web App админку.',
   'getting-started/deployment.md': 'Docker Compose, обратный прокси, TLS, образы, обновления и резервные копии.',
