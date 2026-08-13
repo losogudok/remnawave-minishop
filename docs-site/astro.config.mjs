@@ -15,6 +15,7 @@ export default defineConfig({
           nav: [
             { label: 'Демо', href: '/demo/home' },
             { label: 'Документация', href: '/getting-started/overview/' },
+            { label: 'minishop PRO', href: 'https://cloud.minidoc.cc' },
             { label: 'API', href: '/api/' },
             { label: 'GitHub', href: 'https://github.com/3252a8/remnawave-minishop' },
             { label: 'GitLab', href: 'https://gitlab.com/3252a8/remnawave-minishop' },
@@ -80,6 +81,7 @@ export default defineConfig({
         {
           label: 'Возможности',
           items: [
+            { label: 'minishop PRO', slug: 'features/minishop-pro' },
             { label: 'Основные', slug: 'features/core' },
             { label: 'Платежи', slug: 'features/payments' },
             { label: 'Промокоды', slug: 'features/promocodes' },

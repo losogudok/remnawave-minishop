@@ -55,6 +55,10 @@ function navIcon(href: string) {
   return undefined
 }
 
+function isProLink(href: string) {
+  return href.startsWith('https://cloud.minidoc.cc')
+}
+
 ---
 
 <div class="box-border flex h-full items-center gap-2">
@@ -74,15 +78,27 @@ function navIcon(href: string) {
         const href = getI18nText(item.href, route)
         const label = getI18nText(item.label, route)
         const icon = navIcon(href)
+        const proLink = isProLink(href)
 
         return (
           <a
             class:list={[
               '-m-1.5 rounded-md p-1.5 text-(--sl-color-gray-3) no-underline hover:text-(--sl-color-white) focus-visible:outline-offset-0',
-              icon && 'minishop-header-link inline-flex items-center',
+              (icon || proLink) && 'minishop-header-link inline-flex items-center',
+              proLink && 'minishop-pro-link',
             ]}
             href={href}
           >
+            {proLink && (
+              <svg
+                class="minishop-pro-diamond"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M3.5 9 8 3.75h8L20.5 9 12 20.25 3.5 9Z" />
+                <path d="m8 3.75 4 5.25 4-5.25M3.5 9h17M8.25 9 12 20.25 15.75 9" />
+              </svg>
+            )}
             {icon && <Icon name={icon} size="1rem" color="currentColor" />}
             <span>{label}</span>
           </a>
@@ -104,15 +120,27 @@ function navIcon(href: string) {
             const href = getI18nText(item.href, route)
             const label = getI18nText(item.label, route)
             const icon = navIcon(href)
+            const proLink = isProLink(href)
 
             return (
               <a
                 class:list={[
                   'minishop-mobile-nav-link',
-                  icon && 'minishop-header-link inline-flex items-center',
+                  (icon || proLink) && 'minishop-header-link inline-flex items-center',
+                  proLink && 'minishop-pro-link',
                 ]}
                 href={href}
               >
+                {proLink && (
+                  <svg
+                    class="minishop-pro-diamond"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path d="M3.5 9 8 3.75h8L20.5 9 12 20.25 3.5 9Z" />
+                    <path d="m8 3.75 4 5.25 4-5.25M3.5 9h17M8.25 9 12 20.25 15.75 9" />
+                  </svg>
+                )}
                 {icon && <Icon name={icon} size="1rem" color="currentColor" />}
                 <span>{label}</span>
               </a>

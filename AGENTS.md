@@ -24,6 +24,10 @@ Non-negotiables (details in CONTRIBUTING.md §2):
 - Decompose, then type; no module > ~900 lines without a reason; mind the
   monkeypatch/re-export trap (CONTRIBUTING.md §5).
 - "Compatibility with other bots" is a feature (keep), not legacy.
+- Keep core and separately shipped PRO functionality isolated. Public core documentation and
+  navigation may mention minishop PRO, summarize its public capabilities, and link to the official
+  PRO site; this exception does not allow copying PRO code, private contracts, assets, or runtime
+  dependencies into core.
 
 Before pushing, run the gates in CONTRIBUTING.md §1 (`pytest`, `ruff`, `mypy`,
 `npm run check`). Commits: Conventional Commits, no `Co-Authored-By` trailer.

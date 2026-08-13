@@ -1,6 +1,16 @@
 @layer starlight, nova, minishop;
 
 @layer minishop {
+  :root {
+    --minishop-pro-accent: #a78bfa;
+    --minishop-pro-accent-strong: #ddd6fe;
+  }
+
+  :root[data-theme='light'] {
+    --minishop-pro-accent: #6d28d9;
+    --minishop-pro-accent-strong: #5b21b6;
+  }
+
   .sl-markdown-content .starlight-aside[aria-label='Друзья проекта'] {
     border: 1px solid var(--sl-color-asides-border);
     border-radius: 8px;
@@ -41,6 +51,42 @@
 
   .minishop-header-link svg {
     flex-shrink: 0;
+  }
+
+  .minishop-pro-link {
+    border: 1px solid color-mix(in srgb, var(--minishop-pro-accent) 58%, transparent);
+    color: var(--minishop-pro-accent-strong);
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--minishop-pro-accent) 24%, transparent),
+      color-mix(in srgb, var(--minishop-pro-accent) 8%, transparent)
+    );
+    box-shadow: 0 0 1.25rem color-mix(in srgb, var(--minishop-pro-accent) 16%, transparent);
+    font-weight: 760;
+  }
+
+  .minishop-pro-link:hover,
+  .minishop-pro-link:focus-visible {
+    border-color: color-mix(in srgb, var(--minishop-pro-accent) 82%, transparent);
+    color: var(--sl-color-white);
+    background: color-mix(in srgb, var(--minishop-pro-accent) 30%, transparent);
+  }
+
+  :root[data-theme='light'] .minishop-pro-link:hover,
+  :root[data-theme='light'] .minishop-pro-link:focus-visible {
+    color: #3b0764;
+  }
+
+  .minishop-pro-diamond {
+    width: 1rem;
+    height: 1rem;
+    overflow: visible;
+    fill: color-mix(in srgb, var(--minishop-pro-accent) 28%, transparent);
+    filter: drop-shadow(0 0 0.3rem color-mix(in srgb, var(--minishop-pro-accent) 60%, transparent));
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.35;
   }
 
   .minishop-header-search {
@@ -147,6 +193,25 @@
     box-shadow: 0 18px 60px rgb(15 23 42 / 16%);
   }
 
+  .sidebar-content :is(a[href='/features/minishop-pro/'], a[href='/features/minishop-pro']) {
+    color: var(--minishop-pro-accent-strong);
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--minishop-pro-accent) 18%, transparent),
+      transparent
+    );
+    box-shadow: inset 2px 0 var(--minishop-pro-accent);
+    font-weight: 760;
+  }
+
+  .sidebar-content
+    :is(a[href='/features/minishop-pro/'], a[href='/features/minishop-pro'])::before {
+    margin-right: 0.45rem;
+    color: var(--minishop-pro-accent);
+    content: '◆';
+    font-size: 0.62rem;
+  }
+
   .hero {
     gap: clamp(2rem, 6vw, 5rem);
     padding-block: clamp(3.5rem, 10vw, 6.5rem);
@@ -172,6 +237,20 @@
 
   :root[data-theme='dark'] .hero img {
     box-shadow: 0 24px 70px rgb(0 0 0 / 36%);
+  }
+
+  .hero .actions a[href='https://cloud.minidoc.cc'] {
+    border-color: color-mix(in srgb, var(--minishop-pro-accent) 72%, transparent);
+    color: #fff;
+    background: linear-gradient(135deg, #7c3aed, #4c1d95);
+    box-shadow: 0 0.75rem 2rem color-mix(in srgb, #7c3aed 30%, transparent);
+  }
+
+  .hero .actions a[href='https://cloud.minidoc.cc']:hover,
+  .hero .actions a[href='https://cloud.minidoc.cc']:focus-visible {
+    border-color: #c4b5fd;
+    background: linear-gradient(135deg, #8b5cf6, #5b21b6);
+    transform: translateY(-1px);
   }
 
   @media (min-width: 50rem) {
@@ -252,6 +331,46 @@
     color: var(--sl-color-gray-2);
     font-size: clamp(1rem, 2vw, 1.125rem);
     line-height: 1.7;
+  }
+
+  .sl-markdown-content .minishop-pro-overview {
+    display: grid;
+    gap: 0.9rem;
+    border: 1px solid color-mix(in srgb, var(--minishop-pro-accent) 48%, var(--sl-color-gray-5));
+    border-radius: 12px;
+    padding: clamp(1.25rem, 4vw, 2rem);
+    background: color-mix(in srgb, var(--sl-color-gray-6) 72%, transparent);
+  }
+
+  .sl-markdown-content .minishop-pro-overview > * {
+    margin: 0;
+  }
+
+  .sl-markdown-content .minishop-pro-kicker {
+    color: var(--minishop-pro-accent-strong);
+    font-size: 0.78rem;
+    font-weight: 780;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .sl-markdown-content .minishop-pro-cta {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    border: 1px solid color-mix(in srgb, var(--minishop-pro-accent) 64%, transparent);
+    border-radius: 8px;
+    padding: 0.65rem 0.9rem;
+    color: #fff;
+    background: linear-gradient(135deg, #7c3aed, #4c1d95);
+    font-weight: 740;
+    text-decoration: none;
+  }
+
+  .sl-markdown-content .minishop-pro-cta:hover,
+  .sl-markdown-content .minishop-pro-cta:focus-visible {
+    border-color: #c4b5fd;
+    background: linear-gradient(135deg, #8b5cf6, #5b21b6);
   }
 
   .sl-markdown-content .minishop-feature-grid {
