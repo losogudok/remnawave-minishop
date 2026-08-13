@@ -567,6 +567,19 @@
             "title": "Email Subjects",
             "type": "object"
           },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scheduled At"
+          },
           "target": {
             "default": "all",
             "title": "Target"
@@ -623,6 +636,271 @@
           }
         },
         "title": "AdminBroadcastButtonBody",
+        "type": "object"
+      },
+      "AdminBroadcastButtonOut": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "object"
+          },
+          "promo_code": {
+            "default": "",
+            "title": "Promo Code",
+            "type": "string"
+          },
+          "section": {
+            "default": "",
+            "title": "Section",
+            "type": "string"
+          },
+          "url": {
+            "default": "",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "AdminBroadcastButtonOut",
+        "type": "object"
+      },
+      "AdminBroadcastCreateOut": {
+        "properties": {
+          "broadcast": {
+            "$ref": "#/components/schemas/AdminBroadcastOut"
+          },
+          "channels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "email_queued": {
+            "default": 0,
+            "title": "Email Queued",
+            "type": "integer"
+          },
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "queued": {
+            "default": 0,
+            "title": "Queued",
+            "type": "integer"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "broadcast",
+          "target",
+          "channels"
+        ],
+        "title": "AdminBroadcastCreateOut",
+        "type": "object"
+      },
+      "AdminBroadcastDeleteOut": {
+        "properties": {
+          "broadcast_id": {
+            "title": "Broadcast Id",
+            "type": "integer"
+          },
+          "deleted": {
+            "default": true,
+            "title": "Deleted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "broadcast_id"
+        ],
+        "title": "AdminBroadcastDeleteOut",
+        "type": "object"
+      },
+      "AdminBroadcastListOut": {
+        "properties": {
+          "broadcasts": {
+            "items": {
+              "$ref": "#/components/schemas/AdminBroadcastOut"
+            },
+            "title": "Broadcasts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "broadcasts"
+        ],
+        "title": "AdminBroadcastListOut",
+        "type": "object"
+      },
+      "AdminBroadcastOut": {
+        "properties": {
+          "broadcast_id": {
+            "title": "Broadcast Id",
+            "type": "integer"
+          },
+          "buttons": {
+            "items": {
+              "$ref": "#/components/schemas/AdminBroadcastButtonOut"
+            },
+            "title": "Buttons",
+            "type": "array"
+          },
+          "channels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email_failed": {
+            "default": 0,
+            "title": "Email Failed",
+            "type": "integer"
+          },
+          "email_sent": {
+            "default": 0,
+            "title": "Email Sent",
+            "type": "integer"
+          },
+          "email_subjects": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Email Subjects",
+            "type": "object"
+          },
+          "failed_deliveries": {
+            "default": 0,
+            "title": "Failed Deliveries",
+            "type": "integer"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Finished At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Error"
+          },
+          "recipient_count": {
+            "default": 0,
+            "title": "Recipient Count",
+            "type": "integer"
+          },
+          "scheduled_at": {
+            "format": "date-time",
+            "title": "Scheduled At",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "successful_deliveries": {
+            "default": 0,
+            "title": "Successful Deliveries",
+            "type": "integer"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "telegram_failed": {
+            "default": 0,
+            "title": "Telegram Failed",
+            "type": "integer"
+          },
+          "telegram_sent": {
+            "default": 0,
+            "title": "Telegram Sent",
+            "type": "integer"
+          },
+          "texts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Texts",
+            "type": "object"
+          },
+          "total_deliveries": {
+            "default": 0,
+            "title": "Total Deliveries",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "broadcast_id",
+          "status",
+          "target",
+          "channels",
+          "texts",
+          "email_subjects",
+          "buttons",
+          "scheduled_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AdminBroadcastOut",
         "type": "object"
       },
       "AdminBroadcastPreviewBody": {
@@ -715,6 +993,20 @@
           }
         },
         "title": "AdminBroadcastPreviewOut",
+        "type": "object"
+      },
+      "AdminBroadcastScheduleBody": {
+        "properties": {
+          "scheduled_at": {
+            "format": "date-time",
+            "title": "Scheduled At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scheduled_at"
+        ],
+        "title": "AdminBroadcastScheduleBody",
         "type": "object"
       },
       "AdminBroadcastShortcodeOut": {
@@ -11339,40 +11631,24 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "channels": {
-                      "items": {
-                        "type": "string"
+                  "allOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ok": {
+                          "const": true,
+                          "type": "boolean"
+                        }
                       },
-                      "type": "array"
+                      "required": [
+                        "ok"
+                      ],
+                      "type": "object"
                     },
-                    "email_queued": {
-                      "type": "integer"
-                    },
-                    "failed": {
-                      "type": "integer"
-                    },
-                    "ok": {
-                      "const": true,
-                      "type": "boolean"
-                    },
-                    "queued": {
-                      "type": "integer"
-                    },
-                    "target": {
-                      "type": "string"
+                    {
+                      "$ref": "#/components/schemas/AdminBroadcastCreateOut"
                     }
-                  },
-                  "required": [
-                    "ok",
-                    "queued",
-                    "failed",
-                    "email_queued",
-                    "target",
-                    "channels"
-                  ],
-                  "type": "object"
+                  ]
                 }
               }
             },
@@ -11536,6 +11812,172 @@
           }
         ],
         "summary": "Admin Broadcast Shortcodes",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/broadcasts": {
+      "get": {
+        "operationId": "get_admin_broadcasts_list_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ok": {
+                          "const": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AdminBroadcastListOut"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Broadcasts List",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/broadcasts/{id}": {
+      "delete": {
+        "operationId": "delete_admin_broadcast_delete_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ok": {
+                          "const": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AdminBroadcastDeleteOut"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Broadcast Delete",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_admin_broadcast_reschedule_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminBroadcastScheduleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ok": {
+                          "const": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AdminBroadcastOut"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Broadcast Reschedule",
         "tags": [
           "admin"
         ]

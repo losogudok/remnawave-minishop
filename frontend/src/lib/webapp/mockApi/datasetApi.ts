@@ -6,12 +6,14 @@ import { demoProviderCurrencySupport } from "./providers";
 import { demoSettingsSections, persistDemoSettings } from "./settings";
 import {
   demoAds,
+  demoBroadcasts,
   demoPromos,
   demoSettingsChanges,
   demoSupportMessages,
   demoSupportTickets,
   demoTariffs,
   setDemoAds,
+  setDemoBroadcasts,
   setDemoPromos,
   setDemoTariffs,
 } from "./state";
@@ -128,6 +130,42 @@ export function demoApiResponse(
     const target = String(body.target || "all");
     const queued = channels.includes("telegram") ? (target === "admins" ? 2 : 1280) : 0;
     const emailQueued = channels.includes("email") ? (target === "admins" ? 1 : 486) : 0;
+    const scheduledAt = body.scheduled_at ? new Date(String(body.scheduled_at)) : new Date();
+    const scheduled = scheduledAt.getTime() > Date.now();
+    const existing = demoBroadcasts();
+    const broadcastId =
+      Math.max(100, ...existing.map((item) => Number(item.broadcast_id) || 0)) + 1;
+    const now = new Date().toISOString();
+    const broadcast: DemoRecord = {
+      broadcast_id: broadcastId,
+      status: scheduled ? "scheduled" : "running",
+      target,
+      channels,
+      texts:
+        body.texts && typeof body.texts === "object" ? body.texts : { ru: String(body.text || "") },
+      email_subjects:
+        body.email_subjects && typeof body.email_subjects === "object"
+          ? body.email_subjects
+          : body.email_subject
+            ? { ru: String(body.email_subject) }
+            : {},
+      buttons: Array.isArray(body.buttons) ? body.buttons : [],
+      scheduled_at: scheduledAt.toISOString(),
+      created_at: now,
+      started_at: scheduled ? null : now,
+      finished_at: null,
+      updated_at: now,
+      recipient_count: scheduled ? 0 : target === "admins" ? 2 : 1280,
+      total_deliveries: scheduled ? 0 : queued + emailQueued,
+      successful_deliveries: 0,
+      failed_deliveries: 0,
+      telegram_sent: 0,
+      telegram_failed: 0,
+      email_sent: 0,
+      email_failed: 0,
+      last_error: null,
+    };
+    if (!target.startsWith("user:")) setDemoBroadcasts([broadcast, ...existing]);
     return {
       ok: true,
       queued,
@@ -135,6 +173,57 @@ export function demoApiResponse(
       email_queued: emailQueued,
       target,
       channels,
+      broadcast,
+    };
+  }
+  if (cleanPath === "/admin/broadcasts" && method === "GET") {
+    const next = demoBroadcasts().map((item) => {
+      if (item.status !== "running") return item;
+      const total = Number(item.total_deliveries || 0);
+      const sent = Math.min(total, Number(item.successful_deliveries || 0) + 117);
+      const telegramSent =
+        Array.isArray(item.channels) && item.channels.includes("telegram")
+          ? Math.min(total, Number(item.telegram_sent || 0) + 91)
+          : 0;
+      const emailSent = Math.max(0, sent - telegramSent - Number(item.failed_deliveries || 0));
+      const completed = total > 0 && sent + Number(item.failed_deliveries || 0) >= total;
+      return {
+        ...item,
+        status: completed ? "completed_with_errors" : "running",
+        successful_deliveries: sent,
+        telegram_sent: telegramSent,
+        email_sent: emailSent,
+        updated_at: new Date().toISOString(),
+        finished_at: completed ? new Date().toISOString() : null,
+      };
+    });
+    setDemoBroadcasts(next);
+    return { ok: true, broadcasts: clone(next) };
+  }
+  const broadcastItemMatch = cleanPath.match(/^\/admin\/broadcasts\/(\d+)$/);
+  if (broadcastItemMatch && method === "DELETE") {
+    const broadcastId = Number(broadcastItemMatch[1]);
+    setDemoBroadcasts(demoBroadcasts().filter((item) => Number(item.broadcast_id) !== broadcastId));
+    return { ok: true, deleted: true, broadcast_id: broadcastId };
+  }
+  if (broadcastItemMatch && method === "PATCH") {
+    const broadcastId = Number(broadcastItemMatch[1]);
+    const body = jsonBody(options);
+    const scheduledAt = new Date(String(body.scheduled_at || ""));
+    const next = demoBroadcasts().map((item) =>
+      Number(item.broadcast_id) === broadcastId
+        ? {
+            ...item,
+            status: "scheduled",
+            scheduled_at: scheduledAt.toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+        : item
+    );
+    setDemoBroadcasts(next);
+    return {
+      ok: true,
+      ...clone(next.find((item) => Number(item.broadcast_id) === broadcastId) || {}),
     };
   }
   if (cleanPath === "/admin/broadcast/shortcodes") {

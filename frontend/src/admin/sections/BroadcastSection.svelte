@@ -9,10 +9,11 @@
   import MessageComposer from "$lib/admin/components/MessageComposer.svelte";
   import MessageLocaleTabs from "$lib/admin/components/MessageLocaleTabs.svelte";
   import { previewHtmlFromWire } from "$lib/richtext/telegramHtml";
+  import BroadcastHistory from "./BroadcastHistory.svelte";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
 
-  let { at }: { at: TranslateFn } = $props();
+  let { at, currentLang = "en" }: { at: TranslateFn; currentLang?: string } = $props();
   const broadcastStore = getBroadcastStore();
   const translationsStore = getTranslationsStore();
 
@@ -95,6 +96,13 @@
   const promoOptionsLoading = $derived(Boolean(broadcastStore.broadcastPromoOptionsLoading));
   const promoOptionsLoaded = $derived(Boolean(broadcastStore.broadcastPromoOptionsLoaded));
   const submitEnabled = $derived(broadcastStore.canSubmit());
+  const scheduleEnabled = $derived(Boolean(broadcastStore.broadcastScheduleEnabled));
+  const scheduledAt = $derived(broadcastStore.broadcastScheduledAt);
+  const scheduleInvalid = $derived.by(() => {
+    if (!scheduleEnabled) return false;
+    const date = new Date(scheduledAt);
+    return !scheduledAt || Number.isNaN(date.getTime()) || date.getTime() <= Date.now();
+  });
   const handleTargetChange = (value: string) => {
     broadcastStore.updateField({ broadcastTarget: value, broadcastTargetError: null });
     writeTargetToRoute(value);
@@ -119,6 +127,26 @@
   }
 
   const broadcastTargetOptions = $derived(broadcastStore.BROADCAST_TARGET_OPTIONS);
+
+  function defaultScheduledAt(): string {
+    const date = new Date(Date.now() + 60 * 60 * 1000);
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+    return local.toISOString().slice(0, 16);
+  }
+
+  function toggleSchedule(checked: boolean): void {
+    const existing = new Date(scheduledAt);
+    const validExisting =
+      scheduledAt && !Number.isNaN(existing.getTime()) && existing.getTime() > Date.now();
+    broadcastStore.updateField({
+      broadcastScheduleEnabled: checked,
+      broadcastScheduledAt: checked
+        ? validExisting
+          ? scheduledAt
+          : defaultScheduledAt()
+        : scheduledAt,
+    });
+  }
 
   // Append the resolved audience size to each option once counts are loaded.
   const targetOptions = $derived(
@@ -162,52 +190,91 @@
   </header>
   <div class="admin-card-body">
     <div class="admin-form">
-      <Label.Root class="admin-field-label">
-        <span>{at("broadcast_label_audience", {}, "Audience")}</span>
-        <AdminSelect
-          value={broadcastTarget}
-          items={targetOptions}
-          ariaLabel={at("broadcast_label_audience", {}, "Audience")}
-          onValueChange={handleTargetChange}
-        />
-        {#if broadcastTargetError}
-          <small class="admin-field-error">
-            {at("broadcast_target_unavailable", {}, "The requested audience is unavailable")}
-          </small>
-        {/if}
-      </Label.Root>
-      <div class="admin-field-label">
-        <span>{at("broadcast_channels_label", {}, "Delivery channels")}</span>
-        <div class="broadcast-channels">
-          <label class="broadcast-channel">
-            <Checkbox
-              checked={telegramEnabled}
-              ariaLabel={at("broadcast_channel_telegram", {}, "Telegram")}
-              onCheckedChange={(checked) =>
-                broadcastStore.updateField({ broadcastTelegramEnabled: checked })}
-            />
-            <span>{at("broadcast_channel_telegram", {}, "Telegram")}</span>
-          </label>
-          <label class="broadcast-channel">
-            <Checkbox
-              checked={emailEnabled && emailSelectable}
-              disabled={emailAvailabilityKnown && !emailAvailable}
-              ariaLabel={at("broadcast_channel_email", {}, "Email")}
-              onCheckedChange={(checked) =>
-                broadcastStore.updateField({ broadcastEmailEnabled: checked })}
-            />
-            <span>{at("broadcast_channel_email", {}, "Email")}</span>
-          </label>
+      <div class="broadcast-setup-grid">
+        <Label.Root class="admin-field-label broadcast-control-panel broadcast-audience-control">
+          <span>{at("broadcast_label_audience", {}, "Audience")}</span>
+          <AdminSelect
+            value={broadcastTarget}
+            items={targetOptions}
+            ariaLabel={at("broadcast_label_audience", {}, "Audience")}
+            onValueChange={handleTargetChange}
+          />
+          {#if broadcastTargetError}
+            <small class="admin-field-error">
+              {at("broadcast_target_unavailable", {}, "The requested audience is unavailable")}
+            </small>
+          {/if}
+        </Label.Root>
+        <div class="admin-field-label broadcast-control-panel">
+          <span>{at("broadcast_channels_label", {}, "Delivery channels")}</span>
+          <div class="broadcast-channels">
+            <label class="broadcast-channel">
+              <Checkbox
+                checked={telegramEnabled}
+                ariaLabel={at("broadcast_channel_telegram", {}, "Telegram")}
+                onCheckedChange={(checked) =>
+                  broadcastStore.updateField({ broadcastTelegramEnabled: checked })}
+              />
+              <span>{at("broadcast_channel_telegram", {}, "Telegram")}</span>
+            </label>
+            <label class="broadcast-channel">
+              <Checkbox
+                checked={emailEnabled && emailSelectable}
+                disabled={emailAvailabilityKnown && !emailAvailable}
+                ariaLabel={at("broadcast_channel_email", {}, "Email")}
+                onCheckedChange={(checked) =>
+                  broadcastStore.updateField({ broadcastEmailEnabled: checked })}
+              />
+              <span>{at("broadcast_channel_email", {}, "Email")}</span>
+            </label>
+          </div>
+          {#if emailAvailabilityKnown && !emailAvailable}
+            <small class="admin-muted"
+              >{at(
+                "broadcast_email_unavailable_hint",
+                {},
+                "Email channel unavailable: SMTP is not configured"
+              )}</small
+            >
+          {/if}
         </div>
-        {#if emailAvailabilityKnown && !emailAvailable}
-          <small class="admin-muted"
-            >{at(
-              "broadcast_email_unavailable_hint",
-              {},
-              "Email channel unavailable: SMTP is not configured"
-            )}</small
-          >
-        {/if}
+        <div class="admin-field-label broadcast-control-panel broadcast-language-control">
+          <span>{at("broadcast_language_label", {}, "Language")}</span>
+          <MessageLocaleTabs
+            {languages}
+            active={activeLanguage}
+            written={writtenLanguages}
+            {at}
+            onSelect={(code) => broadcastStore.updateField({ broadcastLanguage: code })}
+          />
+        </div>
+        <div class="admin-field-label broadcast-control-panel broadcast-schedule-control">
+          <span>{at("broadcast_schedule_label", {}, "Send time")}</span>
+          <label class="broadcast-channel">
+            <Checkbox
+              checked={scheduleEnabled}
+              ariaLabel={at("broadcast_schedule_later", {}, "Schedule for later")}
+              onCheckedChange={toggleSchedule}
+            />
+            <span>{at("broadcast_schedule_later", {}, "Schedule for later")}</span>
+          </label>
+          {#if scheduleEnabled}
+            <Input
+              type="datetime-local"
+              value={scheduledAt}
+              aria-label={at("broadcast_scheduled_at", {}, "Scheduled")}
+              oninput={(event) =>
+                broadcastStore.updateField({
+                  broadcastScheduledAt: (event.currentTarget as HTMLInputElement).value,
+                })}
+            />
+            {#if scheduleInvalid}
+              <small class="admin-field-error">
+                {at("broadcast_schedule_future", {}, "Choose a future date and time")}
+              </small>
+            {/if}
+          {/if}
+        </div>
       </div>
       {#if emailEnabled && emailSelectable}
         <Label.Root class="admin-field-label">
@@ -229,13 +296,6 @@
       <div class="admin-field-label">
         <span>{at("broadcast_label_text", {}, "Message Text")}</span>
         <small>{at("broadcast_hint_text", {}, "Telegram HTML formatting supported")}</small>
-        <MessageLocaleTabs
-          {languages}
-          active={activeLanguage}
-          written={writtenLanguages}
-          {at}
-          onSelect={(code) => broadcastStore.updateField({ broadcastLanguage: code })}
-        />
         <MessageComposer
           value={activeText}
           onInput={setText}
@@ -321,7 +381,9 @@
           <Send size={14} />
           {broadcastBusy
             ? at("btn_sending", {}, "Sending...")
-            : at("btn_queue", {}, "Queue Message")}
+            : scheduleEnabled
+              ? at("broadcast_schedule_action", {}, "Schedule broadcast")
+              : at("btn_queue", {}, "Queue Message")}
         </AdminButton>
         {#if broadcastResult}
           <span class="admin-muted"
@@ -338,7 +400,38 @@
   </div>
 </div>
 
+<BroadcastHistory {at} {currentLang} />
+
 <style>
+  .broadcast-setup-grid {
+    display: grid;
+    grid-template-columns: minmax(230px, 1.35fr) minmax(180px, 0.8fr) minmax(210px, 1fr) minmax(
+        190px,
+        0.9fr
+      );
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .broadcast-control-panel {
+    min-width: 0;
+    padding: 10px 11px;
+    border: 1px solid color-mix(in srgb, var(--admin-border) 82%, transparent);
+    border-radius: 11px;
+    background: var(--admin-surface-2);
+  }
+
+  .broadcast-control-panel > span:first-child {
+    color: var(--admin-text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .broadcast-language-control :global(.message-locale-tabs) {
+    margin: 0;
+  }
+
   .broadcast-channels {
     display: flex;
     gap: 16px;
@@ -417,5 +510,25 @@
 
   .broadcast-preview-warn {
     color: #f4b740;
+  }
+
+  @media (max-width: 1180px) {
+    .broadcast-setup-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 680px) {
+    .broadcast-setup-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .broadcast-control-panel {
+      padding: 10px;
+    }
+
+    .broadcast-channels {
+      gap: 12px;
+    }
   }
 </style>

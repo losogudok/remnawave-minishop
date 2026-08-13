@@ -362,6 +362,41 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/admin/broadcasts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Broadcasts List */
+    get: operations["get_admin_broadcasts_list_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/broadcasts/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Admin Broadcast Delete */
+    delete: operations["delete_admin_broadcast_delete_route"];
+    options?: never;
+    head?: never;
+    /** Admin Broadcast Reschedule */
+    patch: operations["patch_admin_broadcast_reschedule_route"];
+    trace?: never;
+  };
   "/api/admin/health": {
     parameters: {
       query?: never;
@@ -2525,6 +2560,11 @@ export interface components {
         [key: string]: string;
       };
       /**
+       * Scheduled At
+       * @default null
+       */
+      scheduled_at: string | null;
+      /**
        * Target
        * @default all
        */
@@ -2580,6 +2620,164 @@ export interface components {
        * @default
        */
       url: string;
+    };
+    /** AdminBroadcastButtonOut */
+    AdminBroadcastButtonOut: {
+      /** Kind */
+      kind: string;
+      /**
+       * Label
+       * @default
+       */
+      label: string;
+      /** Labels */
+      labels?: {
+        [key: string]: string;
+      };
+      /**
+       * Promo Code
+       * @default
+       */
+      promo_code: string;
+      /**
+       * Section
+       * @default
+       */
+      section: string;
+      /**
+       * Url
+       * @default
+       */
+      url: string;
+    };
+    /** AdminBroadcastCreateOut */
+    AdminBroadcastCreateOut: {
+      broadcast: components["schemas"]["AdminBroadcastOut"];
+      /** Channels */
+      channels: string[];
+      /**
+       * Email Queued
+       * @default 0
+       */
+      email_queued: number;
+      /**
+       * Failed
+       * @default 0
+       */
+      failed: number;
+      /**
+       * Queued
+       * @default 0
+       */
+      queued: number;
+      /** Target */
+      target: string;
+    };
+    /** AdminBroadcastDeleteOut */
+    AdminBroadcastDeleteOut: {
+      /** Broadcast Id */
+      broadcast_id: number;
+      /**
+       * Deleted
+       * @default true
+       */
+      deleted: boolean;
+    };
+    /** AdminBroadcastListOut */
+    AdminBroadcastListOut: {
+      /** Broadcasts */
+      broadcasts: components["schemas"]["AdminBroadcastOut"][];
+    };
+    /** AdminBroadcastOut */
+    AdminBroadcastOut: {
+      /** Broadcast Id */
+      broadcast_id: number;
+      /** Buttons */
+      buttons: components["schemas"]["AdminBroadcastButtonOut"][];
+      /** Channels */
+      channels: string[];
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /**
+       * Email Failed
+       * @default 0
+       */
+      email_failed: number;
+      /**
+       * Email Sent
+       * @default 0
+       */
+      email_sent: number;
+      /** Email Subjects */
+      email_subjects: {
+        [key: string]: string;
+      };
+      /**
+       * Failed Deliveries
+       * @default 0
+       */
+      failed_deliveries: number;
+      /**
+       * Finished At
+       * @default null
+       */
+      finished_at: string | null;
+      /**
+       * Last Error
+       * @default null
+       */
+      last_error: string | null;
+      /**
+       * Recipient Count
+       * @default 0
+       */
+      recipient_count: number;
+      /**
+       * Scheduled At
+       * Format: date-time
+       */
+      scheduled_at: string;
+      /**
+       * Started At
+       * @default null
+       */
+      started_at: string | null;
+      /** Status */
+      status: string;
+      /**
+       * Successful Deliveries
+       * @default 0
+       */
+      successful_deliveries: number;
+      /** Target */
+      target: string;
+      /**
+       * Telegram Failed
+       * @default 0
+       */
+      telegram_failed: number;
+      /**
+       * Telegram Sent
+       * @default 0
+       */
+      telegram_sent: number;
+      /** Texts */
+      texts: {
+        [key: string]: string;
+      };
+      /**
+       * Total Deliveries
+       * @default 0
+       */
+      total_deliveries: number;
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
     };
     /** AdminBroadcastPreviewBody */
     AdminBroadcastPreviewBody: {
@@ -2638,6 +2836,14 @@ export interface components {
       sent: boolean;
       /** Unknown Shortcodes */
       unknown_shortcodes?: string[];
+    };
+    /** AdminBroadcastScheduleBody */
+    AdminBroadcastScheduleBody: {
+      /**
+       * Scheduled At
+       * Format: date-time
+       */
+      scheduled_at: string;
     };
     /** AdminBroadcastShortcodeOut */
     AdminBroadcastShortcodeOut: {
@@ -7309,14 +7515,9 @@ export interface operations {
         };
         content: {
           "application/json": {
-            channels: string[];
-            email_queued: number;
-            failed: number;
             /** @constant */
             ok: true;
-            queued: number;
-            target: string;
-          };
+          } & components["schemas"]["AdminBroadcastCreateOut"];
         };
       };
     };
@@ -7390,6 +7591,83 @@ export interface operations {
             /** @constant */
             ok: true;
           } & components["schemas"]["AdminBroadcastShortcodesOut"];
+        };
+      };
+    };
+  };
+  get_admin_broadcasts_list_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          } & components["schemas"]["AdminBroadcastListOut"];
+        };
+      };
+    };
+  };
+  delete_admin_broadcast_delete_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          } & components["schemas"]["AdminBroadcastDeleteOut"];
+        };
+      };
+    };
+  };
+  patch_admin_broadcast_reschedule_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminBroadcastScheduleBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          } & components["schemas"]["AdminBroadcastOut"];
         };
       };
     };

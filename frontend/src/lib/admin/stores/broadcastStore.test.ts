@@ -262,4 +262,83 @@ describe("broadcastStore", () => {
     expect(store.broadcastPromoOptionsLoaded).toBe(true);
     expect(store.broadcastPromoOptionsLoading).toBe(false);
   });
+
+  it("sends a future ISO timestamp for a scheduled broadcast", async () => {
+    const api = vi.fn().mockResolvedValue({
+      ok: true,
+      queued: 0,
+      failed: 0,
+      email_queued: 0,
+      channels: ["telegram"],
+      broadcast: {
+        broadcast_id: 7,
+        status: "scheduled",
+        target: "all",
+        channels: ["telegram"],
+        texts: { ru: "Позже" },
+        email_subjects: {},
+        buttons: [],
+        scheduled_at: "2031-05-20T11:30:00.000Z",
+        created_at: "2031-05-20T10:00:00.000Z",
+        updated_at: "2031-05-20T10:00:00.000Z",
+      },
+    });
+    const store = makeStore(api);
+    store.updateField({
+      broadcastText: "Later",
+      broadcastScheduleEnabled: true,
+      broadcastScheduledAt: "2031-05-20T14:30",
+    });
+
+    await store.runBroadcast();
+
+    const payload = JSON.parse(api.mock.calls[0][1].body);
+    expect(new Date(payload.scheduled_at).getTime()).toBe(new Date("2031-05-20T14:30").getTime());
+    expect(store.broadcastHistory[0]?.status).toBe("scheduled");
+    expect(store.broadcastScheduleEnabled).toBe(false);
+  });
+
+  it("loads, reschedules, and removes history entries", async () => {
+    const item = {
+      broadcast_id: 12,
+      status: "scheduled",
+      target: "active",
+      channels: ["telegram"],
+      texts: { en: "Hello" },
+      email_subjects: {},
+      buttons: [],
+      scheduled_at: "2031-05-20T11:30:00.000Z",
+      created_at: "2031-05-20T10:00:00.000Z",
+      updated_at: "2031-05-20T10:00:00.000Z",
+      recipient_count: 0,
+      total_deliveries: 0,
+      successful_deliveries: 0,
+      failed_deliveries: 0,
+      telegram_sent: 0,
+      telegram_failed: 0,
+      email_sent: 0,
+      email_failed: 0,
+    };
+    const api = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, broadcasts: [item] })
+      .mockResolvedValueOnce({
+        ok: true,
+        ...item,
+        scheduled_at: "2031-05-21T09:00:00.000Z",
+      })
+      .mockResolvedValueOnce({ ok: true, deleted: true, broadcast_id: 12 });
+    const store = makeStore(api);
+
+    await store.loadHistory();
+    expect(store.broadcastHistory[0]?.broadcastId).toBe(12);
+
+    await store.rescheduleBroadcast(12, "2031-05-21T12:00");
+    expect(api.mock.calls[1][0]).toBe("/admin/broadcasts/12");
+    expect(api.mock.calls[1][1].method).toBe("PATCH");
+
+    await store.deleteBroadcast(12);
+    expect(api.mock.calls[2][1].method).toBe("DELETE");
+    expect(store.broadcastHistory).toEqual([]);
+  });
 });

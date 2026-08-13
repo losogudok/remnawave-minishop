@@ -79,6 +79,7 @@ export type ApiResponseFor<Path extends string, Options = undefined> = JsonRespo
 >;
 export type GetResponse<Path extends string> = JsonResponse<OperationFor<Path, "get">>;
 export type PostPayload<Path extends string> = JsonRequestBody<OperationFor<Path, "post">>;
+export type PatchPayload<Path extends string> = JsonRequestBody<OperationFor<Path, "patch">>;
 export type PostResponse<Path extends string> = JsonResponse<OperationFor<Path, "post">>;
 
 export type BootstrapResponse = GetResponse<"/api/bootstrap">;
@@ -585,6 +586,18 @@ export function buildAdminSupportPath(ticketId?: string | number | null): AdminS
 export type AdminBroadcastPath = "/admin/broadcast";
 export function buildAdminBroadcastPath(): AdminBroadcastPath {
   return "/admin/broadcast";
+}
+
+export type AdminBroadcastsPath = "/admin/broadcasts";
+export function buildAdminBroadcastsPath(): AdminBroadcastsPath {
+  return "/admin/broadcasts";
+}
+
+export type AdminBroadcastItemPath = BuiltApiPath<"/api/admin/broadcasts/{id}">;
+export function buildAdminBroadcastItemPath(broadcastId: string | number): AdminBroadcastItemPath {
+  return builtApiPath<"/api/admin/broadcasts/{id}">(
+    `/admin/broadcasts/${encodeURIComponent(String(broadcastId))}`
+  );
 }
 
 export type AdminBroadcastAudienceCountsPath = "/admin/broadcast/audience-counts";

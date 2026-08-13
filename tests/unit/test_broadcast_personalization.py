@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 from bot.app.web.admin_api_impl import broadcast as broadcast_route_module
 from bot.app.web.admin_api_impl import broadcast_shortcodes as broadcast_shortcodes_module
 from bot.middlewares.i18n import JsonI18n
+from bot.services.admin_broadcast_delivery import BroadcastDispatchResult
 from bot.services.broadcast_personalization import (
     SHORTCODES,
     TELEGRAM_BROADCAST_ALLOWED_TAGS,
@@ -480,21 +481,43 @@ class AdminBroadcastPersonalizationRouteTest(unittest.IsolatedAsyncioTestCase):
             response = await broadcast_route_module.admin_broadcast_route(cast(Any, request))
         self.assertEqual(response.status, 400)
 
-    async def test_personalized_enqueue_differs_per_recipient(self):
+    async def test_personalized_broadcast_passes_resolved_audience_to_dispatcher(self):
         request = _request(
             {"target": "all", "text": "Hi {first_name}", "channels": ["telegram", "email"]},
             settings=_settings(email_auth_configured=True),
         )
-        queue = _FakeQueue()
-        contexts = {
-            1: _full_ctx(user_id=1, first_name="A", language_code="en"),
-            2: _full_ctx(user_id=2, first_name="B", language_code="ru"),
-        }
-        scheduled: list[dict[str, Any]] = []
-
-        def schedule(**kwargs: Any) -> int:
-            scheduled.append(kwargs)
-            return len(kwargs["recipients"])
+        now = datetime.now(UTC)
+        stored = SimpleNamespace(
+            broadcast_id=23,
+            status="running",
+            target="all",
+            channels=["telegram", "email"],
+            texts={"ru": "Hi {first_name}"},
+            email_subjects={},
+            buttons=[],
+            scheduled_at=now,
+            created_at=now,
+            started_at=now,
+            finished_at=None,
+            updated_at=now,
+            recipient_count=2,
+            total_deliveries=4,
+            successful_deliveries=0,
+            failed_deliveries=0,
+            telegram_sent=0,
+            telegram_failed=0,
+            email_sent=0,
+            email_failed=0,
+            last_error=None,
+        )
+        dispatch = AsyncMock(
+            return_value=BroadcastDispatchResult(
+                queued=2,
+                failed=0,
+                email_queued=2,
+                channels=["telegram", "email"],
+            )
+        )
 
         with (
             patch.object(broadcast_route_module, "_require_admin_user_id", return_value=999),
@@ -503,32 +526,27 @@ class AdminBroadcastPersonalizationRouteTest(unittest.IsolatedAsyncioTestCase):
                 "_resolve_audience_service",
                 return_value=SimpleNamespace(resolve_user_ids=AsyncMock(return_value=[1, 2])),
             ),
-            patch.object(broadcast_route_module, "get_queue_manager", return_value=queue),
+            patch.object(broadcast_route_module, "get_queue_manager", return_value=_FakeQueue()),
             patch.object(
-                broadcast_route_module,
-                "load_broadcast_contexts",
-                AsyncMock(return_value=contexts),
+                broadcast_route_module.broadcast_dal,
+                "create_broadcast",
+                AsyncMock(return_value=stored),
             ),
             patch.object(
-                broadcast_route_module.user_dal,
-                "get_telegram_recipients_for_broadcast",
-                AsyncMock(return_value=[(1, 111), (2, 222)]),
+                broadcast_route_module.broadcast_dal,
+                "get_broadcast",
+                AsyncMock(return_value=stored),
             ),
             patch.object(
-                broadcast_route_module.user_dal,
-                "get_email_recipients_for_broadcast",
-                AsyncMock(return_value=[(1, "a@x.test", "en"), (2, "b@x.test", "ru")]),
+                broadcast_route_module.AdminBroadcastDeliveryService,
+                "dispatch",
+                dispatch,
             ),
-            patch.object(broadcast_route_module.message_log_dal, "create_message_log", AsyncMock()),
-            patch.object(broadcast_route_module, "schedule_broadcast_emails", side_effect=schedule),
         ):
             response = await broadcast_route_module.admin_broadcast_route(cast(Any, request))
 
         self.assertEqual(response.status, 200)
-        self.assertEqual([m["text"] for m in queue.messages], ["Hi A", "Hi B"])
-        recipients = scheduled[0]["recipients"]
-        self.assertEqual(recipients[0].message_text, "Hi A")
-        self.assertEqual(recipients[1].message_text, "Hi B")
+        dispatch.assert_awaited_once_with(23, user_ids=[1, 2])
 
 
 class BroadcastEndpointsTest(unittest.IsolatedAsyncioTestCase):

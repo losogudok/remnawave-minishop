@@ -45,6 +45,8 @@ from bot.plugins import (
     collect_worker_tasks,
     run_setup,
 )
+from bot.services.admin_broadcast_delivery import AdminBroadcastDeliveryService
+from bot.services.admin_broadcast_worker import AdminBroadcastWorker
 from bot.services.auto_renew_retry_worker import AutoRenewRetryWorker
 from bot.services.backup_worker import BackupWorker
 from bot.services.event_reactions import register_core_reactions
@@ -57,7 +59,7 @@ from bot.services.tariff_worker import TariffTrafficWorker
 from bot.services.torrent_blocker_webhook import TORRENT_BLOCKER_EVENT
 from bot.services.wata_reconciliation_worker import WataReconciliationWorker
 from bot.services.yookassa_reconciliation_worker import YooKassaReconciliationWorker
-from bot.utils.message_queue import init_queue_manager
+from bot.utils.message_queue import get_queue_manager, init_queue_manager
 from config.settings import Settings, get_settings
 from config.telegram_proxy import safe_telegram_network_error_detail
 
@@ -433,6 +435,24 @@ async def _partner_program_task(ctx: PluginContext) -> None:
     ).run()
 
 
+async def _admin_broadcast_task(ctx: PluginContext) -> None:
+    bot_username: str | None = None
+    try:
+        bot_info = await ctx.require_bot().get_me()
+        bot_username = bot_info.username
+    except Exception:
+        logger.exception("Broadcast worker failed to resolve bot username")
+    delivery_service = AdminBroadcastDeliveryService(
+        settings=ctx.settings,
+        session_factory=ctx.require_session_factory(),
+        i18n=ctx.require_i18n(),
+        audience_service=ctx.require_audience_segmentation_service(),
+        queue_manager=get_queue_manager(),
+        bot_username=bot_username,
+    )
+    await AdminBroadcastWorker(ctx.require_session_factory(), delivery_service).run()
+
+
 def _backup_worker_task(ctx: PluginContext) -> Coroutine[Any, Any, None]:
     return BackupWorker(
         ctx.settings,
@@ -475,6 +495,7 @@ def _core_worker_tasks() -> list[WorkerTaskSpec]:
             name="PartnerProgramWorker",
             factory=_partner_program_task,
         ),
+        WorkerTaskSpec(name="AdminBroadcastWorker", factory=_admin_broadcast_task),
         WorkerTaskSpec(name="BackupWorker", factory=_backup_worker_task),
         WorkerTaskSpec(name="PanelSyncLoop", factory=_panel_sync_loop),
     ]

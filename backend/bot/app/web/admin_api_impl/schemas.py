@@ -394,6 +394,7 @@ class AdminBroadcastBody(HttpBodyModel):
     channels: list[str] = Field(default_factory=lambda: ["telegram"])
     email_subject: Any = ""
     buttons: list[AdminBroadcastButtonBody] = Field(default_factory=list)
+    scheduled_at: datetime | None = None
 
     @field_validator("text", "target", "email_subject", mode="before")
     @classmethod
@@ -411,6 +412,10 @@ class AdminBroadcastBody(HttpBodyModel):
             return ["telegram"]
         normalized = [_strip_text(item).lower() for item in value]
         return [item for item in normalized if item]
+
+
+class AdminBroadcastScheduleBody(HttpBodyModel):
+    scheduled_at: datetime
 
 
 class AdminBroadcastPreviewBody(HttpBodyModel):

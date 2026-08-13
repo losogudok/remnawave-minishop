@@ -2,16 +2,20 @@ import { adminErrorMessage } from "../errors.js";
 import type { MessageShortcodeInfo } from "$lib/richtext/editorSchema";
 import {
   buildAdminBroadcastAudienceCountsPath,
+  buildAdminBroadcastItemPath,
   buildAdminBroadcastPath,
   buildAdminBroadcastPreviewPath,
   buildAdminBroadcastShortcodesPath,
+  buildAdminBroadcastsPath,
   buildAdminPromoOptionsPath,
   unwrap,
   type ApiClient,
   type GetResponse,
+  type PatchPayload,
   type PostPayload,
 } from "../../webapp/publicApi";
 import type { components } from "../../api/openapi.generated";
+import { historyItemFromWire, type BroadcastHistoryItem } from "./broadcastHistory";
 import { snapshotForPayload } from "./snapshotForPayload.svelte";
 
 type AdminApi = ApiClient["api"];
@@ -105,6 +109,11 @@ export type BroadcastState = {
   broadcastShortcodesLoaded: boolean;
   broadcastPreviewBusy: boolean;
   broadcastPreviewResult: BroadcastPreviewResult | null;
+  broadcastScheduleEnabled: boolean;
+  broadcastScheduledAt: string;
+  broadcastHistory: BroadcastHistoryItem[];
+  broadcastHistoryLoading: boolean;
+  broadcastHistoryLoaded: boolean;
 };
 type BroadcastStoreOptions = {
   api: AdminApi;
@@ -123,6 +132,9 @@ export type BroadcastStore = BroadcastState & {
   loadShortcodes: () => Promise<void>;
   sendPreview: (mode: "render" | "send_telegram", userId?: number | null) => Promise<void>;
   sendToUser: (input: SingleUserMessage) => Promise<string | null>;
+  loadHistory: () => Promise<void>;
+  deleteBroadcast: (broadcastId: number) => Promise<void>;
+  rescheduleBroadcast: (broadcastId: number, localDateTime: string) => Promise<void>;
   canSubmit: () => boolean;
   BROADCAST_TARGET_OPTIONS: BroadcastTargetOption[];
   MAX_BROADCAST_BUTTONS: number;
@@ -265,6 +277,7 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
   let promoOptionsQuery = "";
   const promoOptionsCache = new Map<string, BroadcastPromoOption[]>();
   let shortcodesPromise: Promise<void> | null = null;
+  let historyPromise: Promise<void> | null = null;
   let buttonIdCounter = 0;
   const subscriptionGroup = () =>
     at("broadcast_audience_group_subscription", {}, "Subscription status");
@@ -372,6 +385,11 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
     broadcastShortcodesLoaded: false,
     broadcastPreviewBusy: false,
     broadcastPreviewResult: null,
+    broadcastScheduleEnabled: false,
+    broadcastScheduledAt: "",
+    broadcastHistory: [],
+    broadcastHistoryLoading: false,
+    broadcastHistoryLoaded: false,
     runBroadcast,
     updateField,
     loadCounts,
@@ -383,6 +401,9 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
     loadShortcodes,
     sendPreview,
     sendToUser,
+    loadHistory,
+    deleteBroadcast,
+    rescheduleBroadcast,
     canSubmit,
     BROADCAST_TARGET_OPTIONS: targetOptions(cachedCounts?.audiences || []),
     MAX_BROADCAST_BUTTONS,
@@ -527,6 +548,11 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
     )
       return false;
     if (!channelsForPayload(state).length) return false;
+    if (state.broadcastScheduleEnabled) {
+      const scheduledAt = new Date(state.broadcastScheduledAt);
+      if (!state.broadcastScheduledAt || Number.isNaN(scheduledAt.getTime())) return false;
+      if (scheduledAt.getTime() <= Date.now()) return false;
+    }
     return state.broadcastButtons.every(buttonDraftValid);
   }
 
@@ -547,6 +573,7 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
           channels: input.channels,
           email_subject: input.emailSubject.trim(),
           buttons: buttonsForPayload(input.buttons),
+          scheduled_at: null,
         } satisfies PostPayload<"/api/admin/broadcast">),
       });
       if (res?.ok) {
@@ -560,6 +587,12 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
   }
 
   async function runBroadcast(): Promise<void> {
+    if (!canSubmit()) {
+      if (state.broadcastScheduleEnabled) {
+        onToast(at("broadcast_schedule_future", {}, "Choose a future date and time"));
+      }
+      return;
+    }
     const { target, text, texts, emailSubject, emailSubjects, buttons, channels } =
       snapshotForPayload({
         target: state.broadcastTarget,
@@ -581,6 +614,9 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
         email_subject: emailSubject.trim(),
         email_subjects: localizedForPayload(emailSubjects),
         buttons: buttonsForPayload(buttons),
+        scheduled_at: state.broadcastScheduleEnabled
+          ? new Date(state.broadcastScheduledAt).toISOString()
+          : null,
       } satisfies PostPayload<"/api/admin/broadcast">;
       const res = await api(buildAdminBroadcastPath(), {
         method: "POST",
@@ -595,19 +631,135 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
           broadcastLanguage: "",
           broadcastButtons: [],
           broadcastEmailSubject: "",
+          broadcastEmailSubjects: {},
+          broadcastScheduleEnabled: false,
+          broadcastScheduledAt: "",
           broadcastResult: {
             queued: payload.queued || 0,
             failed: payload.failed || 0,
             emailQueued: payload.email_queued || 0,
             channels: Array.isArray(payload.channels) ? payload.channels : channels,
           },
+          broadcastHistory: payload.broadcast
+            ? [
+                historyItemFromWire(payload.broadcast),
+                ...s.broadcastHistory.filter(
+                  (item) => item.broadcastId !== Number(payload.broadcast?.broadcast_id)
+                ),
+              ].filter((item): item is BroadcastHistoryItem => Boolean(item))
+            : s.broadcastHistory,
         }));
-        onToast(at("broadcast_started", {}, "Broadcast started"));
+        onToast(
+          payload.broadcast?.status === "scheduled"
+            ? at("broadcast_scheduled", {}, "Broadcast scheduled")
+            : at("broadcast_started", {}, "Broadcast started")
+        );
       } else {
         onToast(adminErrorMessage(res, at, at("broadcast_failed", {}, "Broadcast failed")));
       }
+    } catch {
+      onToast(at("broadcast_failed", {}, "Broadcast failed"));
     } finally {
       updateState((s) => ({ ...s, broadcastBusy: false }));
+    }
+  }
+
+  async function loadHistory(): Promise<void> {
+    if (historyPromise) return historyPromise;
+    updateState((s) => ({ ...s, broadcastHistoryLoading: true }));
+    historyPromise = (async () => {
+      try {
+        const response = await api(buildAdminBroadcastsPath());
+        if (response?.ok) {
+          const payload = unwrap(response);
+          const history = Array.isArray(payload.broadcasts)
+            ? payload.broadcasts
+                .map(historyItemFromWire)
+                .filter((item): item is BroadcastHistoryItem => Boolean(item))
+            : [];
+          updateState((s) => ({
+            ...s,
+            broadcastHistory: history,
+            broadcastHistoryLoaded: true,
+          }));
+        }
+      } catch {
+        if (!state.broadcastHistoryLoaded) {
+          onToast(at("broadcast_history_failed", {}, "Broadcast history could not be loaded"));
+        }
+      } finally {
+        updateState((s) => ({ ...s, broadcastHistoryLoading: false }));
+        historyPromise = null;
+      }
+    })();
+    return historyPromise;
+  }
+
+  async function deleteBroadcast(broadcastId: number): Promise<void> {
+    try {
+      const response = await api(buildAdminBroadcastItemPath(broadcastId), {
+        method: "DELETE",
+      });
+      if (response?.ok) {
+        unwrap(response);
+        updateState((s) => ({
+          ...s,
+          broadcastHistory: s.broadcastHistory.filter((item) => item.broadcastId !== broadcastId),
+        }));
+        onToast(at("broadcast_deleted", {}, "Broadcast removed"));
+        return;
+      }
+      onToast(
+        adminErrorMessage(
+          response,
+          at,
+          at("broadcast_delete_failed", {}, "Broadcast could not be removed")
+        )
+      );
+    } catch {
+      onToast(at("broadcast_delete_failed", {}, "Broadcast could not be removed"));
+    }
+  }
+
+  async function rescheduleBroadcast(broadcastId: number, localDateTime: string): Promise<void> {
+    const scheduledAt = new Date(localDateTime);
+    if (
+      !localDateTime ||
+      Number.isNaN(scheduledAt.getTime()) ||
+      scheduledAt.getTime() <= Date.now()
+    ) {
+      onToast(at("broadcast_schedule_future", {}, "Choose a future date and time"));
+      return;
+    }
+    try {
+      const response = await api(buildAdminBroadcastItemPath(broadcastId), {
+        method: "PATCH",
+        body: JSON.stringify({
+          scheduled_at: scheduledAt.toISOString(),
+        } satisfies PatchPayload<"/api/admin/broadcasts/{id}">),
+      });
+      if (response?.ok) {
+        const updated = historyItemFromWire(unwrap(response));
+        if (updated) {
+          updateState((s) => ({
+            ...s,
+            broadcastHistory: s.broadcastHistory.map((item) =>
+              item.broadcastId === broadcastId ? updated : item
+            ),
+          }));
+        }
+        onToast(at("broadcast_rescheduled", {}, "Scheduled time updated"));
+        return;
+      }
+      onToast(
+        adminErrorMessage(
+          response,
+          at,
+          at("broadcast_reschedule_failed", {}, "Scheduled time could not be updated")
+        )
+      );
+    } catch {
+      onToast(at("broadcast_reschedule_failed", {}, "Scheduled time could not be updated"));
     }
   }
 

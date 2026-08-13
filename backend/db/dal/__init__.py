@@ -1,6 +1,7 @@
 from . import (
     ad_dal,
     app_settings_dal,
+    broadcast_dal,
     locale_overrides_dal,
     message_log_dal,
     panel_sync_dal,
@@ -22,6 +23,7 @@ from . import (
 __all__ = (
     "ad_dal",
     "app_settings_dal",
+    "broadcast_dal",
     "locale_overrides_dal",
     "message_log_dal",
     "panel_sync_dal",

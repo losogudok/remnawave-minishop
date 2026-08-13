@@ -359,6 +359,90 @@ def _migration_0061_add_partner_checkout_balance(connection: Connection) -> None
     )
 
 
+def _migration_0062_add_admin_broadcast_history(connection: Connection) -> None:
+    """Persist scheduled broadcasts and their per-channel delivery progress."""
+
+    connection.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS admin_broadcasts (
+                broadcast_id SERIAL PRIMARY KEY,
+                created_by_admin_id BIGINT,
+                status VARCHAR(24) NOT NULL DEFAULT 'queued',
+                is_visible BOOLEAN NOT NULL DEFAULT TRUE,
+                target VARCHAR(128) NOT NULL DEFAULT 'all',
+                channels JSONB NOT NULL DEFAULT '[]'::jsonb,
+                texts JSONB NOT NULL DEFAULT '{}'::jsonb,
+                email_subjects JSONB NOT NULL DEFAULT '{}'::jsonb,
+                buttons JSONB NOT NULL DEFAULT '[]'::jsonb,
+                scheduled_at TIMESTAMPTZ NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                started_at TIMESTAMPTZ,
+                finished_at TIMESTAMPTZ,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                deleted_at TIMESTAMPTZ,
+                recipient_count INTEGER NOT NULL DEFAULT 0,
+                total_deliveries INTEGER NOT NULL DEFAULT 0,
+                successful_deliveries INTEGER NOT NULL DEFAULT 0,
+                failed_deliveries INTEGER NOT NULL DEFAULT 0,
+                telegram_sent INTEGER NOT NULL DEFAULT 0,
+                telegram_failed INTEGER NOT NULL DEFAULT 0,
+                email_sent INTEGER NOT NULL DEFAULT 0,
+                email_failed INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT
+            )
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS admin_broadcast_deliveries (
+                delivery_id SERIAL PRIMARY KEY,
+                broadcast_id INTEGER NOT NULL REFERENCES admin_broadcasts(broadcast_id)
+                    ON DELETE CASCADE,
+                user_id BIGINT NOT NULL,
+                channel VARCHAR(16) NOT NULL,
+                destination TEXT NOT NULL,
+                language_code VARCHAR(16),
+                status VARCHAR(16) NOT NULL DEFAULT 'pending',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                error TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                queued_at TIMESTAMPTZ,
+                finished_at TIMESTAMPTZ,
+                CONSTRAINT uq_admin_broadcast_delivery_user_channel
+                    UNIQUE (broadcast_id, user_id, channel)
+            )
+            """
+        )
+    )
+    for statement in (
+        "CREATE INDEX IF NOT EXISTS ix_admin_broadcasts_created_by_admin_id "
+        "ON admin_broadcasts (created_by_admin_id)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_broadcasts_status ON admin_broadcasts (status)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_broadcasts_is_visible "
+        "ON admin_broadcasts (is_visible)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_broadcasts_scheduled_at "
+        "ON admin_broadcasts (scheduled_at)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_broadcasts_deleted_at "
+        "ON admin_broadcasts (deleted_at)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_broadcasts_status_scheduled "
+        "ON admin_broadcasts (status, scheduled_at)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_broadcasts_visible_created "
+        "ON admin_broadcasts (deleted_at, created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_broadcast_deliveries_broadcast_id "
+        "ON admin_broadcast_deliveries (broadcast_id)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_broadcast_deliveries_user_id "
+        "ON admin_broadcast_deliveries (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_broadcast_deliveries_status "
+        "ON admin_broadcast_deliveries (status)",
+        "CREATE INDEX IF NOT EXISTS ix_admin_broadcast_deliveries_broadcast_status "
+        "ON admin_broadcast_deliveries (broadcast_id, status)",
+    ):
+        connection.execute(text(statement))
+
+
 CHAIN_0056_0070: list[Migration] = [
     Migration(
         id="0056_add_tariff_binding_audit",
@@ -389,5 +473,10 @@ CHAIN_0056_0070: list[Migration] = [
         id="0061_add_partner_checkout_balance",
         description="Persist mixed partner-balance checkout funding and ledger entries",
         upgrade=_migration_0061_add_partner_checkout_balance,
+    ),
+    Migration(
+        id="0062_add_admin_broadcast_history",
+        description="Persist scheduled broadcasts and per-channel delivery progress",
+        upgrade=_migration_0062_add_admin_broadcast_history,
     ),
 ]

@@ -819,6 +819,7 @@ class LegacyImportMapping(Base):
 # backup/restore and migration tests.  Domain code imports the classes from
 # ``db.partner_models`` directly; this import exists only for registration.
 from db import activity_models as activity_models  # noqa: E402
+from db import broadcast_models as broadcast_models  # noqa: E402
 from db import partner_models as partner_models  # noqa: E402
 
 AdAttribution = activity_models.AdAttribution
@@ -829,3 +830,5 @@ MessageLog = activity_models.MessageLog
 PanelSyncStatus = activity_models.PanelSyncStatus
 SupportTicket = activity_models.SupportTicket
 SupportTicketMessage = activity_models.SupportTicketMessage
+AdminBroadcast = broadcast_models.AdminBroadcast
+AdminBroadcastDelivery = broadcast_models.AdminBroadcastDelivery

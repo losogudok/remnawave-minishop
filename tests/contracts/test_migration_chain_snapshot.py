@@ -82,6 +82,7 @@ EXPECTED_CORE_MIGRATION_IDS = [
     "0059_add_partner_client_welcome_eligibility",
     "0060_add_promo_traffic_grants",
     "0061_add_partner_checkout_balance",
+    "0062_add_admin_broadcast_history",
 ]
 
 
