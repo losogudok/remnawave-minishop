@@ -2,6 +2,7 @@
   import Checkbox from "$components/ui/checkbox.svelte";
   import { WalletCards } from "$components/ui/icons.js";
   import { formatMoney } from "$lib/webapp/formatters.js";
+  import { shouldShowPartnerBalanceDiscount } from "$lib/webapp/partnerUiPolicy.js";
   import type { ApiClient, PartnerOverviewResponse } from "$lib/webapp/publicApi.js";
   import type { Translate } from "$lib/webapp/types.js";
 
@@ -44,7 +45,12 @@
   const appliedDiscount = $derived(selected ? maximumDiscount : 0);
   const remainder = $derived(Math.max(0, Number(amount || 0) - appliedDiscount));
   const visible = $derived(
-    open && eligible && normalizedCurrency && (loading || maximumDiscount > 0)
+    shouldShowPartnerBalanceDiscount({
+      open,
+      eligible,
+      currency: normalizedCurrency,
+      maximumDiscount,
+    })
   );
 
   function previewAvailable(): number | null {
@@ -102,6 +108,8 @@
     }
     if (requestKey === key) return;
     requestKey = key;
+    available = 0;
+    scale = 2;
     void loadBalance(key);
   });
 

@@ -21,6 +21,7 @@
   import Card from "$components/ui/card.svelte";
   import Dialog from "$components/ui/dialog.svelte";
   import Input from "$components/ui/input.svelte";
+  import Spinner from "$components/ui/spinner.svelte";
   import Textarea from "$components/ui/textarea.svelte";
   import { Select, Tooltip } from "$components/ui/primitives.js";
   import { StatusMessage } from "$components/patterns/webapp/index.js";
@@ -47,6 +48,7 @@
   import type { CopyTextAction, Translate } from "$lib/webapp/types.js";
   import { buildPartnerWithdrawalCancelPath, type ApiClient } from "$lib/webapp/publicApi.js";
   import { loadPartnerProgram, partnerPreviewMode } from "$lib/webapp/partnerProgramApi.js";
+  import { partnerLoadingPlaceholder } from "$lib/webapp/partnerUiPolicy.js";
   import {
     normalizePartnerWithdrawalRequisites,
     partnerWithdrawalRequisitesError,
@@ -71,6 +73,7 @@
   }
 
   const previewMode = partnerPreviewMode();
+  const loadingPlaceholder = partnerLoadingPlaceholder(previewMode);
   const initialPreview = loadPreview();
   if (!previewMode) initialPreview.loading = true;
   let preview = $state(initialPreview);
@@ -424,10 +427,19 @@
 
 <main class="content with-nav partner-page" aria-busy={preview.loading}>
   {#if preview.loading}
-    <PartnerScreenSkeleton label={t("wa_loading")} />
+    {#if loadingPlaceholder === "dashboard"}
+      <PartnerScreenSkeleton label={t("wa_loading")} />
+    {:else}
+      <div class="partner-loading" role="status" aria-live="polite">
+        <Spinner size="lg" />
+        <span>{t("wa_loading")}</span>
+      </div>
+    {/if}
   {:else if preview.error}
     <Card class="partner-state-card partner-state-error">
-      <div class="partner-state-icon partner-state-icon-rejected"><TriangleAlert size={28} /></div>
+      <div class="partner-state-icon partner-state-icon-rejected">
+        <TriangleAlert size={28} />
+      </div>
       <h2>{t("wa_partner_load_error_title")}</h2>
       <p>{t("wa_partner_load_error_hint")}</p>
       <Button onclick={refreshProgram}>
