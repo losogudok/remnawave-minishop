@@ -1299,6 +1299,55 @@ test("partner loading and empty chart states preserve their final geometry", asy
   await expect(page.locator(".admin-revenue-chart .admin-revenue-chart-body")).toHaveCount(0);
 });
 
+test("admin charts reveal on entry, morph between ranges, and respect reduced motion", async ({
+  page,
+}) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto("/demo/runtime/admin/stats?theme_preview=dark");
+
+  const revenueChart = page.locator(".admin-revenue-chart-body");
+  await expect(revenueChart).toHaveAttribute("data-chart-motion", "reveal");
+  await expect(revenueChart).toHaveAttribute("data-chart-motion", "idle", { timeout: 2_000 });
+
+  await page.getByRole("tab", { name: "30 дн.", exact: true }).click();
+  await expect(revenueChart).toHaveAttribute("data-chart-motion", "morph");
+  const chartGeometryFrames = [];
+  for (let frame = 0; frame < 12; frame += 1) {
+    chartGeometryFrames.push(
+      await revenueChart.evaluate((element) => {
+        const over = element.querySelector<HTMLElement>(".u-over")?.getBoundingClientRect();
+        const axes = element.querySelectorAll<HTMLElement>(".u-axis");
+        return {
+          height: over?.height ?? 0,
+          left: over?.left ?? 0,
+          top: over?.top ?? 0,
+          width: over?.width ?? 0,
+          xTop: axes[0]?.getBoundingClientRect().top ?? 0,
+          yLeft: axes[1]?.getBoundingClientRect().left ?? 0,
+        };
+      })
+    );
+    await page.waitForTimeout(20);
+  }
+  for (const key of ["height", "left", "top", "width", "xTop", "yLeft"] as const) {
+    const values = chartGeometryFrames.map((frame) => frame[key]);
+    expect(Math.max(...values) - Math.min(...values)).toBeLessThanOrEqual(0.5);
+  }
+  await expect(revenueChart).toHaveAttribute("data-chart-motion", "idle", { timeout: 2_000 });
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.reload();
+  await expect(page.locator(".admin-revenue-chart-body")).toHaveAttribute(
+    "data-chart-motion",
+    "idle"
+  );
+  await page.getByRole("tab", { name: "90 дн.", exact: true }).click();
+  await expect(page.locator(".admin-revenue-chart-body")).toHaveAttribute(
+    "data-chart-motion",
+    "idle"
+  );
+});
+
 test("partner dashboard tables stay compact, sortable, and show six rows", async ({ page }) => {
   await page.setViewportSize(DESKTOP_VIEWPORT);
   await page.goto(
