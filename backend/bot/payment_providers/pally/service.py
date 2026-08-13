@@ -48,6 +48,24 @@ from ..shared import (
 )
 from ..shared.app_context import app_required
 from .manifest import _CONFIG_MANIFEST, _PRESENTATION_MANIFEST
+from .payloads import (
+    bill_id_value as _bill_id_value,
+)
+from .payloads import (
+    bool_form_value as _bool_form_value,
+)
+from .payloads import (
+    payload_success as _payload_success,
+)
+from .payloads import (
+    payment_page_url as _payment_page_url,
+)
+from .payloads import (
+    response_error as _response_error,
+)
+from .payloads import (
+    status_value as _status_value,
+)
 
 if TYPE_CHECKING:
     from bot.services.referral_service import ReferralService
@@ -176,54 +194,6 @@ class PallyPresentation(ProviderEnvConfig):
     TELEGRAM_LABEL_RU: str | None = None
     TELEGRAM_LABEL_EN: str | None = None
     TELEGRAM_EMOJI: str | None = None
-
-
-def _payload_success(status: int, payload: Mapping[str, Any]) -> bool:
-    if status < 200 or status >= 300:
-        return False
-    if "success" not in payload:
-        return True
-    value = payload.get("success")
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in {"1", "true", "yes", "success"}
-
-
-def _response_error(payload: Mapping[str, Any]) -> Any:
-    return payload.get("message") or payload.get("error") or payload.get("errors") or payload
-
-
-def _bool_form_value(value: bool | None) -> str | None:
-    if value is None:
-        return None
-    return "1" if value else "0"
-
-
-def _status_value(payload: Mapping[str, Any] | None) -> str:
-    if not payload:
-        return ""
-    return str(payload.get("status") or payload.get("Status") or "").strip().lower()
-
-
-def _bill_id_value(payload: Mapping[str, Any] | None) -> str | None:
-    return first_value(payload, "bill_id", "billId", "id", "TrsId", "trs_id")
-
-
-def _payment_page_url(payload: Mapping[str, Any] | None) -> str | None:
-    return first_value(
-        payload,
-        "link_page_url",
-        "linkPageUrl",
-        "page_url",
-        "pageUrl",
-        "transfer_url",
-        "transferUrl",
-        "link_url",
-        "linkUrl",
-        "payment_url",
-        "paymentUrl",
-        "url",
-    )
 
 
 def _minimum_amount_for_currency(config: PallyConfig, currency: Any) -> Decimal:

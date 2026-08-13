@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from bot.app.web.admin_settings_manifest_email_fields import EMAIL_SETTINGS_FIELDS
 from bot.app.web.admin_settings_manifest_types import TRAFFIC_STRATEGY_CHOICES, SettingField
+from bot.app.web.admin_settings_notification_manifest_fields import (
+    NOTIFICATION_SETTINGS_FIELDS,
+)
 from bot.app.web.admin_settings_partner_manifest_fields import PARTNER_SETTINGS_FIELDS
 
 SETTINGS_MANIFEST: list[SettingField] = [
@@ -396,8 +399,13 @@ SETTINGS_MANIFEST: list[SettingField] = [
         subsection="checkout",
     ),
     # ─── Payment providers (toggles) ───────────────────────────────
-    # Common
-    SettingField("STARS_ENABLED", "bool", "payments", "Telegram Stars", subsection="common"),
+    SettingField(
+        "STARS_ENABLED",
+        "bool",
+        "payments",
+        "Telegram Stars",
+        subsection="Telegram Stars",
+    ),
     SettingField(
         "STARS_ADMIN_ONLY_ENABLED",
         "bool",
@@ -407,7 +415,7 @@ SETTINGS_MANIFEST: list[SettingField] = [
             "Shows Telegram Stars only to users from ADMIN_IDS. "
             "Payment callbacks remain active for admin test payments."
         ),
-        subsection="common",
+        subsection="Telegram Stars",
         i18n_label_key="admin_settings_provider_admin_only_label",
         i18n_description_key="admin_settings_provider_admin_only_description",
     ),
@@ -630,229 +638,8 @@ SETTINGS_MANIFEST: list[SettingField] = [
         "Short importer summary: migrated entities and enabled compatibility modes.",
         subsection="Remnashop",
     ),
-    # ─── Notifications ─────────────────────────────────────────────
-    SettingField(
-        "SUBSCRIPTION_NOTIFICATIONS_ENABLED",
-        "bool",
-        "notifications",
-        "Subscription Notifications Enabled",
-    ),
-    SettingField(
-        "SUBSCRIPTION_EMAIL_NOTIFICATIONS_ENABLED",
-        "bool",
-        "notifications",
-        "Subscription email notifications",
-        (
-            "When enabled, subscription lifecycle notifications are mirrored to linked user "
-            "email addresses."
-        ),
-    ),
-    SettingField(
-        "SUBSCRIPTION_NOTIFY_ON_EXPIRE", "bool", "notifications", "Subscription Notify On Expire"
-    ),
-    SettingField(
-        "SUBSCRIPTION_NOTIFY_AFTER_EXPIRE",
-        "bool",
-        "notifications",
-        "Subscription Notify After Expire",
-    ),
-    SettingField(
-        "SUBSCRIPTION_NOTIFY_DAYS_BEFORE",
-        "int",
-        "notifications",
-        "Subscription Notify Days Before",
-        min=0,
-    ),
-    SettingField(
-        "SUBSCRIPTION_NOTIFY_HOURS_BEFORE",
-        "int",
-        "notifications",
-        "Subscription Notify Hours Before",
-        min=0,
-        max=23,
-    ),
-    SettingField(
-        "TORRENT_BLOCKER_NOTIFICATIONS_ENABLED",
-        "bool",
-        "notifications",
-        "Torrent blocker notifications",
-        "Notify local users when Remnawave confirms that their IP address was blocked.",
-        subsection="torrent_blocker",
-    ),
-    SettingField(
-        "TORRENT_BLOCKER_TELEGRAM_NOTIFICATIONS_ENABLED",
-        "bool",
-        "notifications",
-        "Telegram notifications",
-        "Send torrent blocker notifications to linked Telegram accounts.",
-        subsection="torrent_blocker",
-    ),
-    SettingField(
-        "TORRENT_BLOCKER_EMAIL_NOTIFICATIONS_ENABLED",
-        "bool",
-        "notifications",
-        "Email notifications",
-        "Mirror torrent blocker notifications to linked email addresses when SMTP is configured.",
-        subsection="torrent_blocker",
-    ),
-    SettingField(
-        "TORRENT_BLOCKER_NOTIFICATION_COOLDOWN_SECONDS",
-        "int",
-        "notifications",
-        "Notification cooldown",
-        (
-            "Minimum seconds between repeated torrent blocker notifications to the same user and "
-            "channel. Exact webhook duplicates are always suppressed."
-        ),
-        min=0,
-        max=31536000,
-        subsection="torrent_blocker",
-    ),
-    SettingField(
-        "TORRENT_BLOCKER_NOTIFICATION_INCLUDE_IP",
-        "bool",
-        "notifications",
-        "Show blocked IP address",
-        (
-            "Include the validated blocked IP address in the user notification. Disabled by "
-            "default for privacy."
-        ),
-        subsection="torrent_blocker",
-    ),
-    SettingField("LOG_NEW_USERS", "bool", "notifications", "Log New Users"),
-    SettingField("LOG_PAYMENTS", "bool", "notifications", "Log Payments"),
-    SettingField("LOG_SUPPORT", "bool", "notifications", "Log Support"),
-    SettingField("LOG_PROMO_ACTIVATIONS", "bool", "notifications", "Log Promo Activations"),
-    SettingField("LOG_TRIAL_ACTIVATIONS", "bool", "notifications", "Log Trial Activations"),
-    SettingField("LOG_SUSPICIOUS_ACTIVITY", "bool", "notifications", "Log Suspicious Activity"),
-    SettingField(
-        "LOG_ADMIN_ACTIONS",
-        "bool",
-        "notifications",
-        "Log administrator actions",
-        "When disabled, events from users listed in ADMIN_IDS are not stored in message logs.",
-        i18n_label_key="admin_settings_field_log_admin_actions_label",
-        i18n_description_key="admin_settings_field_log_admin_actions_description",
-    ),
-    SettingField(
-        "LOG_LEVEL",
-        "string",
-        "notifications",
-        "Log Level",
-        "DEBUG / INFO / WARNING / ERROR",
-    ),
-    SettingField("LOG_CHAT_ID", "int", "notifications", "Log Chat ID"),
-    SettingField("LOG_THREAD_ID", "int", "notifications", "Log Thread ID"),
-    SettingField(
-        "LOG_SUPPORT_THREAD_ID",
-        "int",
-        "notifications",
-        "Support thread ID",
-        "Log chat thread for support ticket notifications.",
-    ),
-    SettingField(
-        "BACKUP_ENABLED",
-        "bool",
-        "backups",
-        "Backups enabled",
-        "The worker periodically builds a ZIP archive and sends it to Telegram.",
-    ),
-    SettingField(
-        "BACKUP_CHAT_ID",
-        "int",
-        "backups",
-        "Backup chat ID",
-        "Where ZIP archives are sent. Falls back to LOG_CHAT_ID when empty.",
-    ),
-    SettingField(
-        "BACKUP_THREAD_ID",
-        "int",
-        "backups",
-        "Backup thread ID",
-        "Optional topic/thread ID. Falls back to LOG_THREAD_ID when empty.",
-    ),
-    SettingField(
-        "BACKUP_INTERVAL_SECONDS",
-        "int",
-        "backups",
-        "Backup period (sec.)",
-        "Default is 3600: run on the hour boundary (12:00, 13:00, etc.).",
-        optional=False,
-        min=60,
-    ),
-    SettingField(
-        "BACKUP_LOCAL_RETENTION",
-        "int",
-        "backups",
-        "Archives to keep",
-        "How many latest ZIP archives to keep in data/backups on the server.",
-        optional=False,
-        min=1,
-    ),
-    SettingField(
-        "BACKUP_COMPOSE_ENABLED",
-        "bool",
-        "backups",
-        "Include compose folder",
-        (
-            "Adds a /app/compose-source snapshot. If the folder is not mounted, the DB "
-            "backup is still created."
-        ),
-    ),
-    SettingField(
-        "SUPPORT_TICKETS_ENABLED",
-        "bool",
-        "support",
-        "Support tickets enabled",
-        "Enable the support tickets section in the user account and allow users to create tickets.",
-    ),
-    SettingField(
-        "SUPPORT_ADMIN_EMAIL_NOTIFICATIONS_ENABLED",
-        "bool",
-        "support",
-        "Admin email notifications",
-        ("When disabled, new tickets and user replies are sent only to Telegram and the log chat."),
-    ),
-    SettingField(
-        "SUPPORT_ADMIN_NOTIFICATION_COOLDOWN_SECONDS",
-        "int",
-        "support",
-        "Telegram notification cooldown",
-        ("Minimum seconds between repeated Telegram/log notifications for the same unread ticket."),
-        min=0,
-    ),
-    SettingField(
-        "SUPPORT_ADMIN_EMAIL_COOLDOWN_SECONDS",
-        "int",
-        "support",
-        "Email notification cooldown",
-        "Minimum seconds between repeated email notifications for the same unread ticket.",
-        min=0,
-    ),
-    SettingField(
-        "SUPPORT_TICKET_MAX_BODY_LENGTH",
-        "int",
-        "support",
-        "Max message length",
-        "Maximum number of characters in a ticket message.",
-        min=1,
-    ),
-    SettingField(
-        "SUPPORT_TICKET_MAX_SUBJECT_LENGTH",
-        "int",
-        "support",
-        "Max subject length",
-        "Maximum number of characters in a ticket subject.",
-        min=1,
-    ),
-    SettingField(
-        "SUPPORT_TICKET_RATE_LIMIT_PER_HOUR",
-        "int",
-        "support",
-        "Ticket limit per hour",
-        "How many new tickets a user can create per hour. 0 means unlimited.",
-        min=0,
-    ),
+    # ─── Notifications, backups & support ──────────────────────────
+    *NOTIFICATION_SETTINGS_FIELDS,
     # ─── Devices ───────────────────────────────────────────────────
     SettingField("MY_DEVICES_SECTION_ENABLED", "bool", "devices", "My Devices Section Enabled"),
     SettingField("USER_HWID_DEVICE_LIMIT", "int", "devices", "User HWID Device Limit", min=0),

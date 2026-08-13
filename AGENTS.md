@@ -21,7 +21,7 @@ Non-negotiables (details in CONTRIBUTING.md §2):
 - User/admin-facing copy is localized, not hard-coded: every new or changed UI/bot text key must
   have at least `locales/ru.json` and `locales/en.json` entries; component fallbacks are not a
   substitute for base locale keys.
-- Decompose, then type; no module > ~1000 lines without a reason; mind the
+- Decompose, then type; no module > ~900 lines without a reason; mind the
   monkeypatch/re-export trap (CONTRIBUTING.md §5).
 - "Compatibility with other bots" is a feature (keep), not legacy.
 

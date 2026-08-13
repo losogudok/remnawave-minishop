@@ -12,25 +12,16 @@
   import PartnerEncryptionDiagnostic from "./PartnerEncryptionDiagnostic.svelte";
   import PartnerSettingsDialogs from "./PartnerSettingsDialogs.svelte";
   import PartnerWithdrawalMethods from "./PartnerWithdrawalMethods.svelte";
+  import {
+    normalizeWithdrawalMethods,
+    partnerSettingsScenario as initialSettingsScenario,
+    previewWithdrawalMethods,
+    type CryptoNetwork,
+    type MethodType,
+    type WithdrawalMethod,
+  } from "./partnerProgramMethods";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
-  type MethodType = "bank_card" | "sbp" | "crypto";
-  type CryptoNetwork = {
-    id: string;
-    label: string;
-  };
-  type WithdrawalMethod = {
-    id: string;
-    type: MethodType;
-    enabled: boolean;
-    label: string;
-    currency: string;
-    scale: number;
-    minimum: number;
-    maximum: number | null;
-    networks: CryptoNetwork[];
-  };
-
   let {
     at,
     onNavigateSection = () => {},
@@ -111,73 +102,15 @@
     eligibleCurrencies: settingArray("PARTNER_ELIGIBLE_CURRENCIES", ["RUB"]).map(String),
     excludedSaleModes: settingArray("PARTNER_EXCLUDED_SALE_MODES", []).map(String),
   });
-  const configuredMethods = settingArray("PARTNER_WITHDRAWAL_METHODS_JSON", []).map((value) => {
-    const item = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-    const scale = Number(item.currency_scale || 2);
-    return {
-      id: String(item.id || ""),
-      type: String(item.type || "bank_card") as MethodType,
-      enabled: item.enabled !== false,
-      label: String(item.label || item.settlement_asset || ""),
-      currency: String(item.debit_currency || "RUB"),
-      scale,
-      minimum: Number(item.min_amount_minor || 0) / 10 ** scale,
-      maximum:
-        item.max_amount_minor == null ? null : Number(item.max_amount_minor || 0) / 10 ** scale,
-      networks: Array.isArray(item.networks)
-        ? item.networks.map((network) => {
-            const entry = network as Record<string, unknown>;
-            return { id: String(entry.id || ""), label: String(entry.label || "") };
-          })
-        : [],
-    } satisfies WithdrawalMethod;
-  });
+  const configuredMethods = normalizeWithdrawalMethods(
+    settingArray("PARTNER_WITHDRAWAL_METHODS_JSON", [])
+  );
   let methods = $state<WithdrawalMethod[]>(
     settingsScenario === "empty_methods"
       ? []
       : !previewMode
         ? configuredMethods
-        : [
-            {
-              id: "card-rub",
-              type: "bank_card",
-              enabled: settingsScenario !== "disabled_method",
-              label: "",
-              currency: "RUB",
-              scale: 2,
-              minimum: 500,
-              maximum: 100000,
-              networks: [],
-            },
-            {
-              id: "sbp-rub",
-              type: "sbp",
-              enabled: true,
-              label: "",
-              currency: "RUB",
-              scale: 2,
-              minimum: 300,
-              maximum: 150000,
-              networks: [],
-            },
-            {
-              id: "usdt-rub",
-              type: "crypto",
-              enabled: true,
-              label: "USDT",
-              currency: "RUB",
-              scale: 2,
-              minimum: 3000,
-              maximum: null,
-              networks:
-                settingsScenario === "crypto_warning"
-                  ? []
-                  : [
-                      { id: "tron", label: "TRC20" },
-                      { id: "ton", label: "TON" },
-                    ],
-            },
-          ]
+        : previewWithdrawalMethods(settingsScenario)
   );
   let methodEditor = $state<number | null>(null);
   let pendingToggle = $state<"enabled" | "withdrawalsEnabled" | "balancePaymentEnabled" | "">("");
@@ -196,13 +129,6 @@
   );
   const cryptoInvalid = $derived(methods.some((method) => networkConfigurationInvalid(method)));
   const enabledMethods = $derived(methods.filter((method) => method.enabled));
-  function initialSettingsScenario(): string {
-    if (typeof window === "undefined") return "";
-    return String(
-      new URLSearchParams(window.location.search).get("partner_settings_scenario") || ""
-    ).toLowerCase();
-  }
-
   function settingsPayload(): Record<string, unknown> {
     return {
       PARTNER_PROGRAM_ENABLED: config.enabled,

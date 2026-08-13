@@ -771,6 +771,7 @@ class SettingsTests(unittest.TestCase):
                 "PAYMENT_YOOKASSA_TELEGRAM_EMOJI",
             ):
                 os.environ.pop(key, None)
+            build_provider_configs(force=True)
 
     def test_tariff_warning_levels_are_parsed(self):
         settings = Settings(

@@ -20,6 +20,9 @@ _CANONICAL_EMITTER_PATHS = {
     "backend/bot/payment_providers/yookassa/success.py": (
         "backend/bot/payment_providers/yookassa.py"
     ),
+    "backend/bot/payment_providers/yookassa/success_helpers.py": (
+        "backend/bot/payment_providers/yookassa.py"
+    ),
     "backend/bot/payment_providers/yookassa/webhook.py": (
         "backend/bot/payment_providers/yookassa.py"
     ),

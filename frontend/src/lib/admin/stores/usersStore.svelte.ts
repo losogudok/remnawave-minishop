@@ -1,25 +1,25 @@
 import { adminErrorMessage } from "../errors.js";
 import { createAdminPerfSpan } from "../adminPerfMarks";
 import { userDisplayName } from "../users.js";
-import { withRoutePrefix } from "../../webapp/routes.js";
 import { snapshotForPayload } from "./snapshotForPayload.svelte";
+import {
+  copyText,
+  draftStateFromSubscription as _draftStateFromSubscription,
+  isCurrentUserRequest,
+  openingUserModalState,
+  pushUserPath,
+  resolvePathContext,
+} from "./usersStoreHelpers";
 import { defineRawStateProperty } from "./rawStateProperty";
 import { AdminUsersError, createUsersStoreQueries } from "./usersStoreQueries";
 import { createUsersStoreSquadOverrideActions } from "./usersStoreSquadOverrides";
 import { createUsersStoreSubscriptionReissueAction } from "./usersStoreSubscriptionReissue";
-import {
-  buildAdminUserActionPath,
-  buildAdminUserPath,
-  buildAdminPaymentsPath,
-  buildAdminPaymentsUserPath,
-  buildAdminUsersPath,
-} from "../../webapp/publicApi";
+import { buildAdminUserActionPath, buildAdminUserPath } from "../../webapp/publicApi";
 import {
   USERS_PAGE_SIZE,
   closedUserModalState,
   createInitialUsersState,
   type AdminStoreState,
-  type AdminSubscription,
   type AdminUser,
   type AdminUserDetail,
   type OpenUserOptions,
@@ -122,52 +122,8 @@ export function createUsersStore({
     return snapshotForPayload(readCurrentState());
   }
 
-  function _openingUserModalState(
-    user: AdminUser | null,
-    userId: number
-  ): Partial<AdminStoreState> {
-    return {
-      ...closedUserModalState(),
-      openedUser: user,
-      userDetailLoading: true,
-      userDetailTab: "subscription",
-      userLogsUserId: userId,
-    };
-  }
-
   function _isCurrentUserRequest(s: AdminStoreState, requestId: number, userId: number) {
-    const openedUser = s.openedUser;
-    return (
-      requestId === _openUserRequestId && Boolean(openedUser) && openedUser?.user_id === userId
-    );
-  }
-
-  function _gbDraftFromBytes(bytes: unknown) {
-    const value = Number(bytes || 0);
-    return value > 0 ? +(value / 1024 ** 3).toFixed(2) : "";
-  }
-
-  function _draftStateFromSubscription(sub: AdminSubscription | null | undefined) {
-    const bonusGb = _gbDraftFromBytes(sub?.premium_bonus_bytes);
-    const regularBonusGb = _gbDraftFromBytes(sub?.regular_bonus_bytes);
-    const hasHwidLimit = sub?.hwid_device_limit !== null && sub?.hwid_device_limit !== undefined;
-    const hwidLimit = hasHwidLimit ? Number(sub?.hwid_device_limit) : null;
-    const hwidUnlimited = hasHwidLimit && hwidLimit === 0;
-    const hwidLimitDraft =
-      hasHwidLimit && hwidLimit !== null && hwidLimit > 0 ? String(hwidLimit) : "";
-    const tariffKey = String(sub?.tariff_key || "");
-    const trafficStrategy = String(sub?.traffic_limit_strategy || "NO_RESET").trim() || "NO_RESET";
-
-    return {
-      tariffKey,
-      trafficStrategy,
-      premiumUnlimited: Boolean(sub?.premium_unlimited_override),
-      premiumBonusGb: bonusGb,
-      regularUnlimited: Boolean(sub?.regular_unlimited_override),
-      regularBonusGb,
-      hwidUnlimited,
-      hwidDeviceLimit: hwidLimitDraft,
-    };
+    return isCurrentUserRequest(s, requestId, userId, _openUserRequestId);
   }
 
   function _applyUserDetailSnapshot(
@@ -245,30 +201,11 @@ export function createUsersStore({
   }
 
   function _setPathContext(context: PathContext | undefined) {
-    if (context === "payments") {
-      _pathContext = "payments";
-      return;
-    }
-    if (_activeRef === "users") {
-      _pathContext = "users";
-      return;
-    }
-    _pathContext = null;
+    _pathContext = resolvePathContext(_activeRef, context);
   }
 
   function _pushUserPath(userId: number | string | null) {
-    if (typeof window === "undefined") return;
-    if (window.location.protocol === "file:") return;
-    let target = "";
-    if (_activeRef === "users") {
-      target = userId ? buildAdminUserPath(userId) : buildAdminUsersPath();
-    } else if (_activeRef === "payments" && _pathContext === "payments") {
-      target = userId ? buildAdminPaymentsUserPath(userId) : buildAdminPaymentsPath();
-    }
-    if (!target) return;
-    target = withRoutePrefix(target, routePrefix);
-    if (window.location.pathname === target) return;
-    window.history.pushState(null, "", `${target}${window.location.search}${window.location.hash}`);
+    pushUserPath(_activeRef, _pathContext, userId, routePrefix);
   }
 
   async function loadUsers({ refresh = false }: { refresh?: boolean } = {}) {
@@ -312,7 +249,7 @@ export function createUsersStore({
 
     applyState((s) => ({
       ...s,
-      ..._openingUserModalState(openedUser, userId),
+      ...openingUserModalState(openedUser, userId),
       userActionBusy: s.userActionBusy,
     }));
 
@@ -498,15 +435,7 @@ export function createUsersStore({
     text: string | null | undefined,
     successMessage = at("link_copied", {}, "Link copied")
   ) {
-    if (!text) return;
-    if (typeof navigator !== "undefined" && navigator?.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(
-        () => onToast(successMessage),
-        () => onToast(text)
-      );
-    } else {
-      onToast(text);
-    }
+    copyText(text, successMessage, onToast);
   }
 
   function requestBanToggle() {

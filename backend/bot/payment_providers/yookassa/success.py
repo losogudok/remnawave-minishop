@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.infra import events
 from bot.infra.event_payloads import (
     PaymentCanceledPayload,
-    PaymentSucceededPayload,
     ReferralBonusGrantedPayload,
     SubscriptionCreatedPayload,
     SubscriptionExtendedPayload,
@@ -23,7 +22,6 @@ from bot.utils.install_links import ensure_user_install_guide_links
 from config.settings import Settings
 from db.dal import auto_renew_dal, payment_dal, subscription_dal, user_billing_dal, user_dal
 
-from ..base import normalize_payment_currency_code
 from ..shared import (
     SuccessMessage,
     append_hwid_renewal_note,
@@ -32,7 +30,6 @@ from ..shared import (
     is_traffic_sale_base,
     make_translator,
     parse_positive_int_units,
-    payment_amount_and_currency_match,
     payment_units_for_activation,
     payment_uses_entitlement_context,
     preflight_payment_entitlement,
@@ -42,8 +39,21 @@ from ..shared import (
 from ..shared import (
     sale_mode_tariff_key as _sale_mode_tariff_key,
 )
+from . import success_helpers as _success_helpers
 from .cancellation import cancellation_can_finalize, handle_auto_renew_cancellation
 from .legacy_auto_renew import ensure_legacy_auto_renew_payment
+
+DEFERRED_EVENTS_KEY = _success_helpers.DEFERRED_EVENTS_KEY
+DEFERRED_SUCCESS_MESSAGE_KEY = _success_helpers.DEFERRED_SUCCESS_MESSAGE_KEY
+HWID_DEVICE_SALE_BASES = _success_helpers.HWID_DEVICE_SALE_BASES
+_emit_yookassa_success_events = _success_helpers.emit_yookassa_success_events
+_is_hwid_device_sale_base = _success_helpers.is_hwid_device_sale_base
+_metadata_datetime = _success_helpers.metadata_datetime
+_metadata_float = _success_helpers.metadata_float
+_metadata_int = _success_helpers.metadata_int
+_metadata_value_present = _success_helpers.metadata_value_present
+_payment_amount_and_currency_match = _success_helpers.payment_amount_and_currency_are_valid
+_resolve_yookassa_activation_amounts = _success_helpers.resolve_yookassa_activation_amounts
 
 if TYPE_CHECKING:
     from bot.services.referral_service import ReferralService
@@ -68,133 +78,13 @@ YOOKASSA_WEBHOOK_ALLOWED_IPS = [
     "77.75.154.128/25",
     "2a02:5180::/32",
 ]
-HWID_DEVICE_SALE_BASES = {"hwid_device", "hwid_devices", "hwid_devices_renewal"}
-DEFERRED_EVENTS_KEY = "_deferred_events"
-DEFERRED_SUCCESS_MESSAGE_KEY = "_deferred_success_message"
-
-
-def _is_hwid_device_sale_base(sale_mode_base: str) -> bool:
-    return sale_mode_base in HWID_DEVICE_SALE_BASES
 
 
 async def emit_yookassa_success_events(event_payload: dict) -> None:
-    deferred_events = []
-    deferred_success_message = None
-    if isinstance(event_payload, dict):
-        deferred_events = list(event_payload.pop(DEFERRED_EVENTS_KEY, []) or [])
-        deferred_success_message = event_payload.pop(DEFERRED_SUCCESS_MESSAGE_KEY, None)
-    await events.emit_model(PaymentSucceededPayload.model_validate(event_payload))
-    for item in deferred_events:
-        if isinstance(item, dict) and item.get("event") and isinstance(item.get("payload"), dict):
-            event_name = item["event"]
-            payload = item["payload"]
-            if event_name == events.SUBSCRIPTION_EXTENDED:
-                await events.emit_model(SubscriptionExtendedPayload.model_validate(payload))
-            elif event_name == events.SUBSCRIPTION_CREATED:
-                await events.emit_model(SubscriptionCreatedPayload.model_validate(payload))
-            elif event_name == events.REFERRAL_BONUS_GRANTED:
-                await events.emit_model(ReferralBonusGrantedPayload.model_validate(payload))
-            else:
-                await events.emit(event_name, payload)
-    if isinstance(deferred_success_message, dict):
-        await send_success_message_to_user(**deferred_success_message)
-
-
-def _metadata_value_present(value: Any | None) -> bool:
-    return value is not None and str(value).strip() != ""
-
-
-def _metadata_int(value: Any | None) -> int | None:
-    if not _metadata_value_present(value):
-        return None
-    try:
-        return int(float(str(value).strip()))
-    except (TypeError, ValueError):
-        return None
-
-
-def _metadata_float(value: Any | None) -> float | None:
-    if not _metadata_value_present(value):
-        return None
-    try:
-        return float(str(value).strip())
-    except (TypeError, ValueError):
-        return None
-
-
-def _metadata_datetime(value: Any | None) -> datetime | None:
-    if not _metadata_value_present(value):
-        return None
-    try:
-        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed
-
-
-def _resolve_yookassa_activation_amounts(
-    *,
-    sale_mode_base: str,
-    subscription_months_raw: Any | None,
-    traffic_gb_raw: Any | None,
-    hwid_devices_raw: Any | None,
-) -> tuple[float, float, int, int, float | None]:
-    subscription_months = float(subscription_months_raw or 0)
-    traffic_amount_gb = (
-        float(traffic_gb_raw or 0)
-        if _metadata_value_present(traffic_gb_raw)
-        else subscription_months
+    await _emit_yookassa_success_events(
+        event_payload,
+        send_success_message=send_success_message_to_user,
     )
-    hwid_devices_count = 0
-    if _metadata_value_present(hwid_devices_raw):
-        parsed_hwid_devices = parse_positive_int_units(hwid_devices_raw)
-        if parsed_hwid_devices is None:
-            raise ValueError("Invalid HWID device count")
-        hwid_devices_count = parsed_hwid_devices
-    elif _is_hwid_device_sale_base(sale_mode_base):
-        parsed_hwid_devices = parse_positive_int_units(subscription_months_raw)
-        if parsed_hwid_devices is None:
-            raise ValueError("Invalid HWID device count")
-        hwid_devices_count = parsed_hwid_devices
-
-    if sale_mode_base == "subscription":
-        months_for_activation = int(subscription_months)
-    elif _is_hwid_device_sale_base(sale_mode_base):
-        months_for_activation = hwid_devices_count
-    else:
-        months_for_activation = int(traffic_amount_gb)
-
-    traffic_gb_for_activation = traffic_amount_gb if is_traffic_sale_base(sale_mode_base) else None
-    return (
-        subscription_months,
-        traffic_amount_gb,
-        hwid_devices_count,
-        months_for_activation,
-        traffic_gb_for_activation,
-    )
-
-
-def _payment_amount_and_currency_match(
-    payment: Any,
-    *,
-    actual_amount: Any,
-    actual_currency: Any,
-) -> tuple[bool, str | None]:
-    """Compare the provider settlement values with the immutable local order."""
-    expected_currency = normalize_payment_currency_code(getattr(payment, "currency", None))
-    received_currency = normalize_payment_currency_code(actual_currency, default="")
-    if not expected_currency or received_currency != expected_currency:
-        return False, "currency"
-    amounts_match = payment_amount_and_currency_match(
-        expected_amount=getattr(payment, "amount", None),
-        expected_currency=getattr(payment, "currency", None),
-        received_amount=actual_amount,
-        received_currency=actual_currency,
-        allow_overpayment=True,
-    )
-    return (True, None) if amounts_match else (False, "amount")
 
 
 async def process_successful_payment(

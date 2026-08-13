@@ -17,6 +17,14 @@
   import TariffTrialSettings from "./tariffs/TariffTrialSettings.svelte";
   import { normalizeCurrencyKey } from "$lib/admin/tariffDraft";
   import {
+    tariffDisplayName as tariffName,
+    tariffDisplayPriceSummary,
+    tariffDisplaySortKey as tariffSortKey,
+    tariffGbLimit,
+    tariffHwidLimit,
+    tariffPremiumLimit,
+  } from "$lib/admin/tariffDisplay";
+  import {
     LEGACY_PERIODS,
     LEGACY_TARIFF_SETTING_KEYS,
     boolValue as resolveBoolValue,
@@ -96,40 +104,12 @@
   let legacyTariffSettingsOpen = $state(false);
   let defaultCurrencyDraft = $state("RUB");
 
-  function tariffName(tariff: Tariff): string {
-    return tariff?.names?.ru || tariff?.names?.en || tariff?.key || "—";
-  }
-
-  function tariffSortKey(tariff: Tariff): string {
-    return tariff.key;
-  }
-
   function handleTariffReorder(fromIndex: number, toIndex: number): void {
     void tariffsStore.moveTariff(fromIndex, toIndex);
   }
 
   function tariffPriceSummary(tariff: Tariff): string {
-    const currency = normalizeCurrencyKey(tariffsCatalog.default_currency || "rub");
-    const currencyCode = currency.toUpperCase();
-    if (tariff.billing_model === "traffic") {
-      const packages = tariff.traffic_packages?.[currency] || [];
-      const first = packages[0];
-      return first
-        ? `${first.gb} GB ${at("at", {}, "for")} ${fmtMoney(first.price, currencyCode)}`
-        : at("tariff_traffic_packages", {}, "Traffic packages");
-    }
-    const months = [...(tariff.enabled_periods || [])];
-    return months
-      .map((month) => {
-        const rub =
-          (currency === "rub" ? tariff.prices_rub?.[String(month)] : undefined) ??
-          tariff.prices?.[currency]?.[String(month)];
-        const stars = tariff.prices_stars?.[String(month)];
-        if (rub) return `${month} ${at("months_short", {}, "mo.")} ${fmtMoney(rub, currencyCode)}`;
-        if (stars) return `${month} ${at("months_short", {}, "mo.")} ${stars} ⭐`;
-        return `${month} ${at("months_short", {}, "mo.")}`;
-      })
-      .join(" · ");
+    return tariffDisplayPriceSummary(tariff, tariffsCatalog, at, fmtMoney);
   }
 
   function tariffUnlimitedLabel(): string {
@@ -137,11 +117,7 @@
   }
 
   function tariffGbLimitLabel(value: unknown): string {
-    const gb = Number(value || 0);
-    if (!Number.isFinite(gb) || gb <= 0) {
-      return tariffUnlimitedLabel();
-    }
-    return `${gb} GB`;
+    return tariffGbLimit(value, tariffUnlimitedLabel());
   }
 
   function tariffMonthlyTrafficLimit(tariff: Tariff): string {
@@ -150,20 +126,11 @@
   }
 
   function tariffPremiumTrafficLimit(tariff: Tariff): string {
-    if (!(tariff.premium_squad_uuids || []).length) return "—";
-    if (tariff.premium_unlimited) return tariffUnlimitedLabel();
-    const gb = Number(tariff.premium_monthly_gb ?? 0);
-    return `${Number.isFinite(gb) && gb >= 0 ? gb : 0} GB`;
+    return tariffPremiumLimit(tariff, tariffUnlimitedLabel());
   }
 
   function tariffDeviceLimit(tariff: Tariff): string {
-    const rawLimit = tariff.hwid_device_limit;
-    if (rawLimit === null || rawLimit === undefined) return "env";
-    const limit = Number(rawLimit);
-    if (Number.isFinite(limit) && limit === 0) {
-      return tariffUnlimitedLabel();
-    }
-    return String(rawLimit);
+    return tariffHwidLimit(tariff, tariffUnlimitedLabel());
   }
 
   function boolValue(

@@ -4,13 +4,7 @@
   import Plate from "$components/ui/plate.svelte";
   import { Popover } from "$components/ui/primitives.js";
   import type { Translate } from "$lib/webapp/types.js";
-
-  export type PartnerTourStep = {
-    /** `data-tour` value of the element this step explains. */
-    target: string;
-    titleKey: string;
-    textKey: string;
-  };
+  import type { PartnerTourStep } from "./partnerTourTypes";
 
   type Rect = { top: number; left: number; width: number; height: number };
 

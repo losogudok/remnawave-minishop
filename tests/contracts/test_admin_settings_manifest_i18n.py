@@ -645,6 +645,9 @@ def test_payment_provider_admin_only_toggles_are_mutually_exclusive():
         == "PLATEGA_CRYPTO_ENABLED"
     )
     assert manifest["STARS_ADMIN_ONLY_ENABLED"]["mutually_exclusive_key"] == "STARS_ENABLED"
+    assert manifest["STARS_ENABLED"]["subsection"] == "Telegram Stars"
+    assert manifest["STARS_ADMIN_ONLY_ENABLED"]["subsection"] == "Telegram Stars"
+    assert manifest["PAYMENT_STARS_WEBAPP_LABEL_RU"]["subsection"] == "Telegram Stars"
 
 
 def test_legacy_tariff_settings_are_separated_from_payment_settings():

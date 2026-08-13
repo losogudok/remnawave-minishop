@@ -35,9 +35,9 @@ from db.dal import subscription_dal, tariff_dal, user_dal
 from db.models import Subscription, User
 
 from .panel_api_service import PanelApiService
+from .panel_webhook_payloads import PanelWebhookPayloadMixin
 from .torrent_blocker_notifications import (
     TorrentBlockerNotificationService,
-    torrent_blocker_event_fingerprint,
 )
 from .torrent_blocker_webhook import TORRENT_BLOCKER_EVENT, TorrentBlockerWebhookPayload
 
@@ -82,7 +82,7 @@ _LEGACY_EXPIRATION_HOURS_TO_EVENT = {
 }
 
 
-class PanelWebhookService:
+class PanelWebhookService(PanelWebhookPayloadMixin):
     # Cap parallel background event handlers so an expiry burst from the panel
     # cannot exhaust the DB pool or the YooKassa client.
     _MAX_CONCURRENT_EVENTS = 50
@@ -716,97 +716,6 @@ class PanelWebhookService:
         result = await session.execute(stmt)
         return result.scalars().first()
 
-    @staticmethod
-    def _payload_telegram_id(user_payload: dict) -> int | None:
-        raw = user_payload.get("telegramId")
-        try:
-            value = int(raw or 0)
-        except (TypeError, ValueError):
-            return None
-        return value if value > 0 else None
-
-    @staticmethod
-    def _payload_panel_uuid(user_payload: dict) -> str:
-        return str(
-            user_payload.get("uuid")
-            or user_payload.get("userUuid")
-            or user_payload.get("id")
-            or user_payload.get("shortUuid")
-            or ""
-        ).strip()
-
-    @staticmethod
-    def _payload_expire_date(user_payload: dict) -> str:
-        return str(user_payload.get("expireAt") or "")[:10]
-
-    @staticmethod
-    def _payload_log_context(user_payload: dict) -> str:
-        telegram_id = PanelWebhookService._payload_telegram_id(user_payload)
-        panel_uuid = PanelWebhookService._payload_panel_uuid(user_payload)
-        email = PanelWebhookService._mask_email(str(user_payload.get("email") or "").strip())
-        expire_at = str(user_payload.get("expireAt") or "").strip()
-        payload_keys = ",".join(sorted(str(key) for key in user_payload)) or "none"
-        return (
-            f"telegramId={telegram_id or 'N/A'} "
-            f"panel_uuid={panel_uuid or 'N/A'} "
-            f"email={email or 'N/A'} "
-            f"expireAt={expire_at or 'N/A'} "
-            f"payload_keys={payload_keys}"
-        )
-
-    @staticmethod
-    def _payload_state_snapshot(user_payload: dict[str, Any]) -> str:
-        """Mutable panel fields only: enough to diff two events, no personal data."""
-        squads = user_payload.get("activeInternalSquads")
-        squad_uuids = ",".join(
-            sorted(
-                str(squad.get("uuid") if isinstance(squad, dict) else squad)
-                for squad in (squads if isinstance(squads, list) else [])
-            )
-        )
-        fields = {
-            "panel_uuid": PanelWebhookService._payload_panel_uuid(user_payload) or "N/A",
-            "status": user_payload.get("status"),
-            "expireAt": user_payload.get("expireAt"),
-            "trafficLimitBytes": user_payload.get("trafficLimitBytes"),
-            "trafficLimitStrategy": user_payload.get("trafficLimitStrategy"),
-            "hwidDeviceLimit": user_payload.get("hwidDeviceLimit"),
-            "activeInternalSquads": squad_uuids or "none",
-            "updatedAt": user_payload.get("updatedAt"),
-        }
-        return " ".join(f"{key}={value}" for key, value in fields.items())
-
-    @staticmethod
-    def _mask_email(email: str) -> str:
-        if not email:
-            return ""
-        local_part, separator, domain = email.partition("@")
-        if not separator or not domain:
-            return "present"
-        visible = local_part[:2] if len(local_part) > 2 else local_part[:1]
-        return f"{visible}***@{domain}"
-
-    @staticmethod
-    def _payload_expire_datetime(user_payload: dict) -> datetime | None:
-        raw = str(user_payload.get("expireAt") or "").strip()
-        if not raw:
-            return None
-        try:
-            value = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        except ValueError:
-            try:
-                value = datetime.fromisoformat(raw[:10])
-            except ValueError:
-                return None
-        if value.tzinfo is None:
-            return value.replace(tzinfo=UTC)
-        return value.astimezone(UTC)
-
-    @staticmethod
-    def _payload_expire_is_date_only(user_payload: dict) -> bool:
-        raw = str(user_payload.get("expireAt") or "").strip()
-        return len(raw) == 10 and raw[4:5] == "-" and raw[7:8] == "-"
-
     async def handle_webhook(self, raw_body: bytes, signature_header: str | None) -> web.Response:
         if not self.settings.PANEL_WEBHOOK_SECRET:
             return web.Response(status=401, text="unauthorized")
@@ -901,72 +810,6 @@ class PanelWebhookService:
             self._background_tasks.add(task)
             task.add_done_callback(self._background_tasks.discard)
         return web.Response(status=200, text="ok")
-
-    @classmethod
-    def _webhook_meta(
-        cls,
-        payload: dict[str, Any],
-        event_data: dict[str, Any],
-    ) -> dict[str, Any]:
-        meta: dict[str, Any] = {}
-        for source in (payload, event_data):
-            for key in ("meta", "_meta"):
-                raw = source.get(key)
-                if isinstance(raw, dict):
-                    meta.update(raw)
-        return meta
-
-    @classmethod
-    def _webhook_event_id(
-        cls,
-        event_name: str,
-        user_payload: dict[str, Any],
-        meta: dict[str, Any] | None = None,
-        *,
-        context: dict[str, Any] | None = None,
-        fingerprint_secret: str | None = None,
-    ) -> str:
-        subject = (
-            cls._payload_telegram_id(user_payload)
-            or cls._payload_panel_uuid(user_payload)
-            or "unknown"
-        )
-        event_id = f"{event_name}:{subject}"
-        if event_name == EXPIRATION_EVENT:
-            expiration_hours = cls._expiration_hours(meta, user_payload)
-            if expiration_hours is not None:
-                event_id = f"{event_id}:expiration:{expiration_hours}"
-        elif event_name == TORRENT_BLOCKER_EVENT:
-            fingerprint = torrent_blocker_event_fingerprint(
-                context or {},
-                secret=fingerprint_secret or "",
-            )
-            event_id = f"{event_id}:{fingerprint}"
-        elif event_name not in ACTIONABLE_EVENTS:
-            # Events we only forward to plugins repeat for the same user as often
-            # as the panel is written to (every PATCH emits ``user.modified``), so
-            # ``event:user`` would collapse a whole dedupe window into one event.
-            # Dedupe on content instead: a redelivery of the same payload is a
-            # duplicate, a new modification is not.
-            event_id = f"{event_id}:{cls._payload_fingerprint(user_payload, meta)}"
-        return event_id
-
-    @staticmethod
-    def _payload_fingerprint(
-        user_payload: dict[str, Any],
-        meta: dict[str, Any] | None,
-    ) -> str:
-        try:
-            normalized = json.dumps(
-                {"user": user_payload, "meta": meta or {}},
-                ensure_ascii=True,
-                sort_keys=True,
-                separators=(",", ":"),
-                default=str,
-            )
-        except (TypeError, ValueError):
-            normalized = repr(sorted(user_payload.items()))
-        return hashlib.sha256(normalized.encode()).hexdigest()[:24]
 
     async def _run_event_in_background(
         self,

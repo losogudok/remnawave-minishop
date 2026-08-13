@@ -3,18 +3,16 @@ from __future__ import annotations
 import json
 import logging
 import re
-import secrets
 from collections.abc import Callable
 from typing import (
     TYPE_CHECKING,
     Any,
     Protocol,
-    Self,
     TypeVar,
     overload,
 )
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import field_validator
 
 from config.settings_models import (
     CompatibilitySettings,
@@ -29,10 +27,9 @@ from config.settings_models import (
     SupportSettings,
     WebAppSettings,
 )
+from config.settings_validation import SettingsValidationMixin as SettingsValidationMixin
 from config.support_links import normalize_support_link
 from config.tariffs_config import TariffsConfig, load_tariffs_config
-from config.telegram_proxy import validate_telegram_bot_proxy_url
-from config.traffic_strategy import normalize_traffic_limit_strategy
 from config.webapp_themes_config import WebappThemesConfig, resolved_webapp_themes_catalog
 
 logger = logging.getLogger(__name__)
@@ -820,154 +817,3 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
         for item in (self.SMTP_FALLBACK_PORTS or "").split(","):
             add_port(item)
         return ports
-
-
-class SettingsValidationMixin:
-    @field_validator("TELEGRAM_BOT_PROXY_URL")
-    @classmethod
-    def validate_telegram_bot_proxy_setting(cls, value: SecretStr | None) -> SecretStr | None:
-        return validate_telegram_bot_proxy_url(value)
-
-    @model_validator(mode="after")
-    def validate_referral_link_visibility(self) -> Self:
-        if not (
-            bool(getattr(self, "REFERRAL_WEBAPP_LINK_ENABLED", False))
-            or bool(getattr(self, "REFERRAL_TELEGRAM_LINK_ENABLED", False))
-        ):
-            raise ValueError("at least one referral link must remain enabled")
-        return self
-
-    @field_validator("SUPPORT_LINK", mode="before")
-    @classmethod
-    def normalize_support_link_setting(cls, value):
-        if value is None or (isinstance(value, str) and not value.strip()):
-            return None
-        normalized = normalize_support_link(value)
-        if normalized is None:
-            raise ValueError(
-                "SUPPORT_LINK must be an HTTP(S) URL, @username, or t.me/username link"
-            )
-        return normalized
-
-    @field_validator("LOG_LEVEL", mode="before")
-    @classmethod
-    def normalize_log_level(cls, v):
-        if isinstance(v, str):
-            v = v.strip().upper()
-        if not v:
-            return "INFO"
-        return v
-
-    @field_validator("POSTGRES_USER", "POSTGRES_PASSWORD", mode="before")
-    @classmethod
-    def validate_required_db_credentials(cls, v):
-        if isinstance(v, str):
-            v = v.strip()
-        if not v:
-            raise ValueError("must not be empty")
-        return v
-
-    @field_validator("WEBAPP_SESSION_SECRET", "WEBHOOK_SECRET_TOKEN", mode="before")
-    @classmethod
-    def normalize_webapp_secrets(cls, v):
-        if isinstance(v, str):
-            v = v.strip()
-            if v:
-                return v
-        if v:
-            return v
-        return secrets.token_urlsafe(32)
-
-    @field_validator(
-        "LOG_CHAT_ID",
-        "LOG_THREAD_ID",
-        "LOG_SUPPORT_THREAD_ID",
-        "BACKUP_CHAT_ID",
-        "BACKUP_THREAD_ID",
-        "REQUIRED_CHANNEL_ID",
-        mode="before",
-    )
-    @classmethod
-    def validate_optional_int_fields(cls, v):
-        """Convert empty strings to None for optional integer fields"""
-        if isinstance(v, str) and v.strip() == "":
-            return None
-        return v
-
-    @field_validator(
-        "REQUIRED_CHANNEL_LINK",
-        "CRYPT4_REDIRECT_URL",
-        "PRIVACY_POLICY_URL",
-        "USER_AGREEMENT_URL",
-        "SUBSCRIPTION_MINI_APP_URL",
-        "WEBAPP_LOGO_URL",
-        "TELEGRAM_OAUTH_CLIENT_SECRET",
-        "TELEGRAM_OAUTH_REQUEST_ACCESS",
-        "SMTP_USERNAME",
-        "SMTP_PASSWORD",
-        "SMTP_FROM_EMAIL",
-        "SMTP_FROM_NAME",
-        "SMTP_FALLBACK_PORTS",
-        "BACKUP_COMPOSE_SOURCE_DIR",
-        "BACKUP_COMPOSE_RESTORE_DIR",
-        "PANEL_API_COOKIE",
-        mode="before",
-    )
-    @classmethod
-    def sanitize_optional_link(cls, v):
-        if isinstance(v, str) and not v.strip():
-            return None
-        return v
-
-    @field_validator("WEBAPP_API_BASE_URL", mode="before")
-    @classmethod
-    def normalize_webapp_api_base_url(cls, v):
-        value = str(v or "/api").strip().rstrip("/")
-        return value or "/api"
-
-    @field_validator("MINISHOP_EDGE_TOKEN", mode="before")
-    @classmethod
-    def normalize_minishop_edge_token(cls, v):
-        return str(v or "").strip()
-
-    @field_validator("MINISHOP_EDGE_TOKEN_HEADER", mode="before")
-    @classmethod
-    def normalize_minishop_edge_token_header(cls, v):
-        value = str(v or "").strip()
-        return value or "X-Minishop-Edge-Token"
-
-    @field_validator("USER_HWID_DEVICE_LIMIT", "TRIAL_HWID_DEVICE_LIMIT", mode="before")
-    @classmethod
-    def validate_optional_int(cls, v):
-        if isinstance(v, str):
-            v = v.strip()
-            if not v:
-                return None
-        return v
-
-    @field_validator("APP_RUNTIME_MODE", mode="before")
-    @classmethod
-    def normalize_app_runtime_mode(cls, v):
-        value = str(v or "production").strip().lower().replace("-", "_")
-        if not value:
-            return "production"
-        aliases = {
-            "prod": "production",
-            "dev": "development",
-            "local_dev": "development",
-            "testing": "test",
-        }
-        return aliases.get(value, value)
-
-    @field_validator("PANEL_WRITE_MODE", mode="before")
-    @classmethod
-    def validate_panel_write_mode(cls, v):
-        value = str(v or "auto").strip().lower().replace("-", "_")
-        if value not in {"auto", "live", "dry_run"}:
-            raise ValueError("PANEL_WRITE_MODE must be one of: auto, live, dry_run")
-        return value
-
-    @field_validator("USER_TRAFFIC_STRATEGY", "TRIAL_TRAFFIC_STRATEGY", mode="before")
-    @classmethod
-    def normalize_panel_traffic_strategy(cls, v):
-        return normalize_traffic_limit_strategy(v)

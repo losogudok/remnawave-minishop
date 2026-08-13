@@ -25,6 +25,16 @@
   } from "$components/patterns/admin/index.js";
   import { partnerSortColumns } from "$lib/admin/partnerProgramSort.js";
   import {
+    createPartnerAdminPreviewState,
+    emptyApplication,
+    emptyPartner,
+    emptyWithdrawal,
+    initialPartnerAdminScenario as initialScenario,
+    partnerAdminRouteState,
+    type PartnerAdminView as View,
+    type PartnerDialogKind as DialogKind,
+  } from "$lib/admin/partnerAdminState.js";
+  import {
     formatPartnerMoney,
     partnerActionIdempotencyKey,
     partnerStatusLabel,
@@ -34,17 +44,10 @@
     type PartnerWithdrawalTransition,
   } from "$lib/admin/partnerProgramUi.js";
   import { sortAdminRows } from "$lib/admin/tableSort.js";
-  import { stripRoutePrefix, withRoutePrefix } from "$lib/webapp/routes.js";
+  import { withRoutePrefix } from "$lib/webapp/routes.js";
   import { getSettingsStore } from "$lib/admin/context.js";
   import {
     applications as previewApplications,
-    partnerAudit as previewPartnerAudit,
-    partnerClients as previewPartnerClients,
-    partnerCommissions as previewPartnerCommissions,
-    partnerLedger as previewPartnerLedger,
-    partnerLinks as previewPartnerLinks,
-    partnerPayoutsDaily as previewPartnerPayoutsDaily,
-    partnerRevenueDaily as previewPartnerRevenueDaily,
     partners as previewPartners,
     withdrawals as previewWithdrawals,
     type ApplicationRow,
@@ -77,15 +80,6 @@
   import "./partnersSection.css";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
-  type View =
-    | "dashboard"
-    | "partners"
-    | "applications"
-    | "withdrawals"
-    | "partner_detail"
-    | "application_detail"
-    | "withdrawal_detail";
-  type DialogKind = "" | "create" | "rate" | "balance" | "import" | "status" | "link";
   type IconComponent = typeof UsersRound;
 
   let {
@@ -118,52 +112,26 @@
     return field ? Boolean(field.value) : true;
   });
   let currency = $state("RUB");
-  let partners = $state<PartnerRow[]>(
-    previewMode ? previewPartners.map((item) => ({ ...item })) : []
+  const previewState = createPartnerAdminPreviewState(
+    previewMode,
+    emptyChartsPreview,
+    emptyListsPreview
   );
+  let partners = $state<PartnerRow[]>(previewState.partners);
   let partnerTotal = $state(previewMode ? previewPartners.length : 0);
   let partnerQuery = $state<AdminPartnerListQuery>({ ...DEFAULT_PARTNER_LIST_QUERY });
   let topPartnerSort = $state("earned_desc");
-  let topPartners = $state<PartnerRow[]>(
-    previewMode && !emptyListsPreview
-      ? sortAdminRows(previewPartners, "earned_desc", partnerSortColumns).slice(0, 6)
-      : []
-  );
+  let topPartners = $state<PartnerRow[]>(previewState.topPartners);
   let partnerListRequestId = 0;
-  let applications = $state<ApplicationRow[]>(
-    previewMode ? previewApplications.map((item) => ({ ...item })) : []
-  );
-  let withdrawals = $state<WithdrawalRow[]>(
-    previewMode && !emptyListsPreview ? previewWithdrawals.map((item) => ({ ...item })) : []
-  );
-  let partnerLinks = $state<PartnerLinkRow[]>(
-    previewMode
-      ? previewPartnerLinks.map((item) => ({
-          ...item,
-          id: item.id as PartnerLinkRow["id"],
-        }))
-      : []
-  );
-  let partnerClients = $state<PartnerClientRow[]>(previewMode ? [...previewPartnerClients] : []);
-  let partnerCommissions = $state<PartnerCommissionRow[]>(
-    previewMode ? [...previewPartnerCommissions] : []
-  );
-  let partnerLedger = $state<PartnerLedgerRow[]>(previewMode ? [...previewPartnerLedger] : []);
-  let partnerAudit = $state<PartnerAuditRow[]>(previewMode ? [...previewPartnerAudit] : []);
-  let partnerRevenueDaily = $state<PartnerChartPoint[]>(
-    previewMode
-      ? previewPartnerRevenueDaily.map((item) =>
-          emptyChartsPreview ? { ...item, amount: 0 } : { ...item }
-        )
-      : []
-  );
-  let partnerPayoutsDaily = $state<PartnerChartPoint[]>(
-    previewMode
-      ? previewPartnerPayoutsDaily.map((item) =>
-          emptyChartsPreview ? { ...item, amount: 0 } : { ...item }
-        )
-      : []
-  );
+  let applications = $state<ApplicationRow[]>(previewState.applications);
+  let withdrawals = $state<WithdrawalRow[]>(previewState.withdrawals);
+  let partnerLinks = $state<PartnerLinkRow[]>(previewState.partnerLinks);
+  let partnerClients = $state<PartnerClientRow[]>(previewState.partnerClients);
+  let partnerCommissions = $state<PartnerCommissionRow[]>(previewState.partnerCommissions);
+  let partnerLedger = $state<PartnerLedgerRow[]>(previewState.partnerLedger);
+  let partnerAudit = $state<PartnerAuditRow[]>(previewState.partnerAudit);
+  let partnerRevenueDaily = $state<PartnerChartPoint[]>(previewState.partnerRevenueDaily);
+  let partnerPayoutsDaily = $state<PartnerChartPoint[]>(previewState.partnerPayoutsDaily);
   let dashboard = $state<AdminPartnerDashboard | null>(null);
   let loading = $state(!previewMode);
   let loadError = $state(false);
@@ -228,45 +196,10 @@
       tone: "muted",
     },
   ]);
-  const emptyPartner: PartnerRow = {
-    id: "",
-    userId: 0,
-    name: "",
-    handle: "",
-    avatarUrl: "",
-    status: "closed",
-    rate: 0,
-    clients: 0,
-    payments: 0,
-    gross: 0,
-    earned: 0,
-    available: 0,
-    activated: "",
-  };
-  const emptyApplication: ApplicationRow = {
-    id: "",
-    userId: 0,
-    user: "",
-    handle: "",
-    submitted: "",
-    status: "canceled",
-    messageKey: "",
-  };
-  const emptyWithdrawal: WithdrawalRow = {
-    id: "",
-    partnerId: "",
-    partner: "",
-    handle: "",
-    method: "bank_card",
-    masked: "",
-    amount: 0,
-    status: "failed",
-    requested: "",
-    processedAt: "",
-    noteKey: "",
-  };
-
-  const initialRoute = routeStateFromLocation();
+  function initialRouteState(): { id: string; view: View } {
+    return partnerAdminRouteState(routePrefix);
+  }
+  const initialRoute = initialRouteState();
   let view = $state<View>(initialRoute.view);
   let selectedPartner = $state<PartnerRow>(
     (previewMode
@@ -333,50 +266,10 @@
   let withdrawalSettlementAmount = $state("");
   let withdrawalSettlementError = $state("");
 
-  function initialScenario(): string {
-    if (typeof window === "undefined") return "populated";
-    return String(
-      new URLSearchParams(window.location.search).get("partner_admin_scenario") || ""
-    ).toLowerCase();
-  }
-
-  function routeStateFromLocation(): { id: string; view: View } {
-    if (typeof window === "undefined") return { id: "", view: "dashboard" };
-    const path = stripRoutePrefix(window.location.pathname, routePrefix);
-    const detailMatch = path.match(
-      /^\/admin\/partners\/(partner|applications|withdrawals)\/([^/]+)$/i
-    );
-    if (detailMatch) {
-      const detailView: Record<string, View> = {
-        applications: "application_detail",
-        partner: "partner_detail",
-        withdrawals: "withdrawal_detail",
-      };
-      return {
-        id: decodeURIComponent(detailMatch[2]),
-        view: detailView[detailMatch[1].toLowerCase()] || "dashboard",
-      };
-    }
-    const listMatch = path.match(/^\/admin\/partners\/(partners|applications|withdrawals)$/i);
-    if (listMatch) {
-      return { id: "", view: listMatch[1].toLowerCase() as View };
-    }
-    const queryView = new URLSearchParams(window.location.search).get("partner_admin_view");
-    if (queryView === "partners" || queryView === "applications" || queryView === "withdrawals")
-      return { id: "", view: queryView };
-    if (
-      queryView === "partner_detail" ||
-      queryView === "application_detail" ||
-      queryView === "withdrawal_detail"
-    )
-      return { id: "", view: queryView };
-    return { id: "", view: "dashboard" };
-  }
-
   function syncRouteView(): void {
     actionStatus = "";
     actionError = false;
-    const route = routeStateFromLocation();
+    const route = partnerAdminRouteState(routePrefix);
     const routeId = route.id.toLowerCase();
     if (route.view === "partner_detail") {
       selectedPartner =

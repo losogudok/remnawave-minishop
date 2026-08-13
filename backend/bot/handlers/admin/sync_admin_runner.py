@@ -1,7 +1,7 @@
 import logging
 from collections import Counter
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import cast
 
 from sqlalchemy import or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,27 +48,14 @@ from .sync_admin_identity import (
     _merge_local_duplicate_panel_user_if_needed,
     _prefetch_sync_indexes,
 )
+from .sync_admin_summary import (
+    include_last_connected_snapshot as _include_last_connected_snapshot,
+)
+from .sync_admin_summary import (
+    localized_sync_details,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def _snapshot_is_newer(current_value: datetime | None, next_value: datetime) -> bool:
-    if current_value is None:
-        return True
-    current = current_value.replace(tzinfo=UTC) if current_value.tzinfo is None else current_value
-    next_connected = next_value.replace(tzinfo=UTC) if next_value.tzinfo is None else next_value
-    return current.astimezone(UTC) < next_connected.astimezone(UTC)
-
-
-def _include_last_connected_snapshot(
-    payload: dict[str, Any],
-    subscription: Subscription | None,
-    connected_at: datetime | None,
-) -> None:
-    if connected_at is None:
-        return
-    if subscription is None or _snapshot_is_newer(subscription.last_connected_at, connected_at):
-        payload["last_connected_at"] = connected_at
 
 
 async def perform_sync(
@@ -840,30 +827,10 @@ async def _perform_sync_impl(
 
         # Update sync status
         status = "completed_with_errors" if sync_errors else "completed"
-        # Build additional stats
         default_lang = settings.DEFAULT_LANGUAGE
-        additional_stats = ""
-        if users_without_telegram_id > 0:
-            additional_stats += i18n_instance.gettext(
-                default_lang,
-                "admin_sync_no_telegram_id",
-                count=users_without_telegram_id,
-            )
-        if users_not_found_in_db > 0:
-            additional_stats += i18n_instance.gettext(
-                default_lang,
-                "admin_sync_not_found_in_db",
-                count=users_not_found_in_db,
-            )
-        if sync_errors:
-            additional_stats += i18n_instance.gettext(
-                default_lang, "admin_sync_errors", count=len(sync_errors)
-            )
-
-        # Build full details using localization
-        details = i18n_instance.gettext(
+        details = localized_sync_details(
+            i18n_instance,
             default_lang,
-            "admin_sync_details",
             panel_records_checked=panel_records_checked,
             users_found_in_db=users_found_in_db,
             users_created=users_created,
@@ -871,7 +838,9 @@ async def _perform_sync_impl(
             subscriptions_synced_count=subscriptions_synced_count,
             subscriptions_created=subscriptions_created,
             subscriptions_updated=subscriptions_updated,
-            additional_stats=additional_stats,
+            users_without_telegram_id=users_without_telegram_id,
+            users_not_found_in_db=users_not_found_in_db,
+            error_count=len(sync_errors),
         )
 
         await panel_sync_dal.update_panel_sync_status(

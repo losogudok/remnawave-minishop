@@ -3,7 +3,7 @@ import logging
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup
@@ -12,7 +12,9 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.middlewares.i18n import JsonI18n
-from bot.services.message_audit import log_user_message_delivery
+from bot.services.message_audit import (
+    log_user_message_delivery as log_user_message_delivery,
+)
 from bot.services.panel_api_compat import PanelUserIdMode, numeric_panel_user_id
 from bot.services.panel_api_service import PanelApiService
 from bot.services.panel_user_snapshot import should_use_full_panel_user_scan
@@ -27,13 +29,16 @@ from config.settings import Settings
 from db.dal import tariff_dal, user_dal
 from db.models import Subscription
 
+from .tariff_worker_regular_warnings import (
+    TariffWorkerRegularWarningMixin,
+    _RegularTariff,
+)
 from .tariff_worker_shared import (
     TARIFF_WORKER_BATCH_SIZE,
     TARIFF_WORKER_BULK_PANEL_FETCH_THRESHOLD,
     TARIFF_WORKER_PANEL_CONCURRENCY,
     PanelLimitPatchState,
     canonical_subscriptions_per_panel_user,
-    deliver_traffic_warning,
     record_panel_limit_drift,
 )
 
@@ -45,14 +50,7 @@ PANEL_LIMIT_PATCH_MAX_ATTEMPTS = 3
 PANEL_LIMIT_PATCH_BACKOFF_SECONDS = 1800
 
 
-class _RegularTariff(Protocol):
-    billing_model: str
-    monthly_bytes: int
-
-    def name(self, lang: str, fallback: str = "ru") -> str: ...
-
-
-class TariffWorkerRegularMixin:
+class TariffWorkerRegularMixin(TariffWorkerRegularWarningMixin):
     settings: Settings
     panel_service: PanelApiService
     subscription_service: SubscriptionService
@@ -823,112 +821,3 @@ class TariffWorkerRegularMixin:
             warning_key=warning_key,
             audit_content=audit_content,
         )
-
-    async def _maybe_warn_or_throttle(
-        self,
-        session: AsyncSession,
-        sub: Subscription,
-        tariff: _RegularTariff,
-        used: int | None,
-        limit: int | None,
-        *,
-        warning_period_start: datetime | None = None,
-        next_reset_at: datetime | None = None,
-    ) -> None:
-        if bool(getattr(sub, "regular_unlimited_override", False)):
-            return
-        used_val = int(used or sub.traffic_used_bytes or 0)
-        limit_val = int(limit or sub.traffic_limit_bytes or 0)
-        if limit_val <= 0:
-            return
-        ratio = used_val / limit_val
-        levels = list(getattr(self.settings, "tariff_traffic_warning_levels", [85, 90, 95]))
-        if 100 not in levels:
-            levels.append(100)
-        for level in levels:
-            threshold = level / 100
-            if ratio < threshold:
-                continue
-            warning = await tariff_dal.get_warning(
-                session,
-                subscription_id=sub.subscription_id,
-                period_start_at=warning_period_start if tariff.billing_model == "period" else None,
-                level=level,
-                traffic_limit_bytes=limit_val if tariff.billing_model == "traffic" else None,
-            )
-            if warning:
-                continue
-            await tariff_dal.create_warning(
-                session,
-                subscription_id=sub.subscription_id,
-                period_start_at=warning_period_start if tariff.billing_model == "period" else None,
-                level=level,
-                traffic_limit_bytes=limit_val if tariff.billing_model == "traffic" else None,
-            )
-            user_lang = await self._user_lang(session, sub.user_id)
-            _ = (
-                (lambda k, _user_lang=user_lang, **kw: self.i18n.gettext(_user_lang, k, **kw))
-                if self.i18n
-                else (lambda k, **kw: k)
-            )
-            left_pct = max(0, 100 - level)
-            tariff_name = hd.quote(str(tariff.name(user_lang)))
-            usage = self._usage_placeholders(used_val, limit_val)
-            reset_note = self._traffic_next_reset_note(
-                _,
-                kind="regular",
-                period_start_at=warning_period_start if tariff.billing_model == "period" else None,
-                reset_available_bytes=limit_val,
-                user_lang=user_lang,
-                next_reset_at=next_reset_at,
-                traffic_strategy=self._period_tariff_traffic_strategy(tariff),
-            )
-            if level < 100:
-                text = _(
-                    "traffic_warning_regular_almost",
-                    tariff_name=tariff_name,
-                    left_pct=left_pct,
-                    **usage,
-                )
-                subject_key = "email_traffic_warning_regular_almost_subject"
-            else:
-                text = _(
-                    "traffic_warning_regular_depleted",
-                    tariff_name=tariff_name,
-                    **usage,
-                )
-                subject_key = "email_traffic_warning_regular_depleted_subject"
-            if reset_note:
-                text = f"{text}\n\n{reset_note}"
-            warning_key = (
-                "traffic_warning_regular_almost"
-                if level < 100
-                else "traffic_warning_regular_depleted"
-            )
-            audit_content = (
-                f"kind=regular warning_key={warning_key} level={level} "
-                f"used_bytes={used_val} limit_bytes={limit_val}"
-            )
-            markup = self._traffic_topup_markup(user_lang, "regular") if self.bot else None
-            await deliver_traffic_warning(
-                session,
-                user_id=sub.user_id,
-                bot=self.bot,
-                text=text,
-                markup=markup,
-                audit_content=audit_content,
-                audit_logger=log_user_message_delivery,
-                email_sender=self._send_traffic_warning_email,
-                subject_key=subject_key,
-                kind="regular",
-                warning_key=warning_key,
-                logger=logger,
-                telegram_failure_message="Failed to send traffic warning to user %s",
-            )
-        if ratio >= 1.0 and not sub.is_throttled:
-            logger.info(
-                "Tariff traffic limit reached for user %s subscription %s. "
-                "Leaving access control to Remnawave status handling.",
-                sub.user_id,
-                sub.subscription_id,
-            )
