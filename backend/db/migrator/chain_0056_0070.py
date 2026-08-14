@@ -443,6 +443,42 @@ def _migration_0062_add_admin_broadcast_history(connection: Connection) -> None:
         connection.execute(text(statement))
 
 
+def _migration_0063_reconcile_tgshop_promo_codes(connection: Connection) -> None:
+    """Normalize legacy tg-shop promo rewards to the current effect columns."""
+
+    inspector = inspect(connection)
+    if "promo_codes" not in set(inspector.get_table_names()):
+        return
+
+    columns_info = inspector.get_columns("promo_codes")
+    columns = {column["name"] for column in columns_info}
+    bonus_days = next(
+        (column for column in columns_info if column["name"] == "bonus_days"),
+        None,
+    )
+    if bonus_days is not None:
+        connection.execute(text("UPDATE promo_codes SET bonus_days = 0 WHERE bonus_days IS NULL"))
+
+    if {"discount_percent", "discount_percentage"}.issubset(columns):
+        connection.execute(
+            text(
+                """
+                UPDATE promo_codes
+                SET discount_percent = discount_percentage
+                WHERE discount_percent IS NULL
+                  AND discount_percentage BETWEEN 1 AND 100
+                """
+            )
+        )
+
+    if (
+        bonus_days is not None
+        and bonus_days.get("nullable") is not False
+        and connection.dialect.name == "postgresql"
+    ):
+        connection.execute(text("ALTER TABLE promo_codes ALTER COLUMN bonus_days SET NOT NULL"))
+
+
 CHAIN_0056_0070: list[Migration] = [
     Migration(
         id="0056_add_tariff_binding_audit",
@@ -478,5 +514,10 @@ CHAIN_0056_0070: list[Migration] = [
         id="0062_add_admin_broadcast_history",
         description="Persist scheduled broadcasts and per-channel delivery progress",
         upgrade=_migration_0062_add_admin_broadcast_history,
+    ),
+    Migration(
+        id="0063_reconcile_tgshop_promo_codes",
+        description="Normalize legacy tg-shop promo rewards for current effect handling",
+        upgrade=_migration_0063_reconcile_tgshop_promo_codes,
     ),
 ]

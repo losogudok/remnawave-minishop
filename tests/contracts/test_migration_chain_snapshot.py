@@ -83,6 +83,7 @@ EXPECTED_CORE_MIGRATION_IDS = [
     "0060_add_promo_traffic_grants",
     "0061_add_partner_checkout_balance",
     "0062_add_admin_broadcast_history",
+    "0063_reconcile_tgshop_promo_codes",
 ]
 
 
