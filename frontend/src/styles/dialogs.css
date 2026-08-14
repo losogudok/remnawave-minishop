@@ -104,13 +104,14 @@
 }
 
 .payment-dialog-card {
+  width: min(100%, 500px);
   max-height: 100%;
   overflow: hidden;
 }
 
 .payment-dialog-body {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .webapp-subscription-reissue-dialog {

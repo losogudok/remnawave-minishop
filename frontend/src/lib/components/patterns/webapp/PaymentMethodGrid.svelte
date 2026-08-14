@@ -2,7 +2,8 @@
   import type { Component } from "svelte";
   import * as Icons from "$components/ui/icons.js";
   import { Tooltip } from "$components/ui/primitives.js";
-  import { TELEGRAM_STARS_MINI_APP_REQUIRED } from "$lib/webapp/tariffs.js";
+  import { formatMoney } from "$lib/webapp/formatters.js";
+  import { paymentMethodMinimum, TELEGRAM_STARS_MINI_APP_REQUIRED } from "$lib/webapp/tariffs.js";
   import type { PaymentMethod, StringAction, Translate } from "$lib/webapp/types.js";
 
   type IconComponent = Component<{ size?: number | string }>;
@@ -46,8 +47,10 @@
         "Open Minishop from the bot in Telegram to pay with Stars"
       );
     }
-    if (!method?.min_amount || !method?.min_currency) return "";
-    return `Minimum ${method.min_amount} ${method.min_currency}`;
+    const minimum = paymentMethodMinimum(method);
+    if (!minimum) return "";
+    const amount = minimum.text || formatMoney(minimum.amount, minimum.currency);
+    return t("wa_payment_method_minimum", { amount }, `Minimum payment amount: ${amount}`);
   }
 
   function requiresTelegramMiniApp(method: PaymentMethod) {

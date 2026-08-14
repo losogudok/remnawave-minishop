@@ -807,6 +807,37 @@
         "updated_at": null
       },
       {
+        "key": "PAYMENT_METHODS_DISPLAY_MODE",
+        "type": "string",
+        "section": "payments",
+        "section_order": 4,
+        "subsection": "checkout",
+        "label": "Payment methods display",
+        "description": "Choose a compact dropdown or separate payment method buttons in checkout dialogs.",
+        "i18n_label_key": "admin_settings_field_payment_methods_display_mode_label",
+        "i18n_description_key": "admin_settings_field_payment_methods_display_mode_description",
+        "i18n_subsection_key": "admin_settings_subsection_checkout",
+        "i18n_placeholder_key": null,
+        "placeholder": "",
+        "optional": false,
+        "secret": false,
+        "choices": [
+          {
+            "value": "dropdown",
+            "label": "Dropdown",
+            "i18n_label_key": "admin_settings_field_payment_methods_display_mode_choice_dropdown"
+          },
+          {
+            "value": "buttons",
+            "label": "Separate buttons",
+            "i18n_label_key": "admin_settings_field_payment_methods_display_mode_choice_buttons"
+          }
+        ],
+        "value": "",
+        "overridden": false,
+        "updated_at": null
+      },
+      {
         "key": "FREEKASSA_ENABLED",
         "type": "bool",
         "section": "payments",

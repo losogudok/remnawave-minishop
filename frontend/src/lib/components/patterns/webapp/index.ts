@@ -7,6 +7,7 @@ export { default as EmptyCard } from "./EmptyCard.svelte";
 export { default as LinearProgress } from "./LinearProgress.svelte";
 export { default as LanguageSelect } from "./LanguageSelect.svelte";
 export { default as PaymentMethodGrid } from "./PaymentMethodGrid.svelte";
+export { default as PaymentMethodPicker } from "./PaymentMethodPicker.svelte";
 export { default as StatusMessage } from "./StatusMessage.svelte";
 export { default as TicketCard } from "./TicketCard.svelte";
 export { default as TicketMessageBubble } from "./TicketMessageBubble.svelte";

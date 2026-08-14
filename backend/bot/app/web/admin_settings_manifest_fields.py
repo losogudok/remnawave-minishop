@@ -427,6 +427,18 @@ SETTINGS_MANIFEST: list[SettingField] = [
         "Controls the 'Payment Methods Order' setting in admin overrides.",
         subsection="common",
     ),
+    SettingField(
+        "PAYMENT_METHODS_DISPLAY_MODE",
+        "string",
+        "payments",
+        "Payment methods display",
+        "Choose a compact dropdown or separate payment method buttons in checkout dialogs.",
+        optional=False,
+        choices=(("dropdown", "Dropdown"), ("buttons", "Separate buttons")),
+        subsection="checkout",
+        i18n_label_key="admin_settings_field_payment_methods_display_mode_label",
+        i18n_description_key="admin_settings_field_payment_methods_display_mode_description",
+    ),
     # ─── Trial ─────────────────────────────────────────────────────
     SettingField(
         "TRIAL_ENABLED",

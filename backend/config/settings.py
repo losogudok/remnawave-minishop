@@ -1,6 +1,7 @@
 import logging
 import os
 import secrets
+from typing import Literal
 
 from pydantic import Field, SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -213,6 +214,10 @@ class Settings(SettingsComputedMixin, SettingsValidationMixin, BaseSettings):
     PAYMENT_METHODS_ORDER: str | None = Field(
         default=None,
         description="Comma-separated list of payment methods to show (e.g., severpay,wata,freekassa,yookassa,platega,stars,cryptopay,heleket,paykilla,lava,pally,cloudpayments,stripe,tribute)",  # noqa: E501
+    )
+    PAYMENT_METHODS_DISPLAY_MODE: Literal["dropdown", "buttons"] = Field(
+        default="dropdown",
+        description="Display payment methods as a compact dropdown or separate buttons.",
     )
     SUBSCRIPTION_PURCHASE_DESCRIPTION_ENABLED: bool = Field(
         default=True,

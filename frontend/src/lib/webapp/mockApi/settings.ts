@@ -37,6 +37,8 @@ function demoRuntimeSettingValue(key: string): unknown {
     REFERRAL_TELEGRAM_LINK_ENABLED: DEV_MOCK.config.referralTelegramLinkEnabled ?? true,
     LEGACY_REFS: DEV_MOCK.config.legacyRefs ?? true,
     DISPOSABLE_EMAIL_DOMAINS: DEV_MOCK.config.disposableEmailDomains || "",
+    PAYMENT_METHODS_DISPLAY_MODE:
+      DEV_MOCK.data.settings?.payment_methods_display_mode || "dropdown",
   };
   return Object.prototype.hasOwnProperty.call(values, key) ? values[key] : undefined;
 }
@@ -61,6 +63,9 @@ export function demoSettingsSections(clone: CloneFn): ManifestSection[] {
       } else {
         const runtimeValue = demoRuntimeSettingValue(field.key);
         if (typeof runtimeValue !== "undefined") field.value = runtimeValue;
+      }
+      if (field.key === "PAYMENT_METHODS_DISPLAY_MODE") {
+        field.value = demoRuntimeSettingValue(field.key) || "dropdown";
       }
       if (demoSettingsChanges.has(field.key)) {
         const change = demoSettingsChanges.get(field.key);
@@ -144,6 +149,10 @@ function applyDemoSettingToMock(key: string, value: unknown): void {
   if (key === "LEGACY_REFS") DEV_MOCK.config.legacyRefs = Boolean(value);
   if (key === "DISPOSABLE_EMAIL_DOMAINS") {
     DEV_MOCK.config.disposableEmailDomains = value || "";
+  }
+  if (key === "PAYMENT_METHODS_DISPLAY_MODE") {
+    DEV_MOCK.data.settings.payment_methods_display_mode =
+      value === "buttons" ? "buttons" : "dropdown";
   }
 }
 
