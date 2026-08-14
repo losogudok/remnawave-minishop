@@ -259,15 +259,17 @@
             <span>{at("broadcast_schedule_later", {}, "Schedule for later")}</span>
           </label>
           {#if scheduleEnabled}
-            <Input
-              type="datetime-local"
-              value={scheduledAt}
-              aria-label={at("broadcast_scheduled_at", {}, "Scheduled")}
-              oninput={(event) =>
-                broadcastStore.updateField({
-                  broadcastScheduledAt: (event.currentTarget as HTMLInputElement).value,
-                })}
-            />
+            <div class="broadcast-schedule-input">
+              <Input
+                type="datetime-local"
+                value={scheduledAt}
+                aria-label={at("broadcast_scheduled_at", {}, "Scheduled")}
+                oninput={(event) =>
+                  broadcastStore.updateField({
+                    broadcastScheduledAt: (event.currentTarget as HTMLInputElement).value,
+                  })}
+              />
+            </div>
             {#if scheduleInvalid}
               <small class="admin-field-error">
                 {at("broadcast_schedule_future", {}, "Choose a future date and time")}
@@ -446,6 +448,18 @@
     cursor: pointer;
   }
 
+  .broadcast-schedule-input {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .broadcast-schedule-input :global(input[type="datetime-local"]) {
+    width: auto;
+    min-width: 0;
+    flex: 1 1 0;
+  }
+
   .broadcast-preview-head {
     display: flex;
     justify-content: space-between;
@@ -520,7 +534,7 @@
 
   @media (max-width: 680px) {
     .broadcast-setup-grid {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .broadcast-control-panel {

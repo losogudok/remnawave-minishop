@@ -504,8 +504,9 @@
   }
 
   .broadcast-reschedule-row :global(input) {
+    width: auto;
     min-width: 190px;
-    flex: 1;
+    flex: 1 1 190px;
   }
 
   .broadcast-history-actions {
@@ -544,6 +545,11 @@
 
     .broadcast-history-dates {
       grid-template-columns: 1fr;
+    }
+
+    .broadcast-reschedule-row :global(input) {
+      min-width: 0;
+      flex-basis: 100%;
     }
 
     .broadcast-history-actions :global(button) {

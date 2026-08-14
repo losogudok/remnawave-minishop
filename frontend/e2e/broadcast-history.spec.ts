@@ -1,4 +1,26 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
+
+async function expectContainedBy(element: Locator, container: Locator): Promise<void> {
+  const [elementBox, containerBox] = await Promise.all([
+    element.boundingBox(),
+    container.boundingBox(),
+  ]);
+  if (!elementBox || !containerBox) {
+    throw new Error("Expected visible element and container bounds");
+  }
+  expect(elementBox.x).toBeGreaterThanOrEqual(containerBox.x - 1);
+  expect(elementBox.x + elementBox.width).toBeLessThanOrEqual(
+    containerBox.x + containerBox.width + 1
+  );
+}
+
+async function waitForAnimations(elements: Locator): Promise<void> {
+  await elements.evaluateAll(async (items) => {
+    await Promise.all(
+      items.flatMap((item) => item.getAnimations().map((animation) => animation.finished))
+    );
+  });
+}
 
 test("broadcast editor is compact and history uses masonry columns on desktop", async ({
   page,
@@ -16,11 +38,7 @@ test("broadcast editor is compact and history uses masonry columns on desktop", 
 
   const cards = page.locator(".broadcast-history-card");
   await expect(cards).toHaveCount(3);
-  await cards.evaluateAll(async (elements) => {
-    await Promise.all(
-      elements.flatMap((element) => element.getAnimations().map((item) => item.finished))
-    );
-  });
+  await waitForAnimations(cards);
   const cardBoxes = await cards.evaluateAll((elements) =>
     elements.map((element) => element.getBoundingClientRect())
   );
@@ -31,7 +49,7 @@ test("broadcast editor is compact and history uses masonry columns on desktop", 
 test("broadcast history stacks on mobile and scheduled cards can be edited and removed", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 390, height: 900 });
+  await page.setViewportSize({ width: 320, height: 900 });
   await page.goto("/demo/runtime/admin/broadcast?theme_preview=dark");
 
   const controls = page.locator(".broadcast-control-panel");
@@ -42,8 +60,19 @@ test("broadcast history stacks on mobile and scheduled cards can be edited and r
   expect(new Set(controlBoxes.map((box) => Math.round(box.left))).size).toBe(1);
   expect(new Set(controlBoxes.map((box) => Math.round(box.top))).size).toBe(4);
 
+  const scheduleControl = page.locator(".broadcast-schedule-control");
+  await scheduleControl.getByRole("checkbox").click();
+  const editorScheduleInput = scheduleControl.locator('input[type="datetime-local"]');
+  await expect(editorScheduleInput).toBeVisible();
+  await expectContainedBy(scheduleControl, page.locator(".broadcast-setup-grid"));
+  await expectContainedBy(editorScheduleInput, scheduleControl);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+  ).toBeLessThanOrEqual(1);
+
   const cards = page.locator(".broadcast-history-card");
   await expect(cards).toHaveCount(3);
+  await waitForAnimations(cards);
   const cardBoxes = await cards.evaluateAll((elements) =>
     elements.map((element) => element.getBoundingClientRect())
   );
@@ -53,6 +82,12 @@ test("broadcast history stacks on mobile and scheduled cards can be edited and r
   await scheduledCard.getByRole("button", { name: "Изменить время" }).click();
   const scheduleInput = scheduledCard.locator('input[type="datetime-local"]');
   await expect(scheduleInput).toBeVisible();
+  const rescheduleRow = scheduledCard.locator(".broadcast-reschedule-row");
+  await expectContainedBy(rescheduleRow, scheduledCard);
+  await expectContainedBy(scheduleInput, rescheduleRow);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+  ).toBeLessThanOrEqual(1);
   await scheduleInput.fill("2031-05-20T14:30");
   await scheduledCard.getByRole("button", { name: "Обновить" }).click();
   await expect(scheduledCard).toContainText("20.05.2031");
