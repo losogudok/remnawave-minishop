@@ -11,14 +11,17 @@
   let { at, currentLang = "en" }: { at: TranslateFn; currentLang?: string } = $props();
   const broadcastStore = getBroadcastStore();
   let scheduleDrafts = $state<Record<number, string>>({});
+  let scheduleNow = $state(Date.now());
   const history = $derived(broadcastStore.broadcastHistory);
   const loading = $derived(Boolean(broadcastStore.broadcastHistoryLoading));
+  const minimumScheduledAt = $derived(datetimeLocalFromTimestamp(nextMinute(scheduleNow)));
 
   const ACTIVE_STATUSES = new Set(["scheduled", "queued", "running"]);
 
   onMount(() => {
     void broadcastStore.loadHistory();
     const timer = window.setInterval(() => {
+      scheduleNow = Date.now();
       if (document.visibilityState !== "visible") return;
       if (broadcastStore.broadcastHistory.some((item) => ACTIVE_STATUSES.has(item.status))) {
         void broadcastStore.loadHistory();
@@ -57,8 +60,22 @@
   function datetimeLocalValue(value: string): string {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "";
+    return datetimeLocalFromTimestamp(date.getTime());
+  }
+
+  function datetimeLocalFromTimestamp(timestamp: number): string {
+    const date = new Date(timestamp);
     const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
     return local.toISOString().slice(0, 16);
+  }
+
+  function nextMinute(timestamp: number): number {
+    return Math.ceil((timestamp + 1) / 60_000) * 60_000;
+  }
+
+  function scheduleDraftInvalid(value: string): boolean {
+    const date = new Date(value);
+    return !value || Number.isNaN(date.getTime()) || date.getTime() <= scheduleNow;
   }
 
   function editSchedule(item: BroadcastHistoryItem): void {
@@ -76,8 +93,10 @@
 
   async function saveSchedule(item: BroadcastHistoryItem): Promise<void> {
     const value = scheduleDrafts[item.broadcastId] || "";
-    await broadcastStore.rescheduleBroadcast(item.broadcastId, value);
-    stopEditing(item.broadcastId);
+    if (scheduleDraftInvalid(value)) return;
+    if (await broadcastStore.rescheduleBroadcast(item.broadcastId, value)) {
+      stopEditing(item.broadcastId);
+    }
   }
 
   async function remove(item: BroadcastHistoryItem): Promise<void> {
@@ -236,15 +255,25 @@
             {#if scheduleDrafts[item.broadcastId] !== undefined}
               <div class="broadcast-reschedule-row">
                 <Input
+                  class={scheduleDraftInvalid(scheduleDrafts[item.broadcastId])
+                    ? "input-error"
+                    : ""}
                   type="datetime-local"
                   value={scheduleDrafts[item.broadcastId]}
+                  min={minimumScheduledAt}
                   aria-label={at("broadcast_scheduled_at", {}, "Scheduled")}
+                  aria-invalid={scheduleDraftInvalid(scheduleDrafts[item.broadcastId])}
                   oninput={(event) =>
                     (scheduleDrafts[item.broadcastId] = (
                       event.currentTarget as HTMLInputElement
                     ).value)}
                 />
-                <AdminButton size="sm" variant="primary" onclick={() => saveSchedule(item)}>
+                <AdminButton
+                  size="sm"
+                  variant="primary"
+                  disabled={scheduleDraftInvalid(scheduleDrafts[item.broadcastId])}
+                  onclick={() => saveSchedule(item)}
+                >
                   {at("broadcast_reschedule_save", {}, "Update")}
                 </AdminButton>
                 <AdminButton
@@ -254,6 +283,11 @@
                 >
                   {at("btn_cancel", {}, "Cancel")}
                 </AdminButton>
+                {#if scheduleDraftInvalid(scheduleDrafts[item.broadcastId])}
+                  <small class="admin-field-error broadcast-reschedule-error" role="alert">
+                    {at("broadcast_schedule_future", {}, "The send time must be in the future")}
+                  </small>
+                {/if}
               </div>
             {/if}
 
@@ -507,6 +541,12 @@
     width: auto;
     min-width: 190px;
     flex: 1 1 190px;
+  }
+
+  .broadcast-reschedule-error {
+    width: 100%;
+    flex: 1 0 100%;
+    line-height: 1.35;
   }
 
   .broadcast-history-actions {

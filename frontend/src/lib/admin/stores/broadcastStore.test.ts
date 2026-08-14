@@ -333,7 +333,10 @@ describe("broadcastStore", () => {
     await store.loadHistory();
     expect(store.broadcastHistory[0]?.broadcastId).toBe(12);
 
-    await store.rescheduleBroadcast(12, "2031-05-21T12:00");
+    expect(await store.rescheduleBroadcast(12, "2020-01-01T00:00")).toBe(false);
+    expect(api).toHaveBeenCalledTimes(1);
+
+    expect(await store.rescheduleBroadcast(12, "2031-05-21T12:00")).toBe(true);
     expect(api.mock.calls[1][0]).toBe("/admin/broadcasts/12");
     expect(api.mock.calls[1][1].method).toBe("PATCH");
 

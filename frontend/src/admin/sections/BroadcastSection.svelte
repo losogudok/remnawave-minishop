@@ -95,14 +95,16 @@
   const promoOptions = $derived(broadcastStore.broadcastPromoOptions);
   const promoOptionsLoading = $derived(Boolean(broadcastStore.broadcastPromoOptionsLoading));
   const promoOptionsLoaded = $derived(Boolean(broadcastStore.broadcastPromoOptionsLoaded));
-  const submitEnabled = $derived(broadcastStore.canSubmit());
+  let scheduleNow = $state(Date.now());
   const scheduleEnabled = $derived(Boolean(broadcastStore.broadcastScheduleEnabled));
   const scheduledAt = $derived(broadcastStore.broadcastScheduledAt);
+  const minimumScheduledAt = $derived(datetimeLocalValue(nextMinute(scheduleNow)));
   const scheduleInvalid = $derived.by(() => {
     if (!scheduleEnabled) return false;
     const date = new Date(scheduledAt);
-    return !scheduledAt || Number.isNaN(date.getTime()) || date.getTime() <= Date.now();
+    return !scheduledAt || Number.isNaN(date.getTime()) || date.getTime() <= scheduleNow;
   });
+  const submitEnabled = $derived(!scheduleInvalid && broadcastStore.canSubmit());
   const handleTargetChange = (value: string) => {
     broadcastStore.updateField({ broadcastTarget: value, broadcastTargetError: null });
     writeTargetToRoute(value);
@@ -128,22 +130,32 @@
 
   const broadcastTargetOptions = $derived(broadcastStore.BROADCAST_TARGET_OPTIONS);
 
-  function defaultScheduledAt(): string {
-    const date = new Date(Date.now() + 60 * 60 * 1000);
+  function datetimeLocalValue(timestamp: number): string {
+    const date = new Date(timestamp);
     const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
     return local.toISOString().slice(0, 16);
   }
 
+  function nextMinute(timestamp: number): number {
+    return Math.ceil((timestamp + 1) / 60_000) * 60_000;
+  }
+
+  function defaultScheduledAt(timestamp: number): string {
+    return datetimeLocalValue(timestamp + 60 * 60 * 1000);
+  }
+
   function toggleSchedule(checked: boolean): void {
+    const now = Date.now();
+    scheduleNow = now;
     const existing = new Date(scheduledAt);
     const validExisting =
-      scheduledAt && !Number.isNaN(existing.getTime()) && existing.getTime() > Date.now();
+      scheduledAt && !Number.isNaN(existing.getTime()) && existing.getTime() > now;
     broadcastStore.updateField({
       broadcastScheduleEnabled: checked,
       broadcastScheduledAt: checked
         ? validExisting
           ? scheduledAt
-          : defaultScheduledAt()
+          : defaultScheduledAt(now)
         : scheduledAt,
     });
   }
@@ -159,6 +171,9 @@
   );
 
   onMount(() => {
+    const scheduleTimer = window.setInterval(() => {
+      scheduleNow = Date.now();
+    }, 15_000);
     const requestedTarget = routeTarget();
     if (requestedTarget) {
       // Set before discovery completes so a plugin audience is retained when
@@ -180,6 +195,7 @@
     if (broadcastStore.broadcastButtons.some((button) => button.kind !== "url")) {
       broadcastStore.loadPromoOptions();
     }
+    return () => window.clearInterval(scheduleTimer);
   });
 </script>
 
@@ -191,7 +207,7 @@
   <div class="admin-card-body">
     <div class="admin-form">
       <div class="broadcast-setup-grid">
-        <Label.Root class="admin-field-label broadcast-control-panel broadcast-audience-control">
+        <div class="admin-field-label broadcast-control-panel broadcast-audience-control">
           <span>{at("broadcast_label_audience", {}, "Audience")}</span>
           <AdminSelect
             value={broadcastTarget}
@@ -204,7 +220,7 @@
               {at("broadcast_target_unavailable", {}, "The requested audience is unavailable")}
             </small>
           {/if}
-        </Label.Root>
+        </div>
         <div class="admin-field-label broadcast-control-panel">
           <span>{at("broadcast_channels_label", {}, "Delivery channels")}</span>
           <div class="broadcast-channels">
@@ -248,33 +264,49 @@
             onSelect={(code) => broadcastStore.updateField({ broadcastLanguage: code })}
           />
         </div>
-        <div class="admin-field-label broadcast-control-panel broadcast-schedule-control">
+        <div
+          class="admin-field-label broadcast-control-panel broadcast-schedule-control"
+          class:is-invalid={scheduleInvalid}
+        >
           <span>{at("broadcast_schedule_label", {}, "Send time")}</span>
-          <label class="broadcast-channel">
-            <Checkbox
-              checked={scheduleEnabled}
-              ariaLabel={at("broadcast_schedule_later", {}, "Schedule for later")}
-              onCheckedChange={toggleSchedule}
-            />
-            <span>{at("broadcast_schedule_later", {}, "Schedule for later")}</span>
-          </label>
-          {#if scheduleEnabled}
-            <div class="broadcast-schedule-input">
-              <Input
-                type="datetime-local"
-                value={scheduledAt}
-                aria-label={at("broadcast_scheduled_at", {}, "Scheduled")}
-                oninput={(event) =>
-                  broadcastStore.updateField({
-                    broadcastScheduledAt: (event.currentTarget as HTMLInputElement).value,
-                  })}
+          <div class="broadcast-schedule-row">
+            <label class="broadcast-channel broadcast-schedule-toggle">
+              <Checkbox
+                checked={scheduleEnabled}
+                ariaLabel={at("broadcast_schedule_later", {}, "Schedule for later")}
+                onCheckedChange={toggleSchedule}
               />
-            </div>
-            {#if scheduleInvalid}
-              <small class="admin-field-error">
-                {at("broadcast_schedule_future", {}, "Choose a future date and time")}
-              </small>
+              {#if !scheduleEnabled}
+                <span>{at("broadcast_schedule_later", {}, "Schedule for later")}</span>
+              {/if}
+            </label>
+            {#if scheduleEnabled}
+              <div class="broadcast-schedule-input">
+                <Input
+                  id="broadcast-scheduled-at"
+                  class={scheduleInvalid ? "input-error" : ""}
+                  type="datetime-local"
+                  value={scheduledAt}
+                  min={minimumScheduledAt}
+                  aria-label={at("broadcast_scheduled_at", {}, "Scheduled")}
+                  aria-invalid={scheduleInvalid}
+                  aria-describedby={scheduleInvalid ? "broadcast-schedule-error" : undefined}
+                  oninput={(event) =>
+                    broadcastStore.updateField({
+                      broadcastScheduledAt: (event.currentTarget as HTMLInputElement).value,
+                    })}
+                />
+              </div>
             {/if}
+          </div>
+          {#if scheduleEnabled && scheduleInvalid}
+            <small
+              id="broadcast-schedule-error"
+              class="admin-field-error broadcast-schedule-error"
+              role="alert"
+            >
+              {at("broadcast_schedule_future", {}, "The send time must be in the future")}
+            </small>
           {/if}
         </div>
       </div>
@@ -407,9 +439,9 @@
 <style>
   .broadcast-setup-grid {
     display: grid;
-    grid-template-columns: minmax(230px, 1.35fr) minmax(180px, 0.8fr) minmax(210px, 1fr) minmax(
-        190px,
-        0.9fr
+    grid-template-columns: minmax(230px, 1.3fr) minmax(180px, 0.75fr) minmax(210px, 0.95fr) minmax(
+        260px,
+        1.15fr
       );
     gap: 10px;
     align-items: stretch;
@@ -421,6 +453,9 @@
     border: 1px solid color-mix(in srgb, var(--admin-border) 82%, transparent);
     border-radius: 11px;
     background: var(--admin-surface-2);
+    transition:
+      border-color 0.16s ease,
+      background 0.16s ease;
   }
 
   .broadcast-control-panel > span:first-child {
@@ -448,16 +483,55 @@
     cursor: pointer;
   }
 
+  .broadcast-schedule-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+    min-height: 36px;
+  }
+
+  .broadcast-schedule-toggle {
+    flex: 0 0 auto;
+  }
+
   .broadcast-schedule-input {
     display: flex;
-    width: 100%;
     min-width: 0;
+    flex: 1 1 auto;
+    animation: broadcast-schedule-input-in 0.16s ease-out both;
   }
 
   .broadcast-schedule-input :global(input[type="datetime-local"]) {
     width: auto;
+    height: 36px;
     min-width: 0;
+    min-height: 36px;
     flex: 1 1 0;
+  }
+
+  .broadcast-schedule-input :global(.input-error) {
+    background: color-mix(in srgb, var(--danger) 8%, var(--admin-bg));
+  }
+
+  .broadcast-schedule-control.is-invalid {
+    border-color: color-mix(in srgb, var(--danger) 68%, var(--admin-border));
+    background: color-mix(in srgb, var(--danger) 5%, var(--admin-surface-2));
+  }
+
+  .broadcast-schedule-error {
+    line-height: 1.35;
+  }
+
+  @keyframes broadcast-schedule-input-in {
+    from {
+      opacity: 0;
+      transform: translateX(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
   }
 
   .broadcast-preview-head {
@@ -543,6 +617,21 @@
 
     .broadcast-channels {
       gap: 12px;
+    }
+
+    .broadcast-schedule-input :global(input[type="datetime-local"]) {
+      height: 46px;
+      min-height: 46px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .broadcast-control-panel {
+      transition: none;
+    }
+
+    .broadcast-schedule-input {
+      animation: none;
     }
   }
 </style>

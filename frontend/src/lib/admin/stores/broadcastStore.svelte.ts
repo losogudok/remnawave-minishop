@@ -134,7 +134,7 @@ export type BroadcastStore = BroadcastState & {
   sendToUser: (input: SingleUserMessage) => Promise<string | null>;
   loadHistory: () => Promise<void>;
   deleteBroadcast: (broadcastId: number) => Promise<void>;
-  rescheduleBroadcast: (broadcastId: number, localDateTime: string) => Promise<void>;
+  rescheduleBroadcast: (broadcastId: number, localDateTime: string) => Promise<boolean>;
   canSubmit: () => boolean;
   BROADCAST_TARGET_OPTIONS: BroadcastTargetOption[];
   MAX_BROADCAST_BUTTONS: number;
@@ -589,7 +589,7 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
   async function runBroadcast(): Promise<void> {
     if (!canSubmit()) {
       if (state.broadcastScheduleEnabled) {
-        onToast(at("broadcast_schedule_future", {}, "Choose a future date and time"));
+        onToast(at("broadcast_schedule_future", {}, "The send time must be in the future"));
       }
       return;
     }
@@ -721,15 +721,15 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
     }
   }
 
-  async function rescheduleBroadcast(broadcastId: number, localDateTime: string): Promise<void> {
+  async function rescheduleBroadcast(broadcastId: number, localDateTime: string): Promise<boolean> {
     const scheduledAt = new Date(localDateTime);
     if (
       !localDateTime ||
       Number.isNaN(scheduledAt.getTime()) ||
       scheduledAt.getTime() <= Date.now()
     ) {
-      onToast(at("broadcast_schedule_future", {}, "Choose a future date and time"));
-      return;
+      onToast(at("broadcast_schedule_future", {}, "The send time must be in the future"));
+      return false;
     }
     try {
       const response = await api(buildAdminBroadcastItemPath(broadcastId), {
@@ -749,7 +749,7 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
           }));
         }
         onToast(at("broadcast_rescheduled", {}, "Scheduled time updated"));
-        return;
+        return true;
       }
       onToast(
         adminErrorMessage(
@@ -758,8 +758,10 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
           at("broadcast_reschedule_failed", {}, "Scheduled time could not be updated")
         )
       );
+      return false;
     } catch {
       onToast(at("broadcast_reschedule_failed", {}, "Scheduled time could not be updated"));
+      return false;
     }
   }
 

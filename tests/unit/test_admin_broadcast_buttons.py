@@ -39,9 +39,16 @@ def _button(**overrides):
 
 
 class _FakeBroadcastRequest:
-    def __init__(self, payload: dict[str, object], app: dict[str, object]) -> None:
+    def __init__(
+        self,
+        payload: dict[str, object],
+        app: dict[str, object],
+        *,
+        match_info: dict[str, str] | None = None,
+    ) -> None:
         self._payload = payload
         self.app = app
+        self.match_info = match_info or {}
 
     async def json(self) -> dict[str, object]:
         return self._payload
@@ -263,6 +270,62 @@ class AdminsAudienceTest(unittest.IsolatedAsyncioTestCase):
 
 
 class AdminBroadcastRouteTest(unittest.IsolatedAsyncioTestCase):
+    async def test_past_scheduled_broadcast_is_rejected(self):
+        request = _FakeBroadcastRequest(
+            {
+                "target": "all",
+                "text": "Hello later",
+                "channels": ["telegram"],
+                "scheduled_at": "2020-01-01T00:00:00Z",
+            },
+            {
+                "settings": settings_stub(),
+                "async_session_factory": _FakeSessionFactory(),
+                "i18n": None,
+                "bot_username": "demo_bot",
+            },
+        )
+
+        with (
+            patch.object(broadcast_route_module, "_require_admin_user_id", return_value=999),
+            patch.object(
+                broadcast_route_module,
+                "_resolve_audience_service",
+                return_value=_FakeAudienceService(),
+            ),
+            patch.object(broadcast_route_module, "get_queue_manager", return_value=_FakeQueue()),
+            patch.object(
+                broadcast_route_module.broadcast_dal,
+                "create_broadcast",
+                AsyncMock(),
+            ) as create,
+        ):
+            response = await broadcast_route_module.admin_broadcast_route(cast(Any, request))
+
+        self.assertEqual(response.status, 400)
+        self.assertEqual(json.loads(response.text)["error"], "broadcast_schedule_future")
+        create.assert_not_awaited()
+
+    async def test_past_reschedule_is_rejected(self):
+        request = _FakeBroadcastRequest(
+            {"scheduled_at": "2020-01-01T00:00:00Z"},
+            {"async_session_factory": _FakeSessionFactory()},
+            match_info={"id": "17"},
+        )
+        reschedule = AsyncMock()
+
+        with (
+            patch.object(broadcast_route_module, "_require_admin_user_id", return_value=999),
+            patch.object(broadcast_route_module.broadcast_dal, "reschedule_broadcast", reschedule),
+        ):
+            response = await broadcast_route_module.admin_broadcast_reschedule_route(
+                cast(Any, request)
+            )
+
+        self.assertEqual(response.status, 400)
+        self.assertEqual(json.loads(response.text)["error"], "broadcast_schedule_future")
+        reschedule.assert_not_awaited()
+
     async def test_unknown_audience_is_rejected_instead_of_broadcasting_to_all(self):
         request = _FakeBroadcastRequest(
             {

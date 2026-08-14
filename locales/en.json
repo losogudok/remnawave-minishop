@@ -2197,7 +2197,7 @@
   "admin_broadcast_schedule_label": "Send time",
   "admin_broadcast_schedule_later": "Schedule for later",
   "admin_broadcast_schedule_action": "Schedule broadcast",
-  "admin_broadcast_schedule_future": "Choose a future date and time",
+  "admin_broadcast_schedule_future": "The send time must be in the future",
   "admin_broadcast_history_title": "Broadcast history",
   "admin_broadcast_history_subtitle": "Content, schedule and live delivery status",
   "admin_broadcast_history_refreshing": "Updating…",

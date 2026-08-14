@@ -2197,7 +2197,7 @@
   "admin_broadcast_schedule_label": "Время отправки",
   "admin_broadcast_schedule_later": "Отправить позже",
   "admin_broadcast_schedule_action": "Запланировать рассылку",
-  "admin_broadcast_schedule_future": "Выберите дату и время в будущем",
+  "admin_broadcast_schedule_future": "Время отправки должно быть в будущем",
   "admin_broadcast_history_title": "История рассылок",
   "admin_broadcast_history_subtitle": "Содержимое, расписание и статус доставки в реальном времени",
   "admin_broadcast_history_refreshing": "Обновление…",

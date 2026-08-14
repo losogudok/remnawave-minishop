@@ -31,10 +31,39 @@ test("broadcast editor is compact and history uses masonry columns on desktop", 
   await expect(page.getByRole("heading", { name: "История рассылок" })).toBeVisible();
   const controls = page.locator(".broadcast-control-panel");
   await expect(controls).toHaveCount(4);
-  const controlBoxes = await controls.evaluateAll((elements) =>
+  const initialControlBoxes = await controls.evaluateAll((elements) =>
     elements.map((element) => element.getBoundingClientRect())
   );
-  expect(new Set(controlBoxes.map((box) => Math.round(box.top))).size).toBe(1);
+  expect(new Set(initialControlBoxes.map((box) => Math.round(box.top))).size).toBe(1);
+  expect(new Set(initialControlBoxes.map((box) => Math.round(box.height))).size).toBe(1);
+  const controlSurfaces = await controls.evaluateAll((elements) =>
+    elements.map((element) => {
+      const style = getComputedStyle(element);
+      return `${style.backgroundColor}|${style.borderTopColor}|${style.borderTopWidth}`;
+    })
+  );
+  expect(new Set(controlSurfaces).size).toBe(1);
+
+  const scheduleControl = page.locator(".broadcast-schedule-control");
+  await scheduleControl.getByRole("checkbox").click();
+  const scheduleInput = scheduleControl.locator('input[type="datetime-local"]');
+  await expect(scheduleInput).toBeVisible();
+  await expect(scheduleControl.getByText("Отправить позже", { exact: true })).toHaveCount(0);
+  const scheduledControlBoxes = await controls.evaluateAll((elements) =>
+    elements.map((element) => element.getBoundingClientRect())
+  );
+  expect(scheduledControlBoxes.map((box) => Math.round(box.height))).toEqual(
+    initialControlBoxes.map((box) => Math.round(box.height))
+  );
+  const minimumSchedule = await scheduleInput.getAttribute("min");
+  expect(minimumSchedule).not.toBeNull();
+  expect(new Date(minimumSchedule || "").getTime()).toBeGreaterThan(Date.now() - 60_000);
+
+  await scheduleInput.fill("2020-01-01T00:00");
+  await expect(scheduleInput).toHaveAttribute("aria-invalid", "true");
+  await expect(scheduleInput).toHaveClass(/input-error/);
+  await expect(scheduleControl).toHaveClass(/is-invalid/);
+  await expect(scheduleControl.getByText("Время отправки должно быть в будущем")).toBeVisible();
 
   const cards = page.locator(".broadcast-history-card");
   await expect(cards).toHaveCount(3);
@@ -88,7 +117,13 @@ test("broadcast history stacks on mobile and scheduled cards can be edited and r
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   ).toBeLessThanOrEqual(1);
+  await scheduleInput.fill("2020-01-01T00:00");
+  await expect(scheduleInput).toHaveAttribute("aria-invalid", "true");
+  await expect(scheduleInput).toHaveClass(/input-error/);
+  await expect(scheduledCard.getByRole("button", { name: "Обновить" })).toBeDisabled();
+  await expect(scheduledCard.getByText("Время отправки должно быть в будущем")).toBeVisible();
   await scheduleInput.fill("2031-05-20T14:30");
+  await expect(scheduleInput).toHaveAttribute("aria-invalid", "false");
   await scheduledCard.getByRole("button", { name: "Обновить" }).click();
   await expect(scheduledCard).toContainText("20.05.2031");
 

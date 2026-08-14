@@ -576,6 +576,11 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
         if html_error:
             return _error(400, "invalid_telegram_html", html_error)
 
+    requested_scheduled_at = body.scheduled_at
+    scheduled_at = _utc_datetime(requested_scheduled_at)
+    if requested_scheduled_at is not None and scheduled_at <= datetime.now(UTC):
+        return _error(400, "broadcast_schedule_future")
+
     audience_service = _resolve_audience_service(request)
     try:
         user_ids = [int(user_id) for user_id in await audience_service.resolve_user_ids(target)]
@@ -584,8 +589,7 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
     except AudienceUnavailableError:
         return _error(403, "audience_unavailable", target)
 
-    scheduled_at = _utc_datetime(body.scheduled_at)
-    immediate = scheduled_at <= datetime.now(UTC)
+    immediate = requested_scheduled_at is None
     queue_manager = get_queue_manager()
     if immediate and "telegram" in channels and queue_manager is None:
         return _error(503, "queue_unavailable")
@@ -659,12 +663,15 @@ async def admin_broadcasts_list_route(request: web.Request) -> web.Response:
 async def admin_broadcast_reschedule_route(request: web.Request) -> web.Response:
     _require_admin_user_id(request)
     body = await parse_body_or_400(request, AdminBroadcastScheduleBody)
+    scheduled_at = _utc_datetime(body.scheduled_at)
+    if scheduled_at <= datetime.now(UTC):
+        return _error(400, "broadcast_schedule_future")
     broadcast_id = int(request.match_info["id"])
     async with get_session_factory(request)() as session:
         item = await broadcast_dal.reschedule_broadcast(
             session,
             broadcast_id,
-            _utc_datetime(body.scheduled_at),
+            scheduled_at,
         )
     if item is None:
         return _error(409, "broadcast_not_reschedulable")
