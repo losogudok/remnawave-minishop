@@ -714,6 +714,7 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
         default_order = [
             "freekassa",
             "platega_sbp",
+            "platega_card",
             "platega_crypto",
             "platega_international",
             "platega_all_methods",
@@ -748,6 +749,8 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
                 # Legacy slug — expand to the new sub-methods preserving order
                 if "platega_sbp" not in methods:
                     methods.append("platega_sbp")
+                if "platega_card" not in methods:
+                    methods.append("platega_card")
                 if "platega_crypto" not in methods:
                     methods.append("platega_crypto")
                 if "platega_international" not in methods:
@@ -756,6 +759,8 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
                     methods.append("platega_all_methods")
                 continue
             methods.append(slug)
+        if "platega_card" not in methods and "platega_sbp" in methods:
+            methods.insert(methods.index("platega_sbp") + 1, "platega_card")
         # Append any registered spec that the operator didn't list — keeps
         # newly shipped providers visible after an upgrade without forcing a
         # .env edit. Toggling the button is still controlled by ENABLED.

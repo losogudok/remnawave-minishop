@@ -79,6 +79,26 @@ def platega_presentation_manifest(
     )
 
 
+CARD_CONFIG_MANIFEST: tuple[ProviderManifestField, ...] = (
+    ProviderManifestField(
+        "PLATEGA_CARD_ENABLED",
+        "bool",
+        "Card payment button",
+        description="Creates a one-off payment with Platega paymentMethod 11 by default.",
+        subsection="Platega",
+        attr="CARD_ENABLED",
+    ),
+    ProviderManifestField(
+        "PLATEGA_CARD_METHOD",
+        "int",
+        "Card payment method ID",
+        description="Platega paymentMethod used for card payments (11).",
+        subsection="Platega",
+        attr="CARD_METHOD",
+    ),
+)
+
+
 CONFIG_MANIFEST: tuple[ProviderManifestField, ...] = (
     ProviderManifestField(
         "PLATEGA_ENABLED", "bool", "Enabled", subsection="Platega", attr="ENABLED"

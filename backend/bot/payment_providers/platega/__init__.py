@@ -2,12 +2,14 @@
 
 from bot.payment_providers.platega.service import (
     ALL_METHODS_SPEC,
+    CARD_SPEC,
     CRYPTO_SPEC,
     INTERNATIONAL_SPEC,
     SBP_SPEC,
     SPECS,
     SUBSCRIPTION_SPEC,
     PlategaAllMethodsPresentation,
+    PlategaCardPresentation,
     PlategaConfig,
     PlategaCryptoPresentation,
     PlategaInternationalPresentation,
@@ -15,6 +17,7 @@ from bot.payment_providers.platega.service import (
     PlategaService,
     PlategaSubscriptionPresentation,
     create_all_methods_webapp_payment,
+    create_card_webapp_payment,
     create_crypto_webapp_payment,
     create_international_webapp_payment,
     create_sbp_webapp_payment,
@@ -32,6 +35,7 @@ from bot.payment_providers.platega.subscriptions import (
 
 __all__ = [
     "ALL_METHODS_SPEC",
+    "CARD_SPEC",
     "CRYPTO_SPEC",
     "INTERNATIONAL_SPEC",
     "SBP_SPEC",
@@ -39,6 +43,7 @@ __all__ = [
     "SUBSCRIPTION_INTERVAL_BY_MONTHS",
     "SUBSCRIPTION_SPEC",
     "PlategaAllMethodsPresentation",
+    "PlategaCardPresentation",
     "PlategaConfig",
     "PlategaCryptoPresentation",
     "PlategaInternationalPresentation",
@@ -46,6 +51,7 @@ __all__ = [
     "PlategaService",
     "PlategaSubscriptionPresentation",
     "create_all_methods_webapp_payment",
+    "create_card_webapp_payment",
     "create_crypto_webapp_payment",
     "create_international_webapp_payment",
     "create_sbp_webapp_payment",

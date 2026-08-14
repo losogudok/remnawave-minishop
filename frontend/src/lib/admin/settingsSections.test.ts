@@ -8,7 +8,6 @@ import {
   settingsFieldGroupAnchorKey,
   settingsPathAnchorKey,
   settingsPathKey,
-  settingsSubsectionAnchorKey,
   type AdminSettingField,
   type AdminSettingsSection,
 } from "./settingsSections";
@@ -75,6 +74,7 @@ describe("settingsSections", () => {
       fields: [
         field("PLATEGA_API_URL", { subsection: "Platega" }),
         field("PLATEGA_SBP_ENABLED", { subsection: "Platega" }),
+        field("PLATEGA_CARD_ENABLED", { subsection: "Platega" }),
         field("PLATEGA_CRYPTO_ENABLED", { subsection: "Platega" }),
         field("PLATEGA_INTERNATIONAL_ENABLED", { subsection: "Platega" }),
         field("PLATEGA_ALL_METHODS_ENABLED", { subsection: "Platega" }),
@@ -85,6 +85,7 @@ describe("settingsSections", () => {
     expect(semanticFieldGroups(section, group).map((item) => item.id)).toEqual([
       "platega_common",
       "platega_sbp",
+      "platega_card",
       "platega_crypto",
       "platega_international",
       "platega_all_methods",
@@ -92,8 +93,13 @@ describe("settingsSections", () => {
 
     const resolved = resolveSettingsPath(["payments", "platega", "card"], [section]);
 
-    expect(resolved?.anchorKey).toBe(settingsSubsectionAnchorKey("payments", "Platega"));
+    expect(resolved?.anchorKey).toBe(
+      settingsFieldGroupAnchorKey("payments", "Platega", "platega_card")
+    );
     expect(settingsPathAnchorKey(["payments", "platega", "card"], resolved)).toBe(
+      settingsFieldGroupAnchorKey("payments", "Platega", "platega_card")
+    );
+    expect(settingsPathAnchorKey(["payments", "platega", "sbp"], resolved)).toBe(
       settingsFieldGroupAnchorKey("payments", "Platega", "platega_sbp")
     );
     expect(settingsPathAnchorKey(["payments", "platega", "international"], resolved)).toBe(

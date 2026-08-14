@@ -139,17 +139,18 @@ FreeKassa подключается как отдельный платежный 
 
 ## Platega
 
-Platega подключается как отдельный платежный провайдер. Внутри Minishop он может создавать независимые кнопки: СБП/карту, криптовалюту, международные карты, единую страницу выбора способа и рекуррентную СБП-подписку. Новые варианты выключены по умолчанию и не меняют существующие кнопки после обновления.
+Platega подключается как отдельный платежный провайдер. Внутри Minishop он может создавать независимые кнопки: СБП, оплату картой, криптовалюту, международные карты, единую страницу выбора способа и рекуррентную СБП-подписку. Новые варианты выключены по умолчанию и не меняют существующие кнопки после обновления.
 
 ### Настройка
 
 1. Включите `PLATEGA_ENABLED`.
 2. Укажите `PLATEGA_MERCHANT_ID` и `PLATEGA_SECRET`.
-3. Включите нужные кнопки: `PLATEGA_SBP_ENABLED`, `PLATEGA_CRYPTO_ENABLED`, `PLATEGA_INTERNATIONAL_ENABLED`, `PLATEGA_ALL_METHODS_ENABLED` и/или `PLATEGA_SUBSCRIPTION_ENABLED`.
+3. Включите нужные кнопки: `PLATEGA_SBP_ENABLED`, `PLATEGA_CARD_ENABLED`, `PLATEGA_CRYPTO_ENABLED`, `PLATEGA_INTERNATIONAL_ENABLED`, `PLATEGA_ALL_METHODS_ENABLED` и/или `PLATEGA_SUBSCRIPTION_ENABLED`.
 4. Скопируйте URL вебхука из админ-панели и укажите его в кабинете Platega. Один и тот же URL принимает и разовые транзакции, и колбэки подписок.
 
 ### Разовые способы оплаты
 
+- `PLATEGA_CARD_ENABLED` добавляет после СБП отдельную кнопку «Оплата картой» и создаёт транзакцию с `paymentMethod: 11`. ID можно переопределить через `PLATEGA_CARD_METHOD`.
 - `PLATEGA_INTERNATIONAL_ENABLED` создаёт обычную транзакцию с `paymentMethod: 12`. При изменении ID метода в Platega его можно переопределить через `PLATEGA_INTERNATIONAL_METHOD`.
 - `PLATEGA_ALL_METHODS_ENABLED` использует `POST /v2/transaction/process` без поля `paymentMethod`. После перехода по ссылке плательщик выбирает среди способов, подключённых для мерчанта в Platega.
 - Обе кнопки используют общие `PLATEGA_RETURN_URL`, `PLATEGA_FAILED_URL`, webhook и `PLATEGA_SUPPORTED_CURRENCIES`. Если у международного метода или страницы выбора другой набор валют, перечислите объединение реально доступных кодов и ограничьте неподходящие кнопки на уровне тарифов.

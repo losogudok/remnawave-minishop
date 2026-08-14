@@ -287,6 +287,8 @@ class ProviderCurrencySupportOut(HttpResponseModel):
     def _provider_label(spec: PaymentProviderSpec) -> str:
         if spec.id == "platega_sbp":
             return "Platega SBP/card"
+        if spec.id == "platega_card":
+            return "Platega Card"
         if spec.id == "platega_crypto":
             return "Platega Crypto"
         if spec.id == "platega_international":
@@ -299,6 +301,8 @@ class ProviderCurrencySupportOut(HttpResponseModel):
     def _settings_path(spec: PaymentProviderSpec) -> list[str]:
         if spec.id == "platega_sbp":
             return ["payments", "platega", "sbp"]
+        if spec.id == "platega_card":
+            return ["payments", "platega", "card"]
         if spec.id == "platega_crypto":
             return ["payments", "platega", "crypto"]
         if spec.id == "platega_international":

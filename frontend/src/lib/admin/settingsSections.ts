@@ -60,6 +60,11 @@ const PLATEGA_SBP_KEYS = new Set([
   "PLATEGA_SBP_ADMIN_ONLY_ENABLED",
   "PLATEGA_SBP_METHOD",
 ]);
+const PLATEGA_CARD_KEYS = new Set([
+  "PLATEGA_CARD_ENABLED",
+  "PLATEGA_CARD_ADMIN_ONLY_ENABLED",
+  "PLATEGA_CARD_METHOD",
+]);
 const PLATEGA_CRYPTO_KEYS = new Set([
   "PLATEGA_CRYPTO_ENABLED",
   "PLATEGA_CRYPTO_ADMIN_ONLY_ENABLED",
@@ -111,11 +116,12 @@ const WATA_WEBHOOK_KEYS = new Set([
 const SEMANTIC_FIELD_GROUP_ORDER: Record<string, number> = {
   platega_common: 1,
   platega_sbp: 2,
-  platega_crypto: 3,
-  platega_international: 4,
-  platega_all_methods: 5,
-  platega_subscription: 6,
-  platega_legacy: 7,
+  platega_card: 3,
+  platega_crypto: 4,
+  platega_international: 5,
+  platega_all_methods: 6,
+  platega_subscription: 7,
+  platega_legacy: 8,
   wata_common: 1,
   wata_fiat: 2,
   wata_crypto: 3,
@@ -286,12 +292,15 @@ export function settingsPathAnchorKey(path: unknown, target: ResolvedSettingsPat
     ) {
       return settingsFieldGroupAnchorKey("payments", "Platega", "platega_all_methods");
     }
-    if (
-      fieldGroupToken === "sbp" ||
-      fieldGroupToken === "card" ||
-      fieldGroupToken === "plategasbp"
-    ) {
+    if (fieldGroupToken === "sbp" || fieldGroupToken === "plategasbp") {
       return settingsFieldGroupAnchorKey("payments", "Platega", "platega_sbp");
+    }
+    if (
+      fieldGroupToken === "card" ||
+      fieldGroupToken === "bankcard" ||
+      fieldGroupToken === "plategacard"
+    ) {
+      return settingsFieldGroupAnchorKey("payments", "Platega", "platega_card");
     }
     if (
       fieldGroupToken === "subscription" ||
@@ -446,6 +455,15 @@ function plategaSemanticGroup(field: AdminSettingField): Omit<SemanticFieldGroup
       "SBP/card button",
       "settings_group_platega_sbp_hint",
       "Visibility, method ID, and labels for the SBP/card payment button."
+    );
+  }
+  if (PLATEGA_CARD_KEYS.has(key) || key.startsWith("PAYMENT_PLATEGA_CARD_")) {
+    return fieldGroupMeta(
+      "platega_card",
+      "settings_group_platega_card",
+      "Card payment button",
+      "settings_group_platega_card_hint",
+      "Visibility, method ID, and labels for the card payment button."
     );
   }
   if (PLATEGA_CRYPTO_KEYS.has(key) || key.startsWith("PAYMENT_PLATEGA_CRYPTO_")) {

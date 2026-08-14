@@ -26,6 +26,8 @@ class PlategaConfig(ProviderEnvConfig):
     PAYMENT_METHOD: int = Field(default=2)
     SBP_ENABLED: bool = Field(default=False)
     SBP_ADMIN_ONLY_ENABLED: bool = Field(default=False)
+    CARD_ENABLED: bool = Field(default=False)
+    CARD_ADMIN_ONLY_ENABLED: bool = Field(default=False)
     CRYPTO_ENABLED: bool = Field(default=False)
     CRYPTO_ADMIN_ONLY_ENABLED: bool = Field(default=False)
     INTERNATIONAL_ENABLED: bool = Field(default=False)
@@ -35,6 +37,7 @@ class PlategaConfig(ProviderEnvConfig):
     SUBSCRIPTION_ENABLED: bool = Field(default=False)
     SUBSCRIPTION_ADMIN_ONLY_ENABLED: bool = Field(default=False)
     SBP_METHOD: int = Field(default=2)
+    CARD_METHOD: int = Field(default=11)
     CRYPTO_METHOD: int = Field(default=13)
     INTERNATIONAL_METHOD: int = Field(default=12)
     SUBSCRIPTION_METHOD: int = Field(default=DEFAULT_SUBSCRIPTION_METHOD)
@@ -79,6 +82,15 @@ class PlategaSbpPresentation(_PlategaPresentation):
     )
 
 
+class PlategaCardPresentation(_PlategaPresentation):
+    model_config = SettingsConfigDict(
+        env_file=provider_env_file(),
+        env_file_encoding="utf-8",
+        env_prefix="PAYMENT_PLATEGA_CARD_",
+        extra="ignore",
+    )
+
+
 class PlategaCryptoPresentation(_PlategaPresentation):
     model_config = SettingsConfigDict(
         env_file=provider_env_file(),
@@ -117,6 +129,7 @@ class PlategaSubscriptionPresentation(_PlategaPresentation):
 
 __all__ = [
     "PlategaAllMethodsPresentation",
+    "PlategaCardPresentation",
     "PlategaConfig",
     "PlategaCryptoPresentation",
     "PlategaInternationalPresentation",

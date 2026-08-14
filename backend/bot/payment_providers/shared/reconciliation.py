@@ -28,6 +28,7 @@ RECONCILABLE_PROVIDER_KEYS = (
     "overpay",
     "pally",
     "paykilla",
+    "platega_card",
     "platega_crypto",
     "platega_sbp",
     "severpay",
@@ -152,7 +153,7 @@ async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderL
         ):
             return ProviderLifecycle("unknown")
         status = data.get("payment_status") or data.get("status")
-    elif provider in {"platega_sbp", "platega_crypto"}:
+    elif provider in {"platega_sbp", "platega_card", "platega_crypto"}:
         success, data = await service.get_transaction(provider_id)
         if success and not _id_matches(data, provider_id, "id"):
             return ProviderLifecycle("unknown")

@@ -36,13 +36,14 @@ from ..shared import post_json_request as post_json_request
 from ..shared.app_context import app_required
 from .config import (
     PlategaAllMethodsPresentation,
+    PlategaCardPresentation,
     PlategaConfig,
     PlategaCryptoPresentation,
     PlategaInternationalPresentation,
     PlategaSbpPresentation,
     PlategaSubscriptionPresentation,
 )
-from .manifest import CONFIG_MANIFEST, platega_presentation_manifest
+from .manifest import CARD_CONFIG_MANIFEST, CONFIG_MANIFEST, platega_presentation_manifest
 from .subscriptions import (
     SUBSCRIPTION_STATUSES,
     PlategaSubscriptionMixin,
@@ -93,11 +94,13 @@ class PlategaService(PlategaTransactionMixin, HttpClientMixin, PlategaSubscripti
             )
         else:
             logger.info(
-                "PlategaService configured. SBP button: %s (method=%s), Crypto button: %s "
-                "(method=%s), International button: %s (method=%s), Method chooser: %s, "
-                "Subscription button: %s (method=%s)",
+                "PlategaService configured. SBP button: %s (method=%s), Card button: %s "
+                "(method=%s), Crypto button: %s (method=%s), International button: %s "
+                "(method=%s), Method chooser: %s, Subscription button: %s (method=%s)",
                 "ON" if config.SBP_ENABLED else "OFF",
                 self.sbp_method,
+                "ON" if config.CARD_ENABLED else "OFF",
+                self.card_method,
                 "ON" if config.CRYPTO_ENABLED else "OFF",
                 self.crypto_method,
                 "ON" if config.INTERNATIONAL_ENABLED else "OFF",
@@ -328,6 +331,7 @@ router = Router(name="user_subscription_payments_platega_router")
 
 @router.callback_query(
     F.data.startswith("pay_platega_sbp:")
+    | F.data.startswith("pay_platega_card:")
     | F.data.startswith("pay_platega_crypto:")
     | F.data.startswith("pay_platega_international:")
     | F.data.startswith("pay_platega_all_methods:")
@@ -371,6 +375,10 @@ def create_service(ctx: ServiceFactoryContext) -> PlategaService:
 
 async def create_sbp_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
     return await run_webapp_payment(_SBP_DESCRIPTOR, ctx)
+
+
+async def create_card_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
+    return await run_webapp_payment(_CARD_DESCRIPTOR, ctx)
 
 
 async def create_crypto_webapp_payment(ctx: WebAppPaymentContext) -> web.Response:
@@ -427,6 +435,8 @@ def _webapp_context_for_variant(variant: str) -> Any:
 
 
 def _platega_method_id(service: PlategaService, variant: str) -> int | None:
+    if variant == "card":
+        return service.config.CARD_METHOD
     if variant == "crypto":
         return service.config.CRYPTO_METHOD
     if variant == "international":
@@ -514,6 +524,8 @@ def _platega_webapp_available(variant: str) -> Any:
     def _available(service: PlategaService) -> bool:
         if not service.configured:
             return False
+        if variant == "card":
+            return bool(service.config.CARD_ENABLED or service.config.CARD_ADMIN_ONLY_ENABLED)
         if variant == "crypto":
             return bool(service.config.CRYPTO_ENABLED or service.config.CRYPTO_ADMIN_ONLY_ENABLED)
         if variant == "international":
@@ -535,6 +547,8 @@ def _platega_webapp_available(variant: str) -> Any:
 def _platega_descriptor_for_callback_prefix(
     callback_prefix: str,
 ) -> LinkPaymentDescriptor[PlategaService]:
+    if callback_prefix == "pay_platega_card":
+        return _CARD_DESCRIPTOR
     if callback_prefix == "pay_platega_crypto":
         return _CRYPTO_DESCRIPTOR
     if callback_prefix == "pay_platega_international":
@@ -581,6 +595,39 @@ SBP_SPEC = PaymentProviderSpec(
     config_class=PlategaConfig,
     presentation_class=PlategaSbpPresentation,
     manifest_fields=_SBP_MANIFEST,
+    supported_currencies_resolver=lambda config: getattr(config, "SUPPORTED_CURRENCIES", "RUB"),
+    currency_support_note=(
+        "Platega currencies are merchant/method-specific; configure the codes "
+        "enabled for your account."
+    ),
+    info_url="https://platega.io/",
+    currency_support_url="https://docs.platega.io/",
+)
+
+CARD_SPEC = PaymentProviderSpec(
+    id="platega_card",
+    provider_key="platega",
+    label="Platega",
+    webapp_label="Platega · Card",
+    webapp_labels={"ru": "Pay by card", "en": "Pay by card"},
+    webapp_icon="CreditCard",
+    logo_url="/provider-logos/platega.png",
+    telegram_labels={"ru": "Pay by card", "en": "Pay by card"},
+    telegram_emoji="💳",
+    pending_status="pending_platega",
+    enabled=lambda config: bool(
+        getattr(config, "ENABLED", False) and getattr(config, "CARD_ENABLED", False)
+    ),
+    admin_only_enabled=lambda config: bool(getattr(config, "CARD_ADMIN_ONLY_ENABLED", False)),
+    admin_only_config_attr="CARD_ADMIN_ONLY_ENABLED",
+    service_key="platega_service",
+    callback_prefix="pay_platega_card",
+    create_webapp_payment=create_card_webapp_payment,
+    reuse_webapp_payment=reuse_webapp_payment,
+    config_class=PlategaConfig,
+    presentation_class=PlategaCardPresentation,
+    manifest_fields=CARD_CONFIG_MANIFEST
+    + platega_presentation_manifest("Platega", "CreditCard", "PLATEGA_CARD"),
     supported_currencies_resolver=lambda config: getattr(config, "SUPPORTED_CURRENCIES", "RUB"),
     currency_support_note=(
         "Platega currencies are merchant/method-specific; configure the codes "
@@ -758,6 +805,7 @@ SUBSCRIPTION_SPEC = PaymentProviderSpec(
 
 SPECS = (
     SBP_SPEC,
+    CARD_SPEC,
     CRYPTO_SPEC,
     INTERNATIONAL_SPEC,
     ALL_METHODS_SPEC,
@@ -794,6 +842,7 @@ def _one_off_descriptor(
 
 
 _SBP_DESCRIPTOR = _one_off_descriptor(SBP_SPEC, "sbp")
+_CARD_DESCRIPTOR = _one_off_descriptor(CARD_SPEC, "card")
 _CRYPTO_DESCRIPTOR = _one_off_descriptor(CRYPTO_SPEC, "crypto")
 _INTERNATIONAL_DESCRIPTOR = _one_off_descriptor(INTERNATIONAL_SPEC, "international")
 _ALL_METHODS_DESCRIPTOR = _one_off_descriptor(ALL_METHODS_SPEC, "all_methods")
@@ -819,6 +868,7 @@ _SUBSCRIPTION_DESCRIPTOR: LinkPaymentDescriptor[PlategaService] = LinkPaymentDes
 _DESCRIPTORS_BY_METHOD: dict[str, LinkPaymentDescriptor[PlategaService]] = {
     "platega_sbp": _SBP_DESCRIPTOR,
     "platega": _SBP_DESCRIPTOR,
+    "platega_card": _CARD_DESCRIPTOR,
     "platega_crypto": _CRYPTO_DESCRIPTOR,
     "platega_international": _INTERNATIONAL_DESCRIPTOR,
     "platega_all_methods": _ALL_METHODS_DESCRIPTOR,
