@@ -193,6 +193,15 @@
     revealCurtain = { ...revealCurtain, progress: 1, visible: false };
   }
 
+  function finishMotion(u: uPlot): void {
+    motion = "idle";
+    // uPlot records cursor movement even while the reveal/morph guard keeps
+    // overlays hidden. Re-read that position when motion ends so a pointer
+    // that has stayed still over the plot does not need to move again before
+    // its tooltip and highlight appear.
+    trackCursor(u);
+  }
+
   function runMotion(
     duration: number,
     onFrame: (progress: number) => void,
@@ -227,7 +236,7 @@
       },
       () => {
         revealCurtain = { ...revealCurtain, progress: 1, visible: false };
-        motion = "idle";
+        finishMotion(u);
       }
     );
   }
@@ -248,7 +257,7 @@
         currentData = target;
         u.setData(target, false);
         u.redraw(false, false);
-        motion = "idle";
+        finishMotion(u);
       }
     );
   }
@@ -285,7 +294,7 @@
           currentData = target;
           u.setData(target, false);
           u.redraw(false, false);
-          motion = "idle";
+          finishMotion(u);
         }
       );
     });

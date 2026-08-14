@@ -1307,7 +1307,9 @@ test("admin charts reveal on entry, morph between ranges, and respect reduced mo
 
   const revenueChart = page.locator(".admin-revenue-chart-body");
   await expect(revenueChart).toHaveAttribute("data-chart-motion", "reveal");
+  await revenueChart.locator(".u-over").hover();
   await expect(revenueChart).toHaveAttribute("data-chart-motion", "idle", { timeout: 2_000 });
+  await expect(revenueChart.locator(".admin-chart-tooltip.is-visible")).toBeVisible();
 
   await page.getByRole("tab", { name: "30 дн.", exact: true }).click();
   await expect(revenueChart).toHaveAttribute("data-chart-motion", "morph");
