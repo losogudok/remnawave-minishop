@@ -37,7 +37,11 @@ class WebAppAssetTests(unittest.IsolatedAsyncioTestCase):
                                 "squad_uuids": ["uuid"],
                                 "billing_model": "period",
                                 "monthly_gb": 100,
+                                "traffic_limit_strategy": "WEEK",
                                 "hwid_device_limit": 5,
+                                "premium_squad_uuids": ["premium-uuid"],
+                                "premium_monthly_gb": 25,
+                                "premium_traffic_limit_strategy": "DAY",
                                 "hwid_device_packages": {
                                     "rub": [{"count": 1, "price": 99}],
                                     "stars": [{"count": 1, "price": 2500}],
@@ -80,11 +84,19 @@ class WebAppAssetTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(plans[0]["is_default_tariff"])
         self.assertEqual(plans[0]["months"], 1)
         self.assertEqual(plans[0]["hwid_device_limit"], 5)
+        self.assertEqual(plans[0]["effective_hwid_device_limit"], 5)
+        self.assertTrue(plans[0]["premium_enabled"])
+        self.assertEqual(plans[0]["premium_monthly_gb"], 25)
+        self.assertFalse(plans[0]["premium_unlimited"])
+        self.assertEqual(plans[0]["traffic_limit_strategy"], "WEEK")
+        self.assertEqual(plans[0]["premium_traffic_limit_strategy"], "DAY")
         self.assertEqual(plans[0]["hwid_device_packages"][0]["device_count"], 1)
         self.assertEqual(plans[1]["sale_mode"], "traffic_package")
         self.assertFalse(plans[1]["is_default_tariff"])
         self.assertEqual(plans[1]["traffic_gb"], 50.0)
         self.assertEqual(plans[1]["stars_price"], 2500)
+        self.assertEqual(plans[1]["traffic_limit_strategy"], "NO_RESET")
+        self.assertEqual(plans[1]["premium_traffic_limit_strategy"], "NO_RESET")
 
     def test_serialize_plans_preserves_enabled_period_order(self):
         with tempfile.TemporaryDirectory() as tmpdir:

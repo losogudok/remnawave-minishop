@@ -1,0 +1,27 @@
+<script lang="ts">
+  import NumberFlow from "@number-flow/svelte";
+  import type { BillingPlan } from "$lib/webapp/tariffs.js";
+  import { isStarsPaymentMethod } from "$lib/webapp/tariffs.js";
+
+  let {
+    plan = null,
+    method = "",
+  }: {
+    plan?: BillingPlan | null;
+    method?: string;
+  } = $props();
+
+  const stars = $derived(isStarsPaymentMethod(method) && Number(plan?.stars_price || 0) > 0);
+  const amount = $derived(stars ? Number(plan?.stars_price || 0) : Number(plan?.price || 0));
+  const currency = $derived(String(plan?.currency || "RUB").toUpperCase());
+  const suffix = $derived(stars ? " ⭐" : currency === "RUB" ? " ₽" : ` ${currency}`);
+</script>
+
+<NumberFlow
+  class="animated-price"
+  value={amount}
+  {suffix}
+  aria-label={`${amount}${suffix}`}
+  format={{ maximumFractionDigits: Number.isInteger(amount) ? 0 : 2 }}
+  willChange
+/>

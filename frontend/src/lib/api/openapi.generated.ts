@@ -2076,6 +2076,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/subscription/quote": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Subscription Quote */
+    post: operations["post_subscription_quote_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/subscription/quote-promo": {
     parameters: {
       query?: never;
@@ -4073,6 +4090,11 @@ export interface components {
       path: string;
       /** Provider Currency Support */
       provider_currency_support: components["schemas"]["ProviderCurrencySupportOut"][];
+      /**
+       * User Hwid Device Limit
+       * @default null
+       */
+      user_hwid_device_limit: number | null;
     };
     /** AdminThemesOut */
     AdminThemesOut: {
@@ -4570,6 +4592,43 @@ export interface components {
        */
       username: string | null;
     };
+    /** CheckoutAddonsConfig */
+    CheckoutAddonsConfig: {
+      devices?: components["schemas"]["CheckoutDeviceAddonConfig"];
+      premium_traffic?: components["schemas"]["CheckoutTrafficAddonConfig"];
+      traffic?: components["schemas"]["CheckoutTrafficAddonConfig"];
+    };
+    /** CheckoutDeviceAddonConfig */
+    CheckoutDeviceAddonConfig: {
+      /**
+       * Enabled
+       * @default false
+       */
+      enabled: boolean;
+      /**
+       * Max Extra Devices
+       * @default null
+       */
+      max_extra_devices: number | null;
+      /**
+       * Price Per Device
+       * @default null
+       */
+      price_per_device: number | null;
+      /**
+       * Stars Price Per Device
+       * @default null
+       */
+      stars_price_per_device: number | null;
+    };
+    /** CheckoutTrafficAddonConfig */
+    CheckoutTrafficAddonConfig: {
+      /**
+       * Enabled
+       * @default false
+       */
+      enabled: boolean;
+    };
     /** CreateTicketPayload */
     CreateTicketPayload: {
       /** Body */
@@ -4597,6 +4656,20 @@ export interface components {
     };
     /** EmptyObjectOut */
     EmptyObjectOut: Record<string, never>;
+    /** FlexibleTrafficLimitConfig */
+    FlexibleTrafficLimitConfig: {
+      /** Max Total Gb */
+      max_total_gb: number;
+      /** Price Per Step */
+      price_per_step: number;
+      /**
+       * Stars Price Per Step
+       * @default null
+       */
+      stars_price_per_step: number | null;
+      /** Step Gb */
+      step_gb: number;
+    };
     /** HwidDevicePackage */
     HwidDevicePackage: {
       /** Count */
@@ -5946,6 +6019,7 @@ export interface components {
        * @enum {string}
        */
       billing_model: "period" | "traffic";
+      checkout_addons?: components["schemas"]["CheckoutAddonsConfig"];
       /**
        * Conversion Rate Per Gb
        * @default null
@@ -5967,6 +6041,8 @@ export interface components {
       enabled: boolean;
       /** Enabled Periods */
       enabled_periods?: number[];
+      /** @default null */
+      flexible_traffic_limit: components["schemas"]["FlexibleTrafficLimitConfig"] | null;
       /**
        * Hwid Device Limit
        * @default null
@@ -5987,6 +6063,8 @@ export interface components {
       names?: {
         [key: string]: string;
       };
+      /** @default null */
+      premium_flexible_traffic_limit: components["schemas"]["FlexibleTrafficLimitConfig"] | null;
       /**
        * Premium Monthly Gb
        * @default null
@@ -6462,6 +6540,24 @@ export interface components {
       /** Enabled */
       enabled: boolean;
     };
+    /** WebAppCheckoutAddonsPayload */
+    WebAppCheckoutAddonsPayload: {
+      /**
+       * Device Count
+       * @default null
+       */
+      device_count: number | null;
+      /**
+       * Premium Limit Gb
+       * @default null
+       */
+      premium_limit_gb: number | null;
+      /**
+       * Regular Limit Gb
+       * @default null
+       */
+      regular_limit_gb: number | null;
+    };
     /** WebAppDeviceDisconnectPayload */
     WebAppDeviceDisconnectPayload: {
       /** Token */
@@ -6594,6 +6690,8 @@ export interface components {
     };
     /** WebAppPaymentCreatePayload */
     WebAppPaymentCreatePayload: {
+      /** @default null */
+      checkout_addons: components["schemas"]["WebAppCheckoutAddonsPayload"] | null;
       /**
        * Comment
        * @default null
@@ -6678,6 +6776,8 @@ export interface components {
     };
     /** WebAppPromoQuotePayload */
     WebAppPromoQuotePayload: {
+      /** @default null */
+      checkout_addons: components["schemas"]["WebAppCheckoutAddonsPayload"] | null;
       /**
        * Comment
        * @default null
@@ -6744,6 +6844,71 @@ export interface components {
       password: string;
       /** Password Confirm */
       password_confirm: string;
+    };
+    /** WebAppSubscriptionQuotePayload */
+    WebAppSubscriptionQuotePayload: {
+      /** @default null */
+      checkout_addons: components["schemas"]["WebAppCheckoutAddonsPayload"] | null;
+      /**
+       * Comment
+       * @default null
+       */
+      comment: string | null;
+      /**
+       * Description
+       * @default null
+       */
+      description: string | null;
+      /**
+       * Device Count
+       * @default null
+       */
+      device_count: unknown;
+      /**
+       * Method
+       * @default
+       */
+      method: string;
+      /**
+       * Months
+       * @default null
+       */
+      months: unknown;
+      /**
+       * Note
+       * @default null
+       */
+      note: string | null;
+      /**
+       * Promo Code
+       * @default null
+       */
+      promo_code: string | null;
+      /**
+       * Renew Hwid Devices
+       * @default null
+       */
+      renew_hwid_devices: boolean | null;
+      /**
+       * Sale Mode
+       * @default null
+       */
+      sale_mode: string | null;
+      /**
+       * Tariff Key
+       * @default null
+       */
+      tariff_key: string | null;
+      /**
+       * Traffic Gb
+       * @default null
+       */
+      traffic_gb: unknown;
+      /**
+       * Use Partner Balance
+       * @default false
+       */
+      use_partner_balance: boolean;
     };
     /**
      * WebAppSubscriptionReissuePayload
@@ -10221,9 +10386,14 @@ export interface operations {
             plans?: {
               available_payment_method_ids?: string[];
               billing_model?: string;
+              checkout_addons?: {
+                [key: string]: unknown;
+              };
+              checkout_addons_unavailable_payment_method_ids?: string[];
               currency?: string;
               description?: string;
               device_count?: number;
+              effective_hwid_device_limit?: number | null;
               externally_managed_price_method_ids?: string[];
               hwid_device_limit?: number | null;
               hwid_device_packages?: {
@@ -10261,6 +10431,10 @@ export interface operations {
               is_default_tariff?: boolean;
               monthly_gb?: number | null;
               months?: number;
+              premium_enabled?: boolean;
+              premium_monthly_gb?: number | null;
+              premium_traffic_limit_strategy?: string;
+              premium_unlimited?: boolean;
               price?: number;
               proration_ratio?: number;
               sale_mode?: string;
@@ -10272,6 +10446,7 @@ export interface operations {
               title?: string;
               traffic_bonus_gb?: number;
               traffic_gb?: number;
+              traffic_limit_strategy?: string;
               valid_from?: string | null;
               valid_from_text?: string | null;
               valid_until?: string | null;
@@ -10359,6 +10534,8 @@ export interface operations {
             pending_payment: {
               amount: number;
               base_amount: number;
+              checkout_addons: unknown[];
+              checkout_addons_amount: number;
               created_at: string;
               currency: string;
               discount_amount: number;
@@ -10381,9 +10558,14 @@ export interface operations {
             plans: {
               available_payment_method_ids?: string[];
               billing_model?: string;
+              checkout_addons?: {
+                [key: string]: unknown;
+              };
+              checkout_addons_unavailable_payment_method_ids?: string[];
               currency?: string;
               description?: string;
               device_count?: number;
+              effective_hwid_device_limit?: number | null;
               externally_managed_price_method_ids?: string[];
               hwid_device_limit?: number | null;
               hwid_device_packages?: {
@@ -10421,6 +10603,10 @@ export interface operations {
               is_default_tariff?: boolean;
               monthly_gb?: number | null;
               months?: number;
+              premium_enabled?: boolean;
+              premium_monthly_gb?: number | null;
+              premium_traffic_limit_strategy?: string;
+              premium_unlimited?: boolean;
               price?: number;
               proration_ratio?: number;
               sale_mode?: string;
@@ -10432,6 +10618,7 @@ export interface operations {
               title?: string;
               traffic_bonus_gb?: number;
               traffic_gb?: number;
+              traffic_limit_strategy?: string;
               valid_from?: string | null;
               valid_from_text?: string | null;
               valid_until?: string | null;
@@ -10471,6 +10658,7 @@ export interface operations {
               email_auth_enabled?: boolean;
               my_devices_enabled?: boolean;
               partner_program_enabled?: boolean;
+              payment_methods_display_mode?: string;
               referral_program_enabled?: boolean;
               server_status_url?: string | null;
               subscription_guides_enabled?: boolean;
@@ -11087,6 +11275,51 @@ export interface operations {
       };
     };
   };
+  post_subscription_quote_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WebAppSubscriptionQuotePayload"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            addons_amount: number;
+            addons_stars: number;
+            base_amount: number;
+            base_stars?: number | null;
+            currency: string;
+            discount_amount: number;
+            discount_percent?: number | null;
+            effect_summary?: string | null;
+            effective_amount: number;
+            effective_stars?: number | null;
+            items: {
+              [key: string]: unknown;
+            }[];
+            /** @constant */
+            ok: true;
+            payable: boolean;
+            promo_code?: string | null;
+            quote_key: string;
+            renewal_amount: number;
+            subtotal_amount: number;
+          };
+        };
+      };
+    };
+  };
   post_quote_promo_route: {
     parameters: {
       query?: never;
@@ -11497,9 +11730,14 @@ export interface operations {
             plans?: {
               available_payment_method_ids?: string[];
               billing_model?: string;
+              checkout_addons?: {
+                [key: string]: unknown;
+              };
+              checkout_addons_unavailable_payment_method_ids?: string[];
               currency?: string;
               description?: string;
               device_count?: number;
+              effective_hwid_device_limit?: number | null;
               externally_managed_price_method_ids?: string[];
               hwid_device_limit?: number | null;
               hwid_device_packages?: {
@@ -11537,6 +11775,10 @@ export interface operations {
               is_default_tariff?: boolean;
               monthly_gb?: number | null;
               months?: number;
+              premium_enabled?: boolean;
+              premium_monthly_gb?: number | null;
+              premium_traffic_limit_strategy?: string;
+              premium_unlimited?: boolean;
               price?: number;
               proration_ratio?: number;
               sale_mode?: string;
@@ -11548,6 +11790,7 @@ export interface operations {
               title?: string;
               traffic_bonus_gb?: number;
               traffic_gb?: number;
+              traffic_limit_strategy?: string;
               valid_from?: string | null;
               valid_from_text?: string | null;
               valid_until?: string | null;

@@ -30,7 +30,14 @@ export type {
   WebappRecord,
 } from "./domainTypes";
 export type { LanguageOption } from "./languageView";
-export type { BillingPlan, PaymentMethod, TariffCatalogEntry } from "./tariffs";
+export type {
+  BillingPlan,
+  CheckoutAddonDefinition,
+  CheckoutAddonKind,
+  CheckoutAddonSelection,
+  PaymentMethod,
+  TariffCatalogEntry,
+} from "./tariffs";
 
 export type Translate = (
   key: string,

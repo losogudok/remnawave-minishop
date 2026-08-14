@@ -67,6 +67,7 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
+    "@number-flow/svelte": "0.4.2",
     "qrcode": "^1.5.4"
   }
 }

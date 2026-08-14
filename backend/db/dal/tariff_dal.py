@@ -5,7 +5,14 @@ from typing import Any
 from sqlalchemy import and_, case, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import HwidDevicePurchase, Payment, TariffChange, TrafficTopup, TrafficWarning
+from db.models import (
+    FlexibleTrafficLimit,
+    HwidDevicePurchase,
+    Payment,
+    TariffChange,
+    TrafficTopup,
+    TrafficWarning,
+)
 
 from ._sqlalchemy import rowcount
 
@@ -28,6 +35,149 @@ async def create_traffic_topup(
     await session.flush()
     await session.refresh(record)
     return record
+
+
+async def create_flexible_traffic_limit(
+    session: AsyncSession,
+    *,
+    subscription_id: int,
+    payment_id: int | None,
+    kind: str,
+    tariff_key: str,
+    limit_bytes: int,
+    valid_from: datetime,
+    valid_until: datetime,
+    monthly_amount: float = 0.0,
+    monthly_stars_amount: int = 0,
+) -> FlexibleTrafficLimit:
+    existing = None
+    if payment_id is not None:
+        existing = (
+            await session.execute(
+                select(FlexibleTrafficLimit).where(
+                    FlexibleTrafficLimit.payment_id == payment_id,
+                    FlexibleTrafficLimit.kind == kind,
+                    FlexibleTrafficLimit.valid_from == valid_from,
+                    FlexibleTrafficLimit.valid_until == valid_until,
+                )
+            )
+        ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+    record = FlexibleTrafficLimit(
+        subscription_id=subscription_id,
+        payment_id=payment_id,
+        kind=kind,
+        tariff_key=tariff_key,
+        limit_bytes=max(0, int(limit_bytes)),
+        valid_from=valid_from,
+        valid_until=valid_until,
+        monthly_amount=max(0.0, float(monthly_amount)),
+        monthly_stars_amount=max(0, int(monthly_stars_amount)),
+    )
+    session.add(record)
+    await session.flush()
+    return record
+
+
+async def get_active_flexible_traffic_limits(
+    session: AsyncSession,
+    *,
+    subscription_id: int,
+    at: datetime | None = None,
+) -> dict[str, int]:
+    at = at or datetime.now(UTC)
+    result = await session.execute(
+        select(
+            FlexibleTrafficLimit.kind,
+            func.max(FlexibleTrafficLimit.limit_bytes),
+        )
+        .where(
+            FlexibleTrafficLimit.subscription_id == subscription_id,
+            FlexibleTrafficLimit.valid_from <= at,
+            FlexibleTrafficLimit.valid_until > at,
+        )
+        .group_by(FlexibleTrafficLimit.kind)
+    )
+    load_rows = getattr(result, "all", None)
+    if not callable(load_rows):
+        return {}
+    rows = await _resolve_result_value(load_rows())
+    return {str(kind): max(0, int(limit_bytes or 0)) for kind, limit_bytes in rows}
+
+
+async def get_active_flexible_traffic_limit_records(
+    session: AsyncSession,
+    *,
+    subscription_id: int,
+    at: datetime | None = None,
+) -> dict[str, FlexibleTrafficLimit]:
+    at = at or datetime.now(UTC)
+    result = await session.execute(
+        select(FlexibleTrafficLimit)
+        .where(
+            FlexibleTrafficLimit.subscription_id == subscription_id,
+            FlexibleTrafficLimit.valid_from <= at,
+            FlexibleTrafficLimit.valid_until > at,
+        )
+        .order_by(
+            FlexibleTrafficLimit.kind.asc(),
+            FlexibleTrafficLimit.limit_bytes.desc(),
+            FlexibleTrafficLimit.created_at.desc(),
+        )
+    )
+    scalars = await _resolve_result_value(result.scalars())
+    records = await _resolve_result_value(scalars.all())
+    record_by_kind: dict[str, FlexibleTrafficLimit] = {}
+    for record in records:
+        record_by_kind.setdefault(str(record.kind), record)
+    return record_by_kind
+
+
+async def list_flexible_traffic_limit_records_in_window(
+    session: AsyncSession,
+    *,
+    subscription_id: int,
+    valid_from: datetime,
+    valid_until: datetime,
+) -> list[FlexibleTrafficLimit]:
+    if valid_until <= valid_from:
+        return []
+    result = await session.execute(
+        select(FlexibleTrafficLimit)
+        .where(
+            FlexibleTrafficLimit.subscription_id == subscription_id,
+            FlexibleTrafficLimit.valid_from < valid_until,
+            FlexibleTrafficLimit.valid_until > valid_from,
+        )
+        .order_by(
+            FlexibleTrafficLimit.valid_from.asc(),
+            FlexibleTrafficLimit.limit_bytes.desc(),
+            FlexibleTrafficLimit.created_at.asc(),
+        )
+    )
+    scalars = await _resolve_result_value(result.scalars())
+    return list(await _resolve_result_value(scalars.all()))
+
+
+async def has_flexible_traffic_limit_history(
+    session: AsyncSession,
+    *,
+    subscription_id: int,
+    kind: str,
+) -> bool:
+    load_scalar = getattr(session, "scalar", None)
+    if not callable(load_scalar):
+        return False
+    value = await load_scalar(
+        select(FlexibleTrafficLimit.limit_id)
+        .where(
+            FlexibleTrafficLimit.subscription_id == subscription_id,
+            FlexibleTrafficLimit.kind == kind,
+        )
+        .limit(1)
+    )
+    return isinstance(value, int) and value > 0
 
 
 async def sum_traffic_topups(

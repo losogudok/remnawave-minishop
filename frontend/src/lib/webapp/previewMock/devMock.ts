@@ -3,6 +3,118 @@ import { INSTALL_GUIDES_CONFIG } from "./installGuidesConfig";
 import { ASCII_THEME, DEFAULT_DARK_THEME, LEGACY_LIGHT_THEME, WINDOWS_95_THEME } from "./themes";
 import type { PreviewMock } from "./types";
 
+export function checkoutAddons(months: number) {
+  return {
+    devices: {
+      kind: "devices",
+      base_units: 5,
+      max_total_units: 10,
+      options: [
+        { extra_units: 0, total_units: 5, price: 0, stars_price: 0, traffic_bonus_gb: 0 },
+        {
+          extra_units: 1,
+          total_units: 6,
+          price: 79 * months,
+          stars_price: 40 * months,
+          traffic_bonus_gb: 0,
+        },
+        {
+          extra_units: 2,
+          total_units: 7,
+          price: 158 * months,
+          stars_price: 80 * months,
+          traffic_bonus_gb: 0,
+        },
+        {
+          extra_units: 3,
+          total_units: 8,
+          price: 237 * months,
+          stars_price: 120 * months,
+          traffic_bonus_gb: 0,
+        },
+        {
+          extra_units: 4,
+          total_units: 9,
+          price: 316 * months,
+          stars_price: 160 * months,
+          traffic_bonus_gb: 0,
+        },
+        {
+          extra_units: 5,
+          total_units: 10,
+          price: 395 * months,
+          stars_price: 200 * months,
+          traffic_bonus_gb: 0,
+        },
+      ],
+    },
+    traffic: {
+      kind: "traffic",
+      base_units: 100,
+      max_total_units: 300,
+      options: [
+        { extra_units: 0, total_units: 100, price: 0, stars_price: 0 },
+        { extra_units: 50, total_units: 150, price: 99 * months, stars_price: 50 * months },
+        { extra_units: 100, total_units: 200, price: 198 * months, stars_price: 100 * months },
+        { extra_units: 150, total_units: 250, price: 297 * months, stars_price: 150 * months },
+        { extra_units: 200, total_units: 300, price: 396 * months, stars_price: 200 * months },
+      ],
+    },
+    premium_traffic: {
+      kind: "premium_traffic",
+      base_units: 50,
+      max_total_units: 150,
+      options: [
+        { extra_units: 0, total_units: 50, price: 0, stars_price: 0 },
+        { extra_units: 25, total_units: 75, price: 129 * months, stars_price: 65 * months },
+        { extra_units: 50, total_units: 100, price: 258 * months, stars_price: 130 * months },
+        { extra_units: 75, total_units: 125, price: 387 * months, stars_price: 195 * months },
+        { extra_units: 100, total_units: 150, price: 516 * months, stars_price: 260 * months },
+      ],
+    },
+  };
+}
+
+export function previewPeriodPlan(
+  months: number,
+  price: number,
+  starsPrice: number,
+  subtitle: string
+) {
+  return {
+    id: `pro:period:${months}`,
+    tariff_key: "pro",
+    tariff_name: "PRO",
+    is_default_tariff: true,
+    billing_model: "period",
+    description: "Сбалансированный тариф с премиум-серверами",
+    sale_mode: "subscription",
+    hwid_device_limit: 5,
+    effective_hwid_device_limit: 5,
+    monthly_gb: 100,
+    traffic_limit_strategy: "MONTH",
+    premium_enabled: true,
+    premium_monthly_gb: 50,
+    premium_traffic_limit_strategy: "WEEK",
+    premium_unlimited: false,
+    months,
+    price,
+    stars_price: starsPrice,
+    currency: "RUB",
+    title: "PRO",
+    subtitle,
+    available_payment_method_ids: [
+      "cloudpayments",
+      "yookassa",
+      "platega_sbp",
+      "stars",
+      "cryptopay",
+      "freekassa",
+    ],
+    checkout_addons: checkoutAddons(months),
+  };
+}
+
 export const DEV_MOCK: PreviewMock = {
   config: {
     title: "/minishop",
@@ -111,6 +223,9 @@ export const DEV_MOCK: PreviewMock = {
       auto_renew_provider_label: "CloudPayments",
       provider: "cloudpayments",
       max_devices: 5,
+      tariff_key: "pro",
+      tariff_name: "PRO",
+      extra_hwid_devices: 0,
     },
     subscription_guides: {
       ok: true,
@@ -158,10 +273,10 @@ export const DEV_MOCK: PreviewMock = {
       ],
     },
     plans: [
-      { months: 1, price: 290, currency: "RUB", title: "1 месяц" },
-      { months: 3, price: 790, currency: "RUB", title: "3 месяца" },
-      { months: 6, price: 1490, currency: "RUB", title: "6 месяцев" },
-      { months: 12, price: 2690, currency: "RUB", title: "12 месяцев" },
+      previewPeriodPlan(1, 290, 145, "1 месяц"),
+      previewPeriodPlan(3, 790, 395, "3 месяца"),
+      previewPeriodPlan(6, 1490, 745, "6 месяцев"),
+      previewPeriodPlan(12, 2690, 1345, "1 год"),
     ],
     payment_methods: [
       { id: "cloudpayments", name: "CloudPayments", icon: "CreditCard" },
@@ -195,7 +310,8 @@ export const DEV_MOCK: PreviewMock = {
     settings: {
       support_url: "https://t.me/support",
       traffic_mode: false,
-      my_devices_enabled: false,
+      my_devices_enabled: true,
+      payment_methods_display_mode: "dropdown",
       user_hwid_device_limit: 5,
       trial_enabled: true,
       trial_available: true,

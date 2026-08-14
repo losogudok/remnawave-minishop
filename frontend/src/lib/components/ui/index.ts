@@ -15,6 +15,7 @@ export { default as Skeleton } from "./skeleton.svelte";
 export { default as Sortable } from "./sortable.svelte";
 export { default as Spinner } from "./spinner.svelte";
 export { default as ScrollArea } from "./scroll-area.svelte";
+export { default as Slider } from "./slider.svelte";
 export { default as Textarea } from "./textarea.svelte";
 export * as Icons from "./icons.js";
 export * as Card from "./card/index.js";

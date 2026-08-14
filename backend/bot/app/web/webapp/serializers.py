@@ -38,7 +38,9 @@ from bot.utils.locale_defaults import subscription_purchase_description_text
 from bot.utils.traffic_reset import format_traffic_reset_date, parse_panel_datetime
 from config.settings import Settings
 from config.subscription_guides_config import subscription_guides_available
+from config.tariff_checkout import serialize_checkout_addons
 from config.tariffs_config import default_currency_key_for_settings, payment_currency_code
+from config.traffic_strategy import normalize_traffic_limit_strategy
 from config.webapp_themes_config import public_themes_catalog_payload
 from db.dal import payment_dal, subscription_dal, support_dal, user_dal
 
@@ -72,6 +74,7 @@ from .serializers_billing_options import (
     _serialize_topup_packages,
     _traffic_percent,
 )
+from .serializers_checkout import attach_checkout_pricing_context_to_plans
 from .serializers_payments import _serialize_pending_promo_payment
 
 logger = logging.getLogger(__name__)
@@ -261,6 +264,12 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             local_sub=local_sub,
             plans=plans_payload,
         )
+        await attach_checkout_pricing_context_to_plans(
+            session,
+            settings,
+            local_sub=local_sub,
+            plans=plans_payload,
+        )
         avatar = await _ensure_cached_telegram_avatar(request, session, db_user)
         try:
             await session.commit()
@@ -355,6 +364,7 @@ async def _build_user_payload(request: web.Request, user_id: int) -> dict[str, A
             ),
             "traffic_mode": bool(settings.traffic_sale_mode),
             "my_devices_enabled": bool(settings.MY_DEVICES_SECTION_ENABLED),
+            "payment_methods_display_mode": settings.PAYMENT_METHODS_DISPLAY_MODE,
             "partner_program_enabled": bool(settings.partner_settings.enabled),
             "referral_program_enabled": referral_program_enabled,
             "subscription_reissue_enabled": bool(
@@ -725,6 +735,27 @@ def _serialize_plans(
         default_currency_code = payment_currency_code(default_currency)
         plans = []
         for tariff in tariffs_config.enabled_tariffs:
+            effective_hwid_device_limit = (
+                tariff.hwid_device_limit
+                if tariff.hwid_device_limit is not None
+                else settings.USER_HWID_DEVICE_LIMIT
+            )
+            traffic_limit_strategy = (
+                normalize_traffic_limit_strategy(
+                    tariff.traffic_limit_strategy or settings.USER_TRAFFIC_STRATEGY,
+                    default="MONTH",
+                )
+                if tariff.billing_model == "period"
+                else "NO_RESET"
+            )
+            premium_traffic_limit_strategy = (
+                normalize_traffic_limit_strategy(
+                    tariff.premium_traffic_limit_strategy,
+                    default=traffic_limit_strategy,
+                )
+                if tariff.premium_traffic_limit_strategy is not None
+                else traffic_limit_strategy
+            )
             common = {
                 "tariff_key": tariff.key,
                 "is_default_tariff": tariff.key == tariffs_config.default_tariff,
@@ -734,6 +765,12 @@ def _serialize_plans(
                 "squad_uuids": tariff.squad_uuids,
                 "currency": default_currency_code,
                 "hwid_device_limit": tariff.hwid_device_limit,
+                "effective_hwid_device_limit": effective_hwid_device_limit,
+                "premium_enabled": bool(tariff.premium_squad_uuids),
+                "premium_monthly_gb": tariff.premium_monthly_gb,
+                "premium_unlimited": bool(tariff.premium_unlimited),
+                "traffic_limit_strategy": traffic_limit_strategy,
+                "premium_traffic_limit_strategy": premium_traffic_limit_strategy,
                 "hwid_device_packages": _serialize_hwid_device_packages(
                     settings,
                     tariff,
@@ -761,6 +798,13 @@ def _serialize_plans(
                         "title": tariff.name(lang),
                         "subtitle": _format_months_title(int(months), lang),
                         "monthly_gb": tariff.monthly_gb,
+                        "checkout_addons": serialize_checkout_addons(
+                            tariff,
+                            default_currency=default_currency,
+                            months=int(months),
+                            fallback_hwid_limit=settings.USER_HWID_DEVICE_LIMIT,
+                            devices_feature_enabled=bool(settings.MY_DEVICES_SECTION_ENABLED),
+                        ),
                     }
                     if stars_price is not None and int(stars_price) > 0:
                         plan["stars_price"] = int(stars_price)

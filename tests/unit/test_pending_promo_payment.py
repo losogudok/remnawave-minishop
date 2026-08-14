@@ -223,6 +223,8 @@ class PendingPromoPaymentTests(IsolatedAsyncioTestCase):
                 "tariff_key": "pro",
                 "promo_code": "SAVE20",
                 "promo_effect_summary": "-20%",
+                "checkout_addons": [],
+                "checkout_addons_amount": 0.0,
                 "created_at": "2026-07-29T12:30:00+00:00",
             },
         )

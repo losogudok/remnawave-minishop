@@ -143,6 +143,7 @@ export function adminFallbackResponse(
     return {
       ok: true,
       path: "data/tariffs.json",
+      user_hwid_device_limit: 5,
       provider_currency_support: demoProviderCurrencySupport(),
       catalog: {
         default_tariff: "standard",
@@ -153,8 +154,54 @@ export function adminFallbackResponse(
             names: { ru: "Стандарт", en: "Standard" },
             descriptions: { ru: "Базовый набор серверов" },
             squad_uuids: ["db786ee8-816b-4760-80aa-1fc7a3669ff2"],
+            premium_squad_uuids: ["ca842d76-63e2-41e9-a563-086050cfad75"],
             billing_model: "period",
             monthly_gb: 500,
+            premium_monthly_gb: 50,
+            topup_packages: {
+              rub: [
+                { gb: 50, price: 99 },
+                { gb: 200, price: 299 },
+              ],
+              stars: [{ gb: 50, price: 50 }],
+            },
+            flexible_traffic_limit: {
+              step_gb: 50,
+              max_total_gb: 700,
+              price_per_step: 99,
+              stars_price_per_step: 50,
+            },
+            premium_topup_packages: {
+              rub: [
+                { gb: 25, price: 129 },
+                { gb: 100, price: 399 },
+              ],
+              stars: [{ gb: 25, price: 65 }],
+            },
+            premium_flexible_traffic_limit: {
+              step_gb: 25,
+              max_total_gb: 150,
+              price_per_step: 129,
+              stars_price_per_step: 65,
+            },
+            hwid_device_limit: 5,
+            hwid_device_packages: {
+              rub: [
+                { count: 1, price: 79, traffic_bonus_gb: 10 },
+                { count: 5, price: 279, traffic_bonus_gb: 50 },
+              ],
+              stars: [{ count: 1, price: 40, traffic_bonus_gb: 10 }],
+            },
+            checkout_addons: {
+              devices: {
+                enabled: true,
+                max_extra_devices: 5,
+                price_per_device: 79,
+                stars_price_per_device: 40,
+              },
+              traffic: { enabled: true },
+              premium_traffic: { enabled: true },
+            },
             prices_rub: { 1: 150, 3: 400 },
             prices_stars: { 1: 0, 3: 0 },
             enabled_periods: [1, 3],
@@ -186,6 +233,7 @@ export function adminFallbackResponse(
       ok: true,
       squads: [
         { uuid: "db786ee8-816b-4760-80aa-1fc7a3669ff2", name: "Base RU" },
+        { uuid: "ca842d76-63e2-41e9-a563-086050cfad75", name: "Premium NL" },
         { uuid: "2f2f6e0a-1f2d-4e80-a33b-0ebf3a409012", name: "Trial warmup" },
       ],
     };

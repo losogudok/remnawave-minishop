@@ -1,27 +1,27 @@
 <script lang="ts">
-  import {
-    ArrowLeft,
-    ArrowRight,
-    CheckCircle2,
-    ExternalLink,
-    History,
-    LockKeyhole,
-    Tag,
-  } from "$components/ui/icons.js";
+  import { ArrowLeft, ArrowRight, CheckCircle2 } from "$components/ui/icons.js";
 
   import Button from "$components/ui/button.svelte";
   import Checkbox from "$components/ui/checkbox.svelte";
   import Dialog from "$components/ui/dialog.svelte";
-  import { EmptyCard, PaymentMethodGrid } from "$components/patterns/webapp/index.js";
-  import CheckoutPromoRow from "../CheckoutPromoRow.svelte";
-  import PartnerBalanceDiscount from "./PartnerBalanceDiscount.svelte";
+  import {
+    AnimatedPrice,
+    CheckoutAddonSliders,
+    EmptyCard,
+  } from "$components/patterns/webapp/index.js";
+  import CheckoutPaymentControls from "./CheckoutPaymentControls.svelte";
+  import PendingPaymentCard from "./PendingPaymentCard.svelte";
   import {
     checkoutPromoAffectsQuotedPlan,
     checkoutPromoBlockVisible,
     selectPaymentMethodWithPromoReset,
   } from "$lib/webapp/checkoutPromoPolicy.js";
   import { formatCompactNumber, formatMoney } from "$lib/webapp/formatters.js";
-  import type { ApiClient } from "$lib/webapp/publicApi.js";
+  import {
+    buildSubscriptionQuotePath,
+    type ApiClient,
+    type PostPayload,
+  } from "$lib/webapp/publicApi.js";
   import {
     planKey as planKeyFn,
     planDisplayTitle as planDisplayTitleFn,
@@ -34,6 +34,9 @@
     methodsForPlan,
   } from "$lib/webapp/tariffs.js";
   import type {
+    CheckoutAddonDefinition,
+    CheckoutAddonKind,
+    CheckoutAddonSelection,
     PaymentMethodView,
     PendingPaymentView,
     PlanView,
@@ -44,13 +47,19 @@
     VoidAction,
   } from "$lib/webapp/types.js";
 
-  type BalancePaymentAction = (options?: { usePartnerBalance?: boolean }) => unknown;
+  type CheckoutPaymentOptions = {
+    usePartnerBalance?: boolean;
+    checkoutAddons?: CheckoutAddonSelection;
+  };
+  type BalancePaymentAction = (options?: CheckoutPaymentOptions) => unknown;
+  type CheckoutPromoAction = (options?: Pick<CheckoutPaymentOptions, "checkoutAddons">) => unknown;
 
   let {
     api,
     createPayment = () => {},
     hasMultipleTariffs = false,
     methods = [],
+    paymentMethodsDisplayMode = "dropdown",
     pendingPayment = null,
     payBusy = false,
     paymentModalOpen = $bindable(false),
@@ -92,6 +101,7 @@
     createPayment?: BalancePaymentAction;
     hasMultipleTariffs?: boolean;
     methods?: PaymentMethodView[];
+    paymentMethodsDisplayMode?: "dropdown" | "buttons" | string;
     pendingPayment?: PendingPaymentView | null;
     payBusy?: boolean;
     paymentModalOpen?: boolean;
@@ -120,7 +130,7 @@
     checkoutPromoAppliesTo?: string;
     checkoutPromoMinSubscriptionMonths?: number | null;
     checkoutPromoMinTrafficGb?: number | null;
-    applyCheckoutPromo?: VoidAction;
+    applyCheckoutPromo?: CheckoutPromoAction;
     backToTariffList?: VoidAction;
     clearCheckoutPromo?: VoidAction;
     continueWithSelectedTariff?: VoidAction;
@@ -130,43 +140,6 @@
     termUnitLabel?: TermUnitLabel;
   } = $props();
 
-  function priceLabel(plan: PlanView | null) {
-    return priceLabelFn(plan, selectedMethod);
-  }
-  function pendingPaymentPrice(value: unknown) {
-    const amount = Number(value || 0);
-    const provider = String(pendingPayment?.provider || "");
-    return priceLabelFn(
-      {
-        price: amount,
-        stars_price: provider.toLowerCase().includes("stars") ? amount : undefined,
-        currency: String(pendingPayment?.currency || ""),
-      },
-      provider
-    );
-  }
-  function pendingPaymentTerm() {
-    const months = Number(pendingPayment?.months || 0);
-    if (months > 0) return termUnitLabel(months, "month");
-    const trafficGb = Number(pendingPayment?.purchased_gb || 0);
-    if (trafficGb > 0) {
-      return t("wa_pending_payment_traffic", { gb: formatCompactNumber(trafficGb) });
-    }
-    const devices = Number(pendingPayment?.purchased_hwid_devices || 0);
-    if (devices > 0) return t("wa_pending_payment_devices", { count: devices });
-    return t("wa_pending_payment_purchase");
-  }
-  function pendingPaymentDiscount() {
-    const summary = String(pendingPayment?.promo_effect_summary || "").trim();
-    if (summary) return summary;
-    const percent = Number(pendingPayment?.discount_percent || 0);
-    if (percent > 0) {
-      return t("wa_pending_payment_discount_percent", {
-        percent: formatCompactNumber(percent),
-      });
-    }
-    return t("wa_pending_payment_discount_applied");
-  }
   function methodUsesStars() {
     return String(selectedMethod || "")
       .toLowerCase()
@@ -200,6 +173,147 @@
       (nextMethod) => (selectedMethod = nextMethod),
       clearCheckoutPromo
     );
+  }
+  let checkoutDeviceCount = $state(0);
+  let checkoutRegularLimitGb = $state<number | null>(null);
+  let checkoutPremiumLimitGb = $state<number | null>(null);
+  let checkoutPlanIdentity = $state("");
+  let checkoutQuote = $state<Record<string, unknown> | null>(null);
+  let checkoutQuoteBusy = $state(false);
+  let checkoutQuoteError = $state("");
+  let checkoutQuoteRequestId = 0;
+
+  const checkoutAddonSelection = $derived<CheckoutAddonSelection>({
+    device_count: checkoutDeviceCount,
+    regular_limit_gb: checkoutRegularLimitGb,
+    premium_limit_gb: checkoutPremiumLimitGb,
+  });
+
+  function checkoutAddonDefinitions(
+    plan: PlanView | null
+  ): Partial<Record<CheckoutAddonKind, CheckoutAddonDefinition>> {
+    if (!isSubscriptionPlan(plan)) return {};
+    const definitions = plan?.checkout_addons || {};
+    if (!methodUsesStars()) return definitions;
+    const supported: Partial<Record<CheckoutAddonKind, CheckoutAddonDefinition>> = {};
+    for (const kind of ["devices", "traffic", "premium_traffic"] as CheckoutAddonKind[]) {
+      const definition = definitions[kind];
+      if (!definition) continue;
+      const options = definition.options.filter(
+        (option) => Number(option.extra_units || 0) <= 0 || Number(option.stars_price || 0) > 0
+      );
+      if (options.length > 1) supported[kind] = { ...definition, options };
+    }
+    return supported;
+  }
+
+  function selectedAddonOption(plan: PlanView | null, kind: CheckoutAddonKind) {
+    const definitions = checkoutAddonDefinitions(plan);
+    const selected =
+      kind === "devices"
+        ? checkoutDeviceCount
+        : kind === "traffic"
+          ? checkoutRegularLimitGb
+          : checkoutPremiumLimitGb;
+    return definitions[kind]?.options?.find(
+      (option) =>
+        Math.abs(
+          Number(kind === "devices" ? option.extra_units || 0 : option.total_units || 0) -
+            Number(selected || 0)
+        ) < 1e-9
+    );
+  }
+
+  function planWithSelectedCheckoutAddons(plan: PlanView | null): PlanView | null {
+    if (!plan) return plan;
+    const next: PlanView = { ...plan };
+    for (const kind of ["devices", "traffic", "premium_traffic"] as CheckoutAddonKind[]) {
+      const option = selectedAddonOption(plan, kind);
+      next.price = Number(next.price || 0) + Number(option?.price || 0);
+      if (Number(next.stars_price || 0) > 0) {
+        next.stars_price = Number(next.stars_price || 0) + Number(option?.stars_price || 0);
+      }
+    }
+    return next;
+  }
+
+  function checkoutAddonsSelected(): boolean {
+    if (checkoutDeviceCount > 0) return true;
+    const definitions = checkoutAddonDefinitions(selectedPlan);
+    for (const kind of ["traffic", "premium_traffic"] as CheckoutAddonKind[]) {
+      const definition = definitions[kind];
+      const option = selectedAddonOption(selectedPlan, kind);
+      if (!definition || !option) continue;
+      const initialUnits = Number(definition.initial_units ?? definition.base_units ?? 0);
+      const selectedUnits = Number(option.total_units || 0);
+      if (Number(option.extra_units || 0) > 0 || Math.abs(selectedUnits - initialUnits) > 1e-9) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function checkoutAddonsUnavailableForMethod(plan: PlanView | null): boolean {
+    const method = String(selectedMethod || "").toLowerCase();
+    return Boolean(
+      method &&
+      plan?.checkout_addons_unavailable_payment_method_ids?.some(
+        (methodId) => String(methodId).toLowerCase() === method
+      )
+    );
+  }
+
+  function updateCheckoutAddon(kind: CheckoutAddonKind, value: number): void {
+    if (kind === "devices") {
+      checkoutDeviceCount = value;
+      if (value > 0) renewHwidDevices = false;
+    } else if (kind === "traffic") {
+      checkoutRegularLimitGb = value;
+    } else {
+      checkoutPremiumLimitGb = value;
+    }
+  }
+
+  function checkoutPaymentOptions(): CheckoutPaymentOptions {
+    return { usePartnerBalance, checkoutAddons: checkoutAddonSelection };
+  }
+
+  function checkoutQuotePlan(plan: PlanView | null): PlanView | null {
+    const optimistic = planWithCheckoutSelection(plan);
+    if (!optimistic || !checkoutQuote || checkoutQuoteError) return optimistic;
+    return {
+      ...optimistic,
+      price: Number(checkoutQuote.effective_amount ?? optimistic.price ?? 0),
+      stars_price:
+        checkoutQuote.effective_stars == null
+          ? optimistic.stars_price
+          : Number(checkoutQuote.effective_stars),
+    };
+  }
+
+  async function requestCheckoutQuote(
+    requestId: number,
+    body: PostPayload<"/api/subscription/quote">
+  ): Promise<void> {
+    try {
+      const response = await api(buildSubscriptionQuotePath(), {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      if (requestId !== checkoutQuoteRequestId) return;
+      checkoutQuote = response as Record<string, unknown>;
+      checkoutQuoteError = "";
+    } catch (error: unknown) {
+      if (requestId !== checkoutQuoteRequestId) return;
+      checkoutQuote = null;
+      checkoutQuoteError = String((error as { message?: unknown })?.message || "quote_failed");
+    } finally {
+      if (requestId === checkoutQuoteRequestId) checkoutQuoteBusy = false;
+    }
+  }
+
+  function applyPromoWithCheckoutAddons(): unknown {
+    return applyCheckoutPromo({ checkoutAddons: checkoutAddonSelection });
   }
   function hwidRenewalFor(plan: PlanView | null) {
     return plan?.hwid_renewal?.available ? plan.hwid_renewal : null;
@@ -235,12 +349,15 @@
     }
     return withRenewal;
   }
+  function planWithCheckoutSelection(plan: PlanView | null): PlanView | null {
+    return planWithSelectedHwidRenewal(planWithSelectedCheckoutAddons(plan));
+  }
   function paymentPriceLabel(plan: PlanView | null) {
-    return priceLabelFn(planWithSelectedHwidRenewal(plan), selectedMethod);
+    return priceLabelFn(planWithCheckoutSelection(plan), selectedMethod);
   }
   function checkoutPaymentPriceLabel(plan: PlanView | null) {
     if (providerManagesPrice()) return t("wa_price_managed_by_provider");
-    const promoPrice = checkoutPromoPriceParts(planWithSelectedHwidRenewal(plan));
+    const promoPrice = checkoutPromoPriceParts(plan);
     if (promoPrice) return promoPrice.discounted;
     if (checkoutPromoAppliedCode && checkoutPromoPriceText) return checkoutPromoPriceText;
     return paymentPriceLabel(plan);
@@ -300,22 +417,109 @@
     }
     return next;
   }
-  function checkoutPromoPriceParts(plan: PlanView | null) {
-    if (!checkoutPromoAffectsPlan(plan)) return null;
+  function checkoutPromoPlanParts(plan: PlanView | null) {
+    const checkoutPlan = planWithCheckoutSelection(plan);
+    if (!checkoutPlan || !checkoutPromoAffectsPlan(plan)) return null;
+    const discounted = discountedCheckoutPlan(checkoutPlan);
+    if (!discounted) return null;
     return {
-      base: priceLabelFn(plan, selectedMethod),
-      discounted: priceLabelFn(discountedCheckoutPlan(plan), selectedMethod),
+      base: checkoutPlan,
+      discounted,
     };
   }
-  const selectedPlanForPayment = $derived(planWithSelectedHwidRenewal(selectedPlan));
-  const paymentMethods = $derived(methodsForPlan(methods, selectedPlanForPayment));
+  function checkoutPromoPriceParts(plan: PlanView | null) {
+    const promoPlans = checkoutPromoPlanParts(plan);
+    if (!promoPlans) return null;
+    return {
+      base: priceLabelFn(promoPlans.base, selectedMethod),
+      discounted: priceLabelFn(promoPlans.discounted, selectedMethod),
+    };
+  }
+  const selectedPlanForPayment = $derived(planWithCheckoutSelection(selectedPlan));
+  const selectedQuotedPlanForPayment = $derived(checkoutQuotePlan(selectedPlan));
+  const paymentMethodAvailabilityPlan = $derived(
+    checkoutPromoAffectsPlan(selectedPlan)
+      ? discountedCheckoutPlan(selectedPlanForPayment)
+      : selectedPlanForPayment
+  );
+  const paymentMethods = $derived(methodsForPlan(methods, paymentMethodAvailabilityPlan));
   const paymentMethodSelected = $derived(methodSelectable(paymentMethods, selectedMethod));
+
+  $effect(() => {
+    const definitions = checkoutAddonDefinitions(selectedPlan);
+    let resetPromo = false;
+    const supported = (kind: CheckoutAddonKind, value: number | null) =>
+      value === null ||
+      Boolean(
+        definitions[kind]?.options.some(
+          (option) =>
+            Math.abs(
+              Number(kind === "devices" ? option.extra_units || 0 : option.total_units || 0) -
+                Number(value)
+            ) < 1e-9
+        )
+      );
+    if (!supported("devices", checkoutDeviceCount)) {
+      checkoutDeviceCount = 0;
+      resetPromo = true;
+    }
+    if (!supported("traffic", checkoutRegularLimitGb)) {
+      checkoutRegularLimitGb = Number(definitions.traffic?.base_units || 0) || null;
+      resetPromo = true;
+    }
+    if (!supported("premium_traffic", checkoutPremiumLimitGb)) {
+      checkoutPremiumLimitGb = Number(definitions.premium_traffic?.base_units || 0) || null;
+      resetPromo = true;
+    }
+    if (resetPromo) clearCheckoutPromo();
+  });
 
   $effect(() => {
     if (!paymentModalOpen || paymentStep !== "checkout" || !selectedPlan) return;
     const firstMethod = firstAvailableMethod(paymentMethods);
     if (firstMethod && !methodSelectable(paymentMethods, selectedMethod)) {
       selectedMethod = firstMethod;
+    }
+  });
+  $effect(() => {
+    if (!paymentModalOpen || paymentStep !== "checkout" || !selectedPlan || !selectedMethod) {
+      checkoutQuote = null;
+      checkoutQuoteError = "";
+      checkoutQuoteBusy = false;
+      return;
+    }
+    const body = {
+      months: selectedPlan.months,
+      traffic_gb: selectedPlan.traffic_gb,
+      device_count: selectedPlan.device_count,
+      tariff_key: selectedPlan.tariff_key,
+      sale_mode: selectedPlan.sale_mode,
+      method: selectedMethod,
+      renew_hwid_devices:
+        renewHwidDevices &&
+        Boolean(selectedPlan?.hwid_renewal?.available) &&
+        checkoutDeviceCount <= 0,
+      checkout_addons: checkoutAddonSelection,
+      promo_code: checkoutPromoAppliedCode || undefined,
+    } as PostPayload<"/api/subscription/quote">;
+    const requestId = ++checkoutQuoteRequestId;
+    checkoutQuoteBusy = true;
+    checkoutQuoteError = "";
+    const timer = window.setTimeout(() => void requestCheckoutQuote(requestId, body), 90);
+    return () => window.clearTimeout(timer);
+  });
+  $effect(() => {
+    const identity = String(selectedPlan?.tariff_key || selectedTariffKey || "legacy");
+    if (identity !== checkoutPlanIdentity) {
+      checkoutPlanIdentity = identity;
+      const definitions = checkoutAddonDefinitions(selectedPlan);
+      checkoutDeviceCount = Number(definitions.devices?.initial_units || 0);
+      checkoutRegularLimitGb =
+        Number(definitions.traffic?.initial_units ?? definitions.traffic?.base_units ?? 0) || null;
+      checkoutPremiumLimitGb =
+        Number(
+          definitions.premium_traffic?.initial_units ?? definitions.premium_traffic?.base_units ?? 0
+        ) || null;
     }
   });
   function hwidRenewalPriceLabel(plan: PlanView | null = selectedPlan) {
@@ -331,7 +535,7 @@
     );
   }
   function showHwidRenewalBlock() {
-    return hwidRenewalAvailableForMethod(selectedPlan);
+    return checkoutDeviceCount <= 0 && hwidRenewalAvailableForMethod(selectedPlan);
   }
   function showHwidRenewalUnavailableNote() {
     return Boolean(
@@ -378,6 +582,37 @@
   function planUnitHint(plan: PlanView | null) {
     return planUnitHintFn(plan, { trafficMode, selectedMethod, t });
   }
+  function checkoutUnitPricePlan(plan: PlanView | null): PlanView | null {
+    if (!planUnitHint(plan)) return null;
+    const checkoutPlan =
+      checkoutPromoPlanParts(plan)?.discounted || planWithCheckoutSelection(plan);
+    if (!checkoutPlan) return null;
+    const trafficUnit =
+      trafficMode ||
+      ["traffic", "traffic_package", "topup", "premium_topup"].includes(
+        String(plan?.sale_mode || "").toLowerCase()
+      );
+    const divisor = trafficUnit
+      ? Number(plan?.traffic_gb || plan?.months || 0)
+      : Number(plan?.months || 0);
+    if (!(divisor > 0)) return null;
+    return {
+      ...checkoutPlan,
+      price: Math.round((Number(checkoutPlan.price || 0) / divisor) * 100) / 100,
+      stars_price:
+        Number(checkoutPlan.stars_price || 0) > 0
+          ? Math.round(Number(checkoutPlan.stars_price || 0) / divisor)
+          : checkoutPlan.stars_price,
+    };
+  }
+  function checkoutUnitPriceSuffix(plan: PlanView | null): string {
+    const trafficUnit =
+      trafficMode ||
+      ["traffic", "traffic_package", "topup", "premium_topup"].includes(
+        String(plan?.sale_mode || "").toLowerCase()
+      );
+    return t(trafficUnit ? "wa_per_gb_short" : "wa_per_month_short");
+  }
   function tariffLimitLabel(tariff: TariffView) {
     return tariffLimitLabelFn(tariff, { t });
   }
@@ -423,9 +658,11 @@
   let partnerBalanceDiscount = $state(0);
 
   function checkoutAmount(plan: PlanView | null) {
+    const quotedAmount = Number(checkoutQuote?.effective_amount);
+    if (checkoutQuote && Number.isFinite(quotedAmount) && quotedAmount >= 0) return quotedAmount;
     const quotedPromoAmount = Number(checkoutPromoEffectiveAmount || 0);
     if (checkoutPromoAppliedCode && quotedPromoAmount > 0) return quotedPromoAmount;
-    return Number(planWithSelectedHwidRenewal(plan)?.price || 0);
+    return Number(checkoutQuotePlan(plan)?.price || 0);
   }
 
   function selectedMethodMinimum() {
@@ -460,16 +697,61 @@
   }
 </script>
 
-{#snippet partnerBalanceOption()}
-  <PartnerBalanceDiscount
+{#snippet checkoutTariffCard()}
+  {#if selectedPlan && isSubscriptionPlan(selectedPlan)}
+    <CheckoutAddonSliders
+      addons={checkoutAddonDefinitions(selectedPlan)}
+      selection={checkoutAddonSelection}
+      plan={selectedPlan}
+      tariffTitle={String(
+        selectedTariff?.title || selectedPlan.tariff_name || selectedPlan.title || ""
+      )}
+      tariffDescription={String(selectedTariff?.description || selectedPlan.description || "")}
+      method={selectedMethod}
+      currency={String(selectedPlan.currency || "RUB")}
+      disabled={checkoutAddonsUnavailableForMethod(selectedPlan)}
+      {t}
+      onChange={updateCheckoutAddon}
+    />
+  {/if}
+{/snippet}
+
+{#snippet checkoutPaymentControls()}
+  <CheckoutPaymentControls
     {api}
-    open={paymentModalOpen}
-    amount={checkoutAmount(selectedPlan)}
-    currency={String(selectedPlan?.currency || "")}
-    eligible={partnerBalanceEligible()}
-    minimumExternalAmount={selectedMethodMinimum()}
-    bind:selected={usePartnerBalance}
-    bind:discount={partnerBalanceDiscount}
+    {paymentModalOpen}
+    partnerAmount={checkoutAmount(selectedPlan)}
+    partnerCurrency={String(selectedPlan?.currency || "")}
+    partnerEligible={partnerBalanceEligible()}
+    partnerMinimum={selectedMethodMinimum()}
+    bind:usePartnerBalance
+    bind:partnerBalanceDiscount
+    hasMethods={Boolean(methods.length)}
+    {paymentMethods}
+    {selectedMethod}
+    {paymentMethodsDisplayMode}
+    {selectPaymentMethod}
+    {checkoutQuoteError}
+    showCheckoutPromo={checkoutPromoBlock()}
+    bind:checkoutPromoInput
+    {checkoutPromoAppliedCode}
+    {checkoutPromoIsError}
+    {checkoutPromoStatus}
+    applyCheckoutPromo={applyPromoWithCheckoutAddons}
+    {clearCheckoutPromo}
+    payDisabled={!selectedPlan ||
+      !paymentMethodSelected ||
+      payBusy ||
+      checkoutQuoteBusy ||
+      Boolean(checkoutQuoteError) ||
+      (checkoutAddonsSelected() && checkoutAddonsUnavailableForMethod(selectedPlan))}
+    createPayment={() => createPayment(checkoutPaymentOptions())}
+    partnerPrice={partnerCheckoutPriceParts(selectedPlan)}
+    promoPrice={checkoutPromoPlanParts(selectedPlan)}
+    {selectedPlan}
+    quotedPlan={selectedQuotedPlanForPayment}
+    providerManagesPrice={providerManagesPrice()}
+    fallbackPrice={selectedPlan ? checkoutPaymentPriceLabel(selectedPlan) : ""}
     {t}
   />
 {/snippet}
@@ -484,46 +766,13 @@
 >
   <div class="payment-dialog-body">
     {#if pendingPayment}
-      <section class="pending-payment-card">
-        <div class="pending-payment-heading">
-          <span class="pending-payment-icon"><History size={18} /></span>
-          <span>
-            <strong>{t("wa_pending_payment_title")}</strong>
-            <small>
-              {t("wa_pending_payment_description", {
-                promo: pendingPayment.promo_code || "",
-              })}
-            </small>
-          </span>
-        </div>
-        <div class="pending-payment-facts">
-          <span>
-            <small>{t("wa_pending_payment_term")}</small>
-            <strong>{pendingPaymentTerm()}</strong>
-          </span>
-          <span>
-            <small>{t("wa_pending_payment_amount")}</small>
-            <strong class="pending-payment-price">
-              {#if Number(pendingPayment.base_amount || 0) > Number(pendingPayment.amount || 0)}
-                <s>{pendingPaymentPrice(pendingPayment.base_amount)}</s>
-              {/if}
-              {pendingPaymentPrice(pendingPayment.amount)}
-            </strong>
-          </span>
-          <span>
-            <small><Tag size={12} /> {t("wa_pending_payment_discount")}</small>
-            <strong>{pendingPaymentDiscount()}</strong>
-          </span>
-        </div>
-        <Button
-          class="wide pending-payment-action"
-          onclick={() => resumePendingPayment(pendingPayment)}
-          disabled={payBusy}
-        >
-          {t("wa_pending_payment_continue")}
-          <ExternalLink size={16} />
-        </Button>
-      </section>
+      <PendingPaymentCard
+        payment={pendingPayment}
+        {payBusy}
+        resume={resumePendingPayment}
+        {t}
+        {termUnitLabel}
+      />
     {/if}
     {#if tariffMode && !singleTariffMode && paymentStep === "tariff"}
       {#if tariffCatalog.length}
@@ -579,6 +828,7 @@
             <p>{subscriptionPurchaseDescription}</p>
           </div>
         {/if}
+        {@render checkoutTariffCard()}
         {#if showHwidRenewalBlock()}
           <label class="hwid-renewal-option">
             <Checkbox
@@ -618,7 +868,7 @@
         {/if}
         <div class="period-grid period-grid-two-columns">
           {#each selectedTariffPlans as plan}
-            {@const promoPrice = checkoutPromoPriceParts(plan)}
+            {@const promoPlans = checkoutPromoPlanParts(plan)}
             <button
               class:active={planKey(selectedPlan) === planKey(plan)}
               class="period-card"
@@ -626,16 +876,24 @@
               onclick={() => (selectedPlan = plan)}
             >
               <strong>{planSubtitle(plan) || planDisplayTitle(plan)}</strong>
-              {#if promoPrice}
+              {#if promoPlans}
                 <span class="promo-price-pair">
-                  <s>{promoPrice.base}</s>
-                  <b>{promoPrice.discounted}</b>
+                  <s><AnimatedPrice plan={promoPlans.base} method={selectedMethod} /></s>
+                  <b><AnimatedPrice plan={promoPlans.discounted} method={selectedMethod} /></b>
                 </span>
               {:else}
-                <span>{priceLabel(plan)}</span>
+                <span
+                  ><AnimatedPrice
+                    plan={planWithCheckoutSelection(plan)}
+                    method={selectedMethod}
+                  /></span
+                >
               {/if}
-              {#if planUnitHint(plan)}
-                <small>{planUnitHint(plan)}</small>
+              {#if checkoutUnitPricePlan(plan)}
+                <small class="period-unit-price">
+                  <AnimatedPrice plan={checkoutUnitPricePlan(plan)} method={selectedMethod} />
+                  <span>{checkoutUnitPriceSuffix(plan)}</span>
+                </small>
               {/if}
               {#if planKey(selectedPlan) === planKey(plan)}
                 <CheckCircle2 size={18} />
@@ -643,61 +901,17 @@
             </button>
           {/each}
         </div>
-        <div class="payment-divider" aria-hidden="true"></div>
-        {#if methods.length}
-          <PaymentMethodGrid
-            methods={paymentMethods}
-            {selectedMethod}
-            {t}
-            onSelect={selectPaymentMethod}
-          />
-        {:else}
-          <EmptyCard>{t("wa_payment_methods_not_configured")}</EmptyCard>
-        {/if}
-        {#if checkoutPromoBlock()}
-          <CheckoutPromoRow
-            bind:value={checkoutPromoInput}
-            appliedCode={checkoutPromoAppliedCode}
-            isError={checkoutPromoIsError}
-            status={checkoutPromoStatus}
-            onApply={applyCheckoutPromo}
-            onClear={clearCheckoutPromo}
-            {t}
-          />
-        {/if}
-        {@render partnerBalanceOption()}
-        <Button
-          class="wide bottom-action payment-submit-button"
-          onclick={() => createPayment({ usePartnerBalance })}
-          disabled={!selectedPlan || !paymentMethodSelected || payBusy}
-        >
-          {t("wa_pay")}
-          {#if partnerCheckoutPriceParts(selectedPlan)}
-            {@const balancePrice = partnerCheckoutPriceParts(selectedPlan)}
-            <span class="promo-price-pair">
-              <s>{balancePrice?.base}</s>
-              <b>{balancePrice?.discounted}</b>
-            </span>
-          {:else}
-            {selectedPlan ? checkoutPaymentPriceLabel(selectedPlan) : ""}
-          {/if}
-          <LockKeyhole size={17} />
-        </Button>
+        {@render checkoutPaymentControls()}
       {:else}
         <EmptyCard>{t("wa_no_tariff_change_options")}</EmptyCard>
       {/if}
     {:else}
-      <!--
-        Legacy / non-tariff mode (no JSON tariffs catalog OR traffic-only).
-        Previously this block was also reached *in addition* to the tariff
-        branch above, so users on legacy mode saw the period grid, payment
-        method grid and pay button duplicated.
-      -->
       {#if showSubscriptionPurchaseDescription()}
         <div class="subscription-purchase-description">
           <p>{subscriptionPurchaseDescription}</p>
         </div>
       {/if}
+      {@render checkoutTariffCard()}
       {#if showHwidRenewalBlock()}
         <label class="hwid-renewal-option">
           <Checkbox
@@ -737,7 +951,7 @@
       {/if}
       <div class="period-grid period-grid-two-columns">
         {#each plans as plan}
-          {@const promoPrice = checkoutPromoPriceParts(plan)}
+          {@const promoPlans = checkoutPromoPlanParts(plan)}
           <button
             class:active={planKey(selectedPlan) === planKey(plan)}
             class="period-card"
@@ -748,16 +962,24 @@
             {#if planSubtitle(plan)}
               <em>{planSubtitle(plan)}</em>
             {/if}
-            {#if promoPrice}
+            {#if promoPlans}
               <span class="promo-price-pair">
-                <s>{promoPrice.base}</s>
-                <b>{promoPrice.discounted}</b>
+                <s><AnimatedPrice plan={promoPlans.base} method={selectedMethod} /></s>
+                <b><AnimatedPrice plan={promoPlans.discounted} method={selectedMethod} /></b>
               </span>
             {:else}
-              <span>{priceLabel(plan)}</span>
+              <span
+                ><AnimatedPrice
+                  plan={planWithCheckoutSelection(plan)}
+                  method={selectedMethod}
+                /></span
+              >
             {/if}
-            {#if planUnitHint(plan)}
-              <small>{planUnitHint(plan)}</small>
+            {#if checkoutUnitPricePlan(plan)}
+              <small class="period-unit-price">
+                <AnimatedPrice plan={checkoutUnitPricePlan(plan)} method={selectedMethod} />
+                <span>{checkoutUnitPriceSuffix(plan)}</span>
+              </small>
             {/if}
             {#if planKey(selectedPlan) === planKey(plan)}
               <CheckCircle2 size={18} />
@@ -765,46 +987,7 @@
           </button>
         {/each}
       </div>
-      <div class="payment-divider" aria-hidden="true"></div>
-      {#if methods.length}
-        <PaymentMethodGrid
-          methods={paymentMethods}
-          {selectedMethod}
-          {t}
-          onSelect={selectPaymentMethod}
-        />
-      {:else}
-        <EmptyCard>{t("wa_payment_methods_not_configured")}</EmptyCard>
-      {/if}
-      {#if checkoutPromoBlock()}
-        <CheckoutPromoRow
-          bind:value={checkoutPromoInput}
-          appliedCode={checkoutPromoAppliedCode}
-          isError={checkoutPromoIsError}
-          status={checkoutPromoStatus}
-          onApply={applyCheckoutPromo}
-          onClear={clearCheckoutPromo}
-          {t}
-        />
-      {/if}
-      {@render partnerBalanceOption()}
-      <Button
-        class="wide bottom-action payment-submit-button"
-        onclick={() => createPayment({ usePartnerBalance })}
-        disabled={!selectedPlan || !paymentMethodSelected || payBusy}
-      >
-        {t("wa_pay")}
-        {#if partnerCheckoutPriceParts(selectedPlan)}
-          {@const balancePrice = partnerCheckoutPriceParts(selectedPlan)}
-          <span class="promo-price-pair">
-            <s>{balancePrice?.base}</s>
-            <b>{balancePrice?.discounted}</b>
-          </span>
-        {:else}
-          {selectedPlan ? checkoutPaymentPriceLabel(selectedPlan) : ""}
-        {/if}
-        <LockKeyhole size={17} />
-      </Button>
+      {@render checkoutPaymentControls()}
     {/if}
   </div>
 </Dialog>

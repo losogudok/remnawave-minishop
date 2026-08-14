@@ -29,6 +29,7 @@ async def find_recent_pending_provider_payment_for_checkout(
     tariff_key: str | None = None,
     tariff_change_quote_snapshot: str | None = None,
     entitlement_context_snapshot: str | None = None,
+    checkout_bundle_hash: str | None = None,
     since_minutes: int | None = None,
     match_reservations: bool = False,
     requested_promo_code: str | None = None,
@@ -62,6 +63,10 @@ async def find_recent_pending_provider_payment_for_checkout(
         conditions.append(Payment.entitlement_context_snapshot == entitlement_context_snapshot)
     else:
         conditions.append(Payment.entitlement_context_snapshot.is_(None))
+    if checkout_bundle_hash is not None:
+        conditions.append(Payment.checkout_bundle_hash == checkout_bundle_hash)
+    else:
+        conditions.append(Payment.checkout_bundle_hash.is_(None))
     if tariff_key is not None:
         conditions.append(Payment.tariff_key == tariff_key)
     if months is not None:
@@ -153,6 +158,7 @@ async def find_later_equivalent_succeeded_payment(
             Payment.entitlement_context_snapshot,
             getattr(payment, "entitlement_context_snapshot", None),
         ),
+        (Payment.checkout_bundle_hash, getattr(payment, "checkout_bundle_hash", None)),
     ):
         conditions.append(column.is_(None) if value is None else column == value)
     purchased_gb = getattr(payment, "purchased_gb", None)

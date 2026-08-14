@@ -54,6 +54,7 @@ class RecurringChargeContext:
     metadata: Mapping[str, str] = field(default_factory=dict)
     hwid_quote: Mapping[str, Any] | None = None
     entitlement_context_snapshot: str | None = None
+    checkout_bundle_snapshot: str | None = None
     # A provider-safe stable key for one renewal attempt.  YooKassa persists
     # it on the local order and sends it as Idempotence-Key, while providers
     # that do not support that contract may ignore it.

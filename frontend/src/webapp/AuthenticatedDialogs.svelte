@@ -44,6 +44,7 @@
     openLinkEmailDialog?: VoidAction;
     hasMultipleTariffs?: boolean;
     methods?: PaymentMethod[];
+    paymentMethodsDisplayMode?: "dropdown" | "buttons" | string;
     pendingPayment?: PendingPaymentView | null;
     plans?: PlanView[];
     selectTariff: (tariff: TariffView) => void;
@@ -81,6 +82,7 @@
     openLinkEmailDialog = () => {},
     hasMultipleTariffs = false,
     methods = [],
+    paymentMethodsDisplayMode = "dropdown",
     pendingPayment = null,
     plans = [],
     selectTariff,
@@ -163,6 +165,7 @@
   clearCheckoutPromo={billingStore.clearCheckoutPromo}
   {hasMultipleTariffs}
   {methods}
+  {paymentMethodsDisplayMode}
   {pendingPayment}
   payBusy={billingStore.payBusy}
   {plans}
@@ -231,6 +234,7 @@
   createTopupPayment={billingStore.createTopupPayment}
   deviceTopupOptions={billingStore.deviceTopupOptions}
   {methods}
+  {paymentMethodsDisplayMode}
   openTariffChangeConfirm={billingStore.openTariffChangeConfirm}
   payBusy={billingStore.payBusy}
   {singleTariffMode}

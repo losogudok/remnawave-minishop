@@ -172,6 +172,7 @@ def build_payment_record_payload(
     renewal_subscription_id: int | None = None,
     renewal_cycle_end: Any = None,
     entitlement_context_snapshot: str | None = None,
+    checkout_bundle_snapshot: str | None = None,
     checkout_promo: Any | None = None,
 ) -> dict:
     """Assemble the payment-record dict that every callback handler used to inline.
@@ -217,6 +218,8 @@ def build_payment_record_payload(
         )
     if entitlement_context_snapshot is not None:
         payload["entitlement_context_snapshot"] = entitlement_context_snapshot
+    if checkout_bundle_snapshot is not None:
+        payload["checkout_bundle_snapshot"] = checkout_bundle_snapshot
     if checkout_promo is not None:
         from bot.services.checkout_promos import checkout_promo_payment_fields
 
@@ -426,6 +429,8 @@ async def create_base_payment_record(
     funding_source: str = "external",
     tariff_change_quote_snapshot: str | None = None,
     entitlement_context_snapshot: str | None = None,
+    checkout_bundle_snapshot: str | None = None,
+    checkout_bundle_hash: str | None = None,
 ) -> Payment:
     payment = await payment_dal.create_payment_record(
         session,
@@ -469,6 +474,8 @@ async def create_base_payment_record(
             "partner_balance_currency_scale": partner_balance_currency_scale,
             "tariff_change_quote_snapshot": tariff_change_quote_snapshot,
             "entitlement_context_snapshot": entitlement_context_snapshot,
+            "checkout_bundle_snapshot": checkout_bundle_snapshot,
+            "checkout_bundle_hash": checkout_bundle_hash,
         },
     )
     if partner_balance_amount_minor:
@@ -560,6 +567,8 @@ async def create_webapp_payment_record(
         funding_source=funding_source,
         tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
         entitlement_context_snapshot=ctx.entitlement_context_snapshot,
+        checkout_bundle_snapshot=ctx.checkout_bundle_snapshot,
+        checkout_bundle_hash=ctx.checkout_bundle_hash,
     )
 
 
@@ -603,6 +612,7 @@ async def reusable_webapp_payment_response(
             requested_partner_balance=int(ctx.partner_balance_amount_minor or 0) > 0,
             tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
             entitlement_context_snapshot=ctx.entitlement_context_snapshot,
+            checkout_bundle_hash=ctx.checkout_bundle_hash,
             since_minutes=since_minutes,
         )
     has_reservations = bool(
@@ -626,6 +636,7 @@ async def reusable_webapp_payment_response(
                 tariff_key=amounts.tariff_key,
                 tariff_change_quote_snapshot=ctx.tariff_change_quote_snapshot,
                 entitlement_context_snapshot=ctx.entitlement_context_snapshot,
+                checkout_bundle_hash=ctx.checkout_bundle_hash,
                 since_minutes=since_minutes,
                 match_reservations=True,
                 requested_promo_code=requested_promo_code,

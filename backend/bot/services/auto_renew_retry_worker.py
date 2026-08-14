@@ -216,6 +216,7 @@ class AutoRenewRetryWorker:
                     metadata=snapshot.metadata,
                     hwid_quote=snapshot.hwid_quote,
                     entitlement_context_snapshot=snapshot.entitlement_context_snapshot,
+                    checkout_bundle_snapshot=snapshot.checkout_bundle_snapshot,
                     idempotence_key=str(cycle.base_idempotence_key),
                     renewal_cycle_end=cycle.renewal_cycle_end,
                     consent_version=int(cycle.consent_version or 0),

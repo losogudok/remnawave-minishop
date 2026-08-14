@@ -2,6 +2,7 @@ from aiohttp import web
 
 from db.dal import message_log_dal, payment_dal, subscription_dal, user_dal
 
+from .billing_checkout_quote import subscription_quote_route
 from .billing_common import (
     _HTML_TAG_RE,
     _TRIAL_ACTIVATION_FAILURE_STATUSES,
@@ -71,6 +72,7 @@ __all__ = [
     "quote_promo_route",
     "subscription_auto_renew_route",
     "subscription_dal",
+    "subscription_quote_route",
     "tariff_change_options_route",
     "tariff_change_payment_route",
     "tariff_change_route",

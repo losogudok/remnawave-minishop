@@ -479,6 +479,66 @@ def _migration_0063_reconcile_tgshop_promo_codes(connection: Connection) -> None
         connection.execute(text("ALTER TABLE promo_codes ALTER COLUMN bonus_days SET NOT NULL"))
 
 
+def _migration_0064_add_checkout_bundle_snapshot(connection: Connection) -> None:
+    """Persist immutable subscription checkout add-ons and their reuse identity."""
+
+    inspector = inspect(connection)
+    if "payments" not in set(inspector.get_table_names()):
+        return
+    columns = {column["name"] for column in inspector.get_columns("payments")}
+    additions = {
+        "checkout_bundle_snapshot": "TEXT",
+        "checkout_bundle_hash": "VARCHAR(64)",
+    }
+    for column, definition in additions.items():
+        if column not in columns:
+            connection.execute(text(f"ALTER TABLE payments ADD COLUMN {column} {definition}"))
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_payments_checkout_bundle_hash "
+            "ON payments (checkout_bundle_hash)"
+        )
+    )
+
+
+def _migration_0065_add_flexible_traffic_limits(connection: Connection) -> None:
+    """Store resettable checkout quota overrides separately from top-ups."""
+
+    connection.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS flexible_traffic_limits (
+                limit_id SERIAL PRIMARY KEY,
+                subscription_id INTEGER NOT NULL REFERENCES subscriptions(subscription_id),
+                payment_id INTEGER REFERENCES payments(payment_id),
+                kind VARCHAR(32) NOT NULL,
+                tariff_key VARCHAR NOT NULL,
+                limit_bytes BIGINT NOT NULL,
+                valid_from TIMESTAMPTZ NOT NULL,
+                valid_until TIMESTAMPTZ NOT NULL,
+                monthly_amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+                monthly_stars_amount INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                CONSTRAINT uq_flexible_traffic_limit_payment_window
+                    UNIQUE (payment_id, kind, valid_from, valid_until)
+            )
+            """
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_flexible_traffic_limits_subscription_window "
+            "ON flexible_traffic_limits (subscription_id, kind, valid_from, valid_until)"
+        )
+    )
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_flexible_traffic_limits_payment_id "
+            "ON flexible_traffic_limits (payment_id)"
+        )
+    )
+
+
 CHAIN_0056_0070: list[Migration] = [
     Migration(
         id="0056_add_tariff_binding_audit",
@@ -519,5 +579,15 @@ CHAIN_0056_0070: list[Migration] = [
         id="0063_reconcile_tgshop_promo_codes",
         description="Normalize legacy tg-shop promo rewards for current effect handling",
         upgrade=_migration_0063_reconcile_tgshop_promo_codes,
+    ),
+    Migration(
+        id="0064_add_checkout_bundle_snapshot",
+        description="Persist immutable subscription checkout add-on bundles",
+        upgrade=_migration_0064_add_checkout_bundle_snapshot,
+    ),
+    Migration(
+        id="0065_add_flexible_traffic_limits",
+        description="Store resettable subscription traffic limit windows",
+        upgrade=_migration_0065_add_flexible_traffic_limits,
     ),
 ]

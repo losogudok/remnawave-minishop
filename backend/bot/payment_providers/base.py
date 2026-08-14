@@ -146,6 +146,8 @@ class WebAppPaymentContext:
     partner_balance_currency_scale: int | None = None
     tariff_change_quote_snapshot: str | None = None
     entitlement_context_snapshot: str | None = None
+    checkout_bundle_snapshot: str | None = None
+    checkout_bundle_hash: str | None = None
 
 
 @dataclass(frozen=True)
@@ -278,6 +280,8 @@ class PaymentProviderSpec:
     payment_context_resolver: PaymentContextSupportResolver | None = None
     external_price_context_resolver: PaymentContextSupportResolver | None = None
     checkout_promo_resolver: CheckoutPromoSupportResolver | None = None
+    supports_checkout_addons: bool = True
+    supports_checkout_addon_first_period: bool = False
     info_url: str | None = None
     logo_url: str | None = None
     currency_support_note: str = ""
@@ -457,6 +461,18 @@ class PaymentProviderSpec:
             return bool(self.checkout_promo_resolver(source, months, sale_mode, promo))
         except Exception:
             return False
+
+    def is_checkout_addon_supported(
+        self,
+        source: Any,
+        months: Any,
+        sale_mode: str,
+    ) -> bool:
+        if not self.supports_checkout_addons:
+            return False
+        if self.is_price_managed_externally(source, months, sale_mode):
+            return False
+        return not (self.manages_recurring and not self.supports_checkout_addon_first_period)
 
     def is_visible(self, source: Any, app: Any) -> bool:
         return self.is_enabled(source) and self.is_service_configured(app)

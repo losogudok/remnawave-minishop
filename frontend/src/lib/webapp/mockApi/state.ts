@@ -71,6 +71,26 @@ export function demoTariffs(): DemoRecord {
         tariffs: [],
       }
     );
+    const tariffs = Array.isArray(demoTariffsState.tariffs)
+      ? (demoTariffsState.tariffs as DemoRecord[])
+      : [];
+    // Keep the immutable dump-backed dataset untouched while presenting the
+    // current checkout-device contract in the interactive demo.
+    const checkoutDemoTariff = tariffs.find((tariff) => tariff.key === "standard");
+    if (checkoutDemoTariff) {
+      const checkoutAddons = (checkoutDemoTariff.checkout_addons || {}) as DemoRecord;
+      checkoutDemoTariff.checkout_addons = {
+        ...checkoutAddons,
+        devices: {
+          enabled: true,
+          max_extra_devices: 5,
+          price_per_device: 79,
+          stars_price_per_device: 40,
+        },
+        traffic: { enabled: true },
+        premium_traffic: { enabled: true },
+      };
+    }
   }
   return demoTariffsState;
 }

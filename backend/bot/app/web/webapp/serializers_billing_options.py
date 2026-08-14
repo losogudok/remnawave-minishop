@@ -35,6 +35,7 @@ def _attach_payment_methods_to_plans(
         )
         available: list[str] = []
         externally_managed: list[str] = []
+        checkout_addons_unavailable: list[str] = []
         for method in settings.payment_methods_order:
             method_id = str(method).strip().lower()
             spec = get_provider_spec(method_id)
@@ -51,9 +52,17 @@ def _attach_payment_methods_to_plans(
                 context_sale_mode,
             ):
                 externally_managed.append(method_id)
+            if plan.get("checkout_addons") and not spec.is_checkout_addon_supported(
+                settings,
+                plan.get("months"),
+                context_sale_mode,
+            ):
+                checkout_addons_unavailable.append(method_id)
         plan["available_payment_method_ids"] = available
         if externally_managed:
             plan["externally_managed_price_method_ids"] = externally_managed
+        if checkout_addons_unavailable:
+            plan["checkout_addons_unavailable_payment_method_ids"] = checkout_addons_unavailable
     return plans
 
 

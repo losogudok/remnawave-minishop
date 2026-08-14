@@ -14,6 +14,45 @@ import { applyDemoDeviceTopup, demoDeviceTopupPlan } from "./deviceTopup";
 import type { AdminDemoFixtures } from "./adminFixtures";
 import { demoPaymentStatuses, isDeviceTopupSaleMode, nextDemoPaymentId } from "./state";
 
+function demoCheckoutQuote(body: DemoRecord) {
+  const method = String(body.method || "").toLowerCase();
+  const stars = method.includes("stars");
+  const plan = ((DEV_MOCK.data.plans || []) as DemoRecord[]).find(
+    (item) =>
+      Number(item.months || 0) === Number(body.months || 0) &&
+      String(item.tariff_key || "") === String(body.tariff_key || "")
+  );
+  const baseAmount = Number(stars ? plan?.stars_price || 0 : plan?.price || 0);
+  const definitions = (plan?.checkout_addons || {}) as DemoRecord;
+  const selection = (body.checkout_addons || {}) as DemoRecord;
+  const selectedUnits: Record<string, number> = {
+    devices: Number(selection.device_count || 0),
+    traffic: Number(
+      selection.regular_limit_gb ?? (definitions.traffic as DemoRecord)?.base_units ?? 0
+    ),
+    premium_traffic: Number(
+      selection.premium_limit_gb ?? (definitions.premium_traffic as DemoRecord)?.base_units ?? 0
+    ),
+  };
+  const items: DemoRecord[] = [];
+  let addonsAmount = 0;
+  for (const [kind, units] of Object.entries(selectedUnits)) {
+    const definition = (definitions[kind] || {}) as DemoRecord;
+    const option = ((definition.options || []) as DemoRecord[]).find(
+      (item) =>
+        Math.abs(
+          Number(kind === "devices" ? item.extra_units || 0 : item.total_units || 0) - units
+        ) < 1e-9
+    );
+    if (!option) continue;
+    const amount = Number(stars ? option.stars_price || 0 : option.price || 0);
+    addonsAmount += amount;
+    items.push({ kind, ...option, amount });
+  }
+  const subtotal = baseAmount + addonsAmount;
+  return { stars, baseAmount, addonsAmount, subtotal, items };
+}
+
 /**
  * User-facing fallback responses for the docs demo / preview. Always returns a
  * value; unmatched paths resolve to `{ ok: false, error: "not_found" }`.
@@ -336,6 +375,56 @@ export function webappFallbackResponse(
         enabled: true,
         start_link: "https://t.me/preview_bot?start=notifications",
       },
+    };
+  }
+  if (
+    ["/subscription/quote", "/subscription/quote-promo"].includes(path) &&
+    String(options.method || "").toUpperCase() === "POST"
+  ) {
+    const body = jsonBody(options);
+    const quote = demoCheckoutQuote(body);
+    const promoCode = String(body.promo_code || "")
+      .trim()
+      .toUpperCase();
+    const discountPercent = promoCode ? 20 : 0;
+    const effective = Math.round(quote.subtotal * (1 - discountPercent / 100) * 100) / 100;
+    if (path.endsWith("quote-promo")) {
+      return {
+        ok: true,
+        valid: true,
+        payable: true,
+        code: promoCode || "SAVE20",
+        promo_code_id: 2026,
+        currency: quote.stars ? "XTR" : "RUB",
+        discount_percent: discountPercent || 20,
+        base_amount: quote.subtotal,
+        effective_amount: promoCode ? effective : quote.subtotal * 0.8,
+        base_stars: quote.stars ? quote.subtotal : null,
+        effective_stars: quote.stars
+          ? Math.round(promoCode ? effective : quote.subtotal * 0.8)
+          : null,
+        discount_amount: quote.subtotal - (promoCode ? effective : quote.subtotal * 0.8),
+        effect_summary: "−20% на всю корзину",
+        applies_to: "all",
+        min_subscription_months: null,
+        min_traffic_gb: null,
+      };
+    }
+    return {
+      ok: true,
+      payable: true,
+      quote_key: JSON.stringify(body.checkout_addons || {}),
+      currency: quote.stars ? "XTR" : "RUB",
+      base_amount: quote.baseAmount,
+      addons_amount: quote.addonsAmount,
+      subtotal_amount: quote.subtotal,
+      discount_amount: quote.subtotal - effective,
+      effective_amount: effective,
+      base_stars: quote.stars ? quote.baseAmount : null,
+      addons_stars: quote.stars ? quote.addonsAmount : 0,
+      effective_stars: quote.stars ? Math.round(effective) : null,
+      renewal_amount: quote.baseAmount,
+      items: quote.items,
     };
   }
   if (path === "/payments" && String(options.method || "").toUpperCase() === "POST") {

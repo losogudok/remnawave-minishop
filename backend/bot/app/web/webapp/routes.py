@@ -64,6 +64,7 @@ from .billing import (
     plans_viewed_route,
     quote_promo_route,
     subscription_auto_renew_route,
+    subscription_quote_route,
     tariff_change_options_route,
     tariff_change_payment_route,
     tariff_change_route,
@@ -230,6 +231,7 @@ def setup_subscription_webapp_routes(app: web.Application) -> None:
     app.router.add_post("/api/subscription/auto-renew", subscription_auto_renew_route)
     app.router.add_post("/api/subscription/reissue", subscription_reissue_route)
     app.router.add_post("/api/subscription/quote-promo", quote_promo_route)
+    app.router.add_post("/api/subscription/quote", subscription_quote_route)
     app.router.add_get("/api/devices", devices_route)
     app.router.add_get("/api/partner/overview", partner_overview_route)
     app.router.add_post("/api/partner/applications", partner_application_create_route)

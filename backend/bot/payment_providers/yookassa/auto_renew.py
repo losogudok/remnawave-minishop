@@ -44,6 +44,7 @@ class YooKassaRecurringSnapshot:
     metadata: dict[str, str]
     hwid_quote: dict[str, Any] | None
     entitlement_context_snapshot: str | None
+    checkout_bundle_snapshot: str | None = None
 
     def to_json(self) -> str:
         return json.dumps(
@@ -76,6 +77,11 @@ class YooKassaRecurringSnapshot:
             entitlement_context_snapshot=(
                 str(payload["entitlement_context_snapshot"])
                 if payload.get("entitlement_context_snapshot") is not None
+                else None
+            ),
+            checkout_bundle_snapshot=(
+                str(payload["checkout_bundle_snapshot"])
+                if payload.get("checkout_bundle_snapshot") is not None
                 else None
             ),
         )

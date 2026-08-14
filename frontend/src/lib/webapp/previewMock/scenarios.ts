@@ -1,7 +1,7 @@
 import { DEMO_DATASET } from "../demoDataset.js";
 import { withDemoAvatar } from "../demoAvatars.js";
 import { readStoredDemoLanguage } from "../demoMockRuntime.js";
-import { DEV_MOCK } from "./devMock";
+import { DEV_MOCK, previewPeriodPlan } from "./devMock";
 import { INSTALL_GUIDES_CONFIG } from "./installGuidesConfig";
 import type { PreviewThemesCatalog } from "./types";
 
@@ -275,6 +275,48 @@ export function applyPreviewMock(kind: unknown): void {
       telegram_notifications_need_prompt: true,
       telegram_notifications_start_link: "https://t.me/preview_bot?start=notifications",
     };
+    return;
+  }
+
+  if (mode === "checkout-addons" || mode === "checkout_addons" || mode === "subscription-extras") {
+    DEV_MOCK.data.settings = {
+      ...DEV_MOCK.data.settings,
+      traffic_mode: false,
+      my_devices_enabled: true,
+      payment_methods_display_mode: "dropdown",
+    };
+    DEV_MOCK.data.subscription = {
+      ...DEV_MOCK.data.subscription,
+      tariff_key: "pro",
+      tariff_name: "PRO",
+      tariff_description: "100 GB, premium-серверы и 5 устройств",
+      billing_model: "period",
+      traffic_limit: "100 GB",
+      traffic_limit_bytes: 107374182400,
+      premium_limit: "50 GB",
+      premium_limit_bytes: 53687091200,
+      premium_baseline_bytes: 53687091200,
+      max_devices: 5,
+    };
+    DEV_MOCK.data.plans = [
+      previewPeriodPlan(1, 290, 145, "1 месяц"),
+      previewPeriodPlan(3, 790, 395, "3 месяца"),
+      previewPeriodPlan(6, 1490, 745, "6 месяцев"),
+      previewPeriodPlan(12, 2690, 1345, "1 год"),
+    ];
+    DEV_MOCK.data.payment_methods = [
+      {
+        id: "cloudpayments",
+        name: "CloudPayments",
+        icon: "CreditCard",
+        min_amount: 500,
+        min_currency: "RUB",
+      },
+      { id: "yookassa", name: "Карта", icon: "CreditCard" },
+      { id: "platega_sbp", name: "СБП", icon: "Smartphone" },
+      { id: "stars", name: "Telegram Stars", icon: "Star" },
+      { id: "cryptopay", name: "Криптовалюта", icon: "Bitcoin" },
+    ];
     return;
   }
 

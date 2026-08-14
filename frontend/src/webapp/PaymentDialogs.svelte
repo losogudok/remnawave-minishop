@@ -5,6 +5,7 @@
   import SetPasswordDialog from "./payment-dialogs/SetPasswordDialog.svelte";
   import type { ApiClient } from "$lib/webapp/publicApi.js";
   import type {
+    CheckoutAddonSelection,
     DeviceView,
     PaymentMethodView,
     PendingPaymentView,
@@ -20,7 +21,12 @@
     display_name?: string | null;
     index?: number | string | null;
   };
-  type BalancePaymentAction = (options?: { usePartnerBalance?: boolean }) => unknown;
+  type CheckoutPaymentOptions = {
+    usePartnerBalance?: boolean;
+    checkoutAddons?: CheckoutAddonSelection;
+  };
+  type BalancePaymentAction = (options?: CheckoutPaymentOptions) => unknown;
+  type CheckoutPromoAction = (options?: Pick<CheckoutPaymentOptions, "checkoutAddons">) => unknown;
 
   let {
     api,
@@ -40,6 +46,7 @@
     linkEmailValue = $bindable(""),
     hasMultipleTariffs = false,
     methods = [],
+    paymentMethodsDisplayMode = "dropdown",
     pendingPayment = null,
     payBusy = false,
     paymentModalOpen = $bindable(false),
@@ -111,6 +118,7 @@
     linkEmailValue?: string;
     hasMultipleTariffs?: boolean;
     methods?: PaymentMethodView[];
+    paymentMethodsDisplayMode?: "dropdown" | "buttons" | string;
     pendingPayment?: PendingPaymentView | null;
     payBusy?: boolean;
     paymentModalOpen?: boolean;
@@ -152,7 +160,7 @@
     checkoutPromoAppliesTo?: string;
     checkoutPromoMinSubscriptionMonths?: number | null;
     checkoutPromoMinTrafficGb?: number | null;
-    applyCheckoutPromo?: VoidAction;
+    applyCheckoutPromo?: CheckoutPromoAction;
     backToTariffList?: VoidAction;
     clearCheckoutPromo?: VoidAction;
     continueWithSelectedTariff?: VoidAction;
@@ -172,6 +180,7 @@
   {createPayment}
   {hasMultipleTariffs}
   {methods}
+  {paymentMethodsDisplayMode}
   {pendingPayment}
   {payBusy}
   bind:paymentModalOpen

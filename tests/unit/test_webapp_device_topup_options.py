@@ -338,6 +338,8 @@ class WebAppDeviceTopupOptionsTests(IsolatedAsyncioTestCase):
             DEFAULT_LANGUAGE="en",
             DEFAULT_CURRENCY_SYMBOL="RUB",
             ADMIN_IDS=[],
+            USER_HWID_DEVICE_LIMIT=None,
+            MY_DEVICES_SECTION_ENABLED=True,
         )
         hwid_quote = {
             "price": 50,

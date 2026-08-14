@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   activeTariffName,
   buildTariffCatalog,
+  checkoutTariffSummary,
   firstAvailableMethod,
   methodSelectable,
   methodsForPlan,
+  paymentMethodMinimum,
   paymentMethodsForContext,
   planDisplayTitle,
   planKey,
@@ -69,6 +71,49 @@ describe("webapp tariff helpers", () => {
     ]);
   });
 
+  it("builds a checkout tariff summary with finite and unlimited limits", () => {
+    expect(
+      checkoutTariffSummary({
+        effective_hwid_device_limit: 5,
+        monthly_gb: 0,
+        premium_enabled: true,
+        premium_monthly_gb: 50,
+        premium_unlimited: false,
+      })
+    ).toEqual({
+      devices: { known: true, units: 5, unlimited: false },
+      traffic: { known: true, units: 0, unlimited: true },
+      premiumTraffic: { known: true, units: 50, unlimited: false },
+    });
+
+    expect(
+      checkoutTariffSummary({
+        hwid_device_limit: 0,
+        monthly_gb: 100,
+        premium_enabled: true,
+        premium_monthly_gb: null,
+        premium_unlimited: true,
+      })
+    ).toEqual({
+      devices: { known: true, units: 0, unlimited: true },
+      traffic: { known: true, units: 100, unlimited: false },
+      premiumTraffic: { known: true, units: 0, unlimited: true },
+    });
+  });
+
+  it("keeps disabled or unknown premium traffic distinct from unlimited traffic", () => {
+    expect(checkoutTariffSummary({ premium_enabled: false }).premiumTraffic).toEqual({
+      known: true,
+      units: 0,
+      unlimited: false,
+    });
+    expect(checkoutTariffSummary({}).premiumTraffic).toEqual({
+      known: false,
+      units: 0,
+      unlimited: false,
+    });
+  });
+
   it("formats plan identity, prices and method availability", () => {
     const plan = {
       tariff_key: "pro",
@@ -85,6 +130,16 @@ describe("webapp tariff helpers", () => {
     expect(methodsForPlan([{ id: "card", min_amount: 700, min_currency: "USD" }], plan)).toEqual([
       { id: "card", min_amount: 700, min_currency: "USD", disabled: true },
     ]);
+    expect(
+      paymentMethodMinimum({
+        id: "bank",
+        minimum_amount: "500",
+        shop_limit_currency: "rub",
+      })
+    ).toEqual({ amount: 500, currency: "RUB", text: "" });
+    expect(
+      methodsForPlan([{ id: "bank", minimum_amount: 700, shop_limit_currency: "USD" }], plan)[0]
+    ).toMatchObject({ disabled: true });
     expect(firstAvailableMethod([{ id: "card", disabled: true }, { id: "stars" }])).toBe("stars");
     expect(methodSelectable([{ id: "card" }], "card")).toBe(true);
   });

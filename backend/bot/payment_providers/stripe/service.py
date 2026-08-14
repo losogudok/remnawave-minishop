@@ -345,6 +345,7 @@ class StripeService(HttpClientMixin):
             renewal_subscription_id=context.subscription_id,
             renewal_cycle_end=context.renewal_cycle_end,
             entitlement_context_snapshot=context.entitlement_context_snapshot,
+            checkout_bundle_snapshot=context.checkout_bundle_snapshot,
         )
         try:
             payment = await payment_dal.create_payment_record(context.session, payment_payload)

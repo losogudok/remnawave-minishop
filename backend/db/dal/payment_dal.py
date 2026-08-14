@@ -466,6 +466,7 @@ async def find_recent_pending_provider_payment(
     requested_partner_balance: bool | None = None,
     tariff_change_quote_snapshot: str | None = None,
     entitlement_context_snapshot: str | None = None,
+    checkout_bundle_hash: str | None = None,
     since_minutes: int | None = None,
 ) -> Payment | None:
     """Return the most recent pending payment matching the given tariff parameters.
@@ -505,6 +506,10 @@ async def find_recent_pending_provider_payment(
         conditions.append(Payment.entitlement_context_snapshot == entitlement_context_snapshot)
     else:
         conditions.append(Payment.entitlement_context_snapshot.is_(None))
+    if checkout_bundle_hash is not None:
+        conditions.append(Payment.checkout_bundle_hash == checkout_bundle_hash)
+    else:
+        conditions.append(Payment.checkout_bundle_hash.is_(None))
     if tariff_key is not None:
         conditions.append(Payment.tariff_key == tariff_key)
     if promo_code_id is not None:

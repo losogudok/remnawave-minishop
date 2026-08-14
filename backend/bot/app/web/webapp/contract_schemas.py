@@ -20,6 +20,7 @@ from bot.app.web.route_contracts import (
 
 STRING_ARRAY_SCHEMA: dict[str, Any] = {"type": "array", "items": STRING_SCHEMA}
 NUMBER_ARRAY_SCHEMA: dict[str, Any] = {"type": "array", "items": NUMBER_SCHEMA}
+JSON_ARRAY_SCHEMA: dict[str, Any] = {"type": "array", "items": {}}
 OBJECT_MAP_SCHEMA: dict[str, Any] = {"type": "object", "additionalProperties": True}
 
 
@@ -202,6 +203,8 @@ PENDING_PAYMENT_SCHEMA: dict[str, Any] = {
         "tariff_key",
         "promo_code",
         "promo_effect_summary",
+        "checkout_addons",
+        "checkout_addons_amount",
         "created_at",
     ],
     "properties": {
@@ -224,6 +227,8 @@ PENDING_PAYMENT_SCHEMA: dict[str, Any] = {
         "tariff_key": NULLABLE_STRING_SCHEMA,
         "promo_code": STRING_SCHEMA,
         "promo_effect_summary": STRING_SCHEMA,
+        "checkout_addons": JSON_ARRAY_SCHEMA,
+        "checkout_addons_amount": NUMBER_SCHEMA,
         "created_at": STRING_SCHEMA,
     },
 }
@@ -279,6 +284,12 @@ PLAN_SCHEMA: dict[str, Any] = {
         "squad_uuids": STRING_ARRAY_SCHEMA,
         "currency": STRING_SCHEMA,
         "hwid_device_limit": NULLABLE_INTEGER_SCHEMA,
+        "effective_hwid_device_limit": NULLABLE_INTEGER_SCHEMA,
+        "premium_enabled": BOOLEAN_SCHEMA,
+        "premium_monthly_gb": NULLABLE_NUMBER_SCHEMA,
+        "premium_unlimited": BOOLEAN_SCHEMA,
+        "traffic_limit_strategy": STRING_SCHEMA,
+        "premium_traffic_limit_strategy": STRING_SCHEMA,
         "hwid_device_packages": {"type": "array", "items": HWID_DEVICE_PACKAGE_SCHEMA},
         "sale_mode": STRING_SCHEMA,
         "months": NUMBER_SCHEMA,
@@ -298,6 +309,8 @@ PLAN_SCHEMA: dict[str, Any] = {
         "hwid_renewal": HWID_RENEWAL_SCHEMA,
         "available_payment_method_ids": STRING_ARRAY_SCHEMA,
         "externally_managed_price_method_ids": STRING_ARRAY_SCHEMA,
+        "checkout_addons": OBJECT_MAP_SCHEMA,
+        "checkout_addons_unavailable_payment_method_ids": STRING_ARRAY_SCHEMA,
     },
 }
 PLAN_LIST_SCHEMA: dict[str, Any] = {"type": "array", "items": PLAN_SCHEMA}
@@ -566,6 +579,7 @@ WEBAPP_SETTINGS_SCHEMA: dict[str, Any] = {
         "trial_traffic_limit_gb": NUMBER_SCHEMA,
         "trial_traffic_strategy": STRING_SCHEMA,
         "subscription_purchase_description": STRING_SCHEMA,
+        "payment_methods_display_mode": STRING_SCHEMA,
         "subscription_guides_enabled": BOOLEAN_SCHEMA,
         "email_auth_enabled": BOOLEAN_SCHEMA,
         "auth_providers": STRING_ARRAY_SCHEMA,
