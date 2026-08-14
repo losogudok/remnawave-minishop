@@ -466,6 +466,8 @@
   }
 
   .broadcast-language-control :global(.message-locale-tabs) {
+    min-height: 36px;
+    align-items: center;
     margin: 0;
   }
 
@@ -473,6 +475,7 @@
     display: flex;
     gap: 16px;
     align-items: center;
+    min-height: 36px;
     flex-wrap: wrap;
   }
 
@@ -617,6 +620,17 @@
 
     .broadcast-channels {
       gap: 12px;
+      min-height: 46px;
+    }
+
+    .broadcast-audience-control :global(.admin-select-trigger),
+    .broadcast-language-control :global(.message-locale-tabs),
+    .broadcast-schedule-row {
+      min-height: 46px;
+    }
+
+    .broadcast-audience-control :global(.admin-select-trigger) {
+      height: 46px;
     }
 
     .broadcast-schedule-input :global(input[type="datetime-local"]) {

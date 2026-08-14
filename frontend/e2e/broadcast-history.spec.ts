@@ -49,6 +49,24 @@ test("broadcast editor is compact and history uses masonry columns on desktop", 
   const scheduleInput = scheduleControl.locator('input[type="datetime-local"]');
   await expect(scheduleInput).toBeVisible();
   await expect(scheduleControl.getByText("Отправить позже", { exact: true })).toHaveCount(0);
+  const primaryControls = page.locator(
+    [
+      ".broadcast-audience-control .admin-select-trigger",
+      '.broadcast-channels .broadcast-channel:first-child [role="checkbox"]',
+      ".broadcast-language-control .message-locale-tab:first-child",
+      '.broadcast-schedule-control input[type="datetime-local"]',
+    ].join(", ")
+  );
+  await expect(primaryControls).toHaveCount(4);
+  const primaryControlCenters = await primaryControls.evaluateAll((elements) =>
+    elements.map((element) => {
+      const box = element.getBoundingClientRect();
+      return box.top + box.height / 2;
+    })
+  );
+  expect(
+    Math.max(...primaryControlCenters) - Math.min(...primaryControlCenters)
+  ).toBeLessThanOrEqual(1);
   const scheduledControlBoxes = await controls.evaluateAll((elements) =>
     elements.map((element) => element.getBoundingClientRect())
   );
