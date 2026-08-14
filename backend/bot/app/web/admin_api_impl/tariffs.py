@@ -215,6 +215,7 @@ def _tariffs_response_payload(
         path=str(path),
         catalog=catalog,
         provider_currency_support=_provider_currency_support_payload(settings, app),
+        user_hwid_device_limit=settings.USER_HWID_DEVICE_LIMIT,
     ).to_legacy_payload()
 
 

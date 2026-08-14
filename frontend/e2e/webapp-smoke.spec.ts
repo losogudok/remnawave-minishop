@@ -1446,6 +1446,9 @@ test("broadcast promo picker fills its mobile editor row", async ({ page }) => {
         width: bounds.width,
       };
     });
+  await expect
+    .poll(async () => Math.abs((await rect(menu)).width - (await rect(combo)).width))
+    .toBeLessThanOrEqual(1);
   const [kindRect, comboRect, inputRect, triggerRect, menuRect] = await Promise.all([
     rect(kindSelect),
     rect(combo),
@@ -1724,7 +1727,7 @@ test("webapp and admin sections, dialogs, tabs stay interactive without console 
   await exerciseDialogTabs(tariffDialog, 5, setPhase, "admin-tariffs:edit-tabs");
 
   setPhase("admin-tariffs:edit-save");
-  await tariffDialog.getByRole("tab").nth(0).click();
+  await tariffDialog.getByRole("tab").nth(2).click();
   await tariffDialog.locator('input[placeholder="100"]:visible').fill("750");
   await tariffDialog.getByRole("tab").nth(1).click();
   await tariffDialog.locator('input[placeholder="299"]:visible').first().fill("250");

@@ -317,6 +317,7 @@ class AdminTariffsOut(HttpResponseModel):
     path: str
     catalog: AdminTariffsCatalogOut
     provider_currency_support: list[ProviderCurrencySupportOut]
+    user_hwid_device_limit: int | None = None
 
     def to_legacy_payload(self) -> dict[str, Any]:
         payload = cast(dict[str, Any], self.model_dump(mode="json"))

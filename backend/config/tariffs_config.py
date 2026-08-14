@@ -14,6 +14,11 @@ from pydantic import (
     model_validator,
 )
 
+from config.tariff_checkout import (
+    CheckoutAddonsConfig,
+    FlexibleTrafficLimitConfig,
+    validate_checkout_addons,
+)
 from config.tariff_tribute import (
     _normalize_tribute_map_keys,
     canonical_tribute_product_unit,
@@ -445,6 +450,10 @@ class Tariff(BaseModel):
     enabled_periods: list[int] = Field(default_factory=list)
     tribute: TributeTariffConfig | None = None
     topup_packages: PackageSet | None = None
+    # A resettable quota sold together with a subscription. Slider marks are
+    # generated from its step and maximum; price_per_step is a monthly tariff
+    # surcharge. This is separate from consumable non-expiring top-ups.
+    flexible_traffic_limit: FlexibleTrafficLimitConfig | None = None
     # Admin toggle: offer regular-traffic top-ups regardless of how much of
     # the monthly limit is used (by default the offer unlocks only after
     # usage crosses the unlock threshold, mirroring the web app).
@@ -466,8 +475,10 @@ class Tariff(BaseModel):
     # traffic tariffs therefore inherit their fixed NO_RESET behavior.
     premium_traffic_limit_strategy: TrafficLimitStrategy | None = None
     premium_topup_packages: PackageSet | None = None
+    premium_flexible_traffic_limit: FlexibleTrafficLimitConfig | None = None
     # Same toggle as topup_always_available, scoped to premium-squad traffic.
     premium_topup_always_available: bool = False
+    checkout_addons: CheckoutAddonsConfig = Field(default_factory=CheckoutAddonsConfig)
 
     @model_validator(mode="after")
     def validate_tariff(self) -> "Tariff":
@@ -490,6 +501,10 @@ class Tariff(BaseModel):
         if self.premium_topup_packages and not self.premium_squad_uuids:
             raise ValueError(
                 f"tariff {self.key}: premium_topup_packages require premium_squad_uuids"
+            )
+        if self.premium_flexible_traffic_limit and not self.premium_squad_uuids:
+            raise ValueError(
+                f"tariff {self.key}: premium_flexible_traffic_limit requires premium_squad_uuids"
             )
         if self.premium_monthly_gb and self.premium_monthly_gb > 0 and not self.premium_squad_uuids:
             raise ValueError(f"tariff {self.key}: premium_monthly_gb requires premium_squad_uuids")
@@ -754,6 +769,7 @@ class TariffsConfig(BaseModel):
         tribute_period_owners: dict[tuple[int, int], tuple[str, int]] = {}
         tribute_product_owners: dict[int, tuple[str, TributeProductKind, str]] = {}
         for tariff in self.tariffs:
+            validate_checkout_addons(tariff, default_currency=self.default_currency)
             for key in (tariff.key, *tariff.legacy_keys):
                 previous_owner = key_owners.get(key)
                 if previous_owner is not None:

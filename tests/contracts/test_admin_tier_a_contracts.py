@@ -253,6 +253,7 @@ def test_admin_tariffs_response_model_preserves_nested_legacy_payload_shape():
     assert payload == {
         "exists": False,
         "path": "data/tariffs.json",
+        "user_hwid_device_limit": None,
         "catalog": {
             "default_tariff": "",
             "default_currency": "rub",

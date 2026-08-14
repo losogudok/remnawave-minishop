@@ -50,6 +50,7 @@ export type TariffsState = {
   tariffDraft: TariffDraft;
   panelSquads: PanelSquad[];
   providerCurrencySupport: ProviderCurrencySupport[];
+  userHwidDeviceLimit: number | null;
   panelSquadsLoading: boolean;
   selectedBaseSquad: string;
   selectedPremiumSquad: string;
@@ -152,6 +153,7 @@ export function createTariffsStore({
     tariffDraft: emptyTariffDraft(),
     panelSquads: [],
     providerCurrencySupport: [],
+    userHwidDeviceLimit: null,
     panelSquadsLoading: false,
     selectedBaseSquad: "",
     selectedPremiumSquad: "",
@@ -215,6 +217,8 @@ export function createTariffsStore({
           providerCurrencySupport: normalizeProviderCurrencySupport(
             result.provider_currency_support
           ),
+          userHwidDeviceLimit:
+            result.user_hwid_device_limit == null ? null : Number(result.user_hwid_device_limit),
         }));
       } else {
         flash(adminErrorMessage(data, at, at("load_failed", {}, "Failed to load data")));

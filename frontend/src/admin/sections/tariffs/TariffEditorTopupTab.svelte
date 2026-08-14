@@ -1,26 +1,35 @@
 <script lang="ts">
   import { getTariffsStore } from "$lib/admin/context";
   import { Input, Sortable } from "$components/ui/index.js";
-  import { Label, Switch, Tabs } from "$components/ui/primitives.js";
-  import { AdminButton } from "$components/patterns/admin/index.js";
+  import { Switch, Tabs } from "$components/ui/primitives.js";
+  import {
+    AdminButton,
+    AdminSelect,
+    AdminSettingCard,
+    AdminSettingsGroup,
+  } from "$components/patterns/admin/index.js";
   import { Plus, Trash2 } from "$components/ui/icons.js";
+  import { trafficStrategyOptions as buildTrafficStrategyOptions } from "$lib/admin/tariffSettings";
   import type { TariffDraft, TariffsCatalog } from "$lib/admin/stores/tariffsStore";
   import {
     currencyPriceAriaLabel as formatCurrencyPriceAriaLabel,
     currencyPriceColumnLabel as formatCurrencyPriceColumnLabel,
     defaultCurrencyCode as getDefaultCurrencyCode,
+    draftInputHandler,
     draftRowInputHandler,
     draftRowKey,
     moveDraftRowHandler,
     tributeSectionVisible as isTributeSectionVisible,
     type DraftRow,
     type ReorderHandler,
+    type SelectOption,
     type TranslateFn,
   } from "./tariffEditorTabUtils.js";
   import TributeCatalogButton from "./TributeCatalogButton.svelte";
   import TributeCatalogIssues from "./TributeCatalogIssues.svelte";
   import TributeProductField from "./TributeProductField.svelte";
   import type { TributeDraftRow } from "$lib/admin/tributeCatalog";
+  import TariffFlexibleLimitPackages from "./TariffFlexibleLimitPackages.svelte";
 
   let { at }: { at: TranslateFn } = $props();
 
@@ -33,6 +42,7 @@
     formatCurrencyPriceColumnLabel(at, defaultCurrencyCode)
   );
   const currencyPriceAriaLabel = $derived(formatCurrencyPriceAriaLabel(at, defaultCurrencyCode));
+  const trafficStrategyOptions: SelectOption[] = $derived(buildTrafficStrategyOptions(at));
   // Tribute mapping is provider configuration, so it stays out of the editor
   // until the provider is switched on — unless this tariff still carries a
   // mapping, which has to stay reachable to be cleared.
@@ -54,6 +64,75 @@
 
 <Tabs.Content value="topup" class="admin-tabs-content">
   {#if tariffDraft.billing_model === "period"}
+    <AdminSettingsGroup
+      title={at("tariff_traffic_base_group", {}, "Traffic limit and reset")}
+      description={at(
+        "tariff_traffic_base_group_hint",
+        {},
+        "The quota included in the tariff and the schedule that starts it again."
+      )}
+    >
+      <AdminSettingCard
+        title={at("tariff_label_traffic_limit", {}, "Monthly traffic limit, GB")}
+        description={at(
+          "tariff_hint_traffic_limit",
+          {},
+          "How many GB are included every month. 0 means unlimited traffic. Extra packages are configured separately below."
+        )}
+      >
+        <Input
+          class="input"
+          type="number"
+          min="0"
+          step="0.1"
+          placeholder="100"
+          value={tariffDraft.monthly_gb}
+          oninput={draftInputHandler(tariffsStore, "monthly_gb")}
+        />
+      </AdminSettingCard>
+
+      <AdminSettingCard
+        title={at("tariff_label_traffic_strategy", {}, "Traffic reset strategy")}
+        description={at(
+          "tariff_hint_traffic_strategy",
+          {},
+          "How often Remnawave resets the traffic counter for users on this tariff. The strategy is applied when the tariff is activated, renewed, or changed"
+        )}
+        alignStart
+      >
+        <div class="tariff-setting-control-stack">
+          <AdminSelect
+            value={String(tariffDraft.traffic_limit_strategy || "")}
+            items={trafficStrategyOptions}
+            placeholder={at(
+              "tariff_traffic_strategy_inherit",
+              {},
+              "Use global USER_TRAFFIC_STRATEGY"
+            )}
+            ariaLabel={at("tariff_label_traffic_strategy", {}, "Traffic reset strategy")}
+            onValueChange={(value) =>
+              tariffsStore.updateDraftField("traffic_limit_strategy", value)}
+          />
+          {#if tariffDraft.traffic_limit_strategy === "MONTH_ROLLING"}
+            <small class="admin-muted">
+              {at(
+                "tariff_hint_traffic_strategy_month_rolling",
+                {},
+                "The monthly cycle starts with the subscription. Remnawave owns the regular counter and reports the effective boundary as lastTrafficResetAt; selecting this strategy does not erase already recorded traffic."
+              )}
+            </small>
+          {/if}
+        </div>
+      </AdminSettingCard>
+    </AdminSettingsGroup>
+
+    {#if Number(tariffDraft.monthly_gb || 0) > 0}
+      <TariffFlexibleLimitPackages
+        {at}
+        baseUnits={Number(tariffDraft.monthly_gb || 0)}
+        currencyCode={defaultCurrencyCode}
+      />
+    {/if}
     <section class="admin-editor-section">
       <header class="admin-editor-section-head">
         <div class="admin-editor-section-title">
@@ -75,27 +154,31 @@
           >
         </div>
       </header>
-      <div class="admin-action-row admin-action-row-bordered">
-        <Switch.Root
-          aria-labelledby="tariff-topup-always-toggle-label"
-          checked={Boolean(tariffDraft.topup_always_available)}
-          onCheckedChange={(value) =>
-            tariffsStore.updateDraftField("topup_always_available", value)}
-          class="admin-switch-root"
-        >
-          <Switch.Thumb class="admin-switch-thumb" />
-        </Switch.Root>
-        <Label.Root id="tariff-topup-always-toggle-label" class="admin-action-label">
-          <strong>{at("tariff_topup_always_label", {}, "Top-up always available")}</strong>
-          <small
-            >{at(
-              "tariff_topup_always_hint",
-              {},
-              "By default, regular traffic top-up appears to the user (in the mini app and bot menu) after at least 80% of the limit is used. Enable this to show the offer regardless of usage percentage."
-            )}</small
+      <AdminSettingCard
+        title={at("tariff_topup_always_label", {}, "Top-up always available")}
+        description={at(
+          "tariff_topup_always_hint",
+          {},
+          "By default, regular traffic top-up appears to the user (in the mini app and bot menu) after at least 80% of the limit is used. Enable this to show the offer regardless of usage percentage."
+        )}
+      >
+        <div class="admin-setting-switch">
+          <Switch.Root
+            aria-label={at("tariff_topup_always_label", {}, "Top-up always available")}
+            checked={Boolean(tariffDraft.topup_always_available)}
+            onCheckedChange={(value) =>
+              tariffsStore.updateDraftField("topup_always_available", value)}
+            class="admin-switch-root"
           >
-        </Label.Root>
-      </div>
+            <Switch.Thumb class="admin-switch-thumb" />
+          </Switch.Root>
+          <span>
+            {tariffDraft.topup_always_available
+              ? at("enabled", {}, "Enabled")
+              : at("disabled", {}, "Disabled")}
+          </span>
+        </div>
+      </AdminSettingCard>
       {#if showTribute}
         <p class="admin-muted">
           {at(
@@ -116,7 +199,7 @@
             <span></span>
             <span>{at("tariff_col_volume_gb", {}, "Volume, GB")}</span>
             <span>{currencyPriceColumnLabel}</span>
-            <span>{at("tariff_col_price_stars_full", {}, "Price, ⭐ Stars")}</span>
+            <span>{at("tariff_col_price_stars_full", {}, "⭐ Stars")}</span>
             {#if showTribute}
               <span>{at("tariff_col_tribute_product_id", {}, "Tribute product ID")}</span>
               <span>{at("tariff_col_tribute_product_link", {}, "Tribute product link")}</span>
@@ -158,7 +241,7 @@
                 aria-label={currencyPriceAriaLabel}
               />
               <span class="admin-row-editor-mobile-label" aria-hidden="true"
-                >{at("tariff_col_price_stars_full", {}, "Price, ⭐ Stars")}</span
+                >{at("tariff_col_price_stars_full", {}, "⭐ Stars")}</span
               >
               <Input
                 class="input"
@@ -168,7 +251,7 @@
                 placeholder="75"
                 value={row.stars}
                 oninput={draftRowInputHandler(tariffsStore, "topupRows", index, "stars")}
-                aria-label={at("tariff_label_price_stars", {}, "Price in Telegram Stars")}
+                aria-label={at("tariff_label_price_stars", {}, "⭐ Stars")}
               />
               {#if showTribute}
                 <span class="admin-row-editor-mobile-label" aria-hidden="true"
@@ -217,3 +300,12 @@
     </p>
   {/if}
 </Tabs.Content>
+
+<style>
+  .tariff-setting-control-stack {
+    display: grid;
+    gap: 7px;
+    width: 100%;
+    min-width: 0;
+  }
+</style>
