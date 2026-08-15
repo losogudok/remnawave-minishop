@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 from bot.app.web.webapp.billing_checkout_adjustments import _resolve_checkout_promo
 from bot.app.web.webapp.billing_checkout_bundle import (
+    CheckoutBundleError,
     CheckoutPricingContext,
     CheckoutPricingWindow,
     build_checkout_bundle,
@@ -296,6 +297,63 @@ class CheckoutAddonConfigTests(TestCase):
         self.assertEqual(100, quote.price)
         self.assertFalse(bundle.has_addons)
         self.assertIsNone(bundle.snapshot)
+
+    def test_zero_device_selection_is_ignored_without_device_addons(self) -> None:
+        data = _checkout_config().model_dump(mode="json")
+        data["tariffs"][0]["checkout_addons"] = {}
+        config = TariffsConfig.model_validate(data)
+        payload = WebAppPaymentCreatePayload.model_validate(
+            {
+                "method": "yookassa",
+                "months": 1,
+                "tariff_key": "standard",
+                "sale_mode": "subscription",
+                "checkout_addons": {"device_count": 0},
+            }
+        )
+
+        quote, bundle = build_checkout_bundle(
+            BasePaymentQuote(
+                payment_units=1,
+                price=100,
+                stars_price=50,
+                sale_mode="subscription@standard",
+                traffic_gb_for_payment=None,
+                default_currency_code="RUB",
+            ),
+            settings=_settings(config),
+            payment_payload=payload,
+            method="yookassa",
+        )
+
+        self.assertEqual(100, quote.price)
+        self.assertFalse(bundle.has_addons)
+        self.assertIsNone(bundle.snapshot)
+
+        positive_payload = WebAppPaymentCreatePayload.model_validate(
+            {
+                "method": "yookassa",
+                "months": 1,
+                "tariff_key": "standard",
+                "sale_mode": "subscription",
+                "checkout_addons": {"device_count": 1},
+            }
+        )
+        with self.assertRaises(CheckoutBundleError) as raised:
+            build_checkout_bundle(
+                BasePaymentQuote(
+                    payment_units=1,
+                    price=100,
+                    stars_price=50,
+                    sale_mode="subscription@standard",
+                    traffic_gb_for_payment=None,
+                    default_currency_code="RUB",
+                ),
+                settings=_settings(config),
+                payment_payload=positive_payload,
+                method="yookassa",
+            )
+        self.assertEqual("checkout_addon_unavailable", raised.exception.code)
 
     def test_repeated_early_renewal_prices_each_existing_limit_window(self) -> None:
         config = _checkout_config()

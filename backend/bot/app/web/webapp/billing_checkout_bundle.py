@@ -348,6 +348,12 @@ def build_checkout_bundle(
         if units is None:
             continue
         addon = options.get(kind)
+        # Web clients keep a stable checkout payload shape and may send zero
+        # for an add-on that the selected tariff does not expose. Zero means
+        # that no extra entitlement was selected; only a positive stale value
+        # should fail availability validation.
+        if addon is None and _same_units(units, 0):
+            continue
         if kind == "devices" and addon is not None:
             units = float(addon.get("base_units") or 0) + units
         option = _option_for_units(list(addon.get("options") or []), units) if addon else None
