@@ -100,6 +100,125 @@ def _localized_payment_description(
     )
 
 
+async def _resolve_checkout_pricing_context(
+    *,
+    session: AsyncSession,
+    user_id: int,
+    db_user: Any,
+    payment_payload: WebAppPaymentCreatePayload,
+    settings: Settings,
+    sale_mode: str,
+) -> tuple[CheckoutPricingContext | None, web.Response | None]:
+    tariffs_config = settings.tariffs_config
+    if not tariffs_config or _sale_mode_base(sale_mode) != "subscription":
+        return None, None
+
+    active_sub = await subscription_dal.get_active_subscription_by_user_id(
+        session,
+        user_id,
+        db_user.panel_user_uuid,
+    )
+    target_tariff_key = _sale_mode_tariff_key(sale_mode)
+    active_tariff = _configured_tariff(
+        tariffs_config,
+        getattr(active_sub, "tariff_key", None) if active_sub is not None else None,
+    )
+    if active_sub is not None and (active_tariff is None or active_tariff.key != target_tariff_key):
+        return None, _json_error(
+            409,
+            "tariff_switch_required",
+            "Switch the active tariff before purchasing its renewal",
+        )
+    if active_sub is None:
+        return None, None
+
+    assert active_tariff is not None
+    bytes_per_gb = 1024**3
+    pricing_now = datetime.now(UTC)
+    flexible_records = await tariff_dal.get_active_flexible_traffic_limit_records(
+        session,
+        subscription_id=int(active_sub.subscription_id),
+        at=pricing_now,
+    )
+    flexible_window_records = await tariff_dal.list_flexible_traffic_limit_records_in_window(
+        session,
+        subscription_id=int(active_sub.subscription_id),
+        valid_from=pricing_now,
+        valid_until=active_sub.end_date,
+    )
+    hwid_summary = await tariff_dal.get_hwid_device_entitlement_summary(
+        session,
+        subscription_id=int(active_sub.subscription_id),
+        at=pricing_now,
+        include_future=True,
+    )
+    next_hwid_window = hwid_summary.get("next_valid_from")
+    if next_hwid_window is not None and next_hwid_window.tzinfo is None:
+        next_hwid_window = next_hwid_window.replace(tzinfo=UTC)
+    active_end_at = active_sub.end_date
+    if active_end_at.tzinfo is None:
+        active_end_at = active_end_at.replace(tzinfo=UTC)
+    selected_device_count = float(
+        getattr(getattr(payment_payload, "checkout_addons", None), "device_count", 0) or 0
+    )
+    if (
+        selected_device_count > 0
+        and next_hwid_window is not None
+        and next_hwid_window < active_end_at
+    ):
+        return None, _json_error(
+            409,
+            "checkout_device_schedule_conflict",
+            "A future device entitlement is already scheduled for this subscription",
+        )
+    regular_record = flexible_records.get("traffic")
+    premium_record = flexible_records.get("premium_traffic")
+    current_regular_limit_gb = (
+        float(active_sub.tier_baseline_bytes or active_tariff.monthly_bytes or 0) / bytes_per_gb
+    )
+    current_premium_limit_gb = (
+        float(active_sub.premium_baseline_bytes or active_tariff.premium_monthly_bytes or 0)
+        / bytes_per_gb
+    )
+    current_regular_monthly_price = float(getattr(regular_record, "monthly_amount", 0) or 0)
+    current_premium_monthly_price = float(getattr(premium_record, "monthly_amount", 0) or 0)
+    current_regular_monthly_stars = int(getattr(regular_record, "monthly_stars_amount", 0) or 0)
+    current_premium_monthly_stars = int(getattr(premium_record, "monthly_stars_amount", 0) or 0)
+    return (
+        CheckoutPricingContext(
+            active_subscription_id=int(active_sub.subscription_id),
+            active_tariff_key=active_tariff.key,
+            active_end_at=active_sub.end_date,
+            current_device_count=max(0, int(active_sub.extra_hwid_devices or 0)),
+            current_regular_limit_gb=current_regular_limit_gb,
+            current_premium_limit_gb=current_premium_limit_gb,
+            current_regular_monthly_price=current_regular_monthly_price,
+            current_premium_monthly_price=current_premium_monthly_price,
+            current_regular_monthly_stars=current_regular_monthly_stars,
+            current_premium_monthly_stars=current_premium_monthly_stars,
+            regular_windows=checkout_pricing_windows_from_records(
+                flexible_window_records,
+                kind="traffic",
+                start_at=pricing_now,
+                end_at=active_sub.end_date,
+                fallback_units=current_regular_limit_gb,
+                fallback_monthly_price=current_regular_monthly_price,
+                fallback_monthly_stars=current_regular_monthly_stars,
+            ),
+            premium_windows=checkout_pricing_windows_from_records(
+                flexible_window_records,
+                kind="premium_traffic",
+                start_at=pricing_now,
+                end_at=active_sub.end_date,
+                fallback_units=current_premium_limit_gb,
+                fallback_monthly_price=current_premium_monthly_price,
+                fallback_monthly_stars=current_premium_monthly_stars,
+            ),
+        ),
+        None,
+    )
+
+
 async def _resolve_base_payment_quote(
     *,
     request: web.Request,
@@ -303,116 +422,16 @@ async def _resolve_base_payment_quote(
         payment_units = months
         sale_mode = "subscription"
 
-    checkout_pricing_context: CheckoutPricingContext | None = None
-    if tariffs_config and _sale_mode_base(sale_mode) == "subscription":
-        active_sub = await subscription_dal.get_active_subscription_by_user_id(
-            session,
-            user_id,
-            db_user.panel_user_uuid,
-        )
-        target_tariff_key = _sale_mode_tariff_key(sale_mode)
-        active_tariff = _configured_tariff(
-            tariffs_config,
-            getattr(active_sub, "tariff_key", None) if active_sub is not None else None,
-        )
-        if active_sub is not None and (
-            active_tariff is None or active_tariff.key != target_tariff_key
-        ):
-            return None, _json_error(
-                409,
-                "tariff_switch_required",
-                "Switch the active tariff before purchasing its renewal",
-            )
-        if active_sub is not None:
-            assert active_tariff is not None
-            bytes_per_gb = 1024**3
-            pricing_now = datetime.now(UTC)
-            flexible_records = await tariff_dal.get_active_flexible_traffic_limit_records(
-                session,
-                subscription_id=int(active_sub.subscription_id),
-                at=pricing_now,
-            )
-            flexible_window_records = (
-                await tariff_dal.list_flexible_traffic_limit_records_in_window(
-                    session,
-                    subscription_id=int(active_sub.subscription_id),
-                    valid_from=pricing_now,
-                    valid_until=active_sub.end_date,
-                )
-            )
-            hwid_summary = await tariff_dal.get_hwid_device_entitlement_summary(
-                session,
-                subscription_id=int(active_sub.subscription_id),
-                at=pricing_now,
-                include_future=True,
-            )
-            next_hwid_window = hwid_summary.get("next_valid_from")
-            if next_hwid_window is not None and next_hwid_window.tzinfo is None:
-                next_hwid_window = next_hwid_window.replace(tzinfo=UTC)
-            active_end_at = active_sub.end_date
-            if active_end_at.tzinfo is None:
-                active_end_at = active_end_at.replace(tzinfo=UTC)
-            selected_device_count = float(
-                getattr(getattr(payment_payload, "checkout_addons", None), "device_count", 0) or 0
-            )
-            if (
-                selected_device_count > 0
-                and next_hwid_window is not None
-                and next_hwid_window < active_end_at
-            ):
-                return None, _json_error(
-                    409,
-                    "checkout_device_schedule_conflict",
-                    "A future device entitlement is already scheduled for this subscription",
-                )
-            regular_record = flexible_records.get("traffic")
-            premium_record = flexible_records.get("premium_traffic")
-            current_regular_limit_gb = (
-                float(active_sub.tier_baseline_bytes or active_tariff.monthly_bytes or 0)
-                / bytes_per_gb
-            )
-            current_premium_limit_gb = (
-                float(active_sub.premium_baseline_bytes or active_tariff.premium_monthly_bytes or 0)
-                / bytes_per_gb
-            )
-            current_regular_monthly_price = float(getattr(regular_record, "monthly_amount", 0) or 0)
-            current_premium_monthly_price = float(getattr(premium_record, "monthly_amount", 0) or 0)
-            current_regular_monthly_stars = int(
-                getattr(regular_record, "monthly_stars_amount", 0) or 0
-            )
-            current_premium_monthly_stars = int(
-                getattr(premium_record, "monthly_stars_amount", 0) or 0
-            )
-            checkout_pricing_context = CheckoutPricingContext(
-                active_subscription_id=int(active_sub.subscription_id),
-                active_tariff_key=active_tariff.key if active_tariff is not None else None,
-                active_end_at=active_sub.end_date,
-                current_device_count=max(0, int(active_sub.extra_hwid_devices or 0)),
-                current_regular_limit_gb=current_regular_limit_gb,
-                current_premium_limit_gb=current_premium_limit_gb,
-                current_regular_monthly_price=current_regular_monthly_price,
-                current_premium_monthly_price=current_premium_monthly_price,
-                current_regular_monthly_stars=current_regular_monthly_stars,
-                current_premium_monthly_stars=current_premium_monthly_stars,
-                regular_windows=checkout_pricing_windows_from_records(
-                    flexible_window_records,
-                    kind="traffic",
-                    start_at=pricing_now,
-                    end_at=active_sub.end_date,
-                    fallback_units=current_regular_limit_gb,
-                    fallback_monthly_price=current_regular_monthly_price,
-                    fallback_monthly_stars=current_regular_monthly_stars,
-                ),
-                premium_windows=checkout_pricing_windows_from_records(
-                    flexible_window_records,
-                    kind="premium_traffic",
-                    start_at=pricing_now,
-                    end_at=active_sub.end_date,
-                    fallback_units=current_premium_limit_gb,
-                    fallback_monthly_price=current_premium_monthly_price,
-                    fallback_monthly_stars=current_premium_monthly_stars,
-                ),
-            )
+    checkout_pricing_context, pricing_context_error = await _resolve_checkout_pricing_context(
+        session=session,
+        user_id=user_id,
+        db_user=db_user,
+        payment_payload=payment_payload,
+        settings=settings,
+        sale_mode=sale_mode,
+    )
+    if pricing_context_error is not None:
+        return None, pricing_context_error
 
     if _sale_mode_is_hwid_devices(sale_mode):
         sub = await subscription_dal.get_active_subscription_by_user_id(

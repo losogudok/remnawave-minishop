@@ -61,6 +61,7 @@ from .billing_quotes import (
 from .billing_quotes import (
     _configured_tariff,
     _localized_payment_description,
+    _resolve_checkout_pricing_context,
     _subscription_effective_hwid_limit,
 )
 from .billing_quotes import (
@@ -292,6 +293,16 @@ async def create_payment_route(request: web.Request) -> web.Response:
         if not db_user or db_user.is_banned:
             return _json_error(403, "access_denied", "Access denied")
         lang = db_user.language_code or settings.DEFAULT_LANGUAGE
+        checkout_pricing_context, pricing_context_error = await _resolve_checkout_pricing_context(
+            session=session,
+            user_id=user_id,
+            db_user=db_user,
+            payment_payload=payment_payload,
+            settings=settings,
+            sale_mode=sale_mode,
+        )
+        if pricing_context_error is not None:
+            return pricing_context_error
         if _sale_mode_is_hwid_devices(sale_mode):
             sub = await subscription_dal.get_active_subscription_by_user_id(
                 session, user_id, db_user.panel_user_uuid
@@ -401,6 +412,7 @@ async def create_payment_route(request: web.Request) -> web.Response:
                 settings=settings,
                 payment_payload=payment_payload,
                 method=method,
+                pricing_context=checkout_pricing_context,
             )
         except CheckoutBundleError as exc:
             return _json_error(400, exc.code, exc.message)
