@@ -121,6 +121,73 @@ async def find_recent_pending_provider_payment_for_checkout(
     return result.scalar_one_or_none()
 
 
+async def list_earlier_pending_provider_payments_for_checkout_scope(
+    session: AsyncSession,
+    payment: Any,
+    *,
+    pending_status: str,
+    limit: int = 10,
+) -> list[Payment]:
+    """Return older hosted links superseded by a newly created checkout.
+
+    The checkout bundle is deliberately not part of the scope: changing a
+    slider produces a new bundle and should retire the previously payable link.
+    Entitlement context and purchase kind remain exact so unrelated purchases
+    are never canceled together.
+    """
+
+    payment_id = getattr(payment, "payment_id", None)
+    user_id = getattr(payment, "user_id", None)
+    provider = str(getattr(payment, "provider", "") or "").strip()
+    if payment_id is None or user_id is None or not provider:
+        return []
+
+    conditions = [
+        Payment.user_id == int(user_id),
+        Payment.provider == provider,
+        Payment.payment_id < int(payment_id),
+        Payment.is_auto_renew.is_(False),
+        func.lower(Payment.status).in_(tuple({str(pending_status).lower(), "pending"})),
+        Payment.provider_payment_id.isnot(None),
+        Payment.provider_payment_url.isnot(None),
+    ]
+    for column, value in (
+        (Payment.currency, getattr(payment, "currency", None)),
+        (Payment.sale_mode, getattr(payment, "sale_mode", None)),
+        (Payment.tariff_key, getattr(payment, "tariff_key", None)),
+        (
+            Payment.subscription_duration_months,
+            getattr(payment, "subscription_duration_months", None),
+        ),
+        (Payment.purchased_hwid_devices, getattr(payment, "purchased_hwid_devices", None)),
+        (Payment.hwid_traffic_bonus_bytes, getattr(payment, "hwid_traffic_bonus_bytes", None)),
+        (
+            Payment.tariff_change_quote_snapshot,
+            getattr(payment, "tariff_change_quote_snapshot", None),
+        ),
+        (
+            Payment.entitlement_context_snapshot,
+            getattr(payment, "entitlement_context_snapshot", None),
+        ),
+    ):
+        conditions.append(column.is_(None) if value is None else column == value)
+    purchased_gb = getattr(payment, "purchased_gb", None)
+    conditions.append(
+        Payment.purchased_gb.is_(None)
+        if purchased_gb is None
+        else func.abs(Payment.purchased_gb - float(purchased_gb)) < 0.0001
+    )
+
+    stmt = (
+        select(Payment)
+        .where(and_(*conditions))
+        .order_by(Payment.created_at.desc(), Payment.payment_id.desc())
+        .limit(max(1, min(int(limit), 50)))
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
 async def find_later_equivalent_succeeded_payment(
     session: AsyncSession,
     payment: Any,

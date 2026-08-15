@@ -12,6 +12,7 @@ from bot.payment_providers.shared.checkout_expiration import resolve_checkout_ex
 from bot.payment_providers.shared.reconciliation import (
     _inspect_provider_payment,
     refresh_hosted_payment_status,
+    supersede_earlier_pending_hosted_checkouts,
 )
 from db.dal import payment_checkout_dal, payment_dal, payment_reconciliation_dal
 
@@ -343,6 +344,53 @@ def test_pally_new_bill_is_canceled_after_equivalent_success(
         provider_cancellation_reason="superseded_by_payment_18",
         suppress_failure_notification=True,
     )
+
+
+def test_new_pally_checkout_cancels_older_link_in_same_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    previous = _payment("pally", provider_payment_id="provider-old")
+    replacement = _payment("pally", provider_payment_id="provider-new")
+    replacement.payment_id = 18
+    find_earlier = AsyncMock(return_value=[previous])
+    transition = AsyncMock(return_value=(previous, True))
+    service = SimpleNamespace(
+        cancel_pending_bill=AsyncMock(return_value=(True, {"activity": False}))
+    )
+    monkeypatch.setattr(
+        payment_checkout_dal,
+        "list_earlier_pending_provider_payments_for_checkout_scope",
+        find_earlier,
+    )
+    monkeypatch.setattr(payment_dal, "transition_provider_payment_to_terminal", transition)
+    session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
+
+    asyncio.run(
+        supersede_earlier_pending_hosted_checkouts(
+            session,
+            replacement,
+            service,
+            pending_status="pending_pally",
+        )
+    )
+
+    find_earlier.assert_awaited_once_with(
+        session,
+        replacement,
+        pending_status="pending_pally",
+    )
+    service.cancel_pending_bill.assert_awaited_once_with("provider-old")
+    transition.assert_awaited_once_with(
+        session,
+        17,
+        "provider-old",
+        "canceled",
+        failure_kind="superseded_checkout",
+        provider_cancellation_party="merchant",
+        provider_cancellation_reason="superseded_by_payment_18",
+        suppress_failure_notification=True,
+    )
+    session.commit.assert_awaited_once()
 
 
 def test_pally_failure_records_processing_error_code() -> None:

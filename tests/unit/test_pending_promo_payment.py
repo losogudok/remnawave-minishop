@@ -133,6 +133,50 @@ class PendingPromoPaymentTests(IsolatedAsyncioTestCase):
         self.assertIn("= 'SAVE20'", rendered)
         self.assertIn("coalesce(payments.partner_balance_amount_minor, 0) > 0", rendered)
 
+    async def test_superseded_checkout_scope_ignores_amount_and_bundle_selection(self) -> None:
+        session = SimpleNamespace(
+            execute=AsyncMock(
+                return_value=SimpleNamespace(
+                    scalars=lambda: SimpleNamespace(all=list),
+                )
+            )
+        )
+        payment = SimpleNamespace(
+            payment_id=18,
+            user_id=42,
+            provider="pally",
+            currency="RUB",
+            sale_mode="subscription@standard",
+            tariff_key="standard",
+            subscription_duration_months=1,
+            purchased_gb=None,
+            purchased_hwid_devices=None,
+            hwid_traffic_bonus_bytes=None,
+            tariff_change_quote_snapshot=None,
+            entitlement_context_snapshot="active-subscription-v1",
+            checkout_bundle_hash="new-device-selection",
+            amount=495.0,
+        )
+
+        await payment_checkout_dal.list_earlier_pending_provider_payments_for_checkout_scope(
+            cast(AsyncSession, session),
+            payment,
+            pending_status="pending_pally",
+        )
+
+        statement = session.execute.await_args.args[0]
+        rendered = str(
+            statement.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+        self.assertIn("payments.payment_id < 18", rendered)
+        self.assertIn("payments.entitlement_context_snapshot = 'active-subscription-v1'", rendered)
+        where_clause = rendered.split("WHERE", 1)[1]
+        self.assertNotIn("checkout_bundle_hash", where_clause)
+        self.assertNotIn("payments.amount", where_clause)
+
     @patch(
         "bot.app.web.webapp.serializers.refresh_payment_status_for_request",
         new_callable=AsyncMock,

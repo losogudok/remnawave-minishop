@@ -84,6 +84,66 @@ class ProviderLifecycle:
     failure_provider_code: str | None = None
 
 
+async def supersede_earlier_pending_hosted_checkouts(
+    session: AsyncSession,
+    payment: Any,
+    service: Any,
+    *,
+    pending_status: str,
+) -> None:
+    """Cancel older payable links after a replacement checkout is ready."""
+
+    cancel_pending = getattr(service, "cancel_pending_bill", None)
+    if cancel_pending is None:
+        return
+    earlier = await payment_checkout_dal.list_earlier_pending_provider_payments_for_checkout_scope(
+        session,
+        payment,
+        pending_status=pending_status,
+    )
+    snapshots = [detached_payment_snapshot(item) for item in earlier]
+    await session.rollback()
+    replacement_id = int(payment.payment_id)
+    for previous in snapshots:
+        previous_id = int(previous.payment_id)
+        provider_payment_id = str(previous.provider_payment_id or "").strip()
+        if not provider_payment_id:
+            continue
+        try:
+            canceled, _response = await cancel_pending(provider_payment_id)
+        except Exception:
+            logger.exception(
+                "Failed to cancel superseded %s checkout %s.",
+                getattr(previous, "provider", "hosted"),
+                previous_id,
+            )
+            continue
+        if not canceled:
+            logger.warning(
+                "Provider kept superseded %s checkout %s active.",
+                getattr(previous, "provider", "hosted"),
+                previous_id,
+            )
+            continue
+        await payment_dal.transition_provider_payment_to_terminal(
+            session,
+            previous_id,
+            provider_payment_id,
+            "canceled",
+            failure_kind="superseded_checkout",
+            provider_cancellation_party="merchant",
+            provider_cancellation_reason=f"superseded_by_payment_{replacement_id}",
+            suppress_failure_notification=True,
+        )
+        await session.commit()
+        logger.info(
+            "Canceled superseded %s checkout %s after creating payment %s.",
+            getattr(previous, "provider", "hosted"),
+            previous_id,
+            replacement_id,
+        )
+
+
 def _normalized(value: Any) -> str:
     return str(value or "").strip().lower()
 
