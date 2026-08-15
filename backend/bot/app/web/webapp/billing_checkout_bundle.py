@@ -96,6 +96,16 @@ def _selected_units(payload: Any, kind: str) -> float | None:
     return value
 
 
+def normalize_checkout_device_selection(payment_payload: Any) -> Any:
+    """Prefer the unified device add-on when a legacy renewal flag is also present."""
+
+    if not bool(getattr(payment_payload, "renew_hwid_devices", False)):
+        return payment_payload
+    if (_selected_units(payment_payload, "devices") or 0) <= 0:
+        return payment_payload
+    return payment_payload.model_copy(update={"renew_hwid_devices": False})
+
+
 def _option_for_units(options: list[dict[str, Any]], units: float) -> dict[str, Any] | None:
     return next(
         (option for option in options if _same_units(float(option.get("total_units") or 0), units)),

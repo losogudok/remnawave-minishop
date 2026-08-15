@@ -9,6 +9,7 @@ from bot.app.web.webapp.billing_checkout_bundle import (
     CheckoutPricingContext,
     CheckoutPricingWindow,
     build_checkout_bundle,
+    normalize_checkout_device_selection,
 )
 from bot.app.web.webapp.billing_quotes import BasePaymentQuote
 from bot.app.web.webapp.payloads import WebAppPaymentCreatePayload
@@ -114,6 +115,15 @@ def _payload() -> WebAppPaymentCreatePayload:
 
 
 class CheckoutAddonConfigTests(TestCase):
+    def test_device_checkout_addon_takes_precedence_over_legacy_renewal(self) -> None:
+        payload = _payload().model_copy(update={"renew_hwid_devices": True})
+
+        normalized = normalize_checkout_device_selection(payload)
+
+        self.assertTrue(payload.renew_hwid_devices)
+        self.assertFalse(normalized.renew_hwid_devices)
+        self.assertEqual(2, normalized.checkout_addons.device_count)
+
     def test_serializes_linear_device_marks_separately_from_topup_packages(self) -> None:
         config = _checkout_config()
 

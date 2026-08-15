@@ -175,11 +175,12 @@ export function createBillingActions({ api }: { api: BillingApi }): BillingActio
       checkoutAddons?: CheckoutAddonSelection;
     } = {}
   ): PostPayload<"/api/payments"> {
+    const hasDeviceCheckoutAddon = Number(options.checkoutAddons?.device_count || 0) > 0;
     const body: WebappRecord = {
       months: plan.months,
       traffic_gb: plan.traffic_gb,
       device_count: plan.device_count,
-      renew_hwid_devices: Boolean(options.renewHwidDevices),
+      renew_hwid_devices: Boolean(options.renewHwidDevices) && !hasDeviceCheckoutAddon,
       use_partner_balance: Boolean(options.usePartnerBalance),
       method,
     };

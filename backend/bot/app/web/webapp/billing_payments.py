@@ -42,7 +42,11 @@ from .billing_checkout_adjustments import (
     CheckoutPromoResult,
     _resolve_checkout_promo,
 )
-from .billing_checkout_bundle import CheckoutBundleError, build_checkout_bundle
+from .billing_checkout_bundle import (
+    CheckoutBundleError,
+    build_checkout_bundle,
+    normalize_checkout_device_selection,
+)
 from .billing_common import _parse_positive_int_units
 from .billing_partner_checkout import (
     allocate_partner_checkout_balance,
@@ -87,7 +91,9 @@ async def create_payment_route(request: web.Request) -> web.Response:
     if rate_limit_response:
         return rate_limit_response
 
-    payment_payload = await _parse_model_payload(request, WebAppPaymentCreatePayload)
+    payment_payload = normalize_checkout_device_selection(
+        await _parse_model_payload(request, WebAppPaymentCreatePayload)
+    )
     method = str(payment_payload.method or "").strip().lower()
     settings: Settings = get_settings(request)
     subscription_service: SubscriptionService = get_subscription_service(request)

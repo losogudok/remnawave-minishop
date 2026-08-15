@@ -20,6 +20,7 @@ from .billing_checkout_bundle import (
     CheckoutPricingContext,
     build_checkout_bundle,
     checkout_pricing_windows_from_records,
+    normalize_checkout_device_selection,
 )
 from .billing_common import _parse_positive_int_units
 from .billing_sale_modes import (
@@ -110,6 +111,7 @@ async def _resolve_base_payment_quote(
     settings: Settings,
     subscription_service: SubscriptionService,
 ) -> tuple[BasePaymentQuote | None, web.Response | None]:
+    payment_payload = normalize_checkout_device_selection(payment_payload)
     cached = _get_cached_webapp_settings(request)
     tariffs_config = settings.tariffs_config
     default_currency = default_currency_key_for_settings(settings)

@@ -471,6 +471,7 @@
       checkoutPremiumLimitGb = Number(definitions.premium_traffic?.base_units || 0) || null;
       resetPromo = true;
     }
+    if (checkoutDeviceCount > 0 && renewHwidDevices) renewHwidDevices = false;
     if (resetPromo) clearCheckoutPromo();
   });
 
