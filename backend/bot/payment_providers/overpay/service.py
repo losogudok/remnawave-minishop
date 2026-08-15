@@ -6,6 +6,7 @@ import json
 import logging
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 from aiogram import Bot, F, Router, types
 from aiohttp import web
@@ -30,15 +31,17 @@ from ..shared import (
     PaymentSuccessRequest,
     RecurringChargeContext,
     RecurringChargeResult,
-    build_payment_record_payload,
     check_webhook_source_ip,
+    complete_durable_recurring_charge,
     constant_time_compare,
+    fail_durable_recurring_charge,
     finalize_successful_payment,
     first_value,
     lookup_payment_by_order_or_provider_id,
     notify_user_payment_failed,
     payment_units_for_activation,
     post_json_request,
+    prepare_durable_recurring_charge,
     run_callback_payment,
     run_reuse_webapp_payment,
     run_webapp_payment,
@@ -255,6 +258,7 @@ class OverpayService(HttpClientMixin):
         currency: str | None,
         description: str,
         customer_email: str | None = None,
+        request_id: str | None = None,
     ) -> tuple[bool, dict[str, Any]]:
         if not self.configured:
             logger.error("OverpayService is not configured. Cannot charge token.")
@@ -290,11 +294,14 @@ class OverpayService(HttpClientMixin):
             request_body["customer"] = {"email": customer_email}
 
         session = await self._get_session()
+        headers = self._auth_headers()
+        if request_id:
+            headers["RequestID"] = str(request_id)
         success, data = await post_json_request(
             session,
             f"{self.gateway_base_url}/transactions/payments",
             body={"request": request_body},
-            headers=self._auth_headers(),
+            headers=headers,
             log_prefix="Overpay token charge",
             is_success=_transaction_response_ok,
         )
@@ -302,6 +309,37 @@ class OverpayService(HttpClientMixin):
             return False, data
         transaction = data.get("transaction")
         return True, transaction if isinstance(transaction, dict) else data
+
+    async def get_transaction_by_tracking_id(
+        self,
+        payment_db_id: int,
+    ) -> tuple[bool, dict[str, Any]]:
+        """Read the latest transaction for a durable merchant tracking id."""
+        if not self.configured:
+            return False, {"message": "service_not_configured"}
+        session = await self._get_session()
+        try:
+            async with session.get(
+                f"{self.gateway_base_url}/v2/transactions/tracking_id/"
+                f"{quote(str(payment_db_id), safe='')}",
+                headers=self._auth_headers(),
+            ) as response:
+                response_text = await response.text()
+                data = json.loads(response_text) if response_text else {}
+                if response.status != 200 or not isinstance(data, dict):
+                    return False, {"status": response.status, "message": data}
+        except Exception as exc:
+            logger.exception("Overpay transaction lookup failed")
+            return False, {"message": str(exc)}
+        transaction = data.get("transaction")
+        if isinstance(transaction, dict):
+            return True, transaction
+        transactions = data.get("transactions")
+        if isinstance(transactions, list):
+            matches = [item for item in transactions if isinstance(item, dict)]
+            if len(matches) == 1:
+                return True, matches[0]
+        return False, data
 
     async def charge_saved_payment_method(
         self, context: RecurringChargeContext
@@ -313,83 +351,65 @@ class OverpayService(HttpClientMixin):
         if not token:
             return RecurringChargeResult.failed("missing_saved_method")
 
-        payment_payload = build_payment_record_payload(
-            user_id=context.user_id,
-            amount=float(context.amount),
-            currency=context.currency,
-            status="pending_overpay",
-            description=context.description,
-            months=context.months,
+        max_replays = max(0, int(getattr(self.settings, "AUTO_RENEW_MAX_TRANSPORT_REPLAYS", 4)))
+        preparation = await prepare_durable_recurring_charge(
+            context,
             provider="overpay",
-            sale_mode=context.sale_mode,
-            hwid_quote=dict(context.hwid_quote or {}) or None,
-            is_auto_renew=True,
-            renewal_subscription_id=context.subscription_id,
-            renewal_cycle_end=context.renewal_cycle_end,
-            entitlement_context_snapshot=context.entitlement_context_snapshot,
-            checkout_bundle_snapshot=context.checkout_bundle_snapshot,
+            saved_method_id=token,
+            pending_status="pending_overpay",
+            max_transport_replays=max_replays,
+            lease_seconds=int(self.settings.PAYMENT_REQUEST_TIMEOUT_SECONDS) + 30,
         )
-        try:
-            payment = await payment_dal.create_payment_record(context.session, payment_payload)
-        except Exception as exc:
-            logger.exception("Overpay auto-renew failed to create local payment record")
-            return RecurringChargeResult.failed(str(exc), payment_db_id=payment.payment_id)
+        if preparation.result is not None:
+            return preparation.result
+        dispatch = preparation.dispatch
+        if dispatch is None:
+            return RecurringChargeResult.failed("local_dispatch_missing")
 
         try:
             success, transaction = await self.charge_token(
-                payment_db_id=payment.payment_id,
+                payment_db_id=dispatch.payment_id,
                 token=token,
                 amount=float(context.amount),
                 currency=context.currency,
                 description=context.description,
+                request_id=dispatch.request_id,
             )
         except Exception as exc:
-            logger.exception("Overpay auto-renew token charge failed before API response")
-            await self._mark_payment_failed_creation(context.session, payment.payment_id)
-            return RecurringChargeResult.failed(str(exc))
+            logger.exception("Overpay auto-renew token charge crashed")
+            return await fail_durable_recurring_charge(
+                context,
+                dispatch,
+                message=str(exc),
+                uncertain=True,
+                retry_enabled=bool(getattr(self.settings, "AUTO_RENEW_RETRY_ENABLED", False)),
+                max_transport_replays=max_replays,
+            )
 
         provider_payment_id = first_value(transaction, "uid", "id")
         status = str(first_value(transaction, "status") or "").lower() or None
         charge_declined = status in _FAILED_STATUSES
-        if provider_payment_id:
-            try:
-                await payment_dal.update_provider_payment_and_status(
-                    context.session,
-                    payment.payment_id,
-                    str(provider_payment_id),
-                    "pending_overpay",
-                )
-            except Exception:
-                logger.exception(
-                    "Overpay auto-renew failed to store provider payment id %s",
-                    provider_payment_id,
-                )
-        if not success or charge_declined:
-            await self._mark_payment_failed_creation(context.session, payment.payment_id)
-            message = first_value(transaction, "message") or str(transaction)
-            return RecurringChargeResult.failed(
-                message,
-                provider_payment_id=str(provider_payment_id) if provider_payment_id else None,
-                payment_db_id=payment.payment_id,
+        if success and provider_payment_id and not charge_declined:
+            return await complete_durable_recurring_charge(
+                context,
+                dispatch,
+                provider_payment_id=str(provider_payment_id),
+                pending_status="pending_overpay",
+                provider_status=status,
             )
-        return RecurringChargeResult.ok(
-            provider_payment_id=str(provider_payment_id) if provider_payment_id else None,
-            payment_db_id=payment.payment_id,
-            status=status,
+        http_status = transaction.get("status")
+        return await fail_durable_recurring_charge(
+            context,
+            dispatch,
+            message=first_value(transaction, "message") or str(transaction),
+            uncertain=http_status is None and not charge_declined,
+            retry_enabled=bool(getattr(self.settings, "AUTO_RENEW_RETRY_ENABLED", False)),
+            max_transport_replays=max_replays,
+            http_status=(
+                int(http_status) if http_status is not None and str(http_status).isdigit() else None
+            ),
+            provider_code=status,
         )
-
-    async def _mark_payment_failed_creation(self, session: Any, payment_db_id: int) -> None:
-        try:
-            await payment_dal.update_payment_status_by_db_id(
-                session,
-                payment_db_id,
-                "failed_creation",
-            )
-        except Exception:
-            logger.exception(
-                "Overpay auto-renew failed to mark payment %s as failed_creation",
-                payment_db_id,
-            )
 
     async def try_reuse_pending_payment(self, payment: Any) -> str | None:
         """Return the existing checkout URL when the local payment is still pending.
@@ -636,12 +656,19 @@ class OverpayService(HttpClientMixin):
 
             if status in _FAILED_STATUSES:
                 try:
-                    await payment_dal.update_provider_payment_and_status(
+                    (
+                        updated_payment,
+                        _transitioned,
+                    ) = await payment_dal.transition_provider_payment_to_terminal(
                         session,
                         payment.payment_id,
                         resolved_provider_id,
                         "failed",
+                        failure_kind="provider_payment_failed",
+                        failure_provider_code=status,
                     )
+                    if updated_payment is not None:
+                        payment = updated_payment
                     await session.commit()
                 except Exception:
                     await session.rollback()

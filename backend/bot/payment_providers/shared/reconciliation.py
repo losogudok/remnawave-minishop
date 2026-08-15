@@ -12,7 +12,13 @@ from db.dal import payment_checkout_dal, payment_dal, payment_reconciliation_dal
 from db.models import Payment
 
 from .checkout_expiration import resolve_checkout_expiration
-from .common import detached_payment_snapshot
+from .common import (
+    detached_payment_snapshot,
+    payment_amount_and_currency_match,
+    payment_amount_matches,
+    payment_units_for_activation,
+)
+from .success import PaymentSuccessRequest, finalize_successful_payment
 from .webhooks import notify_user_payment_failed
 
 logger = logging.getLogger(__name__)
@@ -28,6 +34,7 @@ RECONCILABLE_PROVIDER_KEYS = (
     "overpay",
     "pally",
     "paykilla",
+    "platega",
     "platega_card",
     "platega_crypto",
     "platega_sbp",
@@ -66,6 +73,7 @@ _SUCCESS_STATUSES = {
     "severpay": {"success"},
 }
 _PENDING_STATUSES = {
+    "cloudpayments": {"authorized", "awaitingauthentication", "created", "pending"},
     "cryptopay": {"active"},
     "heleket": {"check"},
     "lava": {"created", "pending", "processing"},
@@ -75,6 +83,9 @@ _PENDING_STATUSES = {
     "severpay": {"new", "process"},
 }
 
+_FAILED_STATUSES["cloudpayments"] = {"cancelled", "canceled", "declined"}
+_SUCCESS_STATUSES["cloudpayments"] = {"completed"}
+
 
 @dataclass(frozen=True, slots=True)
 class ProviderLifecycle:
@@ -82,6 +93,8 @@ class ProviderLifecycle:
     provider_status: str = ""
     checkout_expires_at: datetime | None = None
     failure_provider_code: str | None = None
+    payment_verified: bool = False
+    provider_payment_id: str | None = None
 
 
 async def supersede_earlier_pending_hosted_checkouts(
@@ -197,7 +210,7 @@ def _pally_checkout_expiration(payment: Any, service: Any) -> datetime | None:
 async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderLifecycle:
     provider = _normalized(payment.provider)
     provider_id = str(payment.provider_payment_id or "").strip()
-    if not provider_id:
+    if not provider_id and provider not in {"cloudpayments", "overpay"}:
         return ProviderLifecycle("unknown")
 
     success = False
@@ -205,7 +218,55 @@ async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderL
     status: Any = None
     state_provider = provider
 
-    if provider == "heleket":
+    payment_verified = False
+    if provider == "cloudpayments":
+        success, data = await service.find_payment(int(payment.payment_id))
+        invoice_id = str(data.get("InvoiceId") or data.get("invoiceId") or "").strip()
+        if success and invoice_id and invoice_id != str(payment.payment_id):
+            return ProviderLifecycle("unknown")
+        provider_id = str(
+            data.get("TransactionId") or data.get("transactionId") or provider_id
+        ).strip()
+        status = data.get("Status") or data.get("status")
+        payment_verified = bool(
+            success
+            and _state_for("cloudpayments", status) == "succeeded"
+            and payment_amount_and_currency_match(
+                expected_amount=payment.amount,
+                expected_currency=payment.currency,
+                received_amount=data.get("Amount") or data.get("amount"),
+                received_currency=data.get("Currency") or data.get("currency"),
+            )
+        )
+    elif provider == "overpay":
+        success, data = await service.get_transaction_by_tracking_id(int(payment.payment_id))
+        tracking_id = str(data.get("tracking_id") or "").strip()
+        if success and tracking_id and tracking_id != str(payment.payment_id):
+            return ProviderLifecycle("unknown")
+        status = data.get("status")
+        overpay_state: LifecycleState = (
+            "succeeded"
+            if _normalized(status) in {"successful", "success"}
+            else "failed"
+            if _normalized(status)
+            in {"failed", "declined", "error", "expired", "canceled", "cancelled"}
+            else "pending"
+            if _normalized(status) in {"incomplete", "pending", "processing"}
+            else "unknown"
+        )
+        if success and overpay_state == "succeeded":
+            payment_verified = bool(
+                service._amount_matches_payment(data.get("amount"), payment)
+                and service._currency_matches_payment(data.get("currency"), payment)
+            )
+        provider_id = str(data.get("uid") or data.get("id") or provider_id).strip()
+        return ProviderLifecycle(
+            overpay_state if success else "unknown",
+            _normalized(status),
+            payment_verified=payment_verified,
+            provider_payment_id=provider_id or None,
+        )
+    elif provider == "heleket":
         success, data = await service.get_payment_info(provider_id)
         if success and (
             not _id_matches(data, provider_id, "uuid")
@@ -213,7 +274,18 @@ async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderL
         ):
             return ProviderLifecycle("unknown")
         status = data.get("payment_status") or data.get("status")
-    elif provider in {"platega_sbp", "platega_card", "platega_crypto"}:
+        payment_verified = bool(
+            success
+            and _state_for("heleket", status) == "succeeded"
+            and payment_amount_and_currency_match(
+                expected_amount=payment.amount,
+                expected_currency=payment.currency,
+                received_amount=data.get("amount"),
+                received_currency=data.get("currency"),
+                places=None,
+            )
+        )
+    elif provider in {"platega", "platega_sbp", "platega_card", "platega_crypto"}:
         success, data = await service.get_transaction(provider_id)
         if success and not _id_matches(data, provider_id, "id"):
             return ProviderLifecycle("unknown")
@@ -222,6 +294,16 @@ async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderL
             return ProviderLifecycle("unknown")
         status = data.get("status")
         state_provider = "platega"
+        payment_verified = bool(
+            success
+            and _state_for("platega", status) == "succeeded"
+            and payment_amount_and_currency_match(
+                expected_amount=payment.amount,
+                expected_currency=payment.currency,
+                received_amount=data.get("amount"),
+                received_currency=data.get("currency"),
+            )
+        )
     elif provider == "lava":
         success, data = await service.get_invoice_status(
             order_id=str(payment.payment_id),
@@ -240,6 +322,14 @@ async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderL
         ):
             return ProviderLifecycle("unknown")
         status = data.get("status")
+        payment_verified = bool(
+            success
+            and _state_for("lava", status) == "succeeded"
+            and payment_amount_matches(
+                expected_amount=payment.amount,
+                received_amount=data.get("amount"),
+            )
+        )
     elif provider == "paykilla":
         success, data = await service.get_invoice_details(provider_id)
         if success and (
@@ -248,6 +338,23 @@ async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderL
         ):
             return ProviderLifecycle("unknown")
         status = data.get("status")
+        if success and _state_for("paykilla", status) == "succeeded":
+            expected_amount, expected_currency = await service._invoice_amount_and_currency(
+                amount=float(payment.amount),
+                payment_currency=str(payment.currency),
+            )
+            payment_verified = bool(
+                payment_amount_and_currency_match(
+                    expected_amount=expected_amount,
+                    expected_currency=expected_currency,
+                    received_amount=(
+                        data.get("totalPrice") or data.get("expectedAmount") or data.get("amount")
+                    ),
+                    received_currency=data.get("currency"),
+                    places=None,
+                    allow_overpayment=True,
+                )
+            )
     elif provider == "pally":
         success, data = await service.get_bill_status(provider_id)
         if success and not _id_matches(data, provider_id, "id", "bill_id"):
@@ -258,6 +365,12 @@ async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderL
         if order_id is not None and str(order_id) != str(payment.payment_id):
             return ProviderLifecycle("unknown")
         status = data.get("status") or data.get("Status")
+        if success and _state_for("pally", status) == "succeeded":
+            normalized_status = _normalized(status)
+            payment_verified = bool(
+                service._currency_matches_payment(data, payment)
+                and service._amount_matches_payment(data, payment, normalized_status)
+            )
     elif provider == "severpay":
         success, data = await service.get_payment(provider_id)
         if success and (
@@ -266,7 +379,48 @@ async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderL
         ):
             return ProviderLifecycle("unknown")
         status = data.get("status")
+        payment_verified = bool(
+            success
+            and _state_for("severpay", status) == "succeeded"
+            and payment_amount_and_currency_match(
+                expected_amount=payment.amount,
+                expected_currency=payment.currency,
+                received_amount=data.get("amount"),
+                received_currency=data.get("currency"),
+                allow_overpayment=True,
+            )
+        )
     elif provider == "stripe":
+        if bool(getattr(payment, "is_auto_renew", False)):
+            intent = await service.retrieve_payment_intent(provider_id)
+            success = isinstance(intent, dict)
+            data = intent if isinstance(intent, dict) else {}
+            if success and not _id_matches(data, provider_id, "id"):
+                return ProviderLifecycle("unknown")
+            metadata = data.get("metadata") if success else None
+            if isinstance(metadata, dict):
+                returned_payment_id = str(metadata.get("payment_db_id") or "").strip()
+                if returned_payment_id and returned_payment_id != str(payment.payment_id):
+                    return ProviderLifecycle("unknown")
+            intent_status = _normalized(data.get("status"))
+            intent_state: LifecycleState = (
+                "succeeded"
+                if intent_status == "succeeded"
+                else "failed"
+                if intent_status in {"canceled", "requires_payment_method"}
+                else "pending"
+                if intent_status in {"processing", "requires_capture"}
+                else "unknown"
+            )
+            return ProviderLifecycle(
+                intent_state if success else "unknown",
+                intent_status,
+                payment_verified=bool(
+                    success
+                    and intent_state == "succeeded"
+                    and service.payment_intent_matches_payment(payment, data)
+                ),
+            )
         success, data = await service.retrieve_checkout_session(provider_id)
         if success and not _id_matches(data, provider_id, "id"):
             return ProviderLifecycle("unknown")
@@ -278,17 +432,22 @@ async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderL
         checkout_status = _normalized(data.get("status"))
         payment_status = _normalized(data.get("payment_status"))
         if checkout_status == "expired":
-            state: LifecycleState = "failed"
+            checkout_state: LifecycleState = "failed"
         elif checkout_status == "complete" and payment_status in {"paid", "no_payment_required"}:
-            state = "succeeded"
+            checkout_state = "succeeded"
         elif checkout_status == "open":
-            state = "pending"
+            checkout_state = "pending"
         else:
-            state = "unknown"
+            checkout_state = "unknown"
         return ProviderLifecycle(
-            state if success else "unknown",
+            checkout_state if success else "unknown",
             checkout_status or payment_status,
             resolve_checkout_expiration(data),
+            payment_verified=bool(
+                success
+                and checkout_state == "succeeded"
+                and service.checkout_session_matches_payment(payment, data)
+            ),
         )
     elif provider == "cryptopay":
         invoice = await service.get_invoice(provider_id)
@@ -300,6 +459,15 @@ async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderL
         status = invoice.status
         success = True
         data = {"expiration_date": invoice.expiration_date}
+        if _state_for("cryptopay", status) == "succeeded":
+            payment_verified = payment_amount_and_currency_match(
+                expected_amount=payment.amount,
+                expected_currency=payment.currency,
+                received_amount=getattr(invoice, "amount", None),
+                received_currency=getattr(invoice, "asset", None)
+                or getattr(invoice, "currency", None),
+                places=None,
+            )
     elif provider == "freekassa":
         paid_success, paid_data = await service.get_orders(
             payment_id=payment.payment_id,
@@ -312,7 +480,18 @@ async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderL
                     and str(order.get("merchant_order_id") or "") == str(payment.payment_id)
                     and str(order.get("status")) == "1"
                 ):
-                    return ProviderLifecycle("succeeded", "1")
+                    verified = payment_amount_and_currency_match(
+                        expected_amount=payment.amount,
+                        expected_currency=payment.currency,
+                        received_amount=order.get("amount"),
+                        received_currency=order.get("currency"),
+                        allow_overpayment=True,
+                    )
+                    return ProviderLifecycle(
+                        "succeeded",
+                        "1",
+                        payment_verified=verified,
+                    )
         pending_success, pending_data = await service.get_orders(
             payment_id=payment.payment_id,
             order_status=0,
@@ -332,9 +511,9 @@ async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderL
     if not success or not isinstance(data, dict):
         return ProviderLifecycle("unknown")
     provider_status = _normalized(status)
-    state = _state_for(state_provider, provider_status)
+    provider_state = _state_for(state_provider, provider_status)
     failure_provider_code = None
-    if provider == "pally" and state == "failed" and hasattr(service, "get_bill_payments"):
+    if provider == "pally" and provider_state == "failed" and hasattr(service, "get_bill_payments"):
         details_success, details = await service.get_bill_payments(provider_id)
         if details_success and isinstance(details, dict):
             items = details.get("data")
@@ -355,12 +534,19 @@ async def _inspect_provider_payment(service: Any, payment: Payment) -> ProviderL
     expires_at = resolve_checkout_expiration(data)
     if (
         provider == "heleket"
-        and state == "pending"
+        and provider_state == "pending"
         and expires_at is not None
         and expires_at <= datetime.now(UTC)
     ):
-        state = "failed"
-    return ProviderLifecycle(state, provider_status, expires_at, failure_provider_code)
+        provider_state = "failed"
+    return ProviderLifecycle(
+        provider_state,
+        provider_status,
+        expires_at,
+        failure_provider_code,
+        payment_verified,
+        provider_id or None,
+    )
 
 
 async def refresh_hosted_payment_status(
@@ -380,6 +566,62 @@ async def refresh_hosted_payment_status(
         return await service.refresh_payment_status(session, payment_snapshot)
 
     lifecycle = await _inspect_provider_payment(service, payment_snapshot)
+    if lifecycle.state == "succeeded":
+        if not lifecycle.payment_verified:
+            logger.error(
+                "Provider %s reported payment %s succeeded without matching monetary data",
+                provider,
+                payment_id,
+            )
+        else:
+            provider_id = (
+                lifecycle.provider_payment_id
+                or str(payment_snapshot.provider_payment_id or "").strip()
+                or None
+            )
+            claimed = await payment_dal.claim_payment_finalization(
+                session,
+                payment_id,
+                provider_payment_id=provider_id,
+            )
+            if claimed is None:
+                return (
+                    await payment_dal.get_payment_by_db_id(session, payment_id, fresh=True)
+                    or payment_snapshot
+                )
+            sale_mode = str(claimed.sale_mode or "").strip() or (
+                "traffic" if service.settings.traffic_sale_mode else "subscription"
+            )
+            units = payment_units_for_activation(claimed, sale_mode)
+            outcome = await finalize_successful_payment(
+                PaymentSuccessRequest(
+                    bot=service.bot,
+                    settings=service.settings,
+                    i18n=service.i18n,
+                    session=session,
+                    subscription_service=service.subscription_service,
+                    referral_service=service.referral_service,
+                    payment=claimed,
+                    user_id=int(claimed.user_id),
+                    amount=float(claimed.amount),
+                    currency=str(claimed.currency),
+                    sale_mode=sale_mode,
+                    months=units,
+                    traffic_amount=float(units),
+                    provider_subscription=provider,
+                    provider_notification=provider,
+                    db_user=getattr(claimed, "user", None),
+                    log_prefix=f"{provider} reconciliation",
+                )
+            )
+            if outcome is not None:
+                return (
+                    await payment_dal.get_payment_by_db_id(session, payment_id, fresh=True)
+                    or claimed
+                )
+            return (
+                await payment_dal.get_payment_by_db_id(session, payment_id, fresh=True) or claimed
+            )
     expires_at = lifecycle.checkout_expires_at or getattr(
         payment_snapshot,
         "checkout_expires_at",

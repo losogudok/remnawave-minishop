@@ -34,9 +34,10 @@ from ..shared import (
     PaymentSuccessRequest,
     RecurringChargeContext,
     RecurringChargeResult,
-    build_payment_record_payload,
     check_webhook_source_ip,
+    complete_durable_recurring_charge,
     constant_time_compare,
+    fail_durable_recurring_charge,
     finalize_successful_payment,
     first_value,
     format_decimal_amount,
@@ -45,6 +46,7 @@ from ..shared import (
     payment_amount_and_currency_match,
     payment_units_for_activation,
     post_json_request,
+    prepare_durable_recurring_charge,
     run_callback_payment,
     run_reuse_webapp_payment,
     run_webapp_payment,
@@ -289,6 +291,7 @@ class CloudPaymentsService(HttpClientMixin):
         currency: str | None,
         description: str,
         metadata: dict[str, str] | None = None,
+        request_id: str | None = None,
     ) -> tuple[bool, dict[str, Any]]:
         if not self.configured:
             logger.error("CloudPaymentsService is not configured. Cannot charge token.")
@@ -319,11 +322,14 @@ class CloudPaymentsService(HttpClientMixin):
             body["JsonData"] = {"cloudpayments": dict(metadata)}
 
         session = await self._get_session()
+        headers = self._auth_headers()
+        if request_id:
+            headers["X-Request-ID"] = str(request_id)
         success, data = await post_json_request(
             session,
             f"{self.base_url}/payments/tokens/charge",
             body=body,
-            headers=self._auth_headers(),
+            headers=headers,
             log_prefix="CloudPayments token charge",
             is_success=_cloudpayments_order_success,
         )
@@ -331,6 +337,24 @@ class CloudPaymentsService(HttpClientMixin):
             return False, data
         model = data.get("Model")
         return True, model if isinstance(model, dict) else data
+
+    async def find_payment(self, payment_db_id: int) -> tuple[bool, dict[str, Any]]:
+        """Find a transaction by the merchant invoice id after a lost webhook."""
+        if not self.configured:
+            return False, {"message": "service_not_configured"}
+        session = await self._get_session()
+        success, data = await post_json_request(
+            session,
+            f"{self.base_url}/v2/payments/find",
+            body={"InvoiceId": str(payment_db_id)},
+            headers=self._auth_headers(),
+            log_prefix="CloudPayments find payment",
+            is_success=lambda status, payload: status == 200 and isinstance(payload, dict),
+        )
+        if not success or not bool(data.get("Success")):
+            return False, data
+        model = data.get("Model")
+        return (True, model) if isinstance(model, dict) else (False, data)
 
     async def charge_saved_payment_method(
         self, context: RecurringChargeContext
@@ -342,52 +366,42 @@ class CloudPaymentsService(HttpClientMixin):
         if not token:
             return RecurringChargeResult.failed("missing_saved_method")
 
-        payment_payload = build_payment_record_payload(
-            user_id=context.user_id,
-            amount=float(context.amount),
-            currency=context.currency,
-            status="pending_cloudpayments",
-            description=context.description,
-            months=context.months,
+        max_replays = max(0, int(getattr(self.settings, "AUTO_RENEW_MAX_TRANSPORT_REPLAYS", 4)))
+        preparation = await prepare_durable_recurring_charge(
+            context,
             provider="cloudpayments",
-            sale_mode=context.sale_mode,
-            hwid_quote=dict(context.hwid_quote or {}) or None,
-            is_auto_renew=True,
-            renewal_subscription_id=context.subscription_id,
-            renewal_cycle_end=context.renewal_cycle_end,
-            entitlement_context_snapshot=context.entitlement_context_snapshot,
-            checkout_bundle_snapshot=context.checkout_bundle_snapshot,
+            saved_method_id=token,
+            pending_status="pending_cloudpayments",
+            max_transport_replays=max_replays,
+            lease_seconds=int(self.settings.PAYMENT_REQUEST_TIMEOUT_SECONDS) + 30,
         )
-        try:
-            payment = await payment_dal.create_payment_record(context.session, payment_payload)
-        except Exception as exc:
-            logger.exception("CloudPayments auto-renew failed to create local payment record")
-            return RecurringChargeResult.failed(str(exc), payment_db_id=payment.payment_id)
+        if preparation.result is not None:
+            return preparation.result
+        dispatch = preparation.dispatch
+        if dispatch is None:
+            return RecurringChargeResult.failed("local_dispatch_missing")
 
         try:
             success, response_data = await self.charge_token(
-                payment_db_id=payment.payment_id,
+                payment_db_id=dispatch.payment_id,
                 user_id=context.user_id,
                 token=token,
                 amount=float(context.amount),
                 currency=context.currency,
                 description=context.description,
                 metadata=dict(context.metadata),
+                request_id=dispatch.request_id,
             )
         except Exception as exc:
-            logger.exception("CloudPayments auto-renew token charge failed before API response")
-            try:
-                await payment_dal.update_payment_status_by_db_id(
-                    context.session,
-                    payment.payment_id,
-                    "failed_creation",
-                )
-            except Exception:
-                logger.exception(
-                    "CloudPayments auto-renew failed to mark payment %s as failed_creation",
-                    payment.payment_id,
-                )
-            return RecurringChargeResult.failed(str(exc))
+            logger.exception("CloudPayments auto-renew token charge crashed")
+            return await fail_durable_recurring_charge(
+                context,
+                dispatch,
+                message=str(exc),
+                uncertain=True,
+                retry_enabled=bool(getattr(self.settings, "AUTO_RENEW_RETRY_ENABLED", False)),
+                max_transport_replays=max_replays,
+            )
 
         provider_payment_id = first_value(
             response_data,
@@ -398,40 +412,24 @@ class CloudPaymentsService(HttpClientMixin):
         )
         status = str(first_value(response_data, "Status", "status") or "").lower() or None
         charge_declined = status in _FAILED_STATUSES
-        if provider_payment_id:
-            try:
-                await payment_dal.update_provider_payment_and_status(
-                    context.session,
-                    payment.payment_id,
-                    str(provider_payment_id),
-                    "pending_cloudpayments",
-                )
-            except Exception:
-                logger.exception(
-                    "CloudPayments auto-renew failed to store provider payment id %s",
-                    provider_payment_id,
-                )
-        if not success or charge_declined:
-            try:
-                await payment_dal.update_payment_status_by_db_id(
-                    context.session,
-                    payment.payment_id,
-                    "failed_creation",
-                )
-            except Exception:
-                logger.exception(
-                    "CloudPayments auto-renew failed to mark payment %s as failed_creation",
-                    payment.payment_id,
-                )
-            return RecurringChargeResult.failed(
-                str(response_data.get("Message") or response_data),
-                provider_payment_id=str(provider_payment_id) if provider_payment_id else None,
-                payment_db_id=payment.payment_id,
+        if success and provider_payment_id and not charge_declined:
+            return await complete_durable_recurring_charge(
+                context,
+                dispatch,
+                provider_payment_id=str(provider_payment_id),
+                pending_status="pending_cloudpayments",
+                provider_status=status,
             )
-        return RecurringChargeResult.ok(
-            provider_payment_id=str(provider_payment_id) if provider_payment_id else None,
-            payment_db_id=payment.payment_id,
-            status=status,
+        http_status = response_data.get("status")
+        return await fail_durable_recurring_charge(
+            context,
+            dispatch,
+            message=str(response_data.get("Message") or response_data),
+            uncertain=http_status is None and not charge_declined,
+            retry_enabled=bool(getattr(self.settings, "AUTO_RENEW_RETRY_ENABLED", False)),
+            max_transport_replays=max_replays,
+            http_status=int(http_status) if http_status is not None else None,
+            provider_code=status,
         )
 
     async def try_reuse_pending_payment(self, payment: Any) -> str | None:
@@ -654,12 +652,19 @@ class CloudPaymentsService(HttpClientMixin):
 
             if status in _FAILED_STATUSES:
                 try:
-                    await payment_dal.update_provider_payment_and_status(
+                    (
+                        updated_payment,
+                        _transitioned,
+                    ) = await payment_dal.transition_provider_payment_to_terminal(
                         session,
                         payment.payment_id,
                         resolved_provider_id,
                         "failed",
+                        failure_kind="provider_payment_failed",
+                        failure_provider_code=status,
                     )
+                    if updated_payment is not None:
+                        payment = updated_payment
                     await session.commit()
                 except Exception:
                     await session.rollback()

@@ -394,14 +394,9 @@ async def _yookassa_reconciliation_task(ctx: PluginContext) -> None:
 
 
 async def _auto_renew_retry_task(ctx: PluginContext) -> None:
-    yookassa_service = ctx.get_service("yookassa_service", YooKassaService)
-    if yookassa_service is None:
-        logger.info("Auto-renew retry worker disabled: service is unavailable")
-        return
     await AutoRenewRetryWorker(
         ctx.settings,
         ctx.require_session_factory(),
-        yookassa_service,
         ctx.require_subscription_service(),
     ).run()
 

@@ -19,7 +19,7 @@ from urllib.parse import unquote_plus, urlencode
 from bot.payment_providers import cloudpayments
 from bot.payment_providers.cloudpayments import CloudPaymentsConfig, CloudPaymentsService
 from bot.payment_providers.cloudpayments import service as cloudpayments_service
-from bot.payment_providers.shared import RecurringChargeContext
+from bot.payment_providers.shared import RecurringChargeContext, RecurringChargeResult
 
 
 def _hmac_b64(message: bytes, key: str) -> str:
@@ -507,11 +507,14 @@ def test_webhook_missing_or_invalid_payment_details_are_rejected(monkeypatch):
 
 def test_webhook_failed_status_marks_payment_failed(monkeypatch):
     session = _FakeDbSession()
-    service = _webhook_service(session, _payment(), monkeypatch)
-    update_mock = AsyncMock()
+    payment = _payment()
+    service = _webhook_service(session, payment, monkeypatch)
+    transition_mock = AsyncMock(return_value=(payment, True))
     notify_mock = AsyncMock()
     monkeypatch.setattr(
-        cloudpayments_service.payment_dal, "update_provider_payment_and_status", update_mock
+        cloudpayments_service.payment_dal,
+        "transition_provider_payment_to_terminal",
+        transition_mock,
     )
     monkeypatch.setattr(cloudpayments_service, "notify_user_payment_failed", notify_mock)
     monkeypatch.setattr(
@@ -529,7 +532,14 @@ def test_webhook_failed_status_marks_payment_failed(monkeypatch):
 
     assert response.status == 200
     assert json.loads(response.body) == {"code": 0}
-    update_mock.assert_awaited_once_with(session, 88, "tx-1", "failed")
+    transition_mock.assert_awaited_once_with(
+        session,
+        88,
+        "tx-1",
+        "failed",
+        failure_kind="provider_payment_failed",
+        failure_provider_code="declined",
+    )
     notify_mock.assert_awaited_once()
 
 
@@ -579,17 +589,27 @@ def test_reuse_requires_stored_url():
     )
 
 
-def test_charge_saved_payment_method_creates_local_record_before_token_charge(monkeypatch):
+def test_charge_saved_payment_method_uses_durable_dispatch_before_token_charge(monkeypatch):
     service = _make_service(RECURRING_ENABLED=True)
     session = SimpleNamespace()
-    payment = SimpleNamespace(payment_id=123)
-    create_mock = AsyncMock(return_value=payment)
-    update_mock = AsyncMock()
-    monkeypatch.setattr(cloudpayments_service.payment_dal, "create_payment_record", create_mock)
+    dispatch = SimpleNamespace(payment_id=123, request_id="renewal-key")
+    prepare_mock = AsyncMock(return_value=SimpleNamespace(result=None, dispatch=dispatch))
+    complete_mock = AsyncMock(
+        return_value=RecurringChargeResult.ok(
+            provider_payment_id="tx-auto",
+            payment_db_id=123,
+            status="completed",
+        )
+    )
     monkeypatch.setattr(
-        cloudpayments_service.payment_dal,
-        "update_provider_payment_and_status",
-        update_mock,
+        cloudpayments_service,
+        "prepare_durable_recurring_charge",
+        prepare_mock,
+    )
+    monkeypatch.setattr(
+        cloudpayments_service,
+        "complete_durable_recurring_charge",
+        complete_mock,
     )
     monkeypatch.setattr(
         service,
@@ -597,32 +617,30 @@ def test_charge_saved_payment_method_creates_local_record_before_token_charge(mo
         AsyncMock(return_value=(True, {"TransactionId": "tx-auto", "Status": "Completed"})),
     )
 
-    result = asyncio.run(
-        service.charge_saved_payment_method(
-            RecurringChargeContext(
-                session=session,
-                user_id=42,
-                subscription_id=7,
-                saved_method=SimpleNamespace(provider_payment_method_id="cp-token"),
-                amount=199.0,
-                currency="RUB",
-                months=1,
-                sale_mode="subscription@standard",
-                description="Auto-renewal for 1 months",
-                metadata={"auto_renew_for_subscription_id": "7"},
-            )
-        )
+    context = RecurringChargeContext(
+        session=session,
+        user_id=42,
+        subscription_id=7,
+        saved_method=SimpleNamespace(provider_payment_method_id="cp-token"),
+        amount=199.0,
+        currency="RUB",
+        months=1,
+        sale_mode="subscription@standard",
+        description="Auto-renewal for 1 months",
+        metadata={"auto_renew_for_subscription_id": "7"},
     )
+    result = asyncio.run(service.charge_saved_payment_method(context))
 
     assert result.initiated
     assert result.provider_payment_id == "tx-auto"
-    create_mock.assert_awaited_once()
-    payload = create_mock.await_args.args[1]
-    assert payload["status"] == "pending_cloudpayments"
-    assert payload["provider"] == "cloudpayments"
-    assert payload["user_id"] == 42
-    assert payload["subscription_duration_months"] == 1
-    assert payload["tariff_key"] == "standard"
+    prepare_mock.assert_awaited_once_with(
+        context,
+        provider="cloudpayments",
+        saved_method_id="cp-token",
+        pending_status="pending_cloudpayments",
+        max_transport_replays=4,
+        lease_seconds=60,
+    )
     service.charge_token.assert_awaited_once_with(
         payment_db_id=123,
         user_id=42,
@@ -631,5 +649,12 @@ def test_charge_saved_payment_method_creates_local_record_before_token_charge(mo
         currency="RUB",
         description="Auto-renewal for 1 months",
         metadata={"auto_renew_for_subscription_id": "7"},
+        request_id="renewal-key",
     )
-    update_mock.assert_awaited_once_with(session, 123, "tx-auto", "pending_cloudpayments")
+    complete_mock.assert_awaited_once_with(
+        context,
+        dispatch,
+        provider_payment_id="tx-auto",
+        pending_status="pending_cloudpayments",
+        provider_status="completed",
+    )

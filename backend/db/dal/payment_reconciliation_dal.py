@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, or_, update
+from sqlalchemy import and_, func, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
@@ -55,6 +55,10 @@ async def list_candidates(
             or_(
                 Payment.provider_payment_id.isnot(None),
                 Payment.yookassa_payment_id.isnot(None),
+                and_(
+                    func.lower(Payment.provider).in_(("cloudpayments", "overpay")),
+                    Payment.is_auto_renew.is_(True),
+                ),
             ),
             or_(
                 normalized_status == "pending",
@@ -67,6 +71,9 @@ async def list_candidates(
                         "open",
                         "process",
                         "processing",
+                        "creation_unknown",
+                        "activation_failed",
+                        "succeeded_pending_finalization",
                         "underpaid",
                         "waiting_for_capture",
                     )

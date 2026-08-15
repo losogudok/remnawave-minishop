@@ -660,7 +660,8 @@ class AutoRenewCycleGuardTests(unittest.IsolatedAsyncioTestCase):
         renewal_session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
         service.async_session_factory = _RenewalSessionFactory(renewal_session)
         subscription_service = SimpleNamespace(
-            charge_subscription_renewal=AsyncMock(return_value=True)
+            charge_subscription_renewal=AsyncMock(return_value=True),
+            recurring_service_for=lambda _provider: SimpleNamespace(recurring_active=True),
         )
         service.subscription_service = subscription_service
         old_cycle_end = datetime(2099, 2, 1, 12, 0, tzinfo=UTC)
@@ -686,7 +687,8 @@ class AutoRenewCycleGuardTests(unittest.IsolatedAsyncioTestCase):
         renewal_session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
         service.async_session_factory = _RenewalSessionFactory(renewal_session)
         subscription_service = SimpleNamespace(
-            charge_subscription_renewal=AsyncMock(return_value=True)
+            charge_subscription_renewal=AsyncMock(return_value=True),
+            recurring_service_for=lambda _provider: SimpleNamespace(recurring_active=True),
         )
         service.subscription_service = subscription_service
         cycle_end = datetime(2099, 2, 1, 12, 0, tzinfo=UTC)

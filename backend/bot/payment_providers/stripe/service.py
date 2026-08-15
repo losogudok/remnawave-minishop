@@ -25,13 +25,15 @@ from ..shared import (
     PaymentSuccessRequest,
     RecurringChargeContext,
     RecurringChargeResult,
-    build_payment_record_payload,
+    complete_durable_recurring_charge,
+    fail_durable_recurring_charge,
     finalize_successful_payment,
     first_value,
     lookup_payment_by_order_or_provider_id,
     notify_user_payment_failed,
     parse_positive_int_units,
     payment_units_for_activation,
+    prepare_durable_recurring_charge,
 )
 from .config import (
     _FAILED_EVENT_TYPES,
@@ -267,6 +269,7 @@ class StripeService(HttpClientMixin):
         currency: str,
         description: str,
         metadata: Mapping[str, Any],
+        idempotency_key: str | None = None,
     ) -> tuple[bool, dict[str, Any]]:
         if not self.configured:
             return False, {"message": "service_not_configured"}
@@ -296,7 +299,7 @@ class StripeService(HttpClientMixin):
         return await self._post_form(
             "/v1/payment_intents",
             form,
-            idempotency_key=f"renewal:{payment_db_id}",
+            idempotency_key=idempotency_key or f"renewal:{payment_db_id}",
             log_prefix="Stripe create_off_session_payment_intent",
         )
 
@@ -320,6 +323,42 @@ class StripeService(HttpClientMixin):
         )
         return data if success else None
 
+    @staticmethod
+    def payment_intent_matches_payment(payment: Any, data: Mapping[str, Any]) -> bool:
+        try:
+            expected_minor = _stripe_amount_to_minor_units(payment.amount, payment.currency)
+            received_amount = data.get("amount_received") or data.get("amount")
+            if received_amount is None:
+                return False
+            received_minor = int(received_amount)
+        except (TypeError, ValueError):
+            return False
+        expected_currency = normalize_payment_currency_code(payment.currency, default="")
+        received_currency = normalize_payment_currency_code(data.get("currency"), default="")
+        return bool(
+            expected_currency
+            and expected_currency == received_currency
+            and expected_minor == received_minor
+        )
+
+    @staticmethod
+    def checkout_session_matches_payment(payment: Any, data: Mapping[str, Any]) -> bool:
+        try:
+            expected_minor = _stripe_amount_to_minor_units(payment.amount, payment.currency)
+            received_amount = data.get("amount_total")
+            if received_amount is None:
+                return False
+            received_minor = int(received_amount)
+        except (TypeError, ValueError):
+            return False
+        expected_currency = normalize_payment_currency_code(payment.currency, default="")
+        received_currency = normalize_payment_currency_code(data.get("currency"), default="")
+        return bool(
+            expected_currency
+            and expected_currency == received_currency
+            and expected_minor == received_minor
+        )
+
     async def charge_saved_payment_method(
         self, context: RecurringChargeContext
     ) -> RecurringChargeResult:
@@ -331,87 +370,76 @@ class StripeService(HttpClientMixin):
         if not customer_id or not payment_method_id:
             return RecurringChargeResult.failed("missing_saved_method")
 
-        payment_payload = build_payment_record_payload(
-            user_id=context.user_id,
-            amount=float(context.amount),
-            currency=context.currency,
-            status="pending_stripe",
-            description=context.description,
-            months=context.months,
+        max_replays = max(0, int(getattr(self.settings, "AUTO_RENEW_MAX_TRANSPORT_REPLAYS", 4)))
+        preparation = await prepare_durable_recurring_charge(
+            context,
             provider="stripe",
-            sale_mode=context.sale_mode,
-            hwid_quote=dict(context.hwid_quote or {}) or None,
-            is_auto_renew=True,
-            renewal_subscription_id=context.subscription_id,
-            renewal_cycle_end=context.renewal_cycle_end,
-            entitlement_context_snapshot=context.entitlement_context_snapshot,
-            checkout_bundle_snapshot=context.checkout_bundle_snapshot,
+            saved_method_id=str(saved_value),
+            pending_status="pending_stripe",
+            max_transport_replays=max_replays,
+            lease_seconds=int(self.settings.PAYMENT_REQUEST_TIMEOUT_SECONDS) + 30,
         )
-        try:
-            payment = await payment_dal.create_payment_record(context.session, payment_payload)
-        except Exception as exc:
-            logger.exception("Stripe auto-renew failed to create local payment record")
-            return RecurringChargeResult.failed(str(exc))
+        if preparation.result is not None:
+            return preparation.result
+        dispatch = preparation.dispatch
+        if dispatch is None:
+            return RecurringChargeResult.failed("local_dispatch_missing")
 
-        success, response_data = await self.create_off_session_payment_intent(
-            payment_db_id=payment.payment_id,
-            user_id=context.user_id,
-            customer_id=customer_id,
-            payment_method_id=payment_method_id,
-            amount=float(context.amount),
-            currency=context.currency,
-            description=context.description,
-            metadata=dict(context.metadata),
-        )
+        try:
+            success, response_data = await self.create_off_session_payment_intent(
+                payment_db_id=dispatch.payment_id,
+                user_id=context.user_id,
+                customer_id=customer_id,
+                payment_method_id=payment_method_id,
+                amount=float(context.amount),
+                currency=context.currency,
+                description=context.description,
+                metadata=dict(context.metadata),
+                idempotency_key=dispatch.request_id,
+            )
+        except Exception as exc:
+            logger.exception("Stripe auto-renew off-session charge crashed")
+            return await fail_durable_recurring_charge(
+                context,
+                dispatch,
+                message=str(exc),
+                uncertain=True,
+                retry_enabled=bool(getattr(self.settings, "AUTO_RENEW_RETRY_ENABLED", False)),
+                max_transport_replays=max_replays,
+            )
         provider_payment_id = first_value(response_data, "id")
         status = (
             str(response_data.get("status") or "").lower()
             if isinstance(response_data, dict)
             else ""
         )
-        if provider_payment_id:
-            try:
-                await payment_dal.update_provider_payment_and_status(
-                    context.session,
-                    payment.payment_id,
-                    str(provider_payment_id),
-                    "pending_stripe",
-                )
-            except Exception:
-                logger.exception(
-                    "Stripe auto-renew failed to store provider payment id %s",
-                    provider_payment_id,
-                )
-
-        if not success or status in _FAILED_PAYMENT_INTENT_STATUSES:
-            try:
-                await payment_dal.update_payment_status_by_db_id(
-                    context.session,
-                    payment.payment_id,
-                    "failed_creation",
-                )
-            except Exception:
-                logger.exception(
-                    "Stripe auto-renew failed to mark payment %s as failed_creation",
-                    payment.payment_id,
-                )
-            return RecurringChargeResult.failed(
-                str(response_data.get("message") or response_data),
-                provider_payment_id=str(provider_payment_id) if provider_payment_id else None,
-                payment_db_id=payment.payment_id,
+        if success and provider_payment_id and status in _SUCCESS_PAYMENT_INTENT_STATUSES:
+            return await complete_durable_recurring_charge(
+                context,
+                dispatch,
+                provider_payment_id=str(provider_payment_id),
+                pending_status="pending_stripe",
+                provider_status=status,
             )
-
-        if status and status not in _SUCCESS_PAYMENT_INTENT_STATUSES:
-            return RecurringChargeResult.failed(
-                f"unexpected_status:{status}",
-                provider_payment_id=str(provider_payment_id) if provider_payment_id else None,
-                payment_db_id=payment.payment_id,
-            )
-
-        return RecurringChargeResult.ok(
-            provider_payment_id=provider_payment_id,
-            payment_db_id=payment.payment_id,
-            status=status,
+        http_status = response_data.get("status")
+        failed_status = status in _FAILED_PAYMENT_INTENT_STATUSES or bool(
+            status and status not in _SUCCESS_PAYMENT_INTENT_STATUSES
+        )
+        return await fail_durable_recurring_charge(
+            context,
+            dispatch,
+            message=(
+                f"unexpected_status:{status}"
+                if success and failed_status
+                else str(response_data.get("message") or response_data)
+            ),
+            uncertain=http_status is None and not failed_status,
+            retry_enabled=bool(getattr(self.settings, "AUTO_RENEW_RETRY_ENABLED", False)),
+            max_transport_replays=max_replays,
+            http_status=(
+                int(http_status) if http_status is not None and str(http_status).isdigit() else None
+            ),
+            provider_code=status or None,
         )
 
     async def try_reuse_pending_payment(self, payment: Any) -> str | None:
@@ -662,12 +690,19 @@ class StripeService(HttpClientMixin):
             if payment.status == "succeeded":
                 return web.json_response({"received": True})
             try:
-                await payment_dal.update_provider_payment_and_status(
+                (
+                    updated_payment,
+                    _transitioned,
+                ) = await payment_dal.transition_provider_payment_to_terminal(
                     session,
                     payment.payment_id,
                     provider_payment_id or str(payment.payment_id),
                     "failed",
+                    failure_kind="provider_payment_failed",
+                    failure_provider_code=event_type,
                 )
+                if updated_payment is not None:
+                    payment = updated_payment
                 await session.commit()
             except Exception:
                 await session.rollback()

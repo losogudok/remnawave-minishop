@@ -25,8 +25,9 @@ charges, so they implement :class:`ProviderManagedRecurringService` instead —
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
 
@@ -65,6 +66,67 @@ class RecurringChargeContext:
     auto_renew_cycle_id: int | None = None
     attempt_number: int = 1
     retry_kind: str | None = None
+
+
+def _snapshot_json_default(value: object) -> str:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    raise TypeError(f"Unsupported auto-renew snapshot value: {type(value).__name__}")
+
+
+@dataclass(frozen=True, slots=True)
+class RecurringRequestSnapshot:
+    """Immutable provider-neutral quote used to replay one renewal safely."""
+
+    amount: float
+    currency: str
+    months: int
+    sale_mode: str
+    description: str
+    metadata: dict[str, str]
+    hwid_quote: dict[str, Any] | None
+    entitlement_context_snapshot: str | None
+    checkout_bundle_snapshot: str | None = None
+
+    def to_json(self) -> str:
+        return json.dumps(
+            asdict(self),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=_snapshot_json_default,
+        )
+
+    @classmethod
+    def from_json(cls, raw: str) -> RecurringRequestSnapshot:
+        payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            raise ValueError("Auto-renew request snapshot must be an object")
+        metadata = payload.get("metadata")
+        hwid_quote = payload.get("hwid_quote")
+        if not isinstance(metadata, dict):
+            raise ValueError("Auto-renew request snapshot metadata must be an object")
+        if hwid_quote is not None and not isinstance(hwid_quote, dict):
+            raise ValueError("Auto-renew request snapshot HWID quote must be an object")
+        return cls(
+            amount=float(payload["amount"]),
+            currency=str(payload["currency"]),
+            months=int(payload["months"]),
+            sale_mode=str(payload["sale_mode"]),
+            description=str(payload["description"]),
+            metadata={str(key): str(value) for key, value in metadata.items()},
+            hwid_quote=hwid_quote,
+            entitlement_context_snapshot=(
+                str(payload["entitlement_context_snapshot"])
+                if payload.get("entitlement_context_snapshot") is not None
+                else None
+            ),
+            checkout_bundle_snapshot=(
+                str(payload["checkout_bundle_snapshot"])
+                if payload.get("checkout_bundle_snapshot") is not None
+                else None
+            ),
+        )
 
 
 @dataclass(frozen=True)

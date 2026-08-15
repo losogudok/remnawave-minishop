@@ -257,6 +257,40 @@ class TributeService(
         # validated against it, so a missing one means Creator links only.
         return bool(self.configured and self.config.SHOP_ENABLED and (self.config.SHOP_ID or 0) > 0)
 
+    @property
+    def manages_recurrence(self) -> bool:
+        """Whether Tribute can own the renewal schedule for this deployment."""
+        return self.configured
+
+    async def cancel_provider_recurrence(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+    ) -> bool:
+        """Cancel every active Shop order before disabling local auto-renew.
+
+        Creator subscriptions have no cancellation endpoint in the Creator API.
+        Refuse to report success while one is still active, so the UI never
+        claims that provider-side billing was disabled when it was not.
+        """
+        order_uuid = await tribute_dal.get_other_active_shop_order_uuid(
+            session,
+            user_id=int(user_id),
+        )
+        creator_subscription_id = await tribute_dal.get_other_active_creator_subscription_id(
+            session,
+            user_id=int(user_id),
+        )
+        shop_cancelled = order_uuid is None or await self._cancel_shop_order(order_uuid)
+        if creator_subscription_id is not None:
+            logger.warning(
+                "Cannot cancel Tribute Creator subscription %s through the Shop API.",
+                creator_subscription_id,
+            )
+            return False
+        return shop_cancelled
+
     async def create_shop_order(
         self,
         *,
@@ -823,6 +857,8 @@ SPEC = PaymentProviderSpec(
     payment_context_resolver=tribute_supports_checkout,
     external_price_context_resolver=tribute_price_managed_externally,
     checkout_promo_resolver=tribute_checkout_promo_supported,
+    manages_recurring=True,
+    supports_checkout_addon_first_period=True,
     info_url="https://wiki.tribute.tg/for-shops/api",
 )
 

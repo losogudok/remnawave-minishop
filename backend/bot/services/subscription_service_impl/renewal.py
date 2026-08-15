@@ -44,9 +44,10 @@ class SubscriptionRenewalQuote:
 def _renewal_idempotence_key(
     sub: Subscription,
     *,
+    provider: str,
     renewal_cycle_end: datetime | None,
 ) -> str:
-    """Build a YooKassa-safe key stable for one renewal cycle attempt.
+    """Build a provider-safe key stable for one renewal cycle attempt.
 
     ``renewal_cycle_end`` comes from the panel event when available.  That is
     deliberately preferred over the mutable local ``Subscription.end_date``:
@@ -66,16 +67,17 @@ def _renewal_idempotence_key(
         cycle_anchor = cycle_end.astimezone(UTC).date().isoformat()
     else:
         cycle_anchor = str(cycle_end or "missing")
-    source = "|".join(
-        (
-            "yookassa-auto-renew-v1",
-            str(getattr(sub, "subscription_id", "missing")),
-            cycle_anchor,
-        )
+    provider_key = str(provider or "").strip().lower()
+    source_prefix = (
+        "yookassa-auto-renew-v1" if provider_key == "yookassa" else f"{provider_key}-auto-renew-v1"
     )
-    # YooKassa limits Idempotence-Key to 64 characters.  The fixed prefix and
-    # UUID5 digest are 40 ASCII characters and retain no customer data.
-    return f"yk-auto-{uuid.uuid5(uuid.NAMESPACE_URL, source).hex}"
+    source = "|".join(
+        (source_prefix, str(getattr(sub, "subscription_id", "missing")), cycle_anchor)
+    )
+    # Every supported provider accepts at least 64 ASCII characters. Keep the
+    # historic YooKassa prefix stable for already-open cycles.
+    prefix = "yk-auto" if provider_key == "yookassa" else "renewal"
+    return f"{prefix}-{uuid.uuid5(uuid.NAMESPACE_URL, source).hex}"
 
 
 async def _emit_auto_renew_failure(
@@ -441,6 +443,7 @@ class RenewalMixin(SubscriptionServiceMixinContract):
                     checkout_bundle_snapshot=checkout_bundle_snapshot,
                     idempotence_key=_renewal_idempotence_key(
                         sub,
+                        provider=provider,
                         renewal_cycle_end=renewal_cycle_end,
                     ),
                     renewal_cycle_end=renewal_cycle_end or getattr(sub, "end_date", None),
