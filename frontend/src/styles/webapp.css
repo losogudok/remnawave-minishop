@@ -12,8 +12,14 @@ a {
   min-height: 100dvh;
   margin: 0 auto;
   overflow-x: hidden;
-  padding: max(16px, env(safe-area-inset-top)) max(var(--screen-gutter), var(--safe-inline))
-    max(18px, env(safe-area-inset-bottom)) max(var(--screen-gutter), var(--safe-inline));
+  padding: max(16px, var(--content-safe-area-top)) max(var(--screen-gutter), var(--safe-inline))
+    max(18px, var(--content-safe-area-bottom)) max(var(--screen-gutter), var(--safe-inline));
+}
+
+/* The home artwork deliberately uses the immersive fullscreen canvas. Every
+   other customer screen keeps Telegram's transparent header out of its content. */
+.phone-screen.home-screen {
+  padding-top: max(16px, env(safe-area-inset-top, 0px));
 }
 
 .content {
@@ -23,7 +29,7 @@ a {
 }
 
 .content.with-nav {
-  padding-bottom: 86px;
+  padding-bottom: var(--bottom-nav-clearance);
 }
 
 .public-install-shell {
@@ -31,8 +37,8 @@ a {
   min-height: 100dvh;
   margin: 0 auto;
   overflow-x: hidden;
-  padding: max(16px, env(safe-area-inset-top)) max(var(--screen-gutter), var(--safe-inline))
-    max(18px, env(safe-area-inset-bottom)) max(var(--screen-gutter), var(--safe-inline));
+  padding: max(16px, var(--content-safe-area-top)) max(var(--screen-gutter), var(--safe-inline))
+    max(18px, var(--content-safe-area-bottom)) max(var(--screen-gutter), var(--safe-inline));
 }
 
 .public-install-brand {
@@ -3034,7 +3040,7 @@ a {
   width: var(--bottom-nav-width);
   max-width: none;
   transform: none;
-  bottom: max(var(--bottom-nav-offset), env(safe-area-inset-bottom));
+  bottom: var(--bottom-nav-bottom);
   z-index: 80;
   display: grid;
   grid-template-columns: repeat(var(--bottom-nav-visible-items, 3), minmax(0, 1fr));
@@ -3190,7 +3196,7 @@ a {
   min-height: calc(100dvh - 34px);
   grid-template-rows: minmax(min-content, 1fr) auto;
   gap: 18px;
-  padding-bottom: 86px;
+  padding-bottom: var(--bottom-nav-clearance);
   animation: section-enter 0.24s ease-out both;
 }
 
@@ -3959,7 +3965,7 @@ a {
     border-radius: 0;
     background: transparent;
     box-shadow: none;
-    padding: max(28px, env(safe-area-inset-top)) var(--desktop-page-gutter) 40px
+    padding: max(28px, var(--content-safe-area-top)) var(--desktop-page-gutter) 40px
       calc(var(--desktop-rail-width) + var(--desktop-page-gutter));
     overflow-x: visible;
   }
@@ -3980,7 +3986,7 @@ a {
     min-height: 100dvh;
     margin: 0;
     overflow-x: visible;
-    padding: max(28px, env(safe-area-inset-top)) var(--desktop-page-gutter) 40px;
+    padding: max(28px, var(--content-safe-area-top)) var(--desktop-page-gutter) 40px;
   }
 
   .public-install-shell > .public-install-brand,
@@ -3998,7 +4004,7 @@ a {
   .phone-screen.auth-screen {
     width: min(100%, 460px);
     min-height: 100dvh;
-    padding: max(16px, env(safe-area-inset-top)) clamp(24px, 4vw, 16px) 16px;
+    padding: max(16px, var(--content-safe-area-top)) clamp(24px, 4vw, 16px) 16px;
     margin: 0 auto;
   }
 
@@ -4012,7 +4018,7 @@ a {
     grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
     min-height: 100dvh;
-    padding: max(32px, env(safe-area-inset-top)) var(--desktop-page-gutter) 42px
+    padding: max(32px, env(safe-area-inset-top, 0px)) var(--desktop-page-gutter) 42px
       calc(var(--desktop-rail-width) + var(--desktop-page-gutter));
   }
 

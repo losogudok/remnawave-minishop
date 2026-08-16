@@ -14,6 +14,8 @@
   inset: 0;
   width: 100vw;
   height: 100dvh;
+  padding: var(--content-safe-area-top) var(--content-safe-area-right)
+    var(--content-safe-area-bottom) var(--content-safe-area-left);
   background: var(--admin-bg);
   color: var(--admin-text);
   overflow: hidden;
@@ -4440,8 +4442,10 @@
 
   .admin-sidebar {
     position: fixed;
-    inset: 0 auto 0 0;
+    inset: var(--content-safe-area-top) auto var(--content-safe-area-bottom)
+      var(--content-safe-area-left);
     width: 280px;
+    height: auto;
     flex: 0 0 auto;
     z-index: 80;
     transform: translateX(-100%);

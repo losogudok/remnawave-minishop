@@ -878,6 +878,70 @@ test("device traffic bonuses stay legible on mobile", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("Telegram fullscreen safe areas protect webapp actions and admin chrome", async ({ page }) => {
+  await page.setViewportSize(MOBILE_VIEWPORT);
+  await page.goto(APP_URL);
+  const applyTelegramFullscreenInsets = () => {
+    const style = document.documentElement.style;
+    style.setProperty("--tg-content-safe-area-inset-top", "96px");
+    style.setProperty("--tg-content-safe-area-inset-bottom", "34px");
+  };
+  await page.evaluate(applyTelegramFullscreenInsets);
+
+  const phoneScreen = page.locator(".phone-screen");
+  const bottomNav = page.locator("nav.bottom-nav");
+  const renewalAction = webappAction(page, "open-payment");
+  await expect(bottomNav).toBeVisible();
+  await expect(renewalAction).toBeVisible();
+
+  const homeInsets = await phoneScreen.evaluate((element) => {
+    const phoneStyle = window.getComputedStyle(element);
+    const homeStyle = window.getComputedStyle(document.querySelector(".home-layout")!);
+    const navStyle = window.getComputedStyle(document.querySelector("nav.bottom-nav")!);
+    return {
+      top: Number.parseFloat(phoneStyle.paddingTop),
+      bottom: Number.parseFloat(phoneStyle.paddingBottom),
+      homeClearance: Number.parseFloat(homeStyle.paddingBottom),
+      navBottom: Number.parseFloat(navStyle.bottom),
+    };
+  });
+  expect(homeInsets.top).toBeLessThan(96);
+  expect(homeInsets.bottom).toBeGreaterThanOrEqual(34);
+  expect(homeInsets.homeClearance).toBeGreaterThanOrEqual(110);
+  expect(homeInsets.navBottom).toBeGreaterThanOrEqual(34);
+
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect
+    .poll(async () => {
+      const actionBox = await renewalAction.boundingBox();
+      const navBox = await bottomNav.boundingBox();
+      if (!actionBox || !navBox) return -1;
+      return navBox.y - (actionBox.y + actionBox.height);
+    })
+    .toBeGreaterThanOrEqual(8);
+
+  await bottomNav.getByRole("button", { name: "Настройки", exact: true }).click();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(page).toHaveURL(/\/demo\/runtime\/settings/);
+  const appHeader = page.locator(".phone-screen > .app-header");
+  await expect(appHeader).toBeVisible();
+  const customerHeaderTop = await appHeader.evaluate(
+    (element) => element.getBoundingClientRect().top
+  );
+  expect(customerHeaderTop).toBeGreaterThanOrEqual(96);
+
+  await page.goto("/demo/runtime/admin/stats?theme_preview=dark");
+  await page.evaluate(applyTelegramFullscreenInsets);
+  const adminHeader = page.locator(".admin-header");
+  await expect(adminHeader).toBeVisible();
+  const adminGeometry = await page.locator(".admin-screen-wrap").evaluate((element) => ({
+    paddingTop: Number.parseFloat(window.getComputedStyle(element).paddingTop),
+    headerTop: document.querySelector(".admin-header")!.getBoundingClientRect().top,
+  }));
+  expect(adminGeometry.paddingTop).toBeGreaterThanOrEqual(96);
+  expect(adminGeometry.headerTop).toBeGreaterThanOrEqual(96);
+});
+
 test("partner operations open their linked payment card", async ({ page }) => {
   await page.setViewportSize(DESKTOP_VIEWPORT);
   await page.goto(
