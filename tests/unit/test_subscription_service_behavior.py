@@ -553,6 +553,78 @@ class SubscriptionServicePanelPayloadTests(unittest.TestCase):
 
 
 class SubscriptionServiceActivationDispatchTests(unittest.IsolatedAsyncioTestCase):
+    async def test_panel_link_prefers_existing_local_uuid_among_duplicate_telegram_matches(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(_tariffs_config_payload(), tmpdir)
+            service = _make_service(settings)
+            linked_user = {
+                "uuid": "linked-panel-user",
+                "subscriptionUuid": "linked-subscription",
+                "shortUuid": "linked-short",
+                "username": "tg_42",
+                "telegramId": 42,
+            }
+            stale_user = {
+                "uuid": "stale-panel-user",
+                "subscriptionUuid": "stale-subscription",
+                "shortUuid": "stale-short",
+                "username": "legacy_42",
+                "telegramId": 42,
+            }
+            service.panel_service.get_users_by_filter = AsyncMock(
+                return_value=[stale_user, linked_user]
+            )
+            service.panel_service.get_user_by_uuid = AsyncMock()
+            service.panel_service.create_panel_user = AsyncMock()
+            db_user = SimpleNamespace(
+                user_id=42,
+                telegram_id=42,
+                panel_user_uuid="linked-panel-user",
+                email=None,
+                username="trial-user",
+                first_name="Trial",
+                last_name="User",
+            )
+
+            link = await service._get_or_create_panel_user_link(AsyncMock(), 42, db_user)
+
+            self.assertEqual(link.panel_user_uuid, "linked-panel-user")
+            self.assertEqual(link.panel_subscription_uuid, "linked-subscription")
+            self.assertEqual(link.panel_short_uuid, "linked-short")
+            self.assertFalse(link.local_link_updated_now)
+            service.panel_service.get_users_by_filter.assert_awaited_once_with(telegram_id=42)
+            service.panel_service.get_user_by_uuid.assert_not_awaited()
+            service.panel_service.create_panel_user.assert_not_awaited()
+
+    async def test_panel_link_rejects_duplicate_telegram_matches_without_local_uuid_match(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(_tariffs_config_payload(), tmpdir)
+            service = _make_service(settings)
+            service.panel_service.get_users_by_filter = AsyncMock(
+                return_value=[
+                    {"uuid": "panel-a", "telegramId": 42},
+                    {"uuid": "panel-b", "telegramId": 42},
+                ]
+            )
+            service.panel_service.get_user_by_uuid = AsyncMock()
+            service.panel_service.create_panel_user = AsyncMock()
+            db_user = SimpleNamespace(
+                user_id=42,
+                telegram_id=42,
+                panel_user_uuid="missing-panel-user",
+                email=None,
+                username="trial-user",
+                first_name="Trial",
+                last_name="User",
+            )
+
+            link = await service._get_or_create_panel_user_link(AsyncMock(), 42, db_user)
+
+            self.assertIsNone(link.panel_user_uuid)
+            self.assertIsNone(link.panel_user)
+            service.panel_service.get_user_by_uuid.assert_not_awaited()
+            service.panel_service.create_panel_user.assert_not_awaited()
+
     async def test_panel_link_reconnects_stale_v2_uuid_by_username_after_v3_upgrade(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             settings = _make_settings(_tariffs_config_payload(), tmpdir)
