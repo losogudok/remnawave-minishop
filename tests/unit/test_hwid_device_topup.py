@@ -318,6 +318,145 @@ class HwidDeviceTopupBehaviourTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(quote["traffic_bonus_gb"], 15)
         self.assertEqual(quote["traffic_bonus_bytes"], 15 * 1024**3)
 
+    async def test_quote_prices_entire_manually_granted_subscription_window(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(
+                tmpdir,
+                _tariffs_config_payload(
+                    hwid_device_packages={
+                        "rub": [
+                            {
+                                "count": 1,
+                                "price": 50,
+                                "prices": {"1": 50},
+                            }
+                        ],
+                        "stars": [],
+                    }
+                ),
+            )
+            service = _make_service(settings)
+            sub = _make_sub()
+            sub.start_date = datetime(2097, 1, 31, tzinfo=UTC)
+            sub.end_date = datetime(2099, 2, 28, tzinfo=UTC)
+            sub.duration_months = 0
+            user = _make_user()
+
+            with (
+                patch(
+                    "bot.services.subscription_service_impl.devices.user_dal.get_user_by_id",
+                    AsyncMock(return_value=user),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.devices.subscription_dal.get_active_subscription_by_user_id",
+                    AsyncMock(return_value=sub),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.devices.tariff_dal.get_hwid_device_entitlement_summary",
+                    AsyncMock(return_value={"active_devices": 0, "active_until": None}),
+                ),
+            ):
+                quote = await service.quote_hwid_device_topup(
+                    session=AsyncMock(),
+                    user_id=42,
+                    device_count=1,
+                    tariff_key="standard",
+                    currency="rub",
+                    now=datetime(2098, 1, 31, tzinfo=UTC),
+                )
+
+        self.assertIsNotNone(quote)
+        self.assertEqual(quote["price"], 650)
+        self.assertAlmostEqual(quote["proration_ratio"], 13.0)
+
+    async def test_quote_treats_clamped_calendar_month_as_full_period(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(
+                tmpdir,
+                _tariffs_config_payload(
+                    hwid_device_packages={
+                        "rub": [{"count": 1, "price": 90, "prices": {"1": 90}}],
+                        "stars": [],
+                    }
+                ),
+            )
+            service = _make_service(settings)
+            sub = _make_sub()
+            sub.start_date = datetime(2099, 1, 31, tzinfo=UTC)
+            sub.end_date = datetime(2099, 2, 28, tzinfo=UTC)
+            user = _make_user()
+
+            with (
+                patch(
+                    "bot.services.subscription_service_impl.devices.user_dal.get_user_by_id",
+                    AsyncMock(return_value=user),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.devices.subscription_dal.get_active_subscription_by_user_id",
+                    AsyncMock(return_value=sub),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.devices.tariff_dal.get_hwid_device_entitlement_summary",
+                    AsyncMock(return_value={"active_devices": 0, "active_until": None}),
+                ),
+            ):
+                quote = await service.quote_hwid_device_topup(
+                    session=AsyncMock(),
+                    user_id=42,
+                    device_count=1,
+                    tariff_key="standard",
+                    currency="rub",
+                    now=sub.start_date,
+                )
+
+        self.assertIsNotNone(quote)
+        self.assertEqual(quote["price"], 90)
+        self.assertAlmostEqual(quote["proration_ratio"], 1.0)
+
+    async def test_quote_prorates_remainder_after_full_calendar_periods(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(
+                tmpdir,
+                _tariffs_config_payload(
+                    hwid_device_packages={
+                        "rub": [{"count": 1, "price": 50, "prices": {"1": 50}}],
+                        "stars": [],
+                    }
+                ),
+            )
+            service = _make_service(settings)
+            sub = _make_sub()
+            sub.start_date = datetime(2099, 1, 31, tzinfo=UTC)
+            sub.end_date = datetime(2099, 3, 15, tzinfo=UTC)
+            user = _make_user()
+
+            with (
+                patch(
+                    "bot.services.subscription_service_impl.devices.user_dal.get_user_by_id",
+                    AsyncMock(return_value=user),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.devices.subscription_dal.get_active_subscription_by_user_id",
+                    AsyncMock(return_value=sub),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.devices.tariff_dal.get_hwid_device_entitlement_summary",
+                    AsyncMock(return_value={"active_devices": 0, "active_until": None}),
+                ),
+            ):
+                quote = await service.quote_hwid_device_topup(
+                    session=AsyncMock(),
+                    user_id=42,
+                    device_count=1,
+                    tariff_key="standard",
+                    currency="rub",
+                    now=sub.start_date,
+                )
+
+        self.assertIsNotNone(quote)
+        self.assertEqual(quote["price"], 75)
+        self.assertAlmostEqual(quote["proration_ratio"], 1.5)
+
     async def test_quote_uses_last_paid_duration_when_start_date_is_stale(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             settings = _make_settings(
@@ -477,6 +616,50 @@ class HwidDeviceTopupBehaviourTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sorted(quote["package_counts"]), [1, 3])
         self.assertEqual(quote["valid_from"], sub.end_date)
         self.assertEqual(quote["valid_until"], datetime(2099, 3, 1, tzinfo=UTC))
+
+    async def test_subscription_purchase_keeps_exact_price_beyond_twelve_months(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings = _make_settings(
+                tmpdir,
+                _tariffs_config_payload(
+                    hwid_device_packages={
+                        "rub": [{"count": 1, "price": 50, "prices": {"13": 600}}],
+                        "stars": [],
+                    }
+                ),
+            )
+            service = _make_service(settings)
+            sub = _make_sub()
+            sub.end_date = datetime(2098, 1, 31, tzinfo=UTC)
+
+            with (
+                patch(
+                    "bot.services.subscription_service_impl.devices.user_dal.get_user_by_id",
+                    AsyncMock(return_value=_make_user()),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.devices.subscription_dal.get_active_subscription_by_user_id",
+                    AsyncMock(return_value=sub),
+                ),
+                patch(
+                    "bot.services.subscription_service_impl.devices.tariff_dal.get_hwid_device_entitlement_summary",
+                    AsyncMock(return_value={"active_devices": 1, "active_until": None}),
+                ),
+            ):
+                quote = await service.quote_hwid_device_renewal_for_subscription(
+                    session=AsyncMock(),
+                    user_id=42,
+                    target_tariff_key="standard",
+                    months=13,
+                    currency="rub",
+                    now=datetime(2098, 1, 1, tzinfo=UTC),
+                )
+
+        self.assertIsNotNone(quote)
+        self.assertEqual(quote["price"], 600)
+        self.assertEqual(quote["pricing_period_months"], 13)
+        self.assertEqual(quote["proration_ratio"], 1.0)
+        self.assertEqual(quote["valid_until"], datetime(2099, 2, 28, tzinfo=UTC))
 
     async def test_subscription_renewal_quote_prefers_exact_package_on_equal_price(self):
         with tempfile.TemporaryDirectory() as tmpdir:
