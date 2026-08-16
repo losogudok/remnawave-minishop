@@ -44,7 +44,7 @@
     quotedPlan = null,
     providerManagesPrice = false,
     fallbackPrice = "",
-    priceAnimationEnabled = true,
+    replacePriceAnimations = false,
     t = (key) => key,
   }: {
     api: ApiClient["api"];
@@ -76,7 +76,7 @@
     quotedPlan?: PlanView | null;
     providerManagesPrice?: boolean;
     fallbackPrice?: string;
-    priceAnimationEnabled?: boolean;
+    replacePriceAnimations?: boolean;
     t?: Translate;
   } = $props();
 </script>
@@ -138,19 +138,23 @@
           ><AnimatedPrice
             plan={promoPrice.base}
             method={selectedMethod}
-            animated={priceAnimationEnabled}
+            replaceAnimations={replacePriceAnimations}
           /></s
         >
         <b
           ><AnimatedPrice
             plan={promoPrice.discounted}
             method={selectedMethod}
-            animated={priceAnimationEnabled}
+            replaceAnimations={replacePriceAnimations}
           /></b
         >
       </span>
     {:else}
-      <AnimatedPrice plan={quotedPlan} method={selectedMethod} animated={priceAnimationEnabled} />
+      <AnimatedPrice
+        plan={quotedPlan}
+        method={selectedMethod}
+        replaceAnimations={replacePriceAnimations}
+      />
     {/if}
   {:else}
     {selectedPlan ? fallbackPrice : ""}

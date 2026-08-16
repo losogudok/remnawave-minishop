@@ -1,16 +1,16 @@
 <script lang="ts">
-  import NumberFlow from "@number-flow/svelte";
   import type { BillingPlan } from "$lib/webapp/tariffs.js";
   import { isStarsPaymentMethod } from "$lib/webapp/tariffs.js";
+  import AnimatedNumber from "./AnimatedNumber.svelte";
 
   let {
     plan = null,
     method = "",
-    animated = true,
+    replaceAnimations = false,
   }: {
     plan?: BillingPlan | null;
     method?: string;
-    animated?: boolean;
+    replaceAnimations?: boolean;
   } = $props();
 
   const stars = $derived(isStarsPaymentMethod(method) && Number(plan?.stars_price || 0) > 0);
@@ -19,12 +19,11 @@
   const suffix = $derived(stars ? " ⭐" : currency === "RUB" ? " ₽" : ` ${currency}`);
 </script>
 
-<NumberFlow
-  class="animated-price"
+<AnimatedNumber
+  className="animated-price"
   value={amount}
   {suffix}
-  aria-label={`${amount}${suffix}`}
+  ariaLabel={`${amount}${suffix}`}
   format={{ maximumFractionDigits: Number.isInteger(amount) ? 0 : 2 }}
-  {animated}
-  willChange={animated}
+  {replaceAnimations}
 />

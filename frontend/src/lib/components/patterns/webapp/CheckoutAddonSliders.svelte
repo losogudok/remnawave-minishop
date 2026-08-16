@@ -1,5 +1,4 @@
 <script lang="ts">
-  import NumberFlow from "@number-flow/svelte";
   import { onDestroy } from "svelte";
   import { Pencil, X } from "$components/ui/icons.js";
   import Slider from "$components/ui/slider.svelte";
@@ -15,6 +14,7 @@
     CheckoutAddonSelection,
     Translate,
   } from "$lib/webapp/types.js";
+  import AnimatedNumber from "./AnimatedNumber.svelte";
 
   let {
     addons = {},
@@ -216,13 +216,12 @@
         {t("wa_checkout_tariff_unlimited", {}, "Unlimited")}
       </span>
     {:else if limitKnown(kind)}
-      <NumberFlow
+      <AnimatedNumber
         value={totalValue(kind)}
         suffix={valueSuffix(kind)}
-        aria-label={`${totalValue(kind)}${valueSuffix(kind)}`}
+        ariaLabel={`${totalValue(kind)}${valueSuffix(kind)}`}
         format={{ maximumFractionDigits: 2 }}
-        animated={!sliderInteracting}
-        willChange={!sliderInteracting}
+        replaceAnimations={sliderInteracting}
       />
     {:else}
       <span aria-label={t("wa_checkout_tariff_not_specified", {}, "Not specified")}>—</span>

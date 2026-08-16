@@ -8,28 +8,28 @@
     unitPricePlan = null,
     unitPriceSuffix = "",
     method = "",
-    animated = true,
+    replaceAnimations = false,
   }: {
     plan?: PlanView | null;
     promoPlans?: { base: PlanView; discounted: PlanView } | null;
     unitPricePlan?: PlanView | null;
     unitPriceSuffix?: string;
     method?: string;
-    animated?: boolean;
+    replaceAnimations?: boolean;
   } = $props();
 </script>
 
 {#if promoPlans}
   <span class="promo-price-pair">
-    <s><AnimatedPrice plan={promoPlans.base} {method} {animated} /></s>
-    <b><AnimatedPrice plan={promoPlans.discounted} {method} {animated} /></b>
+    <s><AnimatedPrice plan={promoPlans.base} {method} {replaceAnimations} /></s>
+    <b><AnimatedPrice plan={promoPlans.discounted} {method} {replaceAnimations} /></b>
   </span>
 {:else}
-  <span><AnimatedPrice {plan} {method} {animated} /></span>
+  <span><AnimatedPrice {plan} {method} {replaceAnimations} /></span>
 {/if}
 {#if unitPricePlan}
   <small class="period-unit-price">
-    <AnimatedPrice plan={unitPricePlan} {method} {animated} />
+    <AnimatedPrice plan={unitPricePlan} {method} {replaceAnimations} />
     <span>{unitPriceSuffix}</span>
   </small>
 {/if}
