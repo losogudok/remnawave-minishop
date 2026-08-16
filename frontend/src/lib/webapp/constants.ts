@@ -163,7 +163,7 @@ export const ADMIN_SECTIONS = new Set([
   "backups",
   "settings",
 ]);
-export const TELEGRAM_WEBAPP_SCRIPT_URL = "https://telegram.org/js/telegram-web-app.js";
+export const TELEGRAM_WEBAPP_SCRIPT_URL = "https://telegram.org/js/telegram-web-app.js?63";
 export const TELEGRAM_SDK_BOOT_TIMEOUT_MS = 900;
 export const TELEGRAM_SDK_ACTION_TIMEOUT_MS = 1800;
 export const TELEGRAM_MINI_APP_AUTH_TIMEOUT_MS = 15000;

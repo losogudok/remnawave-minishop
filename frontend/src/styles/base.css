@@ -69,13 +69,15 @@
   --admin-dim: var(--dim);
   --admin-ring: color-mix(in srgb, var(--accent) 50%, transparent);
   --screen-gutter: 18px;
+  --telegram-fullscreen-fallback-top: 0px;
   /* Telegram fullscreen has its own content safe area on top of the browser's
      system insets. Keep the composite values in one place so the user app and
      the lazily mounted admin bundle use identical viewport geometry. */
   --content-safe-area-top: max(
     env(safe-area-inset-top, 0px),
     var(--tg-safe-area-inset-top, 0px),
-    var(--tg-content-safe-area-inset-top, 0px)
+    var(--tg-content-safe-area-inset-top, 0px),
+    var(--telegram-fullscreen-fallback-top)
   );
   --content-safe-area-right: max(
     env(safe-area-inset-right, 0px),
@@ -97,13 +99,20 @@
   --bottom-nav-height: 64px;
   --bottom-nav-offset: 10px;
   --bottom-nav-bottom: max(var(--bottom-nav-offset), var(--content-safe-area-bottom));
-  --bottom-nav-clearance: calc(var(--bottom-nav-height) + var(--bottom-nav-bottom) + 12px);
+  --bottom-nav-clearance: calc(var(--bottom-nav-height) + var(--bottom-nav-bottom) + 28px);
   --bottom-nav-left: calc(max(0px, (100% - 440px) / 2) + var(--nav-inline-gutter));
   --bottom-nav-width: min(
     calc(100% - (var(--nav-inline-gutter) * 2)),
     calc(440px - (var(--nav-inline-gutter) * 2))
   );
   font-family: var(--font-sans);
+}
+
+/* Some Telegram iOS fullscreen builds report a zero content inset even though
+   their floating header still overlays the WebView. Runtime state keeps this
+   fallback scoped to fullscreen; the home artwork intentionally ignores it. */
+:root[data-telegram-fullscreen="true"] {
+  --telegram-fullscreen-fallback-top: 96px;
 }
 
 .theme-light {

@@ -878,15 +878,31 @@ test("device traffic bonuses stay legible on mobile", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("Telegram fullscreen safe areas protect webapp actions and admin chrome", async ({ page }) => {
+test("Telegram fullscreen fallback protects webapp actions and admin chrome", async ({ page }) => {
   await page.setViewportSize(MOBILE_VIEWPORT);
+  await page.addInitScript(() => {
+    Object.assign(window, {
+      Telegram: {
+        WebApp: {
+          expand() {},
+          initData: "",
+          isFullscreen: true,
+          offEvent() {},
+          onEvent() {},
+          platform: "ios",
+          ready() {},
+        },
+      },
+    });
+  });
   await page.goto(APP_URL);
   const applyTelegramFullscreenInsets = () => {
     const style = document.documentElement.style;
-    style.setProperty("--tg-content-safe-area-inset-top", "96px");
+    style.setProperty("--tg-content-safe-area-inset-top", "0px");
     style.setProperty("--tg-content-safe-area-inset-bottom", "34px");
   };
   await page.evaluate(applyTelegramFullscreenInsets);
+  await expect(page.locator("html")).toHaveAttribute("data-telegram-fullscreen", "true");
 
   const phoneScreen = page.locator(".phone-screen");
   const bottomNav = page.locator("nav.bottom-nav");
@@ -918,7 +934,7 @@ test("Telegram fullscreen safe areas protect webapp actions and admin chrome", a
       if (!actionBox || !navBox) return -1;
       return navBox.y - (actionBox.y + actionBox.height);
     })
-    .toBeGreaterThanOrEqual(8);
+    .toBeGreaterThanOrEqual(20);
 
   await bottomNav.getByRole("button", { name: "Настройки", exact: true }).click();
   await page.evaluate(() => window.scrollTo(0, 0));

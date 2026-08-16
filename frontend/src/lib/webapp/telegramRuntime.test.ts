@@ -4,6 +4,9 @@ import { createTelegramRuntime } from "./telegramRuntime.js";
 import { resetShellState, shellState } from "./shellState.svelte";
 
 type FakeTelegram = { platform: string } | null;
+type FakeSdkOptions = {
+  onTelegramChange: (telegram: FakeTelegram) => void;
+};
 
 function makeRuntime({
   initData = "initial-init",
@@ -29,7 +32,11 @@ function makeRuntime({
       return state.telegram;
     }),
   };
-  const createSdk = vi.fn(() => sdk);
+  let reportTelegram: FakeSdkOptions["onTelegramChange"] = () => {};
+  const createSdk = vi.fn((options: FakeSdkOptions) => {
+    reportTelegram = options.onTelegramChange;
+    return sdk;
+  });
   const runtime = createTelegramRuntime({
     actionTimeoutMs: 20,
     bootTimeoutMs: 10,
@@ -37,7 +44,13 @@ function makeRuntime({
     miniAppAuthTimeoutMs: 30,
     scriptUrl: "https://telegram.example/sdk.js",
   } as unknown as Parameters<typeof createTelegramRuntime>[0]);
-  return { createSdk, runtime, sdk, state };
+  return {
+    createSdk,
+    reportTelegram: (next: FakeTelegram) => reportTelegram(next),
+    runtime,
+    sdk,
+    state,
+  };
 }
 
 describe("createTelegramRuntime", () => {
@@ -50,6 +63,7 @@ describe("createTelegramRuntime", () => {
       miniAppAuthTimeoutMs: 30,
       onInitDataChange: expect.any(Function),
       onStatusChange: expect.any(Function),
+      onTelegramChange: expect.any(Function),
       scriptUrl: "https://telegram.example/sdk.js",
     });
     expect(sdk.refresh).toHaveBeenCalledOnce();
@@ -74,6 +88,15 @@ describe("createTelegramRuntime", () => {
     expect(loadedTelegram).toBe(state.telegram);
     expect(shellState.tg).toEqual({ platform: "android" });
     expect(shellState.telegramMiniAppInitData).toBe("loaded-init");
+  });
+
+  it("accepts Telegram instances reported after the original sdk load timed out", () => {
+    const { reportTelegram, state } = makeRuntime({ initData: "", telegram: null });
+    state.telegram = { platform: "ios" };
+
+    reportTelegram(state.telegram);
+
+    expect(shellState.tg).toEqual({ platform: "ios" });
   });
 
   it("proxies launch parameter and location init-data helpers", () => {

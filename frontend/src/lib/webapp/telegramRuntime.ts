@@ -1,6 +1,7 @@
 import { createTelegramLaunch } from "./telegramLaunch.js";
 import { createTelegramSdk } from "./telegramSdk";
 import { shellState } from "./shellState.svelte";
+import { createTelegramViewportBridge } from "./telegramViewport.js";
 
 export type TelegramWebApp = Record<string, unknown> & {
   initData?: string;
@@ -8,6 +9,9 @@ export type TelegramWebApp = Record<string, unknown> & {
   openLink?: (url: string, options?: Record<string, unknown>) => void;
   openTelegramLink?: (url: string) => void;
   platform?: string;
+  isFullscreen?: boolean;
+  onEvent?: (eventType: "fullscreenChanged", eventHandler: () => void) => void;
+  offEvent?: (eventType: "fullscreenChanged", eventHandler: () => void) => void;
   ready?: () => void;
   expand?: () => void;
 };
@@ -36,6 +40,7 @@ type CreateTelegramSdk<Tg> = (options: {
   miniAppAuthTimeoutMs: number;
   onStatusChange: (status: string) => void;
   onInitDataChange: (initData: string) => void;
+  onTelegramChange: (telegram: Tg) => void;
 }) => TelegramSdkLike<Tg>;
 
 export type TelegramRuntime<Tg> = {
@@ -44,6 +49,7 @@ export type TelegramRuntime<Tg> = {
   hasLaunchParams: () => boolean;
   load: (timeoutMs?: number) => Promise<Tg>;
   readInitDataFromLocation: () => string;
+  destroy: () => void;
 };
 
 export function createTelegramRuntime<Tg = TelegramWebApp | null>({
@@ -67,8 +73,12 @@ export function createTelegramRuntime<Tg = TelegramWebApp | null>({
     shellState.telegramSdkStatus = status;
   }
 
+  const viewportBridge = createTelegramViewportBridge();
+
   function setTelegram(telegram: Tg) {
-    shellState.tg = telegram as TelegramWebApp | null;
+    const webApp = telegram as TelegramWebApp | null;
+    shellState.tg = webApp;
+    viewportBridge.setTelegram(webApp);
   }
 
   const telegramSdk = createSdk({
@@ -78,6 +88,7 @@ export function createTelegramRuntime<Tg = TelegramWebApp | null>({
     miniAppAuthTimeoutMs,
     onStatusChange: setStatus,
     onInitDataChange: (initData) => setInitData(initData || ""),
+    onTelegramChange: setTelegram,
   });
   const telegramLaunch = createTelegramLaunch<Tg>({
     telegramSdk,
@@ -105,5 +116,6 @@ export function createTelegramRuntime<Tg = TelegramWebApp | null>({
     hasLaunchParams: telegramLaunch.hasLaunchParams,
     load: telegramLaunch.load,
     readInitDataFromLocation: telegramLaunch.readInitDataFromLocation,
+    destroy: viewportBridge.destroy,
   };
 }

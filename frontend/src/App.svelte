@@ -563,6 +563,7 @@
       adminRuntime.cancelAdminAssetsPrefetch();
       syncBodyScrollLock(false);
       adminRuntime.destroyAdminMount();
+      telegramRuntime.destroy();
     };
   });
 

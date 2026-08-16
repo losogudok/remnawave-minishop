@@ -9,6 +9,7 @@ interface TelegramSdkOptions {
   miniAppAuthTimeoutMs?: number;
   onStatusChange?: (status: "loading" | "ready" | "unavailable") => void;
   onInitDataChange?: (initData: string) => void;
+  onTelegramChange?: (telegram: TelegramWebApp | null) => void;
 }
 
 interface MiniAppAuthTimeout {
@@ -46,6 +47,7 @@ export function createTelegramSdk({
   miniAppAuthTimeoutMs = 0,
   onStatusChange = () => {},
   onInitDataChange = () => {},
+  onTelegramChange = () => {},
 }: TelegramSdkOptions = {}) {
   let tg = resolve();
   let sdkPromise: Promise<TelegramWebApp | null> | null = null;
@@ -63,6 +65,7 @@ export function createTelegramSdk({
 
   function refresh() {
     tg = resolve();
+    onTelegramChange(tg);
     if (tg) setStatus("ready");
     initData = tg?.initData || readTelegramMiniAppInitDataFromLocation();
     onInitDataChange(initData);
@@ -111,9 +114,9 @@ export function createTelegramSdk({
       };
 
       const refreshFromScript = () => {
-        tg = resolve();
-        setStatus(tg ? "ready" : "unavailable");
-        return tg;
+        const telegram = refresh();
+        if (!telegram) setStatus("unavailable");
+        return telegram;
       };
 
       script.addEventListener("load", () => resolveOnce(refreshFromScript()), { once: true });
