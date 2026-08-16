@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { Slider } from "./primitives.js";
 
   let {
@@ -7,12 +8,14 @@
     ariaLabel = "",
     disabled = false,
     onValueChange = () => {},
+    onInteractionChange = () => {},
   }: {
     value?: number;
     values?: number[];
     ariaLabel?: string;
     disabled?: boolean;
     onValueChange?: (value: number) => void;
+    onInteractionChange?: (active: boolean) => void;
   } = $props();
 
   const sortedValues = $derived(
@@ -27,19 +30,41 @@
   });
   const effectivelyDisabled = $derived(disabled || sortedValues.length <= 1);
   let sliderIndex = $state(0);
+  let interactionActive = false;
+  let lastEmittedValue = 0;
 
   $effect.pre(() => {
     values;
     sliderIndex = selectedIndex;
+    lastEmittedValue = Number(value);
   });
+
+  function setInteractionActive(active: boolean): void {
+    if (interactionActive === active) return;
+    interactionActive = active;
+    onInteractionChange(active);
+  }
 
   function handleIndexChange(nextIndex: number): void {
     const index = Math.max(0, Math.min(maximumIndex, Math.round(nextIndex)));
     const nextValue = sortedValues[index];
-    if (nextValue == null || Math.abs(nextValue - Number(value)) < 1e-9) return;
+    if (nextValue == null || Math.abs(nextValue - lastEmittedValue) < 1e-9) return;
+    lastEmittedValue = nextValue;
     onValueChange(nextValue);
   }
+
+  function handlePointerDown(): void {
+    if (!effectivelyDisabled) setInteractionActive(true);
+  }
+
+  function handlePointerEnd(): void {
+    setInteractionActive(false);
+  }
+
+  onDestroy(() => setInteractionActive(false));
 </script>
+
+<svelte:window onpointerup={handlePointerEnd} onpointercancel={handlePointerEnd} />
 
 <Slider.Root
   class="checkout-slider"
@@ -51,6 +76,7 @@
   aria-label={ariaLabel}
   disabled={effectivelyDisabled}
   onValueChange={handleIndexChange}
+  onpointerdown={handlePointerDown}
 >
   {#snippet children({ thumbItems })}
     <span class="checkout-slider-track">

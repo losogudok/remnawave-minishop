@@ -27,6 +27,7 @@
     disabled = false,
     t = (key) => key,
     onChange = () => {},
+    onInteractionChange = () => {},
   }: {
     addons?: Partial<Record<CheckoutAddonKind, CheckoutAddonDefinition>>;
     selection: CheckoutAddonSelection;
@@ -38,6 +39,7 @@
     disabled?: boolean;
     t?: Translate;
     onChange?: (kind: CheckoutAddonKind, extraUnits: number) => void;
+    onInteractionChange?: (active: boolean) => void;
   } = $props();
 
   const kinds: CheckoutAddonKind[] = ["devices", "traffic", "premium_traffic"];
@@ -48,6 +50,7 @@
   type CardPhase = "compact" | "opening" | "open" | "closing";
   let phase = $state<CardPhase>("compact");
   let phaseTimer: number | undefined;
+  let sliderInteracting = $state(false);
   const editorExpanded = $derived(phase === "opening" || phase === "open");
   const animating = $derived(phase === "opening" || phase === "closing");
 
@@ -133,6 +136,11 @@
 
   function title(kind: CheckoutAddonKind): string {
     if (kind === "devices") return t("wa_checkout_addon_devices", {}, "Devices");
+    if (limitUnlimited(kind)) {
+      return kind === "traffic"
+        ? t("wa_checkout_addon_traffic", {}, "Traffic")
+        : t("wa_checkout_addon_premium_traffic", {}, "Premium traffic");
+    }
     const period = trafficPeriod(kind);
     if (!period) {
       return kind === "traffic"
@@ -189,7 +197,16 @@
     }, delay);
   }
 
-  onDestroy(() => window.clearTimeout(phaseTimer));
+  function handleSliderInteraction(active: boolean): void {
+    if (sliderInteracting === active) return;
+    sliderInteracting = active;
+    onInteractionChange(active);
+  }
+
+  onDestroy(() => {
+    window.clearTimeout(phaseTimer);
+    if (sliderInteracting) onInteractionChange(false);
+  });
 </script>
 
 {#snippet addonValue(kind: CheckoutAddonKind)}
@@ -204,7 +221,8 @@
         suffix={valueSuffix(kind)}
         aria-label={`${totalValue(kind)}${valueSuffix(kind)}`}
         format={{ maximumFractionDigits: 2 }}
-        willChange
+        animated={!sliderInteracting}
+        willChange={!sliderInteracting}
       />
     {:else}
       <span aria-label={t("wa_checkout_tariff_not_specified", {}, "Not specified")}>—</span>
@@ -246,6 +264,7 @@
             ariaLabel={title(kind)}
             {disabled}
             onValueChange={(value) => !disabled && onChange(kind, value)}
+            onInteractionChange={handleSliderInteraction}
           />
         </div>
       {/if}

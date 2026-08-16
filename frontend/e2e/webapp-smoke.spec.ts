@@ -1466,6 +1466,86 @@ test("broadcast promo picker fills its mobile editor row", async ({ page }) => {
   expect(triggerRect.bottom).toBeLessThanOrEqual(inputRect.bottom);
 });
 
+test("checkout sliders suspend price animations and quote churn while dragging", async ({
+  page,
+}) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  let quoteRequests = 0;
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith("/api/subscription/quote")) quoteRequests += 1;
+  });
+
+  await page.goto("/demo/runtime/home?mock=checkout-addons");
+  await expect(page.locator("nav.bottom-nav")).toBeVisible();
+  const paymentOpened = await clickFirstVisibleEnabled(webappAction(page, "open-payment"));
+  expect(paymentOpened).toBe(true);
+
+  const dialog = page.locator(".dialog-card.webapp-payment-dialog");
+  await expect(dialog).toBeVisible();
+  const tariffRows = dialog.locator(".tariff-row");
+  if ((await tariffRows.count()) > 0) {
+    await tariffRows.first().click();
+    const nextButton = dialog.locator(".payment-submit-button").first();
+    if (!(await nextButton.isDisabled())) await nextButton.click();
+  }
+
+  const summary = dialog.locator(".checkout-tariff-summary-button");
+  await expect(summary).toBeVisible();
+  await summary.click();
+
+  const slider = dialog.locator(".checkout-slider").first();
+  const priceFlows = dialog.locator("number-flow-svelte");
+  await expect(slider).toBeVisible();
+  await expect(priceFlows.first()).toBeVisible();
+  await page.waitForTimeout(350);
+
+  const sliderBox = await slider.boundingBox();
+  expect(sliderBox, "checkout slider must have a draggable box").not.toBeNull();
+  if (!sliderBox) return;
+
+  const quoteRequestsBeforeDrag = quoteRequests;
+  const sliderY = sliderBox.y + sliderBox.height / 2;
+  await page.mouse.move(sliderBox.x + sliderBox.width * 0.15, sliderY);
+  await page.mouse.down();
+  for (let index = 0; index < 8; index += 1) {
+    const ratio = index % 2 === 0 ? 0.85 : 0.15;
+    await page.mouse.move(sliderBox.x + sliderBox.width * ratio, sliderY, { steps: 3 });
+    await page.waitForTimeout(110);
+  }
+
+  const animationState = await priceFlows.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const flow = node as HTMLElement & { animated?: boolean };
+      return {
+        animated: flow.animated,
+        running:
+          flow.shadowRoot?.getAnimations().filter((animation) => animation.playState === "running")
+            .length ?? 0,
+      };
+    })
+  );
+  expect(animationState.length).toBeGreaterThan(0);
+  expect(
+    animationState.every(({ animated }) => animated === false),
+    JSON.stringify(animationState)
+  ).toBe(true);
+  expect(animationState.reduce((total, { running }) => total + running, 0)).toBe(0);
+  expect(quoteRequests).toBe(quoteRequestsBeforeDrag);
+
+  await page.mouse.up();
+  await expect
+    .poll(() =>
+      priceFlows.evaluateAll((nodes) =>
+        nodes.every((node) => (node as HTMLElement & { animated?: boolean }).animated !== false)
+      )
+    )
+    .toBe(true);
+  await page.waitForTimeout(250);
+  expect(quoteRequests).toBeLessThanOrEqual(quoteRequestsBeforeDrag + 1);
+  await closeDialog(dialog);
+});
+
 test("webapp and admin sections, dialogs, tabs stay interactive without console errors", async ({
   page,
 }) => {

@@ -6,9 +6,11 @@
   let {
     plan = null,
     method = "",
+    animated = true,
   }: {
     plan?: BillingPlan | null;
     method?: string;
+    animated?: boolean;
   } = $props();
 
   const stars = $derived(isStarsPaymentMethod(method) && Number(plan?.stars_price || 0) > 0);
@@ -23,5 +25,6 @@
   {suffix}
   aria-label={`${amount}${suffix}`}
   format={{ maximumFractionDigits: Number.isInteger(amount) ? 0 : 2 }}
-  willChange
+  {animated}
+  willChange={animated}
 />

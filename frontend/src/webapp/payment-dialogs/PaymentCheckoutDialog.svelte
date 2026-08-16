@@ -4,11 +4,8 @@
   import Button from "$components/ui/button.svelte";
   import Checkbox from "$components/ui/checkbox.svelte";
   import Dialog from "$components/ui/dialog.svelte";
-  import {
-    AnimatedPrice,
-    CheckoutAddonSliders,
-    EmptyCard,
-  } from "$components/patterns/webapp/index.js";
+  import { CheckoutAddonSliders, EmptyCard } from "$components/patterns/webapp/index.js";
+  import CheckoutPeriodPrice from "./CheckoutPeriodPrice.svelte";
   import CheckoutPaymentControls from "./CheckoutPaymentControls.svelte";
   import PendingPaymentCard from "./PendingPaymentCard.svelte";
   import {
@@ -182,6 +179,7 @@
   let checkoutQuoteBusy = $state(false);
   let checkoutQuoteError = $state("");
   let checkoutQuoteRequestId = 0;
+  let checkoutSliderInteracting = $state(false);
 
   const checkoutAddonSelection = $derived<CheckoutAddonSelection>({
     device_count: checkoutDeviceCount,
@@ -264,6 +262,8 @@
   }
 
   function updateCheckoutAddon(kind: CheckoutAddonKind, value: number): void {
+    checkoutQuote = null;
+    checkoutQuoteError = "";
     if (kind === "devices") {
       checkoutDeviceCount = value;
       if (value > 0) renewHwidDevices = false;
@@ -274,13 +274,26 @@
     }
   }
 
+  function handleCheckoutSliderInteraction(active: boolean): void {
+    if (checkoutSliderInteracting === active) return;
+    checkoutSliderInteracting = active;
+    if (active) {
+      checkoutQuoteRequestId += 1;
+      checkoutQuote = null;
+      checkoutQuoteError = "";
+      checkoutQuoteBusy = false;
+    }
+  }
+
   function checkoutPaymentOptions(): CheckoutPaymentOptions {
     return { usePartnerBalance, checkoutAddons: checkoutAddonSelection };
   }
 
   function checkoutQuotePlan(plan: PlanView | null): PlanView | null {
     const optimistic = planWithCheckoutSelection(plan);
-    if (!optimistic || !checkoutQuote || checkoutQuoteError) return optimistic;
+    if (!optimistic || checkoutSliderInteracting || !checkoutQuote || checkoutQuoteError) {
+      return optimistic;
+    }
     return {
       ...optimistic,
       price: Number(checkoutQuote.effective_amount ?? optimistic.price ?? 0),
@@ -486,6 +499,10 @@
     if (!paymentModalOpen || paymentStep !== "checkout" || !selectedPlan || !selectedMethod) {
       checkoutQuote = null;
       checkoutQuoteError = "";
+      checkoutQuoteBusy = false;
+      return;
+    }
+    if (checkoutSliderInteracting) {
       checkoutQuoteBusy = false;
       return;
     }
@@ -713,6 +730,7 @@
       disabled={checkoutAddonsUnavailableForMethod(selectedPlan)}
       {t}
       onChange={updateCheckoutAddon}
+      onInteractionChange={handleCheckoutSliderInteraction}
     />
   {/if}
 {/snippet}
@@ -753,6 +771,7 @@
     quotedPlan={selectedQuotedPlanForPayment}
     providerManagesPrice={providerManagesPrice()}
     fallbackPrice={selectedPlan ? checkoutPaymentPriceLabel(selectedPlan) : ""}
+    priceAnimationEnabled={!checkoutSliderInteracting}
     {t}
   />
 {/snippet}
@@ -877,25 +896,14 @@
               onclick={() => (selectedPlan = plan)}
             >
               <strong>{planSubtitle(plan) || planDisplayTitle(plan)}</strong>
-              {#if promoPlans}
-                <span class="promo-price-pair">
-                  <s><AnimatedPrice plan={promoPlans.base} method={selectedMethod} /></s>
-                  <b><AnimatedPrice plan={promoPlans.discounted} method={selectedMethod} /></b>
-                </span>
-              {:else}
-                <span
-                  ><AnimatedPrice
-                    plan={planWithCheckoutSelection(plan)}
-                    method={selectedMethod}
-                  /></span
-                >
-              {/if}
-              {#if checkoutUnitPricePlan(plan)}
-                <small class="period-unit-price">
-                  <AnimatedPrice plan={checkoutUnitPricePlan(plan)} method={selectedMethod} />
-                  <span>{checkoutUnitPriceSuffix(plan)}</span>
-                </small>
-              {/if}
+              <CheckoutPeriodPrice
+                plan={planWithCheckoutSelection(plan)}
+                {promoPlans}
+                unitPricePlan={checkoutUnitPricePlan(plan)}
+                unitPriceSuffix={checkoutUnitPriceSuffix(plan)}
+                method={selectedMethod}
+                animated={!checkoutSliderInteracting}
+              />
               {#if planKey(selectedPlan) === planKey(plan)}
                 <CheckCircle2 size={18} />
               {/if}
@@ -963,25 +971,14 @@
             {#if planSubtitle(plan)}
               <em>{planSubtitle(plan)}</em>
             {/if}
-            {#if promoPlans}
-              <span class="promo-price-pair">
-                <s><AnimatedPrice plan={promoPlans.base} method={selectedMethod} /></s>
-                <b><AnimatedPrice plan={promoPlans.discounted} method={selectedMethod} /></b>
-              </span>
-            {:else}
-              <span
-                ><AnimatedPrice
-                  plan={planWithCheckoutSelection(plan)}
-                  method={selectedMethod}
-                /></span
-              >
-            {/if}
-            {#if checkoutUnitPricePlan(plan)}
-              <small class="period-unit-price">
-                <AnimatedPrice plan={checkoutUnitPricePlan(plan)} method={selectedMethod} />
-                <span>{checkoutUnitPriceSuffix(plan)}</span>
-              </small>
-            {/if}
+            <CheckoutPeriodPrice
+              plan={planWithCheckoutSelection(plan)}
+              {promoPlans}
+              unitPricePlan={checkoutUnitPricePlan(plan)}
+              unitPriceSuffix={checkoutUnitPriceSuffix(plan)}
+              method={selectedMethod}
+              animated={!checkoutSliderInteracting}
+            />
             {#if planKey(selectedPlan) === planKey(plan)}
               <CheckCircle2 size={18} />
             {/if}
