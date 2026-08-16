@@ -1,5 +1,6 @@
 export {
   Activity,
+  ArrowDownUp,
   ArrowLeft,
   ArrowDown,
   ArrowRight,
@@ -64,6 +65,7 @@ export {
   Share2,
   Shield,
   ShieldCheck,
+  SatelliteDish,
   Snowflake,
   Sliders,
   Smartphone,

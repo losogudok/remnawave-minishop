@@ -1309,9 +1309,12 @@ a {
 }
 
 .checkout-tariff-title-line {
+  --checkout-tariff-title-gap: 6px;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  column-gap: var(--checkout-tariff-title-gap);
+  row-gap: 1px;
   min-width: 0;
 }
 
@@ -1319,7 +1322,27 @@ a {
   flex: 0 0 auto;
 }
 
-.checkout-tariff-title-line > small {
+.checkout-tariff-description-line {
+  display: inline-flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  align-items: baseline;
+  gap: var(--checkout-tariff-title-gap);
+  color: var(--muted);
+}
+
+.checkout-tariff-title-line.is-wrapped .checkout-tariff-description-line {
+  flex-basis: 100%;
+  gap: 0;
+}
+
+.checkout-tariff-title-line.is-wrapped .checkout-tariff-title-separator {
+  position: absolute;
+  visibility: hidden;
+}
+
+.checkout-tariff-description-line > small {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1388,8 +1411,12 @@ a {
 }
 
 .checkout-tariff-fact {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 3px;
   padding: 0 8px;
 }
 
@@ -1397,10 +1424,25 @@ a {
   border-left: 1px solid var(--border);
 }
 
-.checkout-tariff-fact .checkout-addon-copy {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-  align-items: start;
+.checkout-tariff-fact-label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+}
+
+.checkout-tariff-limit-icon {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--muted);
+}
+
+.checkout-tariff-fact .checkout-tariff-limit-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .checkout-tariff-editor-facts {
@@ -1426,6 +1468,18 @@ a {
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
+}
+
+.checkout-tariff-editor-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.checkout-tariff-editor-title .checkout-tariff-limit-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .checkout-tariff-editor-copy small {
@@ -1472,7 +1526,7 @@ a {
 
 .checkout-addon-value {
   color: var(--text);
-  font-size: 16px;
+  font-size: 15px;
   font-variant-numeric: tabular-nums;
   font-weight: 900;
   letter-spacing: -0.035em;
@@ -1491,10 +1545,37 @@ a {
 }
 
 @media (max-width: 520px) {
-  .checkout-tariff-title-line {
+  .checkout-tariff-summary-static {
+    padding-bottom: 7px;
+  }
+
+  .checkout-tariff-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .checkout-tariff-fact {
     display: grid;
-    align-items: start;
-    gap: 2px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 11px 5px 6px;
+  }
+
+  .checkout-tariff-fact + .checkout-tariff-fact {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+
+  .checkout-tariff-fact .checkout-addon-value {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    text-align: right;
+  }
+
+  .checkout-tariff-fact-label {
+    grid-column: 1;
+    grid-row: 1;
   }
 }
 

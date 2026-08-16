@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
-  import { Pencil, X } from "$components/ui/icons.js";
+  import { onDestroy, onMount } from "svelte";
+  import { ArrowDownUp, Pencil, SatelliteDish, Smartphone, X } from "$components/ui/icons.js";
   import Slider from "$components/ui/slider.svelte";
   import { formatMoney } from "$lib/webapp/formatters.js";
   import {
@@ -51,6 +51,14 @@
   let phase = $state<CardPhase>("compact");
   let phaseTimer: number | undefined;
   let sliderInteracting = $state(false);
+  let titleDescriptionWrapped = $state(false);
+  let titleLineElement: HTMLElement | undefined;
+  let tariffTitleElement: HTMLElement | undefined;
+  let tariffDescriptionLineElement: HTMLElement | undefined;
+  let tariffDescriptionElement: HTMLElement | undefined;
+  let tariffSeparatorElement: HTMLElement | undefined;
+  let titleResizeObserver: ResizeObserver | undefined;
+  let titleMeasureFrame: number | undefined;
   const editorExpanded = $derived(phase === "opening" || phase === "open");
   const animating = $derived(phase === "opening" || phase === "closing");
 
@@ -203,8 +211,54 @@
     onInteractionChange(active);
   }
 
+  function measureTitleDescriptionFit(): void {
+    titleMeasureFrame = undefined;
+    if (
+      !titleLineElement ||
+      !tariffTitleElement ||
+      !tariffDescriptionElement ||
+      !tariffSeparatorElement
+    ) {
+      return;
+    }
+    const titleGap = Number.parseFloat(
+      window.getComputedStyle(titleLineElement).getPropertyValue("--checkout-tariff-title-gap")
+    );
+    const requiredWidth =
+      tariffTitleElement.scrollWidth +
+      tariffSeparatorElement.scrollWidth +
+      tariffDescriptionElement.scrollWidth +
+      (Number.isFinite(titleGap) ? titleGap * 2 : 0);
+    titleDescriptionWrapped = requiredWidth > titleLineElement.clientWidth + 0.5;
+  }
+
+  function scheduleTitleDescriptionMeasurement(): void {
+    if (titleMeasureFrame !== undefined) window.cancelAnimationFrame(titleMeasureFrame);
+    titleMeasureFrame = window.requestAnimationFrame(measureTitleDescriptionFit);
+  }
+
+  onMount(() => {
+    titleResizeObserver = new ResizeObserver(scheduleTitleDescriptionMeasurement);
+    if (titleLineElement) titleResizeObserver.observe(titleLineElement);
+    if (tariffTitleElement) titleResizeObserver.observe(tariffTitleElement);
+    if (tariffDescriptionLineElement) titleResizeObserver.observe(tariffDescriptionLineElement);
+    if (tariffDescriptionElement) titleResizeObserver.observe(tariffDescriptionElement);
+    scheduleTitleDescriptionMeasurement();
+  });
+
+  $effect(() => {
+    tariffTitle;
+    tariffDescription;
+    plan?.tariff_name;
+    plan?.title;
+    plan?.description;
+    if (typeof window !== "undefined") scheduleTitleDescriptionMeasurement();
+  });
+
   onDestroy(() => {
     window.clearTimeout(phaseTimer);
+    if (titleMeasureFrame !== undefined) window.cancelAnimationFrame(titleMeasureFrame);
+    titleResizeObserver?.disconnect();
     if (sliderInteracting) onInteractionChange(false);
   });
 </script>
@@ -229,17 +283,28 @@
   </span>
 {/snippet}
 
+{#snippet limitIcon(kind: CheckoutAddonKind)}
+  <span class="checkout-tariff-limit-icon" aria-hidden="true">
+    {#if kind === "devices"}
+      <Smartphone size={13} strokeWidth={2} />
+    {:else if kind === "traffic"}
+      <ArrowDownUp size={13} strokeWidth={2} />
+    {:else}
+      <SatelliteDish size={13} strokeWidth={2} />
+    {/if}
+  </span>
+{/snippet}
+
 {#snippet summaryFacts()}
   <div class="checkout-tariff-facts">
     {#each kinds as kind}
       {@const definition = definitionFor(kind)}
       <div class:adjustable={Boolean(definition)} class="checkout-tariff-fact">
-        <div class="checkout-addon-copy">
-          {@render addonValue(kind)}
-          <span>
-            <span class="checkout-addon-label">{title(kind)}</span>
-          </span>
-        </div>
+        {@render addonValue(kind)}
+        <span class="checkout-tariff-fact-label">
+          {@render limitIcon(kind)}
+          <span class="checkout-addon-label">{title(kind)}</span>
+        </span>
       </div>
     {/each}
   </div>
@@ -252,7 +317,10 @@
       {#if definition}
         <div class="checkout-tariff-editor-fact">
           <div class="checkout-tariff-editor-copy">
-            <span class="checkout-addon-label">{title(kind)}</span>
+            <span class="checkout-tariff-editor-title">
+              {@render limitIcon(kind)}
+              <span class="checkout-addon-label">{title(kind)}</span>
+            </span>
             <small>{subtitle(kind)}</small>
           </div>
           <Slider
@@ -300,13 +368,28 @@
   {/if}
 
   <header class="checkout-tariff-card-head">
-    <span class="checkout-tariff-title-line">
-      <strong>{tariffTitle || plan?.tariff_name || plan?.title || ""}</strong>
-      <small>
-        {tariffDescription ||
-          plan?.description ||
-          t("wa_tariff_no_description", {}, "Tariff description is not configured")}
-      </small>
+    <span
+      class:is-wrapped={titleDescriptionWrapped}
+      class="checkout-tariff-title-line"
+      bind:this={titleLineElement}
+    >
+      <strong bind:this={tariffTitleElement}>
+        {tariffTitle || plan?.tariff_name || plan?.title || ""}
+      </strong>
+      <span class="checkout-tariff-description-line" bind:this={tariffDescriptionLineElement}>
+        <span
+          class="checkout-tariff-title-separator"
+          aria-hidden="true"
+          bind:this={tariffSeparatorElement}
+        >
+          —
+        </span>
+        <small bind:this={tariffDescriptionElement}>
+          {tariffDescription ||
+            plan?.description ||
+            t("wa_tariff_no_description", {}, "Tariff description is not configured")}
+        </small>
+      </span>
     </span>
     {#if hasAdjustableLimits}
       <button
