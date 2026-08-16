@@ -357,7 +357,7 @@ Xray-Core 26.3.27+, `NET_ADMIN`, nftables, корректный sniffing и вк
 
 | Переменная | Назначение |
 | --- | --- |
-| `PAYMENT_METHODS_ORDER` | Порядок кнопок оплаты. Для Platega доступны `platega_sbp`, `platega_card`, `platega_crypto`, `platega_international`, `platega_all_methods`, `platega_subscription`; legacy-значение `platega` разворачивается во все варианты. |
+| `PAYMENT_METHODS_ORDER` | Порядок способов оплаты в выпадающем списке или отдельных кнопках. Для Platega доступны `platega_sbp`, `platega_card`, `platega_crypto`, `platega_international`, `platega_all_methods`, `platega_subscription`; legacy-значение `platega` разворачивается во все варианты. |
 | `PAYMENT_METHODS_DISPLAY_MODE` | Представление способов оплаты в Mini App: компактный `dropdown` (по умолчанию) или отдельные `buttons`. В админке: **Платежи → Оформление оплаты**. |
 | `SUBSCRIPTION_PURCHASE_DESCRIPTION_ENABLED` | Показывать описание подписки перед выбором срока. |
 | `SUBSCRIPTION_PURCHASE_DESCRIPTION_RU` / `SUBSCRIPTION_PURCHASE_DESCRIPTION_EN` | Локализованное описание подписки. |
