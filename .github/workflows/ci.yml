@@ -42,7 +42,12 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            docs-site/package-lock.json
+
+      - name: Check npm lockfiles
+        run: npm run check:lockfiles
 
       - name: Check docs OpenAPI artifact is in sync
         run: npm run check:docs

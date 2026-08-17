@@ -22,7 +22,7 @@ MYPY_PATHS := \
 	scripts \
 	tests
 
-.PHONY: test lint types architecture front check cov dev dev-config dev-down dev-ps dev-logs
+.PHONY: test lint types architecture lockfiles front check cov dev dev-config dev-down dev-ps dev-logs
 
 test:
 	$(PYTHON) -m pytest -q
@@ -37,12 +37,15 @@ types:
 architecture:
 	$(PYTHON) scripts/check_architecture.py
 
+lockfiles:
+	$(NPM) run check:lockfiles
+
 front:
 	$(NPM) --prefix frontend run check
 	$(NPM) --prefix frontend run test
 	$(NPM) --prefix frontend run build
 
-check: test lint types architecture front
+check: lockfiles test lint types architecture front
 
 cov:
 	$(PYTHON) -m pytest --cov=backend --cov-report=term-missing
