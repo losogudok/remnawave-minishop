@@ -74,6 +74,7 @@ npm run test:e2e     # Playwright docs-demo smoke: webapp+админка, окн
 | `docs/architecture/remnawave-api-compatibility.md` | `PYTHONPATH=backend python -m bot.services.panel_api_catalog` | `tests/contracts/test_remnawave_api_contract.py` |
 | `frontend/src/lib/api/openapi.generated.ts` | `npm --prefix frontend run generate:api-types` | CI `git diff --exit-code` |
 | demo settings manifest | `python scripts/export_settings_manifest.py` (+ prettier) | `tests/contracts/test_settings_manifest_demo_sync.py` |
+| `docs/remnawave-minishop.webp` | `npm run generate:readme-screenshot` | визуальная проверка README |
 | `backend/requirements.txt` | `python -m piptools compile --resolver=backtracking --no-emit-index-url --no-emit-trusted-host -o backend/requirements.txt backend/requirements.in` (Python 3.12) | CI install + `pip-audit` |
 
 Меняешь контракт API — регенерируй `openapi.json` **и** `openapi.generated.ts`.
