@@ -3,13 +3,13 @@
     ArrowRight,
     CheckCircle2,
     FileText,
+    Handshake,
     Key,
     Mail,
     Send,
     Server,
     Shield,
     UserRound,
-    WalletCards,
   } from "$components/ui/icons.js";
 
   import Button from "$components/ui/button.svelte";
@@ -287,7 +287,7 @@
         type="button"
         onclick={openPartner}
       >
-        <WalletCards size={21} />
+        <Handshake size={21} />
         <span>
           <strong>{t("wa_nav_partner")}</strong>
           <small>{t("wa_partner_program_kicker")}</small>

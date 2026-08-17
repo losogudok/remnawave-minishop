@@ -32,6 +32,7 @@ export {
   Gift,
   Globe2,
   GripVertical,
+  Handshake,
   History,
   Home,
   Info,

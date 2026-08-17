@@ -1,12 +1,12 @@
 <script lang="ts">
   import {
     Gift,
+    Handshake,
     Home,
     LifeBuoy,
     Settings as SettingsIcon,
     Shield,
     Smartphone,
-    WalletCards,
   } from "$components/ui/icons.js";
   import { AttentionDot } from "$components/ui/index.js";
 
@@ -112,7 +112,7 @@
       title={t("wa_nav_partner")}
       onclick={onPartner}
     >
-      <WalletCards size={21} />
+      <Handshake size={21} />
       <span class="bottom-nav-label">{t("wa_nav_partner")}</span>
     </button>
   {/if}
