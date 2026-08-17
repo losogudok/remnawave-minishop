@@ -9,6 +9,7 @@
     Server,
     Shield,
     UserRound,
+    WalletCards,
   } from "$components/ui/icons.js";
 
   import Button from "$components/ui/button.svelte";
@@ -39,6 +40,7 @@
     languageOptions?: LanguageOption[];
     linkEmailBusy?: boolean;
     linkTelegramBusy?: boolean;
+    partnerSettingsVisible?: boolean;
     privacyPolicyUrl?: string;
     profileAvatarUrl?: string;
     profileEmail?: string;
@@ -66,6 +68,7 @@
     openTelegramNotificationsBot?: VoidAction;
     logout?: VoidAction;
     openAdminPanel?: VoidAction;
+    openPartner?: VoidAction;
     openExternalLink?: OpenLinkAction;
     openLinkEmailDialog?: VoidAction;
     openSetPasswordDialog?: VoidAction;
@@ -91,6 +94,7 @@
     languageOptions = [],
     linkEmailBusy = false,
     linkTelegramBusy = false,
+    partnerSettingsVisible = false,
     privacyPolicyUrl = "",
     profileAvatarUrl = "",
     profileEmail = "",
@@ -118,6 +122,7 @@
     openTelegramNotificationsBot = () => {},
     logout = () => {},
     openAdminPanel = () => {},
+    openPartner = () => {},
     openExternalLink = () => {},
     openLinkEmailDialog = () => {},
     openSetPasswordDialog = () => {},
@@ -275,6 +280,21 @@
     />
   {/if}
   <div class="settings-list" class:settings-list--language-open={languageMenuOpen}>
+    {#if partnerSettingsVisible}
+      <button
+        data-webapp-action="open-partner-program"
+        class="settings-row settings-row-partner"
+        type="button"
+        onclick={openPartner}
+      >
+        <WalletCards size={21} />
+        <span>
+          <strong>{t("wa_nav_partner")}</strong>
+          <small>{t("wa_partner_program_kicker")}</small>
+        </span>
+        <ArrowRight size={17} />
+      </button>
+    {/if}
     <LanguageSelect
       bind:open={languageMenuOpen}
       value={currentLang}

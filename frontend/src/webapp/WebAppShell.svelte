@@ -10,14 +10,14 @@
     activeTab?: string;
     brand?: Record<string, unknown>;
     brandTitle?: string;
+    bonusesNavigationVisible?: boolean;
     children?: Snippet;
     devicesEnabled?: boolean;
     goDevices: Action;
     goHome: Action;
     goInvite: Action;
     goPartner: Action;
-    partnerEnabled?: boolean;
-    referralProgramEnabled?: boolean;
+    partnerNavigationVisible?: boolean;
     goSettings: Action;
     goSupport: Action;
     hasUnlinkedIdentity?: boolean;
@@ -36,6 +36,7 @@
     activeTab = "home",
     brand = {},
     brandTitle = "",
+    bonusesNavigationVisible = true,
     devicesEnabled = false,
     supportEnabled = true,
     supportUnreadCount = 0,
@@ -48,8 +49,7 @@
     goHome,
     goInvite,
     goPartner,
-    partnerEnabled = false,
-    referralProgramEnabled = true,
+    partnerNavigationVisible = false,
     goSupport,
     goSettings,
     t,
@@ -85,8 +85,8 @@
     onHome={goHome}
     onInvite={goInvite}
     onPartner={goPartner}
-    {partnerEnabled}
-    {referralProgramEnabled}
+    {bonusesNavigationVisible}
+    {partnerNavigationVisible}
     onSupport={goSupport}
     onSettings={goSettings}
     {t}

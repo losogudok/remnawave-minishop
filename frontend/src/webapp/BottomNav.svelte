@@ -19,6 +19,7 @@
     activeTab?: string;
     brand?: Record<string, unknown>;
     brandTitle?: string;
+    bonusesNavigationVisible?: boolean;
     devicesEnabled?: boolean;
     hasUnlinkedIdentity?: boolean;
     isAdmin?: boolean;
@@ -27,8 +28,7 @@
     onHome?: Action;
     onInvite?: Action;
     onPartner?: Action;
-    partnerEnabled?: boolean;
-    referralProgramEnabled?: boolean;
+    partnerNavigationVisible?: boolean;
     onSettings?: Action;
     onSupport?: Action;
     supportEnabled?: boolean;
@@ -42,6 +42,7 @@
     activeTab = "home",
     brand = {},
     brandTitle = "",
+    bonusesNavigationVisible = true,
     devicesEnabled = false,
     supportEnabled = true,
     supportUnreadCount = 0,
@@ -54,8 +55,7 @@
     onHome = () => {},
     onInvite = () => {},
     onPartner = () => {},
-    partnerEnabled = false,
-    referralProgramEnabled = true,
+    partnerNavigationVisible = false,
     onSupport = () => {},
     onSettings = () => {},
     t = (key) => key,
@@ -63,8 +63,8 @@
 
   const visibleNavItems = $derived(
     2 +
-      (referralProgramEnabled ? 1 : 0) +
-      (partnerEnabled ? 1 : 0) +
+      (bonusesNavigationVisible ? 1 : 0) +
+      (partnerNavigationVisible ? 1 : 0) +
       (devicesEnabled ? 1 : 0) +
       (supportEnabled ? 1 : 0)
   );
@@ -92,7 +92,7 @@
     <Home size={21} />
     <span class="bottom-nav-label">{t("wa_nav_home")}</span>
   </button>
-  {#if referralProgramEnabled}
+  {#if bonusesNavigationVisible}
     <button
       class:active={activeTab === "invite"}
       type="button"
@@ -104,7 +104,7 @@
       <span class="bottom-nav-label">{t("wa_nav_bonuses")}</span>
     </button>
   {/if}
-  {#if partnerEnabled}
+  {#if partnerNavigationVisible}
     <button
       class:active={activeTab === "partner"}
       type="button"

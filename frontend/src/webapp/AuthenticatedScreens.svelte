@@ -5,6 +5,7 @@
   import type { ApiClient } from "../lib/webapp/publicApi.js";
 
   import { lazyScreen } from "../lib/webapp/lazyScreen.svelte.js";
+  import { resolveProgramEntryPlacement } from "../lib/webapp/programEntryPolicy.js";
 
   import WebAppShell from "./WebAppShell.svelte";
   import HomeScreen from "./screens/HomeScreen.svelte";
@@ -287,6 +288,12 @@
   const settingsSubscriptionReissueVisible = $derived(
     subscriptionReissueEnabled && !devicesEnabled && Boolean(subscription?.active)
   );
+  const programEntryPlacement = $derived(
+    resolveProgramEntryPlacement({
+      partnerProgramEnabled: partnerEnabled,
+      referralProgramEnabled,
+    })
+  );
 </script>
 
 <WebAppShell
@@ -306,8 +313,8 @@
   {goHome}
   {goInvite}
   {goPartner}
-  {partnerEnabled}
-  {referralProgramEnabled}
+  bonusesNavigationVisible={programEntryPlacement.bonusesNavigationVisible}
+  partnerNavigationVisible={programEntryPlacement.partnerNavigationVisible}
   {goSupport}
   {goSettings}
   {t}
@@ -483,7 +490,8 @@
       {profileAvatarUrl}
       {profileEmail}
       {profileTelegramId}
-      promoActivationVisible={!referralProgramEnabled}
+      partnerSettingsVisible={programEntryPlacement.partnerSettingsVisible}
+      promoActivationVisible={programEntryPlacement.promoSettingsVisible}
       {promoBusy}
       {promoCode}
       {promoFieldError}
@@ -506,6 +514,7 @@
       {openTelegramNotificationsBot}
       logout={accountStore.logout}
       {openAdminPanel}
+      openPartner={goPartner}
       {openExternalLink}
       {openLinkEmailDialog}
       {openSetPasswordDialog}
