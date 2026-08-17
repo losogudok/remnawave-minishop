@@ -68,6 +68,7 @@ export type AppActionRuntimeDeps = {
   getMethods: BillingModalDeps["methods"];
   getOrigin: InstallRuntimeDeps["getOrigin"];
   getPartnerProgramEnabled: () => boolean;
+  getReferralProgramEnabled: () => boolean;
   getPlans: BillingModalDeps["plans"] & TariffActionDeps["getPlans"];
   getSuggestedPromoCode: BillingModalDeps["suggestedPromoCode"];
   getPreloadHost: InstallRuntimeDeps["getPreloadHost"];
@@ -119,6 +120,7 @@ export function createAppActionRuntime({
   getMethods,
   getOrigin,
   getPartnerProgramEnabled,
+  getReferralProgramEnabled,
   getPlans,
   getSuggestedPromoCode,
   getPreloadHost,
@@ -200,6 +202,7 @@ export function createAppActionRuntime({
     },
     openConnectLink: connectActions.openConnectLink,
     partnerProgramEnabled: getPartnerProgramEnabled,
+    referralProgramEnabled: getReferralProgramEnabled,
     setActiveTab,
     setScreen,
     supportEnabled: getSupportEnabled,

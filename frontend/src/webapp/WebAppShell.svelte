@@ -17,6 +17,7 @@
     goInvite: Action;
     goPartner: Action;
     partnerEnabled?: boolean;
+    referralProgramEnabled?: boolean;
     goSettings: Action;
     goSupport: Action;
     hasUnlinkedIdentity?: boolean;
@@ -48,6 +49,7 @@
     goInvite,
     goPartner,
     partnerEnabled = false,
+    referralProgramEnabled = true,
     goSupport,
     goSettings,
     t,
@@ -84,6 +86,7 @@
     onInvite={goInvite}
     onPartner={goPartner}
     {partnerEnabled}
+    {referralProgramEnabled}
     onSupport={goSupport}
     onSettings={goSettings}
     {t}

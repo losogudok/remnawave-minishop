@@ -15,6 +15,7 @@
   import Card from "$components/ui/card.svelte";
   import { AttentionDot } from "$components/ui/index.js";
   import { LanguageSelect } from "$components/patterns/webapp/index.js";
+  import PromoActivationCard from "../PromoActivationCard.svelte";
   import TelegramNotificationsBanner from "../TelegramNotificationsBanner.svelte";
   import type {
     LanguageOption,
@@ -42,6 +43,12 @@
     profileAvatarUrl?: string;
     profileEmail?: string;
     profileTelegramId?: string;
+    promoActivationVisible?: boolean;
+    promoBusy?: boolean;
+    promoCode?: string;
+    promoFieldError?: string;
+    promoIsError?: boolean;
+    promoStatus?: string;
     serverStatusUrl?: string;
     showTelegramLinkedStatus?: boolean;
     subscriptionReissueBusy?: boolean;
@@ -63,7 +70,10 @@
     openLinkEmailDialog?: VoidAction;
     openSetPasswordDialog?: VoidAction;
     openSubscriptionReissueDialog?: VoidAction;
+    applyPromo?: VoidAction;
+    clearPromoFieldError?: VoidAction;
     setLanguageMenuOpen?: (open: boolean) => void;
+    setPromoCode?: StringAction;
     t?: Translate;
     updateAccountLanguage?: StringAction;
   };
@@ -85,6 +95,12 @@
     profileAvatarUrl = "",
     profileEmail = "",
     profileTelegramId = "",
+    promoActivationVisible = false,
+    promoBusy = false,
+    promoCode = "",
+    promoFieldError = "",
+    promoIsError = false,
+    promoStatus = "",
     serverStatusUrl = "",
     showTelegramLinkedStatus = false,
     subscriptionReissueBusy = false,
@@ -106,7 +122,10 @@
     openLinkEmailDialog = () => {},
     openSetPasswordDialog = () => {},
     openSubscriptionReissueDialog = () => {},
+    applyPromo = () => {},
+    clearPromoFieldError = () => {},
     setLanguageMenuOpen = () => {},
+    setPromoCode = () => {},
     t = (key) => key,
     updateAccountLanguage = () => {},
   }: Props = $props();
@@ -242,6 +261,19 @@
     {/if}
     <div class="settings-divider" aria-hidden="true"></div>
   </div>
+  {#if promoActivationVisible}
+    <PromoActivationCard
+      {promoCode}
+      {promoFieldError}
+      {promoBusy}
+      {promoIsError}
+      {promoStatus}
+      {applyPromo}
+      {setPromoCode}
+      {clearPromoFieldError}
+      {t}
+    />
+  {/if}
   <div class="settings-list" class:settings-list--language-open={languageMenuOpen}>
     <LanguageSelect
       bind:open={languageMenuOpen}

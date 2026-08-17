@@ -104,6 +104,7 @@ export function resolveLoadedWebappRoute({
     installGuidesAvailable: Boolean(settings.subscription_guides_enabled && subscription.active),
     isAdmin,
     partnerProgramEnabled: partnerProgramPreview || Boolean(settings.partner_program_enabled),
+    referralProgramEnabled: settings.referral_program_enabled !== false,
     section: String(routeSection || "home"),
     supportEnabled: settings.support_tickets_enabled !== false,
   });

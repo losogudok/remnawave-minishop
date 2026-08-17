@@ -19,6 +19,7 @@ type PopstateLifecycleDeps = {
   getFallbackAdminSection: () => string;
   getIsAdmin: () => boolean;
   getPartnerProgramEnabled: () => boolean;
+  getReferralProgramEnabled: () => boolean;
   getSupportEnabled: () => boolean;
   getWindowPathname?: () => string;
   isDocsDemo: boolean;
@@ -43,6 +44,7 @@ export function createPopstateLifecycle({
   getFallbackAdminSection,
   getIsAdmin,
   getPartnerProgramEnabled,
+  getReferralProgramEnabled,
   getSupportEnabled,
   getWindowPathname = () => (typeof window === "undefined" ? "" : window.location.pathname),
   isDocsDemo,
@@ -101,6 +103,7 @@ export function createPopstateLifecycle({
       isDocsDemo,
       mode: shellState.mode,
       partnerProgramEnabled: getPartnerProgramEnabled(),
+      referralProgramEnabled: getReferralProgramEnabled(),
       pathname: routePathnameFromLocation(),
       routePrefix,
       screenQuery: currentQuery.get("screen"),

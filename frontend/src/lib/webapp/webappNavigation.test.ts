@@ -17,6 +17,7 @@ function makeNavigation(overrides: TestOverrides = {}) {
     loadSupport: vi.fn(),
     openConnectLink: vi.fn(),
     partnerProgramEnabled: () => true,
+    referralProgramEnabled: () => true,
     setActiveTab: vi.fn((tab) => {
       state.activeTab = tab;
     }),
@@ -34,11 +35,21 @@ describe("createWebappNavigation", () => {
   it("navigates to ordinary sections", () => {
     const { deps, navigation, state } = makeNavigation();
 
-    navigation.goInvite();
+    expect(navigation.goInvite()).toBe(true);
 
     expect(deps.closePaymentModal).toHaveBeenCalledOnce();
     expect(state).toEqual({ activeTab: "invite", screen: "invite" });
     expect(deps.syncSectionPath).toHaveBeenCalledWith("invite");
+  });
+
+  it("guards the bonus route while the referral program is disabled", () => {
+    const { deps, navigation, state } = makeNavigation({
+      referralProgramEnabled: () => false,
+    });
+
+    expect(navigation.goInvite()).toBe(false);
+    expect(state).toEqual({ activeTab: "", screen: "" });
+    expect(deps.syncSectionPath).not.toHaveBeenCalled();
   });
 
   it("keeps the partner program on its own navigation item", () => {

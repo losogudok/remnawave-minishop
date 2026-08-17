@@ -307,6 +307,7 @@
   {goInvite}
   {goPartner}
   {partnerEnabled}
+  {referralProgramEnabled}
   {goSupport}
   {goSettings}
   {t}
@@ -393,7 +394,6 @@
         {referral}
         {referralBonusDetails}
         {referralOneBonusPerReferee}
-        {referralProgramEnabled}
         {referralWelcomeBonusDays}
         {promoCode}
         {promoFieldError}
@@ -483,6 +483,12 @@
       {profileAvatarUrl}
       {profileEmail}
       {profileTelegramId}
+      promoActivationVisible={!referralProgramEnabled}
+      {promoBusy}
+      {promoCode}
+      {promoFieldError}
+      {promoIsError}
+      {promoStatus}
       {serverStatusUrl}
       {showTelegramLinkedStatus}
       {subscriptionReissueBusy}
@@ -504,7 +510,10 @@
       {openLinkEmailDialog}
       {openSetPasswordDialog}
       {openSubscriptionReissueDialog}
+      {applyPromo}
+      {clearPromoFieldError}
       {setLanguageMenuOpen}
+      {setPromoCode}
       {t}
       updateAccountLanguage={accountStore.updateAccountLanguage}
     />

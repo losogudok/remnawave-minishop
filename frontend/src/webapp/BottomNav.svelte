@@ -28,6 +28,7 @@
     onInvite?: Action;
     onPartner?: Action;
     partnerEnabled?: boolean;
+    referralProgramEnabled?: boolean;
     onSettings?: Action;
     onSupport?: Action;
     supportEnabled?: boolean;
@@ -54,13 +55,18 @@
     onInvite = () => {},
     onPartner = () => {},
     partnerEnabled = false,
+    referralProgramEnabled = true,
     onSupport = () => {},
     onSettings = () => {},
     t = (key) => key,
   }: Props = $props();
 
   const visibleNavItems = $derived(
-    3 + (partnerEnabled ? 1 : 0) + (devicesEnabled ? 1 : 0) + (supportEnabled ? 1 : 0)
+    2 +
+      (referralProgramEnabled ? 1 : 0) +
+      (partnerEnabled ? 1 : 0) +
+      (devicesEnabled ? 1 : 0) +
+      (supportEnabled ? 1 : 0)
   );
   const adminLabel = $derived(t("wa_nav_admin", {}, "Admin panel"));
 </script>
@@ -86,16 +92,18 @@
     <Home size={21} />
     <span class="bottom-nav-label">{t("wa_nav_home")}</span>
   </button>
-  <button
-    class:active={activeTab === "invite"}
-    type="button"
-    aria-label={t("wa_nav_bonuses")}
-    title={t("wa_nav_bonuses")}
-    onclick={onInvite}
-  >
-    <Gift size={21} />
-    <span class="bottom-nav-label">{t("wa_nav_bonuses")}</span>
-  </button>
+  {#if referralProgramEnabled}
+    <button
+      class:active={activeTab === "invite"}
+      type="button"
+      aria-label={t("wa_nav_bonuses")}
+      title={t("wa_nav_bonuses")}
+      onclick={onInvite}
+    >
+      <Gift size={21} />
+      <span class="bottom-nav-label">{t("wa_nav_bonuses")}</span>
+    </button>
+  {/if}
   {#if partnerEnabled}
     <button
       class:active={activeTab === "partner"}

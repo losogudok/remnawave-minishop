@@ -20,6 +20,12 @@ describe("section availability", () => {
     expect(resolveAvailableWebappSection({ devicesEnabled: false, section: "devices" })).toBe(
       "home"
     );
+    expect(
+      resolveAvailableWebappSection({ referralProgramEnabled: false, section: "invite" })
+    ).toBe("home");
+    expect(resolveAvailableWebappSection({ referralProgramEnabled: true, section: "invite" })).toBe(
+      "invite"
+    );
     expect(resolveAvailableWebappSection({ section: "partner" })).toBe("home");
     expect(resolveAvailableWebappSection({ partnerProgramEnabled: true, section: "partner" })).toBe(
       "partner"

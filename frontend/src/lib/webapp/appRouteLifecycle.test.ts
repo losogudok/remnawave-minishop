@@ -102,5 +102,23 @@ describe("resolvePopstateRoute", () => {
         pathname: "/partner",
       })
     ).toMatchObject({ section: "partner" });
+
+    expect(
+      resolvePopstateRoute({
+        fallbackAdminSection: "stats",
+        mode: "app",
+        pathname: "/invite",
+        referralProgramEnabled: false,
+      })
+    ).toMatchObject({ section: "home" });
+
+    expect(
+      resolvePopstateRoute({
+        fallbackAdminSection: "stats",
+        mode: "app",
+        pathname: "/invite",
+        referralProgramEnabled: true,
+      })
+    ).toMatchObject({ section: "invite" });
   });
 });

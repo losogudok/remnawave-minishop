@@ -104,6 +104,30 @@ describe("app load flow decisions", () => {
     ).toBe("partner");
   });
 
+  it("applies the live referral-program flag to bonus routes", () => {
+    expect(
+      resolveLoadedWebappRoute({
+        fallbackAdminSection: "stats",
+        payload: {
+          settings: { referral_program_enabled: false },
+          user: { is_admin: false },
+        },
+        routeSection: "invite",
+      }).section
+    ).toBe("home");
+
+    expect(
+      resolveLoadedWebappRoute({
+        fallbackAdminSection: "stats",
+        payload: {
+          settings: { referral_program_enabled: true },
+          user: { is_admin: false },
+        },
+        routeSection: "invite",
+      }).section
+    ).toBe("invite");
+  });
+
   it("keeps admin routes for admin users and carries the section forward", () => {
     expect(
       resolveLoadedWebappRoute({

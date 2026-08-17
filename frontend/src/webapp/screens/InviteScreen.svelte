@@ -1,19 +1,11 @@
 <script lang="ts">
-  import {
-    CircleQuestionMark,
-    Copy,
-    Gift,
-    Ticket,
-    TriangleAlert,
-    X,
-  } from "$components/ui/icons.js";
-  import { Tooltip } from "$components/ui/primitives.js";
+  import { CircleQuestionMark, Copy, Gift } from "$components/ui/icons.js";
 
   import Button from "$components/ui/button.svelte";
   import Card from "$components/ui/card.svelte";
-  import Input from "$components/ui/input.svelte";
   import { StatusMessage } from "$components/patterns/webapp/index.js";
   import { visibleReferralLinks } from "$lib/webapp/referralLinks.js";
+  import PromoActivationCard from "../PromoActivationCard.svelte";
   import type {
     CopyTextAction,
     ReferralBonusDetail,
@@ -35,7 +27,6 @@
     referral?: ReferralState;
     referralBonusDetails?: ReferralBonusDetail[];
     referralOneBonusPerReferee?: boolean;
-    referralProgramEnabled?: boolean;
     referralWelcomeBonusDays?: number;
     setPromoCode?: StringAction;
     t?: Translate;
@@ -45,7 +36,6 @@
     referral = {},
     referralBonusDetails = [],
     referralOneBonusPerReferee = false,
-    referralProgramEnabled = true,
     referralWelcomeBonusDays = 0,
     promoBusy = false,
     promoCode = "",
@@ -66,11 +56,6 @@
     referralBonusDetails.filter((bonus) => !Array.isArray(bonus.details))
   );
   const usesTariffBonusSummaries = $derived(tariffBonusSummaries.length > 0);
-  const promoCodeText = $derived(String(promoCode || ""));
-  const hasPromoCode = $derived(Boolean(promoCodeText.trim()));
-  const promoEffectStatus = $derived(
-    !promoIsError && hasPromoCode && promoStatus ? String(promoStatus).trim() : ""
-  );
   const referralLinks = $derived(visibleReferralLinks(referral));
 
   function daysRange(minDays: unknown, maxDays: unknown): string {
@@ -79,15 +64,21 @@
       max: Number(maxDays || 0),
     });
   }
-
-  function clearPromoCode() {
-    setPromoCode("");
-    clearPromoFieldError();
-  }
 </script>
 
 <main class="content with-nav">
-  <section class="referral-program-shell" hidden={!referralProgramEnabled}>
+  <PromoActivationCard
+    {promoCode}
+    {promoFieldError}
+    {promoBusy}
+    {promoIsError}
+    {promoStatus}
+    {applyPromo}
+    {setPromoCode}
+    {clearPromoFieldError}
+    {t}
+  />
+  <section class="referral-program-shell">
     <div class="referral-program-content">
       <Card class="bonus-card">
         <div class="bonus-card-head">
@@ -216,68 +207,4 @@
       </Card>
     </div>
   </section>
-  <Card>
-    <h3 class="card-heading card-heading-accent promo-heading">
-      <Ticket size={18} />
-      <span>{t("wa_activate_promo_title")}</span>
-    </h3>
-    <div class="copy-row promo-apply-row">
-      <div
-        class="field-error-wrap promo-code-input-wrap"
-        class:promo-input-has-clear={hasPromoCode}
-        class:promo-input-has-error={Boolean(promoFieldError)}
-      >
-        <Tooltip.Root open={Boolean(promoFieldError)}>
-          <Input
-            value={promoCode}
-            placeholder="PROMO2026"
-            readonly={Boolean(promoEffectStatus)}
-            class={[
-              "promo-code-input",
-              promoFieldError ? "input-error" : "",
-              promoEffectStatus ? "is-applied" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            oninput={(event) => {
-              setPromoCode(event.currentTarget.value);
-              clearPromoFieldError();
-            }}
-          />
-          {#if hasPromoCode}
-            <button
-              class="checkout-promo-clear promo-code-clear"
-              type="button"
-              onclick={clearPromoCode}
-              aria-label={t("wa_remove")}
-            >
-              <X size={14} />
-            </button>
-          {/if}
-          {#if promoFieldError}
-            <Tooltip.Trigger class="field-error-trigger" aria-label={promoFieldError}>
-              <span class="field-error-icon" aria-hidden="true"><TriangleAlert size={18} /></span>
-            </Tooltip.Trigger>
-          {/if}
-          {#if promoFieldError}
-            <Tooltip.Portal>
-              <Tooltip.Content class="field-error-tooltip">{promoFieldError}</Tooltip.Content>
-            </Tooltip.Portal>
-          {/if}
-        </Tooltip.Root>
-      </div>
-      {#if promoEffectStatus}
-        <span class="checkout-promo-discount-marker promo-status-chip" title={promoEffectStatus}>
-          {promoEffectStatus}
-        </span>
-      {:else}
-        <Button variant="outline" onclick={applyPromo} disabled={promoBusy}>
-          {t("wa_activate")}
-        </Button>
-      {/if}
-    </div>
-    {#if promoStatus && (promoIsError ? !promoFieldError : !promoEffectStatus)}
-      <StatusMessage error={promoIsError}>{promoStatus}</StatusMessage>
-    {/if}
-  </Card>
 </main>
