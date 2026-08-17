@@ -44,6 +44,7 @@ MINI_APP_SECTIONS = (
     "install",
     "trial",
     "invite",
+    "partner",
     "devices",
     "support",
     "settings",

@@ -16,6 +16,7 @@ const START_PARAM_SECTIONS = [
   "install",
   "trial",
   "invite",
+  "partner",
   "devices",
   "support",
   "settings",

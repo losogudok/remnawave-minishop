@@ -1572,6 +1572,22 @@ test("broadcast promo picker fills its mobile editor row", async ({ page }) => {
   expect(triggerRect.bottom).toBeLessThanOrEqual(inputRect.bottom);
 });
 
+test("message button editor offers the partner program screen", async ({ page }) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto("/demo/runtime/admin/broadcast?theme_preview=dark");
+
+  await page.getByRole("button", { name: "Добавить кнопку", exact: true }).click();
+  const row = page.locator(".admin-row-editor-broadcast").first();
+  await row.getByRole("button", { name: "Кнопки", exact: true }).click();
+  await page.getByRole("option", { name: "Экран веб-приложения", exact: true }).click();
+
+  const sectionSelect = row.getByRole("button", { name: "Выберите экран", exact: true });
+  await sectionSelect.click();
+  await page.getByRole("option", { name: "Партнёрская программа", exact: true }).click();
+
+  await expect(sectionSelect).toContainText("Партнёрская программа");
+});
+
 test("checkout sliders keep price animations bounded and defer quotes while dragging", async ({
   page,
 }) => {

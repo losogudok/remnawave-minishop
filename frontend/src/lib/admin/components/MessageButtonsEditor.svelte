@@ -80,6 +80,10 @@
     { value: "install", label: at("broadcast_button_section_install", {}, "Install") },
     { value: "trial", label: at("broadcast_button_section_trial", {}, "Trial") },
     { value: "invite", label: at("broadcast_button_section_invite", {}, "Invite friends") },
+    {
+      value: "partner",
+      label: at("broadcast_button_section_partner", {}, "Partner program"),
+    },
     { value: "devices", label: at("broadcast_button_section_devices", {}, "Devices") },
     { value: "support", label: at("broadcast_button_section_support", {}, "Support") },
     { value: "settings", label: at("broadcast_button_section_settings", {}, "Settings") },
