@@ -1049,13 +1049,39 @@ test("partner dashboard converts referrals when the referral system is disabled"
   await expect(banner).toContainText("Все доступные рефералы уже являются клиентами");
 });
 
-test("disabled referral mode hides referral controls without hiding promo codes", async ({
-  page,
-}) => {
+test("program entries follow the enabled feature combination", async ({ page }) => {
   await page.goto("/demo/runtime/invite?mock=partner-referral-disabled&theme_preview=dark");
 
-  await expect(page.locator(".referral-program-shell")).toBeHidden();
+  let bottomNav = page.locator(".bottom-nav");
+  const partnerNavEntry = bottomNav.getByRole("button", { name: "Партнёрка", exact: true });
+  await expect(partnerNavEntry).toBeVisible();
+  await expect(bottomNav.getByRole("button", { name: "Бонусы", exact: true })).toHaveCount(0);
+  await expect(partnerNavEntry.locator("svg path").first()).toHaveAttribute(
+    "d",
+    "m11 17 2 2a1 1 0 1 0 3-3"
+  );
+  await expect(page.locator(".referral-program-shell")).toHaveCount(0);
+  await expect(page.locator(".promo-code-input")).toHaveCount(0);
+
+  await bottomNav.getByRole("button", { name: "Настройки", exact: true }).click();
   await expect(page.locator(".promo-code-input")).toBeEditable();
+  await expect(page.locator('[data-webapp-action="open-partner-program"]')).toHaveCount(0);
+
+  await page.goto("/demo/runtime/settings?mock=partner-referral-enabled&theme_preview=dark");
+
+  bottomNav = page.locator(".bottom-nav");
+  await expect(bottomNav.getByRole("button", { name: "Бонусы", exact: true })).toBeVisible();
+  await expect(bottomNav.getByRole("button", { name: "Партнёрка", exact: true })).toHaveCount(0);
+  await expect(page.locator(".promo-code-input")).toHaveCount(0);
+  const partnerSettingsEntry = page.locator('[data-webapp-action="open-partner-program"]');
+  await expect(partnerSettingsEntry).toBeVisible();
+  await expect(partnerSettingsEntry.locator("svg path").first()).toHaveAttribute(
+    "d",
+    "m11 17 2 2a1 1 0 1 0 3-3"
+  );
+
+  await partnerSettingsEntry.click();
+  await expect(page).toHaveURL(/\/demo\/runtime\/partner\?/);
 });
 
 test("partner encryption diagnostic explains safe initial key setup", async ({ page }) => {
