@@ -667,7 +667,14 @@
   }
 
   function showSubscriptionPurchaseDescription() {
-    if (!subscriptionPurchaseDescription || trafficMode) return false;
+    if (!subscriptionPurchaseDescription.trim() || trafficMode) return false;
+    if (!tariffMode) return true;
+    if (paymentStep === "tariff") return false;
+    return String(selectedTariff?.billing_model || "period").toLowerCase() !== "traffic";
+  }
+
+  function showCompactSubscriptionHeader() {
+    if (trafficMode) return false;
     if (!tariffMode) return true;
     if (paymentStep === "tariff") return false;
     return String(selectedTariff?.billing_model || "period").toLowerCase() !== "traffic";
@@ -776,6 +783,14 @@
   />
 {/snippet}
 
+{#snippet compactSubscriptionHeader()}
+  {#if showSubscriptionPurchaseDescription()}
+    <div class="subscription-purchase-description subscription-purchase-description-header">
+      <p>{subscriptionPurchaseDescription}</p>
+    </div>
+  {/if}
+{/snippet}
+
 <Dialog
   open={paymentModalOpen}
   title={paymentTitle()}
@@ -783,6 +798,7 @@
   closeLabel={t("wa_close")}
   onclose={closePaymentModal}
   class="payment-dialog-card webapp-payment-dialog"
+  headerContent={showCompactSubscriptionHeader() ? compactSubscriptionHeader : undefined}
 >
   <div class="payment-dialog-body">
     {#if pendingPayment}
@@ -843,11 +859,6 @@
         </p>
       {/if}
       {#if selectedTariffPlans.length}
-        {#if showSubscriptionPurchaseDescription()}
-          <div class="subscription-purchase-description">
-            <p>{subscriptionPurchaseDescription}</p>
-          </div>
-        {/if}
         {@render checkoutTariffCard()}
         {#if showHwidRenewalBlock()}
           <label class="hwid-renewal-option">
@@ -915,11 +926,6 @@
         <EmptyCard>{t("wa_no_tariff_change_options")}</EmptyCard>
       {/if}
     {:else}
-      {#if showSubscriptionPurchaseDescription()}
-        <div class="subscription-purchase-description">
-          <p>{subscriptionPurchaseDescription}</p>
-        </div>
-      {/if}
       {@render checkoutTariffCard()}
       {#if showHwidRenewalBlock()}
         <label class="hwid-renewal-option">

@@ -1570,6 +1570,25 @@ test("checkout sliders keep price animations bounded and defer quotes while drag
     if (!(await nextButton.isDisabled())) await nextButton.click();
   }
 
+  await expect(dialog.locator(".dialog-head h2")).toHaveCount(0);
+  await expect(dialog.locator(".dialog-head .subscription-purchase-description")).toBeVisible();
+  await expect(
+    dialog.locator(".payment-dialog-body > .subscription-purchase-description")
+  ).toHaveCount(0);
+  const dialogInsets = await dialog.evaluate((element) => {
+    const dialogRect = element.getBoundingClientRect();
+    const headerRect = element.querySelector(".dialog-head")!.getBoundingClientRect();
+    const closeRect = element.querySelector(".dialog-close-button")!.getBoundingClientRect();
+    return {
+      headerLeft: headerRect.left - dialogRect.left,
+      headerRight: dialogRect.right - headerRect.right,
+      closeTop: closeRect.top - dialogRect.top,
+      closeRight: dialogRect.right - closeRect.right,
+    };
+  });
+  expect(Math.abs(dialogInsets.headerLeft - dialogInsets.headerRight)).toBeLessThanOrEqual(1);
+  expect(Math.abs(dialogInsets.closeTop - dialogInsets.closeRight)).toBeLessThanOrEqual(1);
+
   const summary = dialog.locator(".checkout-tariff-summary-button");
   await expect(summary).toBeVisible();
   await summary.click();

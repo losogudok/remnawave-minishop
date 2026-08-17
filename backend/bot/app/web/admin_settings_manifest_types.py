@@ -27,6 +27,7 @@ class SettingField:
     webhook_provider_id: str | None = None
     webhook_hint_i18n_key: str | None = None
     webhook_hint: str = ""
+    allow_empty: bool = False
 
 
 TRAFFIC_STRATEGY_CHOICES: tuple[tuple[str, str], ...] = (

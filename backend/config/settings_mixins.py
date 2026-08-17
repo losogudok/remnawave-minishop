@@ -773,17 +773,12 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
         if not self.SUBSCRIPTION_PURCHASE_DESCRIPTION_ENABLED:
             return ""
         lang = (language or self.DEFAULT_LANGUAGE or "ru").split("-")[0].lower()
-        primary = (
+        text = (
             self.SUBSCRIPTION_PURCHASE_DESCRIPTION_EN
             if lang == "en"
             else self.SUBSCRIPTION_PURCHASE_DESCRIPTION_RU
         )
-        fallback = (
-            self.SUBSCRIPTION_PURCHASE_DESCRIPTION_RU
-            if lang == "en"
-            else self.SUBSCRIPTION_PURCHASE_DESCRIPTION_EN
-        )
-        return (primary or fallback or "").strip()
+        return (text or "").strip()
 
     @computed_field
     def email_auth_configured(self) -> bool:

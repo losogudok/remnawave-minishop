@@ -364,7 +364,8 @@ SETTINGS_MANIFEST: list[SettingField] = [
         "text",
         "payments",
         "Subscription description (RU)",
-        "Russian text shown during checkout.",
+        "Russian text shown during checkout. Leave empty to hide it for Russian users.",
+        allow_empty=True,
         subsection="checkout",
     ),
     SettingField(
@@ -372,7 +373,8 @@ SETTINGS_MANIFEST: list[SettingField] = [
         "text",
         "payments",
         "Subscription description (EN)",
-        "English text shown during checkout.",
+        "English text shown during checkout. Leave empty to hide it for English users.",
+        allow_empty=True,
         subsection="checkout",
     ),
     SettingField(

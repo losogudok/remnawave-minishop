@@ -169,6 +169,33 @@ def test_update_overrides_reports_nothing_when_everything_applies(
     assert registry.get_provider_bundle("tribute_service").config.ENABLED is False
 
 
+def test_update_overrides_persists_empty_subscription_purchase_description(
+    _memory_overrides,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        BOT_TOKEN="token",
+        POSTGRES_USER="app_user",
+        POSTGRES_PASSWORD="app_password",
+        SUBSCRIPTION_PURCHASE_DESCRIPTION_RU="Описание",
+    )
+
+    result = asyncio.run(
+        svc.update_overrides(
+            settings,
+            lambda: _FakeSession(),
+            updates={"SUBSCRIPTION_PURCHASE_DESCRIPTION_RU": ""},
+            deletes=[],
+            actor_id=1,
+        )
+    )
+
+    assert result["not_applied"] == []
+    assert _memory_overrides == {"SUBSCRIPTION_PURCHASE_DESCRIPTION_RU": ""}
+    assert settings.SUBSCRIPTION_PURCHASE_DESCRIPTION_RU == ""
+    assert settings.subscription_purchase_description("ru") == ""
+
+
 def test_referral_link_visibility_rejects_disabling_the_last_link() -> None:
     settings = Settings(
         _env_file=None,

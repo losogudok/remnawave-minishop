@@ -734,6 +734,10 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.subscription_purchase_description("ru"), "Русский текст")
         self.assertEqual(settings.subscription_purchase_description("en"), "English text")
 
+        settings.SUBSCRIPTION_PURCHASE_DESCRIPTION_RU = ""
+        self.assertEqual(settings.subscription_purchase_description("ru"), "")
+        self.assertEqual(settings.subscription_purchase_description("en"), "English text")
+
         settings.SUBSCRIPTION_PURCHASE_DESCRIPTION_ENABLED = False
         self.assertEqual(settings.subscription_purchase_description("ru"), "")
 

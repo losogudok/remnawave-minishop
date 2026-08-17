@@ -24,6 +24,7 @@
     onclose?: () => void;
     class?: string;
     titleIcon?: Snippet;
+    headerContent?: Snippet;
     children?: Snippet;
   };
 
@@ -35,6 +36,7 @@
     onclose = () => {},
     class: className = "",
     titleIcon,
+    headerContent,
     children,
   }: Props = $props();
 
@@ -116,19 +118,29 @@
       in:fly={cardIn()}
       out:fly={cardOut()}
     >
-      <div class="dialog-head">
+      <div class:dialog-head-custom={headerContent} class="dialog-head">
         <div class:dialog-title-with-icon={titleIcon} class="dialog-title-block">
-          {#if titleIcon}
-            <span class="dialog-title-icon" aria-hidden="true">
-              {@render titleIcon()}
-            </span>
+          {#if headerContent}
+            {@render headerContent()}
+          {:else}
+            {#if titleIcon}
+              <span class="dialog-title-icon" aria-hidden="true">
+                {@render titleIcon()}
+              </span>
+            {/if}
+            <div class="dialog-title-copy">
+              {#if title}<h2>{title}</h2>{/if}
+              {#if description}<p>{description}</p>{/if}
+            </div>
           {/if}
-          <div class="dialog-title-copy">
-            {#if title}<h2>{title}</h2>{/if}
-            {#if description}<p>{description}</p>{/if}
-          </div>
         </div>
-        <Button variant="icon" size="icon" onclick={onclose} aria-label={closeLabel}>
+        <Button
+          class="dialog-close-button"
+          variant="icon"
+          size="icon"
+          onclick={onclose}
+          aria-label={closeLabel}
+        >
           <X size={18} />
         </Button>
       </div>
