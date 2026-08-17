@@ -164,16 +164,27 @@ class SubscriptionDalTrialEligibilityTests(unittest.IsolatedAsyncioTestCase):
 
 class UserDalMergeTests(unittest.IsolatedAsyncioTestCase):
     async def test_get_panel_user_uuids_for_user_includes_subscription_fallbacks_once(self):
-        user = SimpleNamespace(user_id=42, panel_user_uuid="panel-main")
+        main_uuid = "11111111-1111-4111-8111-111111111111"
+        subscription_uuid = "22222222-2222-4222-8222-222222222222"
+        user = SimpleNamespace(user_id=42, panel_user_uuid=main_uuid)
         session = SimpleNamespace(
             execute=AsyncMock(
-                return_value=FakeResult(["panel-main", "panel-sub", "panel-sub", ""])
+                return_value=FakeResult(
+                    [
+                        main_uuid,
+                        subscription_uuid,
+                        subscription_uuid,
+                        "00042",
+                        "legacy-import-user-42",
+                        "",
+                    ]
+                )
             ),
         )
 
         result = await user_dal.get_panel_user_uuids_for_user(session, 42, user=user)
 
-        self.assertEqual(result, ["panel-main", "panel-sub"])
+        self.assertEqual(result, [main_uuid, subscription_uuid, "42"])
         stmt = session.execute.await_args.args[0]
         sql = str(
             stmt.compile(

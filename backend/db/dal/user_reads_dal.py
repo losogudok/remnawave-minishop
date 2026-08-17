@@ -5,6 +5,7 @@ compatibility); keep this module free of mutations.
 """
 
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -224,10 +225,13 @@ async def get_panel_user_uuids_for_user(
     *,
     user: User | None = None,
 ) -> list[str]:
-    """Return every Remnawave user UUID linked to a bot user.
+    """Return every valid Remnawave user reference linked to a bot user.
 
-    The canonical UUID normally lives on ``users.panel_user_uuid``, but older
-    or partially-synced records can still have UUIDs only on subscription rows.
+    Remnawave 2.x uses UUIDs while 3.x uses positive numeric ids. The canonical
+    reference normally lives on ``users.panel_user_uuid``, but older or
+    partially-synced records can still have references only on subscription rows.
+    Import-only synthetic markers are deliberately excluded because they are
+    local history keys, not valid Remnawave user references.
     """
 
     if user is None:
@@ -237,7 +241,17 @@ async def get_panel_user_uuids_for_user(
     seen: set[str] = set()
 
     def add_uuid(value: Any) -> None:
-        panel_uuid = str(value or "").strip()
+        raw_reference = str(value or "").strip()
+        if not raw_reference:
+            return
+        if raw_reference.isdecimal():
+            numeric_id = int(raw_reference)
+            panel_uuid = str(numeric_id) if numeric_id > 0 else ""
+        else:
+            try:
+                panel_uuid = str(UUID(raw_reference))
+            except ValueError:
+                panel_uuid = ""
         if panel_uuid and panel_uuid not in seen:
             seen.add(panel_uuid)
             panel_uuids.append(panel_uuid)
