@@ -4,8 +4,16 @@ import { fileURLToPath } from 'node:url';
 
 const siteRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const repoRoot = path.resolve(siteRoot, '..');
-const sourcePath = path.join(repoRoot, 'docs', 'openapi.json');
-const publishedPath = path.join(siteRoot, 'public', 'openapi.json');
+const artifacts = [
+  {
+    sourcePath: path.join(repoRoot, 'docs', 'openapi.json'),
+    publishedPath: path.join(siteRoot, 'public', 'openapi.json'),
+  },
+  {
+    sourcePath: path.join(repoRoot, 'docs', 'remnawave-minishop.webp'),
+    publishedPath: path.join(siteRoot, 'public', 'remnawave-minishop.webp'),
+  },
+];
 
 async function readArtifact(artifactPath) {
   try {
@@ -16,15 +24,23 @@ async function readArtifact(artifactPath) {
   }
 }
 
-const [source, published] = await Promise.all([
-  readArtifact(sourcePath),
-  readArtifact(publishedPath),
-]);
+let artifactsMatch = true;
+for (const { sourcePath, publishedPath } of artifacts) {
+  const [source, published] = await Promise.all([
+    readArtifact(sourcePath),
+    readArtifact(publishedPath),
+  ]);
+  if (!source.equals(published)) {
+    console.error(
+      `${path.relative(repoRoot, publishedPath)} is out of sync with ${path.relative(repoRoot, sourcePath)}.`,
+    );
+    artifactsMatch = false;
+  }
+}
 
-if (!source.equals(published)) {
-  console.error('docs-site/public/openapi.json is out of sync with docs/openapi.json.');
-  console.error('Run `npm --prefix docs-site run sync:docs` and commit the updated artifact.');
+if (!artifactsMatch) {
+  console.error('Run `npm --prefix docs-site run sync:docs` and commit the updated artifacts.');
   process.exit(1);
 }
 
-console.log('docs-site/public/openapi.json is in sync with docs/openapi.json.');
+console.log('Published documentation artifacts are in sync with their sources.');

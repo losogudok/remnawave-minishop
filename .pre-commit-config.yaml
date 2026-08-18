@@ -18,7 +18,7 @@ repos:
         name: docs OpenAPI artifact sync
         entry: npm --prefix docs-site run check:openapi-sync
         language: system
-        files: ^(docs/openapi\.json|docs-site/public/openapi\.json|docs-site/scripts/(sync-docs|check-openapi-sync)\.mjs)$
+        files: ^(docs/(openapi\.json|remnawave-minishop\.webp)|docs-site/public/(openapi\.json|remnawave-minishop\.webp)|docs-site/scripts/(sync-docs|check-openapi-sync)\.mjs)$
         pass_filenames: false
 
       - id: frontend-prettier

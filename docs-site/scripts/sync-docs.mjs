@@ -196,8 +196,15 @@ async function syncAssets(files) {
   }
 }
 
-async function syncOpenApiArtifact() {
-  await copyFile(path.join(sourceDir, 'openapi.json'), path.join(siteRoot, 'public', 'openapi.json'));
+async function syncPublicArtifacts() {
+  const publicDir = path.join(siteRoot, 'public');
+  await Promise.all([
+    copyFile(path.join(sourceDir, 'openapi.json'), path.join(publicDir, 'openapi.json')),
+    copyFile(
+      path.join(sourceDir, 'remnawave-minishop.webp'),
+      path.join(publicDir, 'remnawave-minishop.webp'),
+    ),
+  ]);
 }
 
 await rm(outputDir, { recursive: true, force: true });
@@ -206,6 +213,6 @@ await mkdir(outputDir, { recursive: true });
 const files = await walk(sourceDir);
 await syncMarkdown(files);
 await syncAssets(files);
-await syncOpenApiArtifact();
+await syncPublicArtifacts();
 
 console.log(`Synced documentation from ${path.relative(repoRoot, sourceDir)} to ${path.relative(repoRoot, outputDir)}`);
