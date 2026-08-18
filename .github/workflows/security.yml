@@ -58,7 +58,12 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            docs-site/package-lock.json
+
+      - name: Check npm lockfiles
+        run: npm run check:lockfiles
 
       - name: Install frontend deps
         run: npm ci

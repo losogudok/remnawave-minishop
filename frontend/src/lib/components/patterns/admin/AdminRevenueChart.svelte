@@ -3,6 +3,13 @@
   import uPlot from "uplot";
   import "uplot/dist/uPlot.min.css";
   import Plate from "$components/ui/plate.svelte";
+  import {
+    CHART_MORPH_DURATION_MS,
+    CHART_REVEAL_DURATION_MS,
+    morphChartData,
+    revealBarChartData,
+    type ChartAlignedData,
+  } from "$lib/admin/chartMotion.js";
   import { revenueChartGradientFallbacks } from "$lib/admin/revenueChartColors.js";
 
   type RevenuePoint = { date: string; amount: number };
@@ -10,6 +17,15 @@
   type TooltipGeometry = {
     left: number;
     arrowLeft: number;
+    visible: boolean;
+  };
+  type ChartMotion = "idle" | "reveal" | "morph";
+  type RevealCurtain = {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    progress: number;
     visible: boolean;
   };
   /**
@@ -57,6 +73,20 @@
   let plot: uPlot | undefined;
   let resizeObserver: ResizeObserver | undefined;
   let syncTimer = 0;
+  let motionRaf = 0;
+  let motionToken = 0;
+  let currentData: ChartAlignedData | null = null;
+  let currentDataSignature = "";
+  let initialMotionPlayed = false;
+  let motion = $state<ChartMotion>("idle");
+  let revealCurtain = $state<RevealCurtain>({
+    left: 0,
+    top: 0,
+    width: 0,
+    height: 0,
+    progress: 1,
+    visible: false,
+  });
   /** Rebuild plot when legend copy changes (language), since series labels are init-only */
   let builtLegendSig = "";
 
@@ -102,11 +132,15 @@
     return Math.floor(t / 1000);
   }
 
-  function toAlignedData(rows: RevenuePoint[]): uPlot.AlignedData | null {
+  function toAlignedData(rows: RevenuePoint[]): ChartAlignedData | null {
     if (!rows?.length) return null;
     const xs = rows.map((p) => parseDayUnix(p.date));
     const ys = rows.map((p) => Number(p.amount) || 0);
     return [xs, ys];
+  }
+
+  function chartDataSignature(rows: RevenuePoint[]): string {
+    return rows.map((point) => `${point.date}:${Number(point.amount) || 0}`).join("|");
   }
 
   function formatReadoutDate(iso: string): string {
@@ -137,6 +171,133 @@
 
   function prefersReducedMotion(): boolean {
     return Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+  }
+
+  function updateRevealGeometry(u: uPlot): void {
+    if (!revealCurtain.visible) return;
+    const ratio = cssPixelRatio();
+    revealCurtain = {
+      ...revealCurtain,
+      left: u.bbox.left / ratio,
+      top: u.bbox.top / ratio,
+      width: u.bbox.width / ratio,
+      height: u.bbox.height / ratio,
+    };
+  }
+
+  function stopMotion(): void {
+    motionToken += 1;
+    cancelAnimationFrame(motionRaf);
+    motionRaf = 0;
+    motion = "idle";
+    revealCurtain = { ...revealCurtain, progress: 1, visible: false };
+  }
+
+  function finishMotion(u: uPlot): void {
+    motion = "idle";
+    // uPlot records cursor movement even while the reveal/morph guard keeps
+    // overlays hidden. Re-read that position when motion ends so a pointer
+    // that has stayed still over the plot does not need to move again before
+    // its tooltip and highlight appear.
+    trackCursor(u);
+  }
+
+  function runMotion(
+    duration: number,
+    onFrame: (progress: number) => void,
+    onComplete: () => void
+  ): void {
+    const token = ++motionToken;
+    const startedAt = performance.now();
+
+    const frame = (now: number): void => {
+      if (token !== motionToken) return;
+      const progress = clamp((now - startedAt) / duration, 0, 1);
+      onFrame(progress);
+      if (progress < 1) {
+        motionRaf = requestAnimationFrame(frame);
+        return;
+      }
+      motionRaf = 0;
+      onComplete();
+    };
+
+    motionRaf = requestAnimationFrame(frame);
+  }
+
+  function startAreaReveal(u: uPlot): void {
+    revealCurtain = { ...revealCurtain, progress: 0, visible: true };
+    updateRevealGeometry(u);
+    motion = "reveal";
+    runMotion(
+      CHART_REVEAL_DURATION_MS,
+      (progress) => {
+        revealCurtain = { ...revealCurtain, progress };
+      },
+      () => {
+        revealCurtain = { ...revealCurtain, progress: 1, visible: false };
+        finishMotion(u);
+      }
+    );
+  }
+
+  function startBarReveal(target: ChartAlignedData): void {
+    const u = plot;
+    if (!u) return;
+    motion = "reveal";
+    runMotion(
+      CHART_REVEAL_DURATION_MS,
+      (progress) => {
+        const frame = revealBarChartData(target, progress);
+        currentData = frame;
+        u.setData(frame, false);
+        u.redraw(false, false);
+      },
+      () => {
+        currentData = target;
+        u.setData(target, false);
+        u.redraw(false, false);
+        finishMotion(u);
+      }
+    );
+  }
+
+  function startMorph(from: ChartAlignedData, target: ChartAlignedData): void {
+    const u = plot;
+    if (!u) return;
+    clearHighlight();
+    hoverIndex = -1;
+    tooltip = { ...tooltip, visible: false };
+    motion = "morph";
+
+    // Let uPlot finish one scale/axis calculation for the destination, then
+    // replace only its y values before the browser paints. During subsequent
+    // frames the target x buckets, scales, axis labels, bbox, and bar widths
+    // stay fixed, so only the series shape moves.
+    const preparationToken = ++motionToken;
+    u.setData(target, true);
+    queueMicrotask(() => {
+      if (preparationToken !== motionToken || u !== plot) return;
+      const initialFrame = morphChartData(from, target, 0, variant);
+      u.setData(initialFrame, false);
+      u.redraw(false, false);
+      currentData = initialFrame;
+      runMotion(
+        CHART_MORPH_DURATION_MS,
+        (progress) => {
+          const frame = morphChartData(from, target, progress, variant);
+          currentData = frame;
+          u.setData(frame, false);
+          u.redraw(false, false);
+        },
+        () => {
+          currentData = target;
+          u.setData(target, false);
+          u.redraw(false, false);
+          finishMotion(u);
+        }
+      );
+    });
   }
 
   function seriesPaths(u: uPlot): SeriesPathBundle | null {
@@ -360,6 +521,12 @@
   }
 
   function trackCursor(u: uPlot): void {
+    if (motion !== "idle") {
+      hoverIndex = -1;
+      tooltip = { ...tooltip, visible: false };
+      clearHighlight();
+      return;
+    }
     const idx = u.cursor.idx;
     if (idx == null || idx < 0) {
       hoverIndex = -1;
@@ -410,10 +577,20 @@
       },
       hooks: {
         setCursor: [trackCursor],
-        setSize: [() => renderHighlight()],
+        setSize: [
+          (u) => {
+            updateRevealGeometry(u);
+            renderHighlight();
+          },
+        ],
         // Series paths are rebuilt on every redraw; the overlay clips them, so
         // it has to be repainted from the fresh ones.
-        draw: [() => renderHighlight()],
+        draw: [
+          (u) => {
+            updateRevealGeometry(u);
+            renderHighlight();
+          },
+        ],
       },
       scales: {
         x: { time: true },
@@ -466,25 +643,56 @@
   function syncChart() {
     if (!hostEl) return;
     const d = toAlignedData(series);
+    const dataSignature = chartDataSignature(series);
     const legendSig = `${legendTimeLabel}\0${legendValueLabel}\0${variant}`;
     if (!d) {
+      stopMotion();
       plot?.destroy();
       plot = undefined;
       builtLegendSig = "";
+      currentData = null;
+      currentDataSignature = "";
       return;
     }
     const w = Math.max(80, Math.floor(hostEl.clientWidth));
     if (plot && builtLegendSig !== legendSig) {
+      stopMotion();
       plot.destroy();
       plot = undefined;
+      currentData = null;
     }
     if (!plot) {
+      const shouldReveal = !initialMotionPlayed && !prefersReducedMotion();
+      const initialData = shouldReveal && variant === "bar" ? revealBarChartData(d, 0) : d;
       plot = new uPlot(buildOpts(w), d, hostEl);
+      if (shouldReveal && variant === "bar") {
+        plot.setData(initialData, false);
+        plot.redraw(false, false);
+      }
       builtLegendSig = legendSig;
+      currentData = initialData;
+      currentDataSignature = dataSignature;
       renderHighlight();
+      if (shouldReveal) {
+        initialMotionPlayed = true;
+        if (variant === "bar") startBarReveal(d);
+        else startAreaReveal(plot);
+      } else {
+        initialMotionPlayed = true;
+      }
       return;
     }
-    plot.setData(d, true);
+    if (currentDataSignature !== dataSignature) {
+      const from = currentData ?? d;
+      stopMotion();
+      currentDataSignature = dataSignature;
+      if (prefersReducedMotion()) {
+        currentData = d;
+        plot.setData(d, true);
+      } else {
+        startMorph(from, d);
+      }
+    }
     plot.setSize({ width: w, height: plotHeight });
   }
 
@@ -513,12 +721,15 @@
       cancelAnimationFrame(rafId);
       cancelAnimationFrame(highlightRaf);
       highlightRaf = 0;
+      stopMotion();
       clearTimeout(syncTimer);
       resizeObserver?.disconnect();
       resizeObserver = undefined;
       plot?.destroy();
       plot = undefined;
       builtLegendSig = "";
+      currentData = null;
+      currentDataSignature = "";
       hoverIndex = -1;
       renderedIndex = -1;
       targetIndex = -1;
@@ -542,9 +753,15 @@
   });
 </script>
 
-<div class="admin-revenue-chart-body">
+<div class="admin-revenue-chart-body" data-chart-motion={motion}>
   <div class="admin-revenue-uplot-wrap">
     <div class="admin-revenue-uplot-host" {@attach attachChartHost}></div>
+    <div
+      class="admin-chart-reveal-curtain"
+      class:is-visible={revealCurtain.visible}
+      style={`left:${revealCurtain.left + revealCurtain.width * revealCurtain.progress}px; top:${revealCurtain.top}px; width:${revealCurtain.width * (1 - revealCurtain.progress)}px; height:${revealCurtain.height}px;`}
+      aria-hidden="true"
+    ></div>
     <canvas
       bind:this={highlightCanvas}
       class="admin-chart-highlight"

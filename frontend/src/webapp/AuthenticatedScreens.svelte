@@ -5,6 +5,7 @@
   import type { ApiClient } from "../lib/webapp/publicApi.js";
 
   import { lazyScreen } from "../lib/webapp/lazyScreen.svelte.js";
+  import { resolveProgramEntryPlacement } from "../lib/webapp/programEntryPolicy.js";
 
   import WebAppShell from "./WebAppShell.svelte";
   import HomeScreen from "./screens/HomeScreen.svelte";
@@ -287,6 +288,12 @@
   const settingsSubscriptionReissueVisible = $derived(
     subscriptionReissueEnabled && !devicesEnabled && Boolean(subscription?.active)
   );
+  const programEntryPlacement = $derived(
+    resolveProgramEntryPlacement({
+      partnerProgramEnabled: partnerEnabled,
+      referralProgramEnabled,
+    })
+  );
 </script>
 
 <WebAppShell
@@ -306,7 +313,8 @@
   {goHome}
   {goInvite}
   {goPartner}
-  {partnerEnabled}
+  bonusesNavigationVisible={programEntryPlacement.bonusesNavigationVisible}
+  partnerNavigationVisible={programEntryPlacement.partnerNavigationVisible}
   {goSupport}
   {goSettings}
   {t}
@@ -393,7 +401,6 @@
         {referral}
         {referralBonusDetails}
         {referralOneBonusPerReferee}
-        {referralProgramEnabled}
         {referralWelcomeBonusDays}
         {promoCode}
         {promoFieldError}
@@ -483,6 +490,13 @@
       {profileAvatarUrl}
       {profileEmail}
       {profileTelegramId}
+      partnerSettingsVisible={programEntryPlacement.partnerSettingsVisible}
+      promoActivationVisible={programEntryPlacement.promoSettingsVisible}
+      {promoBusy}
+      {promoCode}
+      {promoFieldError}
+      {promoIsError}
+      {promoStatus}
       {serverStatusUrl}
       {showTelegramLinkedStatus}
       {subscriptionReissueBusy}
@@ -500,11 +514,15 @@
       {openTelegramNotificationsBot}
       logout={accountStore.logout}
       {openAdminPanel}
+      openPartner={goPartner}
       {openExternalLink}
       {openLinkEmailDialog}
       {openSetPasswordDialog}
       {openSubscriptionReissueDialog}
+      {applyPromo}
+      {clearPromoFieldError}
       {setLanguageMenuOpen}
+      {setPromoCode}
       {t}
       updateAccountLanguage={accountStore.updateAccountLanguage}
     />

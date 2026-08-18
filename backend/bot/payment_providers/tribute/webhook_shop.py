@@ -696,6 +696,39 @@ class TributeShopWebhookMixin(TributeWebhookRuntime):
                         "purchased_hwid_devices",
                         None,
                     ),
+                    hwid_valid_from=getattr(initial_payment, "hwid_valid_from", None),
+                    hwid_valid_until=getattr(initial_payment, "hwid_valid_until", None),
+                    hwid_pricing_period_months=getattr(
+                        initial_payment,
+                        "hwid_pricing_period_months",
+                        None,
+                    ),
+                    hwid_proration_ratio=getattr(
+                        initial_payment,
+                        "hwid_proration_ratio",
+                        None,
+                    ),
+                    hwid_full_price=getattr(initial_payment, "hwid_full_price", None),
+                    hwid_traffic_bonus_bytes=getattr(
+                        initial_payment,
+                        "hwid_traffic_bonus_bytes",
+                        None,
+                    ),
+                    entitlement_context_snapshot=getattr(
+                        initial_payment,
+                        "entitlement_context_snapshot",
+                        None,
+                    ),
+                    checkout_bundle_snapshot=getattr(
+                        initial_payment,
+                        "checkout_bundle_snapshot",
+                        None,
+                    ),
+                    checkout_bundle_hash=getattr(
+                        initial_payment,
+                        "checkout_bundle_hash",
+                        None,
+                    ),
                 )
                 if hasattr(cycle_payment, "is_auto_renew"):
                     cycle_payment.is_auto_renew = True

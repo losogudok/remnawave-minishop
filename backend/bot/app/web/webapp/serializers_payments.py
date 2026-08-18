@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from bot.services.checkout_addons import parse_checkout_bundle_snapshot
+
 
 def _serialize_pending_promo_payment(payment: Any | None) -> dict[str, Any] | None:
     if payment is None:
@@ -32,6 +34,9 @@ def _serialize_pending_promo_payment(payment: Any | None) -> dict[str, Any] | No
     )
     partner_balance_amount = partner_balance_minor / (10**partner_balance_scale)
     created_at = getattr(payment, "created_at", None)
+    checkout_bundle = parse_checkout_bundle_snapshot(
+        getattr(payment, "checkout_bundle_snapshot", None)
+    )
     return {
         "payment_id": int(payment.payment_id),
         "payment_url": str(payment.provider_payment_url),
@@ -52,5 +57,9 @@ def _serialize_pending_promo_payment(payment: Any | None) -> dict[str, Any] | No
         "tariff_key": getattr(payment, "tariff_key", None),
         "promo_code": promo_code,
         "promo_effect_summary": str(getattr(payment, "promo_effect_summary", None) or ""),
+        "checkout_addons": list(checkout_bundle.get("items") or []) if checkout_bundle else [],
+        "checkout_addons_amount": float(checkout_bundle.get("addons_amount") or 0)
+        if checkout_bundle
+        else 0.0,
         "created_at": created_at.isoformat() if created_at is not None else "",
     }

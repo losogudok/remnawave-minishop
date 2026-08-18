@@ -3909,6 +3909,62 @@ def test_service_shop_mode_requires_a_configured_shop_id() -> None:
     assert service.shop_enabled is False
 
 
+def test_service_declares_and_cancels_provider_managed_shop_recurrence(monkeypatch) -> None:
+    service = _service(
+        config=TributeConfig(
+            ENABLED=True,
+            API_KEY=API_KEY,
+            SHOP_ENABLED=True,
+            SHOP_ID=SHOP_ID,
+        )
+    )
+    session = SimpleNamespace()
+    active_shop_order = AsyncMock(return_value=SHOP_ORDER_UUID)
+    active_creator_subscription = AsyncMock(return_value=None)
+    cancel_order = AsyncMock(return_value=True)
+    monkeypatch.setattr(
+        tribute_service.tribute_dal,
+        "get_other_active_shop_order_uuid",
+        active_shop_order,
+    )
+    monkeypatch.setattr(
+        tribute_service.tribute_dal,
+        "get_other_active_creator_subscription_id",
+        active_creator_subscription,
+    )
+    monkeypatch.setattr(service, "_cancel_shop_order", cancel_order)
+
+    cancelled = asyncio.run(service.cancel_provider_recurrence(session, user_id=42))
+
+    assert tribute_service.SPEC.manages_recurring is True
+    assert tribute_service.SPEC.supports_checkout_addon_first_period is True
+    assert service.manages_recurrence is True
+    assert cancelled is True
+    cancel_order.assert_awaited_once_with(SHOP_ORDER_UUID)
+
+
+def test_service_refuses_local_disable_for_uncancellable_creator_subscription(
+    monkeypatch,
+) -> None:
+    service = _service(config=TributeConfig(ENABLED=True, API_KEY=API_KEY))
+    session = SimpleNamespace()
+    monkeypatch.setattr(
+        tribute_service.tribute_dal,
+        "get_other_active_shop_order_uuid",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        tribute_service.tribute_dal,
+        "get_other_active_creator_subscription_id",
+        AsyncMock(return_value=101),
+    )
+
+    cancelled = asyncio.run(service.cancel_provider_recurrence(session, user_id=42))
+
+    assert service.manages_recurrence is True
+    assert cancelled is False
+
+
 def test_each_period_can_be_sold_by_its_own_tribute_subscription() -> None:
     tariff = _tariff(
         link=None,
@@ -5313,7 +5369,10 @@ def test_shop_recurring_charge_creates_one_cycle_payment_and_finalizes_it(
         tariff_key="pro",
         months=1,
         purchased_gb=None,
+        entitlement_context_snapshot='{"version":1}',
     )
+    initial_payment.checkout_bundle_snapshot = '{"version":1,"addons":[]}'
+    initial_payment.checkout_bundle_hash = "b" * 64
     cycle_payment = _shop_payment(
         payment_id=86,
         status="pending_tribute",
@@ -5374,6 +5433,9 @@ def test_shop_recurring_charge_creates_one_cycle_payment_and_finalizes_it(
     assert cycle_args.kwargs["currency"] == initial_payment.currency
     assert cycle_args.kwargs["months"] == 1
     assert cycle_args.kwargs["sale_mode"] == "subscription@pro"
+    assert cycle_args.kwargs["entitlement_context_snapshot"] == '{"version":1}'
+    assert cycle_args.kwargs["checkout_bundle_snapshot"] == ('{"version":1,"addons":[]}')
+    assert cycle_args.kwargs["checkout_bundle_hash"] == "b" * 64
     assert cycle_payment.is_auto_renew is True
     success_request = mocks.finalize.await_args.args[0]
     assert success_request.payment is cycle_payment

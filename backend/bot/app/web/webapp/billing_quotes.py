@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from aiohttp import web
@@ -12,8 +13,15 @@ from bot.services.device_topup_availability import resolve_device_topup_availabi
 from bot.services.subscription_service_impl.core import SubscriptionService
 from config.settings import Settings
 from config.tariffs_config import default_currency_key_for_settings, payment_currency_code
-from db.dal import subscription_dal
+from db.dal import subscription_dal, tariff_dal
 
+from .billing_checkout_bundle import (
+    CheckoutBundleError,
+    CheckoutPricingContext,
+    build_checkout_bundle,
+    checkout_pricing_windows_from_records,
+    normalize_checkout_device_selection,
+)
 from .billing_common import _parse_positive_int_units
 from .billing_sale_modes import (
     _sale_mode_base,
@@ -32,6 +40,10 @@ class BasePaymentQuote:
     sale_mode: str
     traffic_gb_for_payment: float | None
     default_currency_code: str
+    checkout_bundle_snapshot: str | None = None
+    checkout_bundle_hash: str | None = None
+    checkout_addon_amount: float = 0.0
+    checkout_addon_stars: int = 0
 
 
 def _subscription_effective_hwid_limit(
@@ -88,6 +100,125 @@ def _localized_payment_description(
     )
 
 
+async def _resolve_checkout_pricing_context(
+    *,
+    session: AsyncSession,
+    user_id: int,
+    db_user: Any,
+    payment_payload: WebAppPaymentCreatePayload,
+    settings: Settings,
+    sale_mode: str,
+) -> tuple[CheckoutPricingContext | None, web.Response | None]:
+    tariffs_config = settings.tariffs_config
+    if not tariffs_config or _sale_mode_base(sale_mode) != "subscription":
+        return None, None
+
+    active_sub = await subscription_dal.get_active_subscription_by_user_id(
+        session,
+        user_id,
+        db_user.panel_user_uuid,
+    )
+    target_tariff_key = _sale_mode_tariff_key(sale_mode)
+    active_tariff = _configured_tariff(
+        tariffs_config,
+        getattr(active_sub, "tariff_key", None) if active_sub is not None else None,
+    )
+    if active_sub is not None and (active_tariff is None or active_tariff.key != target_tariff_key):
+        return None, _json_error(
+            409,
+            "tariff_switch_required",
+            "Switch the active tariff before purchasing its renewal",
+        )
+    if active_sub is None:
+        return None, None
+
+    assert active_tariff is not None
+    bytes_per_gb = 1024**3
+    pricing_now = datetime.now(UTC)
+    flexible_records = await tariff_dal.get_active_flexible_traffic_limit_records(
+        session,
+        subscription_id=int(active_sub.subscription_id),
+        at=pricing_now,
+    )
+    flexible_window_records = await tariff_dal.list_flexible_traffic_limit_records_in_window(
+        session,
+        subscription_id=int(active_sub.subscription_id),
+        valid_from=pricing_now,
+        valid_until=active_sub.end_date,
+    )
+    hwid_summary = await tariff_dal.get_hwid_device_entitlement_summary(
+        session,
+        subscription_id=int(active_sub.subscription_id),
+        at=pricing_now,
+        include_future=True,
+    )
+    next_hwid_window = hwid_summary.get("next_valid_from")
+    if next_hwid_window is not None and next_hwid_window.tzinfo is None:
+        next_hwid_window = next_hwid_window.replace(tzinfo=UTC)
+    active_end_at = active_sub.end_date
+    if active_end_at.tzinfo is None:
+        active_end_at = active_end_at.replace(tzinfo=UTC)
+    selected_device_count = float(
+        getattr(getattr(payment_payload, "checkout_addons", None), "device_count", 0) or 0
+    )
+    if (
+        selected_device_count > 0
+        and next_hwid_window is not None
+        and next_hwid_window < active_end_at
+    ):
+        return None, _json_error(
+            409,
+            "checkout_device_schedule_conflict",
+            "A future device entitlement is already scheduled for this subscription",
+        )
+    regular_record = flexible_records.get("traffic")
+    premium_record = flexible_records.get("premium_traffic")
+    current_regular_limit_gb = (
+        float(active_sub.tier_baseline_bytes or active_tariff.monthly_bytes or 0) / bytes_per_gb
+    )
+    current_premium_limit_gb = (
+        float(active_sub.premium_baseline_bytes or active_tariff.premium_monthly_bytes or 0)
+        / bytes_per_gb
+    )
+    current_regular_monthly_price = float(getattr(regular_record, "monthly_amount", 0) or 0)
+    current_premium_monthly_price = float(getattr(premium_record, "monthly_amount", 0) or 0)
+    current_regular_monthly_stars = int(getattr(regular_record, "monthly_stars_amount", 0) or 0)
+    current_premium_monthly_stars = int(getattr(premium_record, "monthly_stars_amount", 0) or 0)
+    return (
+        CheckoutPricingContext(
+            active_subscription_id=int(active_sub.subscription_id),
+            active_tariff_key=active_tariff.key,
+            active_end_at=active_sub.end_date,
+            current_device_count=max(0, int(active_sub.extra_hwid_devices or 0)),
+            current_regular_limit_gb=current_regular_limit_gb,
+            current_premium_limit_gb=current_premium_limit_gb,
+            current_regular_monthly_price=current_regular_monthly_price,
+            current_premium_monthly_price=current_premium_monthly_price,
+            current_regular_monthly_stars=current_regular_monthly_stars,
+            current_premium_monthly_stars=current_premium_monthly_stars,
+            regular_windows=checkout_pricing_windows_from_records(
+                flexible_window_records,
+                kind="traffic",
+                start_at=pricing_now,
+                end_at=active_sub.end_date,
+                fallback_units=current_regular_limit_gb,
+                fallback_monthly_price=current_regular_monthly_price,
+                fallback_monthly_stars=current_regular_monthly_stars,
+            ),
+            premium_windows=checkout_pricing_windows_from_records(
+                flexible_window_records,
+                kind="premium_traffic",
+                start_at=pricing_now,
+                end_at=active_sub.end_date,
+                fallback_units=current_premium_limit_gb,
+                fallback_monthly_price=current_premium_monthly_price,
+                fallback_monthly_stars=current_premium_monthly_stars,
+            ),
+        ),
+        None,
+    )
+
+
 async def _resolve_base_payment_quote(
     *,
     request: web.Request,
@@ -99,6 +230,7 @@ async def _resolve_base_payment_quote(
     settings: Settings,
     subscription_service: SubscriptionService,
 ) -> tuple[BasePaymentQuote | None, web.Response | None]:
+    payment_payload = normalize_checkout_device_selection(payment_payload)
     cached = _get_cached_webapp_settings(request)
     tariffs_config = settings.tariffs_config
     default_currency = default_currency_key_for_settings(settings)
@@ -290,6 +422,17 @@ async def _resolve_base_payment_quote(
         payment_units = months
         sale_mode = "subscription"
 
+    checkout_pricing_context, pricing_context_error = await _resolve_checkout_pricing_context(
+        session=session,
+        user_id=user_id,
+        db_user=db_user,
+        payment_payload=payment_payload,
+        settings=settings,
+        sale_mode=sale_mode,
+    )
+    if pricing_context_error is not None:
+        return None, pricing_context_error
+
     if _sale_mode_is_hwid_devices(sale_mode):
         sub = await subscription_dal.get_active_subscription_by_user_id(
             session, user_id, db_user.panel_user_uuid
@@ -351,14 +494,36 @@ async def _resolve_base_payment_quote(
                 price = float(price or 0) + float(hwid_quote["price"])
                 stars_price = None
 
+    base_quote = BasePaymentQuote(
+        payment_units=payment_units,
+        price=float(price or 0),
+        stars_price=stars_price,
+        sale_mode=sale_mode,
+        traffic_gb_for_payment=traffic_gb_for_payment,
+        default_currency_code=default_currency_code,
+    )
+    try:
+        quoted, bundle = build_checkout_bundle(
+            base_quote,
+            settings=settings,
+            payment_payload=payment_payload,
+            method=method,
+            pricing_context=checkout_pricing_context,
+        )
+    except CheckoutBundleError as exc:
+        return None, _json_error(400, exc.code, exc.message)
     return (
         BasePaymentQuote(
-            payment_units=payment_units,
-            price=float(price or 0),
-            stars_price=stars_price,
-            sale_mode=sale_mode,
-            traffic_gb_for_payment=traffic_gb_for_payment,
-            default_currency_code=default_currency_code,
+            payment_units=quoted.payment_units,
+            price=quoted.price,
+            stars_price=quoted.stars_price,
+            sale_mode=quoted.sale_mode,
+            traffic_gb_for_payment=quoted.traffic_gb_for_payment,
+            default_currency_code=quoted.default_currency_code,
+            checkout_bundle_snapshot=bundle.snapshot,
+            checkout_bundle_hash=bundle.digest,
+            checkout_addon_amount=bundle.addon_amount,
+            checkout_addon_stars=bundle.addon_stars,
         ),
         None,
     )

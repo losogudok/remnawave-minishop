@@ -25,6 +25,7 @@ class PlategaTransactionMixin:
             provider_runtime_enabled(
                 self.config,
                 "SBP_ADMIN_ONLY_ENABLED",
+                "CARD_ADMIN_ONLY_ENABLED",
                 "CRYPTO_ADMIN_ONLY_ENABLED",
                 "INTERNATIONAL_ADMIN_ONLY_ENABLED",
                 "ALL_METHODS_ADMIN_ONLY_ENABLED",
@@ -53,6 +54,10 @@ class PlategaTransactionMixin:
     @property
     def sbp_method(self) -> int:
         return self.config.sbp_method_resolved
+
+    @property
+    def card_method(self) -> int:
+        return self.config.CARD_METHOD
 
     @property
     def crypto_method(self) -> int:

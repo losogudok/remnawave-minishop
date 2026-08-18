@@ -3,6 +3,7 @@
     ArrowRight,
     CheckCircle2,
     FileText,
+    Handshake,
     Key,
     Mail,
     Send,
@@ -15,6 +16,7 @@
   import Card from "$components/ui/card.svelte";
   import { AttentionDot } from "$components/ui/index.js";
   import { LanguageSelect } from "$components/patterns/webapp/index.js";
+  import PromoActivationCard from "../PromoActivationCard.svelte";
   import TelegramNotificationsBanner from "../TelegramNotificationsBanner.svelte";
   import type {
     LanguageOption,
@@ -38,10 +40,17 @@
     languageOptions?: LanguageOption[];
     linkEmailBusy?: boolean;
     linkTelegramBusy?: boolean;
+    partnerSettingsVisible?: boolean;
     privacyPolicyUrl?: string;
     profileAvatarUrl?: string;
     profileEmail?: string;
     profileTelegramId?: string;
+    promoActivationVisible?: boolean;
+    promoBusy?: boolean;
+    promoCode?: string;
+    promoFieldError?: string;
+    promoIsError?: boolean;
+    promoStatus?: string;
     serverStatusUrl?: string;
     showTelegramLinkedStatus?: boolean;
     subscriptionReissueBusy?: boolean;
@@ -59,11 +68,15 @@
     openTelegramNotificationsBot?: VoidAction;
     logout?: VoidAction;
     openAdminPanel?: VoidAction;
+    openPartner?: VoidAction;
     openExternalLink?: OpenLinkAction;
     openLinkEmailDialog?: VoidAction;
     openSetPasswordDialog?: VoidAction;
     openSubscriptionReissueDialog?: VoidAction;
+    applyPromo?: VoidAction;
+    clearPromoFieldError?: VoidAction;
     setLanguageMenuOpen?: (open: boolean) => void;
+    setPromoCode?: StringAction;
     t?: Translate;
     updateAccountLanguage?: StringAction;
   };
@@ -81,10 +94,17 @@
     languageOptions = [],
     linkEmailBusy = false,
     linkTelegramBusy = false,
+    partnerSettingsVisible = false,
     privacyPolicyUrl = "",
     profileAvatarUrl = "",
     profileEmail = "",
     profileTelegramId = "",
+    promoActivationVisible = false,
+    promoBusy = false,
+    promoCode = "",
+    promoFieldError = "",
+    promoIsError = false,
+    promoStatus = "",
     serverStatusUrl = "",
     showTelegramLinkedStatus = false,
     subscriptionReissueBusy = false,
@@ -102,11 +122,15 @@
     openTelegramNotificationsBot = () => {},
     logout = () => {},
     openAdminPanel = () => {},
+    openPartner = () => {},
     openExternalLink = () => {},
     openLinkEmailDialog = () => {},
     openSetPasswordDialog = () => {},
     openSubscriptionReissueDialog = () => {},
+    applyPromo = () => {},
+    clearPromoFieldError = () => {},
     setLanguageMenuOpen = () => {},
+    setPromoCode = () => {},
     t = (key) => key,
     updateAccountLanguage = () => {},
   }: Props = $props();
@@ -242,7 +266,35 @@
     {/if}
     <div class="settings-divider" aria-hidden="true"></div>
   </div>
+  {#if promoActivationVisible}
+    <PromoActivationCard
+      {promoCode}
+      {promoFieldError}
+      {promoBusy}
+      {promoIsError}
+      {promoStatus}
+      {applyPromo}
+      {setPromoCode}
+      {clearPromoFieldError}
+      {t}
+    />
+  {/if}
   <div class="settings-list" class:settings-list--language-open={languageMenuOpen}>
+    {#if partnerSettingsVisible}
+      <button
+        data-webapp-action="open-partner-program"
+        class="settings-row settings-row-partner"
+        type="button"
+        onclick={openPartner}
+      >
+        <Handshake size={21} />
+        <span>
+          <strong>{t("wa_nav_partner")}</strong>
+          <small>{t("wa_partner_program_kicker")}</small>
+        </span>
+        <ArrowRight size={17} />
+      </button>
+    {/if}
     <LanguageSelect
       bind:open={languageMenuOpen}
       value={currentLang}

@@ -10,7 +10,7 @@
     <a class="minishop-feature-card minishop-feature-card--spotlight" href="/features/subscriptions/">
       <span class="minishop-feature-index">01 · Главное</span>
       <h3>Продажи и полный жизненный цикл подписки</h3>
-      <p>Тарифы на срок и по трафику, пробный период, продление, докупка трафика и устройств, premium-сквады и синхронизация с Remnawave Panel.</p>
+      <p>Тарифы на срок и по трафику, гибкие лимиты при оформлении, отдельные несгораемые докупки, продление, premium-сквады и синхронизация с Remnawave Panel.</p>
       <span class="minishop-card-link">Управление подписками <span aria-hidden="true">→</span></span>
     </a>
     <a class="minishop-feature-card" href="/features/web-app/">

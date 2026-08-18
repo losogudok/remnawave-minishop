@@ -44,10 +44,10 @@
           >{at("tariff_tab_pricing", {}, "Prices")}</Tabs.Trigger
         >
         <Tabs.Trigger value="topup" class="admin-tabs-trigger"
-          >{at("tariff_tab_topup", {}, "Top-ups")}</Tabs.Trigger
+          >{at("tariff_tab_topup", {}, "Traffic")}</Tabs.Trigger
         >
         <Tabs.Trigger value="premium" class="admin-tabs-trigger"
-          >{at("tariff_tab_premium", {}, "Premium")}</Tabs.Trigger
+          >{at("tariff_tab_premium", {}, "Premium traffic")}</Tabs.Trigger
         >
         <Tabs.Trigger value="hwid" class="admin-tabs-trigger"
           >{at("tariff_tab_hwid", {}, "Devices")}</Tabs.Trigger

@@ -184,6 +184,7 @@ class YooKassaService(YooKassaSdkQueryMixin):
             renewal_subscription_id=context.subscription_id,
             renewal_cycle_end=context.renewal_cycle_end,
             entitlement_context_snapshot=context.entitlement_context_snapshot,
+            checkout_bundle_snapshot=context.checkout_bundle_snapshot,
         )
         payment_payload["idempotence_key"] = idempotence_key
         payment: Any | None = None
@@ -292,6 +293,7 @@ class YooKassaService(YooKassaSdkQueryMixin):
             metadata={str(key): str(value) for key, value in context.metadata.items()},
             hwid_quote=dict(context.hwid_quote or {}) or None,
             entitlement_context_snapshot=context.entitlement_context_snapshot,
+            checkout_bundle_snapshot=context.checkout_bundle_snapshot,
         )
         quote_snapshot_json = quote_snapshot.to_json()
 
@@ -450,6 +452,7 @@ class YooKassaService(YooKassaSdkQueryMixin):
             renewal_subscription_id=context.subscription_id,
             renewal_cycle_end=cycle_end,
             entitlement_context_snapshot=context.entitlement_context_snapshot,
+            checkout_bundle_snapshot=context.checkout_bundle_snapshot,
         )
         payment_payload.update(
             {

@@ -42,6 +42,11 @@ from .billing_checkout_adjustments import (
     CheckoutPromoResult,
     _resolve_checkout_promo,
 )
+from .billing_checkout_bundle import (
+    CheckoutBundleError,
+    build_checkout_bundle,
+    normalize_checkout_device_selection,
+)
 from .billing_common import _parse_positive_int_units
 from .billing_partner_checkout import (
     allocate_partner_checkout_balance,
@@ -56,6 +61,7 @@ from .billing_quotes import (
 from .billing_quotes import (
     _configured_tariff,
     _localized_payment_description,
+    _resolve_checkout_pricing_context,
     _subscription_effective_hwid_limit,
 )
 from .billing_quotes import (
@@ -86,7 +92,9 @@ async def create_payment_route(request: web.Request) -> web.Response:
     if rate_limit_response:
         return rate_limit_response
 
-    payment_payload = await _parse_model_payload(request, WebAppPaymentCreatePayload)
+    payment_payload = normalize_checkout_device_selection(
+        await _parse_model_payload(request, WebAppPaymentCreatePayload)
+    )
     method = str(payment_payload.method or "").strip().lower()
     settings: Settings = get_settings(request)
     subscription_service: SubscriptionService = get_subscription_service(request)
@@ -285,6 +293,16 @@ async def create_payment_route(request: web.Request) -> web.Response:
         if not db_user or db_user.is_banned:
             return _json_error(403, "access_denied", "Access denied")
         lang = db_user.language_code or settings.DEFAULT_LANGUAGE
+        checkout_pricing_context, pricing_context_error = await _resolve_checkout_pricing_context(
+            session=session,
+            user_id=user_id,
+            db_user=db_user,
+            payment_payload=payment_payload,
+            settings=settings,
+            sale_mode=sale_mode,
+        )
+        if pricing_context_error is not None:
+            return pricing_context_error
         if _sale_mode_is_hwid_devices(sale_mode):
             sub = await subscription_dal.get_active_subscription_by_user_id(
                 session, user_id, db_user.panel_user_uuid
@@ -381,6 +399,25 @@ async def create_payment_route(request: web.Request) -> web.Response:
                 else:
                     price = float(price or 0) + float(hwid_quote["price"])
                     stars_price = None
+        try:
+            bundled_quote, checkout_bundle = build_checkout_bundle(
+                BasePaymentQuote(
+                    payment_units=payment_units,
+                    price=float(price or 0),
+                    stars_price=stars_price,
+                    sale_mode=sale_mode,
+                    traffic_gb_for_payment=traffic_gb_for_payment,
+                    default_currency_code=default_currency_code,
+                ),
+                settings=settings,
+                payment_payload=payment_payload,
+                method=method,
+                pricing_context=checkout_pricing_context,
+            )
+        except CheckoutBundleError as exc:
+            return _json_error(400, exc.code, exc.message)
+        price = bundled_quote.price
+        stars_price = bundled_quote.stars_price
         admin_ids = {int(item) for item in (settings.ADMIN_IDS or [])}
         is_admin = bool(db_user.telegram_id and int(db_user.telegram_id) in admin_ids)
         return await _create_subscription_payment(
@@ -400,6 +437,8 @@ async def create_payment_route(request: web.Request) -> web.Response:
             promo_code=payment_payload.promo_code,
             entitlement_context_snapshot=quoted_entitlement_context_snapshot,
             use_partner_balance=payment_payload.use_partner_balance,
+            checkout_bundle_snapshot=checkout_bundle.snapshot,
+            checkout_bundle_hash=checkout_bundle.digest,
         )
 
 
@@ -424,6 +463,8 @@ async def _create_subscription_payment(
     tariff_change_quote_snapshot: str | None = None,
     entitlement_context_snapshot: str | None = None,
     use_partner_balance: bool = False,
+    checkout_bundle_snapshot: str | None = None,
+    checkout_bundle_hash: str | None = None,
 ) -> web.Response:
     settings: Settings = get_settings(request)
     payment_currency = (currency or default_payment_currency_code_for_settings(settings)).upper()
@@ -503,6 +544,16 @@ async def _create_subscription_payment(
                 "payment_unavailable",
                 "Payment method unavailable for this plan",
             )
+        if checkout_bundle_snapshot and not provider_spec.is_checkout_addon_supported(
+            settings,
+            months,
+            sale_mode,
+        ):
+            return _json_error(
+                400,
+                "checkout_addons_payment_unavailable",
+                "Payment method does not support subscription add-ons",
+            )
         payment_context = WebAppPaymentContext(
             request=request,
             session=session,
@@ -529,6 +580,8 @@ async def _create_subscription_payment(
             promo_code_id=promo_code_id,
             tariff_change_quote_snapshot=tariff_change_quote_snapshot,
             entitlement_context_snapshot=entitlement_context_snapshot,
+            checkout_bundle_snapshot=checkout_bundle_snapshot,
+            checkout_bundle_hash=checkout_bundle_hash,
         )
         requested_promo_code = str(promo_code or "").strip()
         if provider_spec.reuse_webapp_payment and (

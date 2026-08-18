@@ -19,7 +19,7 @@
   import {
     DialogOptionsSkeleton,
     EmptyCard,
-    PaymentMethodGrid,
+    PaymentMethodPicker,
   } from "$components/patterns/webapp/index.js";
   import CheckoutPromoRow from "./CheckoutPromoRow.svelte";
   import PartnerBalanceDiscount from "./payment-dialogs/PartnerBalanceDiscount.svelte";
@@ -67,6 +67,7 @@
     deviceTopupModalOpen = $bindable(false),
     deviceTopupOptions = null,
     methods = [],
+    paymentMethodsDisplayMode = "dropdown",
     openTariffChangeConfirm = () => {},
     payBusy = false,
     selectedChangeAction = $bindable(null),
@@ -109,6 +110,7 @@
     deviceTopupModalOpen?: boolean;
     deviceTopupOptions?: DeviceTopupOptions | null;
     methods?: PaymentMethodView[];
+    paymentMethodsDisplayMode?: "dropdown" | "buttons" | string;
     openTariffChangeConfirm?: VoidAction;
     payBusy?: boolean;
     selectedChangeAction?: TariffChangeAction | null;
@@ -504,9 +506,10 @@
           {/each}
         </div>
         {#if selectedChangeAction?.kind === "payment"}
-          <PaymentMethodGrid
+          <PaymentMethodPicker
             methods={changePaymentMethods}
             {selectedMethod}
+            mode={paymentMethodsDisplayMode}
             {t}
             onSelect={(id) => (selectedMethod = id)}
           />
@@ -642,9 +645,10 @@
           {/each}
         </div>
       {/if}
-      <PaymentMethodGrid
+      <PaymentMethodPicker
         methods={topupPaymentMethods}
         {selectedMethod}
+        mode={paymentMethodsDisplayMode}
         {t}
         onSelect={(id) => (selectedMethod = id)}
       />
@@ -753,9 +757,10 @@
           </button>
         {/each}
       </div>
-      <PaymentMethodGrid
+      <PaymentMethodPicker
         methods={devicePaymentMethods}
         {selectedMethod}
+        mode={paymentMethodsDisplayMode}
         {t}
         onSelect={(id) => (selectedMethod = id)}
       />

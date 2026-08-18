@@ -27,6 +27,20 @@ export interface TariffDraft extends UnknownRecord {
   enabled: boolean;
   topup_always_available: boolean;
   premium_topup_always_available: boolean;
+  checkout_devices_enabled: boolean;
+  checkout_devices_max_extra: string | number;
+  checkout_devices_price_per_device: string | number;
+  checkout_devices_stars_price_per_device: string | number;
+  checkout_traffic_enabled: boolean;
+  checkout_premium_traffic_enabled: boolean;
+  flexible_traffic_step_gb: string | number;
+  flexible_traffic_max_total_gb: string | number;
+  flexible_traffic_price_per_step: string | number;
+  flexible_traffic_stars_price_per_step: string | number;
+  premium_flexible_traffic_step_gb: string | number;
+  premium_flexible_traffic_max_total_gb: string | number;
+  premium_flexible_traffic_price_per_step: string | number;
+  premium_flexible_traffic_stars_price_per_step: string | number;
   monthly_gb: string | number;
   traffic_limit_strategy: string;
   premium_monthly_gb: string | number;
@@ -96,6 +110,20 @@ export function emptyTariffDraft(): TariffDraft {
     enabled: true,
     topup_always_available: false,
     premium_topup_always_available: false,
+    checkout_devices_enabled: false,
+    checkout_devices_max_extra: "",
+    checkout_devices_price_per_device: "",
+    checkout_devices_stars_price_per_device: "",
+    checkout_traffic_enabled: false,
+    checkout_premium_traffic_enabled: false,
+    flexible_traffic_step_gb: "",
+    flexible_traffic_max_total_gb: "",
+    flexible_traffic_price_per_step: "",
+    flexible_traffic_stars_price_per_step: "",
+    premium_flexible_traffic_step_gb: "",
+    premium_flexible_traffic_max_total_gb: "",
+    premium_flexible_traffic_price_per_step: "",
+    premium_flexible_traffic_stars_price_per_step: "",
     monthly_gb: 500,
     traffic_limit_strategy: "MONTH",
     premium_monthly_gb: "",
@@ -319,6 +347,12 @@ export function draftFromTariff(tariff: UnknownRecord, defaultCurrency = "rub"):
   const names = asStringRecord(tariff.names);
   const descriptions = asStringRecord(tariff.descriptions);
   const premiumNames = asStringRecord(tariff.premium_names);
+  const checkoutAddons = asRecord(tariff.checkout_addons);
+  const checkoutDevices = asRecord(checkoutAddons.devices);
+  const checkoutTraffic = asRecord(checkoutAddons.traffic);
+  const checkoutPremiumTraffic = asRecord(checkoutAddons.premium_traffic);
+  const flexibleTrafficLimit = asRecord(tariff.flexible_traffic_limit);
+  const premiumFlexibleTrafficLimit = asRecord(tariff.premium_flexible_traffic_limit);
 
   return {
     ...emptyTariffDraft(),
@@ -337,6 +371,30 @@ export function draftFromTariff(tariff: UnknownRecord, defaultCurrency = "rub"):
     enabled: tariff.enabled !== false,
     topup_always_available: tariff.topup_always_available === true,
     premium_topup_always_available: tariff.premium_topup_always_available === true,
+    checkout_devices_enabled: checkoutDevices.enabled === true,
+    checkout_devices_max_extra: scalarDraftValue(checkoutDevices.max_extra_devices),
+    checkout_devices_price_per_device: scalarDraftValue(checkoutDevices.price_per_device),
+    checkout_devices_stars_price_per_device: scalarDraftValue(
+      checkoutDevices.stars_price_per_device
+    ),
+    checkout_traffic_enabled: checkoutTraffic.enabled === true,
+    checkout_premium_traffic_enabled: checkoutPremiumTraffic.enabled === true,
+    flexible_traffic_step_gb: scalarDraftValue(flexibleTrafficLimit.step_gb),
+    flexible_traffic_max_total_gb: scalarDraftValue(flexibleTrafficLimit.max_total_gb),
+    flexible_traffic_price_per_step: scalarDraftValue(flexibleTrafficLimit.price_per_step),
+    flexible_traffic_stars_price_per_step: scalarDraftValue(
+      flexibleTrafficLimit.stars_price_per_step
+    ),
+    premium_flexible_traffic_step_gb: scalarDraftValue(premiumFlexibleTrafficLimit.step_gb),
+    premium_flexible_traffic_max_total_gb: scalarDraftValue(
+      premiumFlexibleTrafficLimit.max_total_gb
+    ),
+    premium_flexible_traffic_price_per_step: scalarDraftValue(
+      premiumFlexibleTrafficLimit.price_per_step
+    ),
+    premium_flexible_traffic_stars_price_per_step: scalarDraftValue(
+      premiumFlexibleTrafficLimit.stars_price_per_step
+    ),
     monthly_gb: scalarDraftValue(tariff.monthly_gb),
     traffic_limit_strategy: String(tariff.traffic_limit_strategy || ""),
     premium_monthly_gb: scalarDraftValue(tariff.premium_monthly_gb),
@@ -505,6 +563,20 @@ export function tariffFromDraft(draft: TariffDraft, fallbackCurrency = "rub"): U
     premium_squad_uuids: normalizeUuidList(draft.premiumSquadUuids),
     billing_model: draft.billing_model,
     enabled: Boolean(draft.enabled),
+    checkout_addons: {
+      devices: {
+        enabled: Boolean(draft.checkout_devices_enabled),
+        max_extra_devices: parseIntNumber(draft.checkout_devices_max_extra),
+        price_per_device: parseNumber(draft.checkout_devices_price_per_device),
+        stars_price_per_device: parseIntNumber(draft.checkout_devices_stars_price_per_device),
+      },
+      traffic: {
+        enabled: Boolean(draft.checkout_traffic_enabled),
+      },
+      premium_traffic: {
+        enabled: Boolean(draft.checkout_premium_traffic_enabled),
+      },
+    },
   };
   const legacyKeys = normalizeUuidList(draft.legacyKeys).filter((item) => item !== key);
   if (legacyKeys.length) tariff.legacy_keys = [...new Set(legacyKeys)];
@@ -524,6 +596,21 @@ export function tariffFromDraft(draft: TariffDraft, fallbackCurrency = "rub"): U
   }
   const premiumTopupPackages = packageSetFromRows(draft.premiumTopupRows, "gb", defaultCurrency);
   if (premiumTopupPackages) tariff.premium_topup_packages = premiumTopupPackages;
+  const premiumFlexibleStepGb = parseNumber(draft.premium_flexible_traffic_step_gb);
+  const premiumFlexibleMaxTotalGb = parseNumber(draft.premium_flexible_traffic_max_total_gb);
+  const premiumFlexiblePricePerStep = parseNumber(draft.premium_flexible_traffic_price_per_step);
+  if (
+    premiumFlexibleStepGb !== null &&
+    premiumFlexibleMaxTotalGb !== null &&
+    premiumFlexiblePricePerStep !== null
+  ) {
+    tariff.premium_flexible_traffic_limit = {
+      step_gb: premiumFlexibleStepGb,
+      max_total_gb: premiumFlexibleMaxTotalGb,
+      price_per_step: premiumFlexiblePricePerStep,
+      stars_price_per_step: parseIntNumber(draft.premium_flexible_traffic_stars_price_per_step),
+    };
+  }
   tariff.premium_topup_always_available = Boolean(draft.premium_topup_always_available);
   const tribute: UnknownRecord = {};
   const premiumTrafficProducts = tributeProductsFromRows(draft.premiumTopupRows, "gb");
@@ -609,6 +696,17 @@ export function tariffFromDraft(draft: TariffDraft, fallbackCurrency = "rub"): U
     }
     const topupPackages = packageSetFromRows(draft.topupRows, "gb", defaultCurrency);
     if (topupPackages) tariff.topup_packages = topupPackages;
+    const flexibleStepGb = parseNumber(draft.flexible_traffic_step_gb);
+    const flexibleMaxTotalGb = parseNumber(draft.flexible_traffic_max_total_gb);
+    const flexiblePricePerStep = parseNumber(draft.flexible_traffic_price_per_step);
+    if (flexibleStepGb !== null && flexibleMaxTotalGb !== null && flexiblePricePerStep !== null) {
+      tariff.flexible_traffic_limit = {
+        step_gb: flexibleStepGb,
+        max_total_gb: flexibleMaxTotalGb,
+        price_per_step: flexiblePricePerStep,
+        stars_price_per_step: parseIntNumber(draft.flexible_traffic_stars_price_per_step),
+      };
+    }
     const trafficProducts = tributeProductsFromRows(draft.topupRows, "gb");
     if (Object.keys(trafficProducts).length) {
       tribute.traffic_products = trafficProducts;

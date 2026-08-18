@@ -486,6 +486,14 @@ def test_backup_required_numeric_settings_reject_empty_values():
         coerce_value(get_field_by_key("BACKUP_INTERVAL_SECONDS"), "")
 
 
+def test_subscription_purchase_descriptions_accept_explicit_empty_values():
+    for key in (
+        "SUBSCRIPTION_PURCHASE_DESCRIPTION_RU",
+        "SUBSCRIPTION_PURCHASE_DESCRIPTION_EN",
+    ):
+        assert coerce_value(get_field_by_key(key), "   ") == ""
+
+
 def test_support_link_coercion_normalizes_telegram_shortcuts():
     field = get_field_by_key("SUPPORT_LINK")
 

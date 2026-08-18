@@ -1,11 +1,14 @@
 <script lang="ts">
   import { getTariffsStore } from "$lib/admin/context";
   import { Input } from "$components/ui/index.js";
-  import { Tabs, Switch, Label } from "$components/ui/primitives.js";
-  import { AdminSelect } from "$components/patterns/admin/index.js";
+  import { Tabs, Switch } from "$components/ui/primitives.js";
+  import {
+    AdminSelect,
+    AdminSettingCard,
+    AdminSettingsGroup,
+  } from "$components/patterns/admin/index.js";
   import { X } from "$components/ui/icons.js";
   import { normalizeUuidList } from "$lib/admin/tariffDraft";
-  import { trafficStrategyOptions as buildTrafficStrategyOptions } from "$lib/admin/tariffSettings";
   import type { PanelSquad, TariffDraft, TariffsCatalog } from "$lib/admin/stores/tariffsStore";
   import {
     addDraftSquad,
@@ -29,7 +32,6 @@
     { value: "period", label: at("tariff_model_period_label", {}, "Period") },
     { value: "traffic", label: at("tariff_model_traffic_label", {}, "Traffic") },
   ]);
-  const trafficStrategyOptions: SelectOption[] = $derived(buildTrafficStrategyOptions(at));
   const panelSquadOptions: SelectOption[] = $derived(toPanelSquadOptions(panelSquads));
   const defaultCurrencyCode = $derived(getDefaultCurrencyCode(tariffsCatalog));
   const conversionCurrencyLabel = $derived(formatConversionCurrencyLabel(at, defaultCurrencyCode));
@@ -37,6 +39,17 @@
     Array.isArray(tariffDraft.legacyKeys)
       ? tariffDraft.legacyKeys.join(", ")
       : String(tariffDraft.legacyKeys || "")
+  );
+  const billingModelDescription = $derived(
+    `${at("tariff_model_period_label", {}, "Period")} — ${at(
+      "tariff_model_period_desc",
+      {},
+      "the user buys a fixed period (1/3/12 months, etc.)"
+    )}. ${at("tariff_model_traffic_label", {}, "Traffic")} — ${at(
+      "tariff_model_traffic_desc",
+      {},
+      "the user buys gigabyte packages at a fixed price per GB"
+    )}.`
   );
 
   function setDraftField(field: string, value: unknown): void {
@@ -60,16 +73,22 @@
 </script>
 
 <Tabs.Content value="general" class="admin-tabs-content">
-  <div class="admin-form-row admin-form-row-2">
-    <Label.Root class="admin-field-label">
-      <span>{at("tariff_label_key", {}, "Tariff key")}</span>
-      <small
-        >{at(
-          "tariff_hint_key",
-          {},
-          "Latin characters, no spaces. Used in payments and subscriptions; changing it after publication is not recommended"
-        )}</small
-      >
+  <AdminSettingsGroup
+    title={at("tariff_group_identity", {}, "Tariff identity and state")}
+    description={at(
+      "tariff_group_identity_hint",
+      {},
+      "Stable identifiers and the sales model used by billing and existing subscriptions."
+    )}
+  >
+    <AdminSettingCard
+      title={at("tariff_label_key", {}, "Tariff key")}
+      description={at(
+        "tariff_hint_key",
+        {},
+        "Latin characters, no spaces. Used in payments and subscriptions; changing it after publication is not recommended"
+      )}
+    >
       <Input
         class="input"
         type="text"
@@ -77,40 +96,28 @@
         value={tariffDraft.key}
         oninput={draftInputHandler(tariffsStore, "key")}
       />
-    </Label.Root>
+    </AdminSettingCard>
 
-    <div class="admin-field-label">
-      <span>{at("tariff_label_model", {}, "Billing model")}</span>
-      <small
-        ><b>{at("tariff_model_period_label", {}, "Period")}</b> — {at(
-          "tariff_model_period_desc",
-          {},
-          "the user buys a fixed period (1/3/12 months, etc.)"
-        )}. <b>{at("tariff_model_traffic_label", {}, "Traffic")}</b> — {at(
-          "tariff_model_traffic_desc",
-          {},
-          "the user buys gigabyte packages at a fixed price per GB"
-        )}</small
-      >
+    <AdminSettingCard
+      title={at("tariff_label_model", {}, "Billing model")}
+      description={billingModelDescription}
+    >
       <AdminSelect
         value={String(tariffDraft.billing_model || "period")}
         items={billingModelOptions}
         ariaLabel={at("tariff_label_model", {}, "Billing model")}
         onValueChange={setBillingModel}
       />
-    </div>
-  </div>
+    </AdminSettingCard>
 
-  <div class="admin-form-row">
-    <Label.Root class="admin-field-label">
-      <span>{at("tariff_label_legacy_keys", {}, "Previous tariff keys")}</span>
-      <small
-        >{at(
-          "tariff_hint_legacy_keys",
-          {},
-          "Old keys kept for pending payments and existing subscriptions. Separate multiple keys with commas"
-        )}</small
-      >
+    <AdminSettingCard
+      title={at("tariff_label_legacy_keys", {}, "Previous tariff keys")}
+      description={at(
+        "tariff_hint_legacy_keys",
+        {},
+        "Old keys kept for pending payments and existing subscriptions. Separate multiple keys with commas"
+      )}
+    >
       <Input
         class="input"
         type="text"
@@ -118,161 +125,42 @@
         value={legacyKeysText}
         oninput={draftInputHandler(tariffsStore, "legacyKeys")}
       />
-    </Label.Root>
-  </div>
+    </AdminSettingCard>
 
-  <div class="admin-action-row admin-action-row-bordered">
-    <Switch.Root
-      aria-labelledby="tariff-enabled-toggle-label"
-      checked={tariffDraft.enabled}
-      onCheckedChange={(value) => setDraftField("enabled", value)}
-      class="admin-switch-root"
+    <AdminSettingCard
+      title={tariffDraft.enabled
+        ? at("tariff_visible", {}, "Tariff is visible in the storefront")
+        : at("tariff_hidden", {}, "Tariff is hidden from users")}
+      description={at(
+        "tariff_enabled_hint",
+        {},
+        "A disabled tariff is hidden from the bot/Mini App, but active subscriptions on it keep working"
+      )}
     >
-      <Switch.Thumb class="admin-switch-thumb" />
-    </Switch.Root>
-    <Label.Root id="tariff-enabled-toggle-label" class="admin-action-label">
-      <strong
-        >{tariffDraft.enabled
-          ? at("tariff_visible", {}, "Tariff is visible in the storefront")
-          : at("tariff_hidden", {}, "Tariff is hidden from users")}</strong
-      >
-      <small
-        >{at(
-          "tariff_enabled_hint",
+      <div class="admin-setting-switch">
+        <Switch.Root
+          aria-label={at("tariff_enabled", {}, "Tariff enabled")}
+          checked={tariffDraft.enabled}
+          onCheckedChange={(value) => setDraftField("enabled", value)}
+          class="admin-switch-root"
+        >
+          <Switch.Thumb class="admin-switch-thumb" />
+        </Switch.Root>
+        <span>
+          {tariffDraft.enabled ? at("enabled", {}, "Enabled") : at("disabled", {}, "Disabled")}
+        </span>
+      </div>
+    </AdminSettingCard>
+
+    {#if tariffDraft.billing_model === "traffic"}
+      <AdminSettingCard
+        title={conversionCurrencyLabel}
+        description={at(
+          "tariff_hint_conversion",
           {},
-          "A disabled tariff is hidden from the bot/Mini App, but active subscriptions on it keep working"
-        )}</small
+          "This rate converts the remaining subscription period to gigabytes when a user switches from Period to Traffic"
+        )}
       >
-    </Label.Root>
-  </div>
-
-  <div class="admin-form-row admin-form-row-2">
-    <Label.Root class="admin-field-label">
-      <span>{at("tariff_label_name_ru", {}, "Name - RU")}</span>
-      <Input
-        class="input"
-        type="text"
-        placeholder={at("tariff_placeholder_name_ru", {}, "Standard")}
-        value={tariffDraft.nameRu}
-        oninput={draftInputHandler(tariffsStore, "nameRu")}
-      />
-    </Label.Root>
-    <Label.Root class="admin-field-label">
-      <span>{at("tariff_label_name_en", {}, "Name - EN")}</span>
-      <Input
-        class="input"
-        type="text"
-        placeholder={at("tariff_placeholder_name_en", {}, "Standard")}
-        value={tariffDraft.nameEn}
-        oninput={draftInputHandler(tariffsStore, "nameEn")}
-      />
-    </Label.Root>
-  </div>
-
-  <div class="admin-form-row admin-form-row-2">
-    <Label.Root class="admin-field-label">
-      <span>{at("tariff_label_desc_ru", {}, "Description - RU")}</span>
-      <Input
-        class="input"
-        type="text"
-        placeholder={at("tariff_placeholder_desc_ru", {}, "Base server pool")}
-        value={tariffDraft.descriptionRu}
-        oninput={draftInputHandler(tariffsStore, "descriptionRu")}
-      />
-    </Label.Root>
-    <Label.Root class="admin-field-label">
-      <span>{at("tariff_label_desc_en", {}, "Description - EN")}</span>
-      <Input
-        class="input"
-        type="text"
-        placeholder={at("tariff_placeholder_desc_en", {}, "Base server pool")}
-        value={tariffDraft.descriptionEn}
-        oninput={draftInputHandler(tariffsStore, "descriptionEn")}
-      />
-    </Label.Root>
-  </div>
-
-  <div class="admin-field-label">
-    <span>{at("tariff_label_squads", {}, "Base Internal Squads")}</span>
-    <small
-      >{panelSquadsLoading
-        ? at("loading_squads", {}, "Loading list from panel...")
-        : at(
-            "tariff_hint_squads",
-            {},
-            "Remnawave squads this tariff connects the user to. Select one or more"
-          )}</small
-    >
-    <AdminSelect
-      bind:value={tariffsStore.selectedBaseSquad}
-      items={panelSquadOptions}
-      placeholder={at("btn_add_squad", {}, "Add squad")}
-      ariaLabel={at("btn_add_squad", {}, "Add squad")}
-      onValueChange={addBaseSquad}
-    />
-    <div class="admin-chip-list">
-      {#each normalizeUuidList(tariffDraft.squadUuids) as uuid}
-        <button
-          type="button"
-          class="admin-chip"
-          onclick={() => tariffsStore.removeSquadFromDraft("squadUuids", uuid)}
-        >
-          {tariffsStore.squadLabel(uuid)}
-          <X size={12} />
-        </button>
-      {/each}
-    </div>
-  </div>
-
-  <div class="admin-form-row admin-form-row-2">
-    <Label.Root class="admin-field-label">
-      <span>{at("tariff_label_hwid", {}, "Device limit (HWID)")}</span>
-      <small
-        >{at(
-          "tariff_hint_hwid",
-          {},
-          "How many devices can use the subscription at the same time. Empty means use the .env value; 0 means unlimited"
-        )}</small
-      >
-      <Input
-        class="input"
-        type="number"
-        min="0"
-        placeholder="5"
-        value={tariffDraft.hwid_device_limit}
-        oninput={draftInputHandler(tariffsStore, "hwid_device_limit")}
-      />
-    </Label.Root>
-    {#if tariffDraft.billing_model === "period"}
-      <Label.Root class="admin-field-label">
-        <span>{at("tariff_label_traffic_limit", {}, "Monthly traffic limit, GB")}</span>
-        <small
-          >{at(
-            "tariff_hint_traffic_limit",
-            {},
-            "How many GB are included every month. 0 means unlimited traffic. Extra packages can be sold on the Top-ups tab"
-          )}</small
-        >
-        <Input
-          class="input"
-          type="number"
-          min="0"
-          step="0.1"
-          placeholder="100"
-          value={tariffDraft.monthly_gb}
-          oninput={draftInputHandler(tariffsStore, "monthly_gb")}
-        />
-      </Label.Root>
-    {:else}
-      <Label.Root class="admin-field-label">
-        <span>{conversionCurrencyLabel}</span>
-        <small
-          >{at(
-            "tariff_hint_conversion",
-            {},
-            "This rate converts the remaining subscription period to gigabytes when a user switches from Period to Traffic"
-          )}</small
-        >
         <Input
           class="input"
           type="number"
@@ -282,36 +170,106 @@
           value={tariffDraft.conversion_rate_rub_per_gb}
           oninput={draftInputHandler(tariffsStore, "conversion_rate_rub_per_gb")}
         />
-      </Label.Root>
+      </AdminSettingCard>
     {/if}
-  </div>
+  </AdminSettingsGroup>
 
-  {#if tariffDraft.billing_model === "period"}
-    <div class="admin-field-label">
-      <span>{at("tariff_label_traffic_strategy", {}, "Traffic reset strategy")}</span>
-      <small
-        >{at(
-          "tariff_hint_traffic_strategy",
-          {},
-          "How often Remnawave resets the traffic counter for users on this tariff. The strategy is applied when the tariff is activated, renewed, or changed"
-        )}</small
-      >
-      <AdminSelect
-        value={String(tariffDraft.traffic_limit_strategy || "")}
-        items={trafficStrategyOptions}
-        placeholder={at("tariff_traffic_strategy_inherit", {}, "Use global USER_TRAFFIC_STRATEGY")}
-        ariaLabel={at("tariff_label_traffic_strategy", {}, "Traffic reset strategy")}
-        onValueChange={(value) => setDraftField("traffic_limit_strategy", value)}
+  <AdminSettingsGroup
+    title={at("tariff_group_presentation", {}, "Names and descriptions")}
+    description={at(
+      "tariff_group_presentation_hint",
+      {},
+      "Localized storefront copy shown to customers."
+    )}
+  >
+    <AdminSettingCard title={at("tariff_label_name_ru", {}, "Name - RU")}>
+      <Input
+        class="input"
+        type="text"
+        placeholder={at("tariff_placeholder_name_ru", {}, "Standard")}
+        value={tariffDraft.nameRu}
+        oninput={draftInputHandler(tariffsStore, "nameRu")}
       />
-      {#if tariffDraft.traffic_limit_strategy === "MONTH_ROLLING"}
-        <small
-          >{at(
-            "tariff_hint_traffic_strategy_month_rolling",
+    </AdminSettingCard>
+    <AdminSettingCard title={at("tariff_label_name_en", {}, "Name - EN")}>
+      <Input
+        class="input"
+        type="text"
+        placeholder={at("tariff_placeholder_name_en", {}, "Standard")}
+        value={tariffDraft.nameEn}
+        oninput={draftInputHandler(tariffsStore, "nameEn")}
+      />
+    </AdminSettingCard>
+
+    <AdminSettingCard title={at("tariff_label_desc_ru", {}, "Description - RU")}>
+      <Input
+        class="input"
+        type="text"
+        placeholder={at("tariff_placeholder_desc_ru", {}, "Base server pool")}
+        value={tariffDraft.descriptionRu}
+        oninput={draftInputHandler(tariffsStore, "descriptionRu")}
+      />
+    </AdminSettingCard>
+    <AdminSettingCard title={at("tariff_label_desc_en", {}, "Description - EN")}>
+      <Input
+        class="input"
+        type="text"
+        placeholder={at("tariff_placeholder_desc_en", {}, "Base server pool")}
+        value={tariffDraft.descriptionEn}
+        oninput={draftInputHandler(tariffsStore, "descriptionEn")}
+      />
+    </AdminSettingCard>
+  </AdminSettingsGroup>
+
+  <AdminSettingsGroup
+    title={at("tariff_group_access", {}, "Base access")}
+    description={at(
+      "tariff_group_access_hint",
+      {},
+      "Remnawave resources assigned to every subscription on this tariff."
+    )}
+  >
+    <AdminSettingCard
+      title={at("tariff_label_squads", {}, "Base Internal Squads")}
+      description={panelSquadsLoading
+        ? at("loading_squads", {}, "Loading list from panel...")
+        : at(
+            "tariff_hint_squads",
             {},
-            "The monthly cycle starts with the subscription. Remnawave owns the regular counter and reports the effective boundary as lastTrafficResetAt; selecting this strategy does not erase already recorded traffic."
-          )}</small
-        >
-      {/if}
-    </div>
-  {/if}
+            "Remnawave squads this tariff connects the user to. Select one or more"
+          )}
+      alignStart
+    >
+      <div class="tariff-setting-control-stack">
+        <AdminSelect
+          bind:value={tariffsStore.selectedBaseSquad}
+          items={panelSquadOptions}
+          placeholder={at("btn_add_squad", {}, "Add squad")}
+          ariaLabel={at("btn_add_squad", {}, "Add squad")}
+          onValueChange={addBaseSquad}
+        />
+        <div class="admin-chip-list">
+          {#each normalizeUuidList(tariffDraft.squadUuids) as uuid}
+            <button
+              type="button"
+              class="admin-chip"
+              onclick={() => tariffsStore.removeSquadFromDraft("squadUuids", uuid)}
+            >
+              {tariffsStore.squadLabel(uuid)}
+              <X size={12} />
+            </button>
+          {/each}
+        </div>
+      </div>
+    </AdminSettingCard>
+  </AdminSettingsGroup>
 </Tabs.Content>
+
+<style>
+  .tariff-setting-control-stack {
+    display: grid;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
+</style>

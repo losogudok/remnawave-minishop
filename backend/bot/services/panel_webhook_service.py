@@ -304,7 +304,7 @@ class PanelWebhookService(PanelWebhookPayloadMixin):
                         if (
                             active_sub
                             and active_sub.auto_renew_enabled
-                            and active_sub.provider == "yookassa"
+                            and self._subscription_auto_renew_supported(active_sub)
                         ):
                             cancel_kb = get_autorenew_cancel_keyboard(lang, self.i18n)
                             await self.lifecycle_notifications.send_stage(
@@ -523,7 +523,7 @@ class PanelWebhookService(PanelWebhookPayloadMixin):
                     if not (
                         active_sub
                         and active_sub.auto_renew_enabled
-                        and active_sub.provider == "yookassa"
+                        and self._subscription_auto_renew_supported(active_sub)
                     ):
                         return False
                     if self._is_stale_autorenew_cycle(
@@ -559,6 +559,14 @@ class PanelWebhookService(PanelWebhookPayloadMixin):
         except Exception:
             logger.exception("Auto-renew trigger (%s) failed pre-check", stage_key)
         return False
+
+    def _subscription_auto_renew_supported(self, subscription: Subscription) -> bool:
+        subscription_service = getattr(self, "subscription_service", None)
+        if subscription_service is None:
+            return False
+        provider = str(getattr(subscription, "provider", "") or "").strip().lower()
+        recurring_service = subscription_service.recurring_service_for(provider)
+        return bool(recurring_service and getattr(recurring_service, "recurring_active", False))
 
     @staticmethod
     def _is_stale_autorenew_cycle(

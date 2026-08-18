@@ -54,7 +54,10 @@ def test_new_payment_buttons_are_opt_in_with_documented_international_method() -
 
     assert config.INTERNATIONAL_ENABLED is False
     assert config.ALL_METHODS_ENABLED is False
+    assert config.CARD_ENABLED is False
+    assert config.CARD_METHOD == 11
     assert config.INTERNATIONAL_METHOD == 12
+    assert platega_service.CARD_SPEC.enabled(config) is False
     assert platega_service.INTERNATIONAL_SPEC.enabled(config) is False
     assert platega_service.ALL_METHODS_SPEC.enabled(config) is False
 
@@ -75,6 +78,24 @@ def test_international_payment_uses_method_12_on_legacy_endpoint(monkeypatch) ->
     assert success is True
     assert captured["url"].endswith("/transaction/process")
     assert captured["body"]["paymentMethod"] == 12
+
+
+def test_card_payment_uses_method_11_on_legacy_endpoint(monkeypatch) -> None:
+    service = _service(CARD_ENABLED=True)
+    captured = _capture_create_request(monkeypatch, service)
+
+    success, _data = asyncio.run(
+        service.create_transaction(
+            amount=150.0,
+            currency="RUB",
+            description="Card payment",
+            payment_method=service.card_method,
+        )
+    )
+
+    assert success is True
+    assert captured["url"].endswith("/transaction/process")
+    assert captured["body"]["paymentMethod"] == 11
 
 
 def test_hosted_chooser_uses_v2_endpoint_without_payment_method(monkeypatch) -> None:
@@ -99,13 +120,16 @@ def test_hosted_chooser_uses_v2_endpoint_without_payment_method(monkeypatch) -> 
 
 
 def test_variant_routing_keeps_callbacks_and_webapp_reuse_isolated() -> None:
+    card = platega_service._platega_descriptor_for_callback_prefix("pay_platega_card")
     international = platega_service._platega_descriptor_for_callback_prefix(
         "pay_platega_international"
     )
     all_methods = platega_service._platega_descriptor_for_callback_prefix("pay_platega_all_methods")
 
+    assert card.spec is platega_service.CARD_SPEC
     assert international.spec is platega_service.INTERNATIONAL_SPEC
     assert all_methods.spec is platega_service.ALL_METHODS_SPEC
+    assert platega_service._DESCRIPTORS_BY_METHOD["platega_card"] is card
     assert platega_service._DESCRIPTORS_BY_METHOD["platega_international"] is international
     assert platega_service._DESCRIPTORS_BY_METHOD["platega_all_methods"] is all_methods
 

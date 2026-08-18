@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
 from sqlalchemy.orm import sessionmaker
@@ -40,6 +40,12 @@ class BroadcastEmailRecipient:
     # Call-to-action links in this recipient's own language. ``None`` keeps the
     # shared set, so a caller that has only one language passes it once.
     buttons: Sequence[tuple[str, str]] | None = None
+    delivery_id: int | None = None
+
+
+type BroadcastEmailResultCallback = Callable[
+    [BroadcastEmailRecipient, bool, str | None], Awaitable[None]
+]
 
 
 async def _send_one(
@@ -52,8 +58,11 @@ async def _send_one(
     message_text: str,
     buttons: Sequence[tuple[str, str]],
     semaphore: asyncio.Semaphore,
+    on_result: BroadcastEmailResultCallback | None = None,
 ) -> bool:
     async with semaphore:
+        success = False
+        error: str | None = None
         try:
             content = render_broadcast_email(
                 settings,
@@ -66,10 +75,18 @@ async def _send_one(
                 i18n=i18n,
             )
             await email_service.send_rendered_email(email=recipient.email, content=content)
-            return True
-        except Exception:
+            success = True
+        except Exception as exc:
+            error = str(exc)
             logger.exception("Broadcast email failed for user %s.", recipient.user_id)
-            return False
+        if on_result is not None:
+            try:
+                await on_result(recipient, success, error)
+            except Exception:
+                logger.exception(
+                    "Broadcast email result callback failed for user %s.", recipient.user_id
+                )
+        return success
 
 
 async def deliver_broadcast_emails(
@@ -83,6 +100,7 @@ async def deliver_broadcast_emails(
     session_factory: sessionmaker | None = None,
     actor_id: int | None = None,
     target: str = "",
+    on_result: BroadcastEmailResultCallback | None = None,
 ) -> tuple[int, int]:
     """Send the broadcast to every recipient; returns ``(sent, failed)``."""
     email_service = EmailAuthService(settings, i18n)
@@ -98,6 +116,7 @@ async def deliver_broadcast_emails(
                 message_text=message_text,
                 buttons=recipient.buttons if recipient.buttons is not None else buttons,
                 semaphore=semaphore,
+                on_result=on_result,
             )
             for recipient in recipients
         )
@@ -139,6 +158,7 @@ def schedule_broadcast_emails(
     session_factory: sessionmaker | None = None,
     actor_id: int | None = None,
     target: str = "",
+    on_result: BroadcastEmailResultCallback | None = None,
 ) -> int:
     """Kick off background email delivery; returns the number of recipients."""
     if not recipients:
@@ -155,6 +175,7 @@ def schedule_broadcast_emails(
             session_factory=session_factory,
             actor_id=actor_id,
             target=target,
+            on_result=on_result,
         )
 
     task = asyncio.create_task(_run())

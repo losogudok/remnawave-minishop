@@ -15,6 +15,7 @@ from bot.app.web.admin_api_impl.schemas import (
     AdminTariffsCatalogOut,
     AdminTariffsOut,
     AdOut,
+    AdStatsOut,
     LogOut,
     PaymentDetailOut,
     PaymentOut,
@@ -123,6 +124,13 @@ def test_ad_response_model_matches_legacy_serializer():
     assert AdOut.from_orm_ad(campaign, stats).model_dump(
         mode="json"
     ) == common_module._serialize_ad(campaign, stats)
+
+
+def test_ad_response_model_exposes_typed_stats_contract():
+    stats_schema = AdOut.model_json_schema()["properties"]["stats"]
+
+    assert stats_schema == {"$ref": "#/$defs/AdStatsOut"}
+    assert set(AdStatsOut.model_fields) == {"starts", "trials", "payers", "revenue"}
 
 
 class _LazyLogEntry:
@@ -253,6 +261,7 @@ def test_admin_tariffs_response_model_preserves_nested_legacy_payload_shape():
     assert payload == {
         "exists": False,
         "path": "data/tariffs.json",
+        "user_hwid_device_limit": None,
         "catalog": {
             "default_tariff": "",
             "default_currency": "rub",

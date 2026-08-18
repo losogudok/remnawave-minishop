@@ -21,7 +21,7 @@ from bot.services.partner_commission_service import PartnerCommissionService
 from bot.utils.config_link import prepare_config_links
 from bot.utils.install_links import ensure_user_install_guide_links
 from bot.utils.text_sanitizer import sanitize_display_name, username_for_display
-from db.dal import payment_dal, subscription_dal, user_dal
+from db.dal import auto_renew_dal, payment_dal, subscription_dal, user_dal
 from db.models import Payment, User
 
 from .common import (
@@ -546,6 +546,7 @@ async def finalize_successful_payment(
             payment_id,
             "succeeded",
         )
+        await auto_renew_dal.mark_cycle_succeeded_for_record(req.session, locked_payment)
         await req.session.commit()
     except Exception:
         logger.exception(

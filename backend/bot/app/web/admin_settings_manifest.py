@@ -71,7 +71,14 @@ def coerce_value(field: SettingField, raw: Any) -> Any:
         validate_subscription_guides_config_text(text)
         return text
 
-    if raw is None or (isinstance(raw, str) and raw.strip() == ""):
+    if raw is None:
+        if not field.optional:
+            raise ValueError(f"{field.key}: value required")
+        return None
+
+    if isinstance(raw, str) and raw.strip() == "":
+        if field.allow_empty:
+            return ""
         if not field.optional:
             raise ValueError(f"{field.key}: value required")
         return None

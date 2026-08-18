@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from aiohttp import web
 
 from bot.payment_providers.shared import callbacks as shared_callbacks
 from bot.payment_providers.shared import link_flow
@@ -409,6 +410,33 @@ def test_webapp_payment_success_finalizes(monkeypatch):
     assert fin["payment_url"] == "https://pay/x"
     assert fin["provider_payment_id"] == "pid-1"
     assert fin["log_prefix"] == "Fake"
+
+
+def test_webapp_payment_retires_older_provider_links_after_success(monkeypatch):
+    payment = SimpleNamespace(payment_id=99, status="pending_fake")
+    service = _FakeService()
+    service.cancel_pending_bill = AsyncMock()
+    response = web.json_response({"ok": True})
+    supersede = AsyncMock()
+    monkeypatch.setattr(link_flow, "create_webapp_payment_record", AsyncMock(return_value=payment))
+    monkeypatch.setattr(
+        link_flow,
+        "finalize_webapp_link_payment",
+        AsyncMock(return_value=response),
+    )
+    monkeypatch.setattr(link_flow, "supersede_earlier_pending_hosted_checkouts", supersede)
+
+    desc = _descriptor()
+    ctx = _webapp_ctx(service)
+    result = asyncio.run(run_webapp_payment(desc, ctx))
+
+    assert result is response
+    args = supersede.await_args
+    assert args is not None
+    assert args.args[0] is ctx.session
+    assert args.args[1].payment_id == 99
+    assert args.args[2] is service
+    assert args.kwargs == {"pending_status": "pending_fake"}
 
 
 def test_webapp_payment_persists_descriptor_ttl_when_provider_omits_expiry(monkeypatch):

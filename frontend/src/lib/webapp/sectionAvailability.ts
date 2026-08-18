@@ -3,6 +3,7 @@ type SectionAvailabilityInput = {
   installGuidesAvailable?: boolean;
   isAdmin?: boolean;
   partnerProgramEnabled?: boolean;
+  referralProgramEnabled?: boolean;
   section: string;
   supportEnabled?: boolean;
 };
@@ -12,11 +13,13 @@ export function resolveAvailableWebappSection({
   installGuidesAvailable = false,
   isAdmin = false,
   partnerProgramEnabled = false,
+  referralProgramEnabled = true,
   section,
   supportEnabled = true,
 }: SectionAvailabilityInput) {
   if (section === "admin" && !isAdmin) return "settings";
   if (section === "devices" && !devicesEnabled) return "home";
+  if (section === "invite" && !referralProgramEnabled) return "home";
   if (section === "partner" && !partnerProgramEnabled) return "home";
   if (section === "support" && !supportEnabled) return "home";
   if (section === "install" && !installGuidesAvailable) return "home";

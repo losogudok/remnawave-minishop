@@ -11,6 +11,7 @@ import {
 } from "./billingStoreSupport";
 export type { BillingState, BillingStore } from "./billingStoreSupport";
 import type { BillingActions, PartnerBalancePaymentOptions } from "../billingActions";
+import type { CheckoutAddonSelection } from "../tariffs";
 import {
   createPaymentResponseHandler,
   createPendingPaymentResume,
@@ -144,6 +145,7 @@ export function createBillingStore({
   let topupOptionsRequestId = 0;
   let paymentPollToken = 0;
   let checkoutPromoRequestId = 0;
+  let checkoutAddonsForQuote: CheckoutAddonSelection | undefined;
   let lastCheckoutQuoteKey = "";
   const successfulPaymentIds = new Set<string>();
 
@@ -171,7 +173,7 @@ export function createBillingStore({
     return code || null;
   }
 
-  function checkoutQuoteBody() {
+  function checkoutQuoteBody(options: Pick<PartnerBalancePaymentOptions, "checkoutAddons"> = {}) {
     const s = state;
     const code = String(s.checkoutPromoInput || s.checkoutPromoAppliedCode || "").trim();
     if (!code || !s.selectedMethod) return null;
@@ -179,6 +181,7 @@ export function createBillingStore({
       return {
         ...billing.planPaymentBody(s.selectedPlan, s.selectedMethod, {
           renewHwidDevices: s.renewHwidDevices && Boolean(s.selectedPlan?.hwid_renewal?.available),
+          checkoutAddons: options.checkoutAddons || checkoutAddonsForQuote,
         }),
         promo_code: code,
       };
@@ -227,6 +230,7 @@ export function createBillingStore({
         state.selectedMethod,
         checkoutPlanKey(state.selectedPlan),
         state.renewHwidDevices ? "hwid" : "no-hwid",
+        JSON.stringify(checkoutAddonsForQuote || {}),
       ].join(":");
     }
     if (state.topupModalOpen && state.selectedTopupPlan) {
@@ -276,8 +280,11 @@ export function createBillingStore({
     );
   }
 
-  async function applyCheckoutPromo(): Promise<void> {
-    const body = checkoutQuoteBody();
+  async function applyCheckoutPromo(
+    options: Pick<PartnerBalancePaymentOptions, "checkoutAddons"> = {}
+  ): Promise<void> {
+    if (options.checkoutAddons) checkoutAddonsForQuote = options.checkoutAddons;
+    const body = checkoutQuoteBody(options);
     if (!body) {
       updateState((s) => ({
         ...s,
@@ -341,6 +348,7 @@ export function createBillingStore({
   }
 
   function clearCheckoutPromo(): void {
+    checkoutAddonsForQuote = undefined;
     checkoutPromoRequestId += 1;
     updateState((s) => ({
       ...s,
@@ -695,6 +703,7 @@ export function createBillingStore({
           renewHwidDevices: s.renewHwidDevices && Boolean(s.selectedPlan?.hwid_renewal?.available),
           promoCode: checkoutPromoCode(),
           usePartnerBalance: options.usePartnerBalance,
+          checkoutAddons: options.checkoutAddons,
         })
       );
       const successContext = paymentSuccessContext(s, response);

@@ -56,6 +56,7 @@ from .common import (
     payment_record_amounts,
     payment_unavailable,
 )
+from .reconciliation import supersede_earlier_pending_hosted_checkouts
 from .webapp import finalize_webapp_link_payment
 
 logger = logging.getLogger(__name__)
@@ -447,7 +448,8 @@ async def run_webapp_payment[ServiceT: LinkFlowService](
         logger.exception("%s WebApp payment failed", descriptor.display_name)
         return payment_failed()
 
-    return await finalize_webapp_link_payment(
+    payment_snapshot = detached_payment_snapshot(payment)
+    response = await finalize_webapp_link_payment(
         session=ctx.session,
         payment=payment,
         api_success=success,
@@ -457,6 +459,29 @@ async def run_webapp_payment[ServiceT: LinkFlowService](
         checkout_expires_at=checkout_expires_at,
         log_prefix=descriptor.display_name,
     )
+    if (
+        success
+        and descriptor.extract_url(response_data)
+        and descriptor.extract_provider_id(response_data)
+        and isinstance(response, web.Response)
+        and response.status < 400
+        and hasattr(service, "cancel_pending_bill")
+    ):
+        try:
+            await supersede_earlier_pending_hosted_checkouts(
+                ctx.session,
+                payment_snapshot,
+                service,
+                pending_status=descriptor.pending_status,
+            )
+        except Exception:
+            await ctx.session.rollback()
+            logger.exception(
+                "%s: failed to retire superseded hosted checkouts after payment %s.",
+                descriptor.display_name,
+                payment_snapshot.payment_id,
+            )
+    return response
 
 
 async def run_reuse_webapp_payment[ServiceT: LinkFlowService](

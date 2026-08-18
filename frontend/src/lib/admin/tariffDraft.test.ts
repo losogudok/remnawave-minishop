@@ -130,6 +130,27 @@ describe("tariffDraft", () => {
       traffic_limit_strategy: "WEEK",
       premium_traffic_limit_strategy: "MONTH",
       topup_packages: { rub: [{ gb: 10, price: 199 }] },
+      flexible_traffic_limit: {
+        step_gb: 50,
+        max_total_gb: 700,
+        price_per_step: 99,
+        stars_price_per_step: 50,
+      },
+      premium_flexible_traffic_limit: {
+        step_gb: 25,
+        max_total_gb: 100,
+        price_per_step: 79,
+      },
+      checkout_addons: {
+        devices: {
+          enabled: true,
+          max_extra_devices: 4,
+          price_per_device: 79,
+          stars_price_per_device: 40,
+        },
+        traffic: { enabled: true },
+        premium_traffic: { enabled: false },
+      },
       tribute: {
         link: "https://t.me/tribute/app?startapp=pro",
         subscription_id: 101,
@@ -163,6 +184,17 @@ describe("tariffDraft", () => {
         tribute_product_link: "https://tribute.tg/products/501",
       },
     ]);
+    expect(draft.flexible_traffic_step_gb).toBe(50);
+    expect(draft.flexible_traffic_max_total_gb).toBe(700);
+    expect(draft.flexible_traffic_price_per_step).toBe(99);
+    expect(draft.flexible_traffic_stars_price_per_step).toBe(50);
+    expect(draft.premium_flexible_traffic_step_gb).toBe(25);
+    expect(draft.premium_flexible_traffic_max_total_gb).toBe(100);
+    expect(draft.premium_flexible_traffic_price_per_step).toBe(79);
+    expect(draft.checkout_devices_enabled).toBe(true);
+    expect(draft.checkout_devices_max_extra).toBe(4);
+    expect(draft.checkout_devices_price_per_device).toBe(79);
+    expect(draft.checkout_devices_stars_price_per_device).toBe(40);
     expect(draft.periodRows).toEqual([
       {
         months: 1,
@@ -200,6 +232,28 @@ describe("tariffDraft", () => {
       traffic_limit_strategy: "WEEK",
       premium_traffic_limit_strategy: "MONTH",
       topup_packages: { rub: [{ gb: 10, price: 199 }] },
+      flexible_traffic_limit: {
+        step_gb: 50,
+        max_total_gb: 700,
+        price_per_step: 99,
+        stars_price_per_step: 50,
+      },
+      premium_flexible_traffic_limit: {
+        step_gb: 25,
+        max_total_gb: 100,
+        price_per_step: 79,
+        stars_price_per_step: null,
+      },
+      checkout_addons: {
+        devices: {
+          enabled: true,
+          max_extra_devices: 4,
+          price_per_device: 79,
+          stars_price_per_device: 40,
+        },
+        traffic: { enabled: true },
+        premium_traffic: { enabled: false },
+      },
       tribute: {
         link: "https://t.me/tribute/app?startapp=pro",
         subscription_id: 101,

@@ -357,7 +357,8 @@ Xray-Core 26.3.27+, `NET_ADMIN`, nftables, корректный sniffing и вк
 
 | Переменная | Назначение |
 | --- | --- |
-| `PAYMENT_METHODS_ORDER` | Порядок кнопок оплаты. Для Platega доступны `platega_sbp`, `platega_crypto`, `platega_international`, `platega_all_methods`, `platega_subscription`; legacy-значение `platega` разворачивается во все варианты. |
+| `PAYMENT_METHODS_ORDER` | Порядок способов оплаты в выпадающем списке или отдельных кнопках. Для Platega доступны `platega_sbp`, `platega_card`, `platega_crypto`, `platega_international`, `platega_all_methods`, `platega_subscription`; legacy-значение `platega` разворачивается во все варианты. |
+| `PAYMENT_METHODS_DISPLAY_MODE` | Представление способов оплаты в Mini App: компактный `dropdown` (по умолчанию) или отдельные `buttons`. В админке: **Платежи → Оформление оплаты**. |
 | `SUBSCRIPTION_PURCHASE_DESCRIPTION_ENABLED` | Показывать описание подписки перед выбором срока. |
 | `SUBSCRIPTION_PURCHASE_DESCRIPTION_RU` / `SUBSCRIPTION_PURCHASE_DESCRIPTION_EN` | Локализованное описание подписки. |
 | `PAYMENT_REQUEST_TIMEOUT_SECONDS` | Общий таймаут одного API-запроса к платёжному провайдеру, в секундах. По умолчанию `20`. |
@@ -370,7 +371,7 @@ Xray-Core 26.3.27+, `NET_ADMIN`, nftables, корректный sniffing и вк
 | `YOOKASSA_ENABLED` | Включает YooKassa. |
 | `FREEKASSA_ENABLED` | Включает FreeKassa. |
 | `PLATEGA_ENABLED` | Включает Platega. |
-| `PLATEGA_SBP_ENABLED` / `PLATEGA_CRYPTO_ENABLED` | Отдельные кнопки СБП/крипто Platega. |
+| `PLATEGA_SBP_ENABLED` / `PLATEGA_CARD_ENABLED` / `PLATEGA_CRYPTO_ENABLED` | Отдельные кнопки СБП/карты/крипто Platega. |
 | `PLATEGA_INTERNATIONAL_ENABLED` | Кнопка международных карт (`paymentMethod: 12` по умолчанию). |
 | `PLATEGA_ALL_METHODS_ENABLED` | Единая ссылка Platega, где плательщик сам выбирает способ оплаты. |
 | `PLATEGA_SUBSCRIPTION_ENABLED` | Кнопка рекуррентной СБП-подписки Platega. |
@@ -406,6 +407,12 @@ PAYMENT_PLATEGA_SBP_WEBAPP_ICON
 PAYMENT_PLATEGA_SBP_TELEGRAM_LABEL_RU
 PAYMENT_PLATEGA_SBP_TELEGRAM_LABEL_EN
 PAYMENT_PLATEGA_SBP_TELEGRAM_EMOJI
+PAYMENT_PLATEGA_CARD_WEBAPP_LABEL_RU
+PAYMENT_PLATEGA_CARD_WEBAPP_LABEL_EN
+PAYMENT_PLATEGA_CARD_WEBAPP_ICON
+PAYMENT_PLATEGA_CARD_TELEGRAM_LABEL_RU
+PAYMENT_PLATEGA_CARD_TELEGRAM_LABEL_EN
+PAYMENT_PLATEGA_CARD_TELEGRAM_EMOJI
 PAYMENT_PLATEGA_CRYPTO_WEBAPP_LABEL_RU
 PAYMENT_PLATEGA_CRYPTO_WEBAPP_LABEL_EN
 PAYMENT_PLATEGA_CRYPTO_WEBAPP_ICON
@@ -553,6 +560,7 @@ docker compose exec backend sh -lc 'curl -4fsS https://api.ipify.org; echo'
 | `PLATEGA_SECRET` | Секрет API. |
 | `PLATEGA_PAYMENT_METHOD` | Устаревший/резервный ID метода оплаты. |
 | `PLATEGA_SBP_METHOD` | ID метода оплаты для СБП. |
+| `PLATEGA_CARD_METHOD` | ID метода оплаты картой (по умолчанию `11`). |
 | `PLATEGA_CRYPTO_METHOD` | ID метода оплаты для крипто. |
 | `PLATEGA_INTERNATIONAL_METHOD` | ID метода оплаты международными картами (по умолчанию `12`). |
 | `PLATEGA_SUBSCRIPTION_METHOD` | ID метода оплаты для рекуррентной СБП-подписки (по умолчанию `6`). |

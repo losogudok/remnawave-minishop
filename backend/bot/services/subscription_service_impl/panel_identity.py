@@ -180,12 +180,27 @@ class PanelIdentityMixin(SubscriptionServiceMixinContract):
                 panel_user_obj_from_api.get("username"),
             )
         elif panel_users_by_tg_id_list and len(panel_users_by_tg_id_list) > 1:
-            logger.error(
-                "CRITICAL: Multiple panel users found for telegramId %s. Manual intervention "
-                "needed.",
-                telegram_id_for_panel,
-            )
-            return PanelUserLink(None, None, None, False, False, None)
+            locally_linked_matches = [
+                candidate
+                for candidate in panel_users_by_tg_id_list
+                if current_local_panel_uuid
+                and str(candidate.get("uuid") or "") == str(current_local_panel_uuid)
+            ]
+            if len(locally_linked_matches) == 1:
+                panel_user_obj_from_api = locally_linked_matches[0]
+                logger.warning(
+                    "Multiple panel users found for telegramId %s; using the existing local "
+                    "panel link for user %s.",
+                    telegram_id_for_panel,
+                    user_id,
+                )
+            else:
+                logger.error(
+                    "CRITICAL: Multiple panel users found for telegramId %s without one "
+                    "unambiguous existing local link. Manual intervention needed.",
+                    telegram_id_for_panel,
+                )
+                return PanelUserLink(None, None, None, False, False, None)
 
         if not panel_user_obj_from_api and db_user.email:
             panel_users_by_email_list = await self.panel_service.get_users_by_filter(

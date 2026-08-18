@@ -2,13 +2,18 @@
   import { getTariffsStore } from "$lib/admin/context";
   import { Input, Sortable } from "$components/ui/index.js";
   import { Tabs } from "$components/ui/primitives.js";
-  import { AdminButton } from "$components/patterns/admin/index.js";
+  import {
+    AdminButton,
+    AdminSettingCard,
+    AdminSettingsGroup,
+  } from "$components/patterns/admin/index.js";
   import { Plus, Trash2 } from "$components/ui/icons.js";
   import type { TariffDraft, TariffsCatalog } from "$lib/admin/stores/tariffsStore";
   import {
     currencyPriceAriaLabel as formatCurrencyPriceAriaLabel,
     currencyPriceColumnLabel as formatCurrencyPriceColumnLabel,
     defaultCurrencyCode as getDefaultCurrencyCode,
+    draftInputHandler,
     draftRowInputHandler,
     draftRowKey,
     moveDraftRowHandler,
@@ -16,6 +21,7 @@
     type ReorderHandler,
     type TranslateFn,
   } from "./tariffEditorTabUtils.js";
+  import TariffDeviceCheckoutSettings from "./TariffDeviceCheckoutSettings.svelte";
 
   let { at }: { at: TranslateFn } = $props();
 
@@ -28,6 +34,11 @@
     formatCurrencyPriceColumnLabel(at, defaultCurrencyCode)
   );
   const currencyPriceAriaLabel = $derived(formatCurrencyPriceAriaLabel(at, defaultCurrencyCode));
+  const effectiveHwidDeviceLimit = $derived(
+    tariffDraft.hwid_device_limit === "" || tariffDraft.hwid_device_limit == null
+      ? Number(tariffsState.userHwidDeviceLimit || 0)
+      : Number(tariffDraft.hwid_device_limit || 0)
+  );
   const moveHwidRow: ReorderHandler = moveDraftRowHandler(tariffsStore, "hwidRows");
 
   function addHwidPackageRow(): void {
@@ -41,6 +52,38 @@
 </script>
 
 <Tabs.Content value="hwid" class="admin-tabs-content">
+  <AdminSettingsGroup
+    title={at("tariff_device_access_group", {}, "Device access")}
+    description={at(
+      "tariff_device_access_group_hint",
+      {},
+      "The base simultaneous-device limit included in every subscription on this tariff."
+    )}
+  >
+    <AdminSettingCard
+      title={at("tariff_label_hwid", {}, "Device limit (HWID)")}
+      description={at(
+        "tariff_hint_hwid",
+        {},
+        "How many devices can use the subscription at the same time. Empty means use the .env value; 0 means unlimited"
+      )}
+    >
+      <Input
+        class="input"
+        type="number"
+        min="0"
+        placeholder="5"
+        value={tariffDraft.hwid_device_limit}
+        oninput={draftInputHandler(tariffsStore, "hwid_device_limit")}
+      />
+    </AdminSettingCard>
+  </AdminSettingsGroup>
+
+  <TariffDeviceCheckoutSettings
+    {at}
+    baseUnits={effectiveHwidDeviceLimit}
+    currencyCode={defaultCurrencyCode}
+  />
   <section class="admin-editor-section">
     <header class="admin-editor-section-head">
       <div class="admin-editor-section-title">
@@ -66,7 +109,7 @@
           <span>{at("tariff_col_hwid_count", {}, "+ devices")}</span>
           <span>{at("tariff_col_hwid_traffic_bonus_gb", {}, "Monthly traffic, GB")}</span>
           <span>{currencyPriceColumnLabel}</span>
-          <span>{at("tariff_col_price_stars_full", {}, "Price, ⭐ Stars")}</span>
+          <span>{at("tariff_col_price_stars_full", {}, "⭐ Stars")}</span>
           <span></span>
         </div>
         <Sortable
@@ -125,7 +168,7 @@
               aria-label={currencyPriceAriaLabel}
             />
             <span class="admin-row-editor-mobile-label" aria-hidden="true"
-              >{at("tariff_col_price_stars_full", {}, "Price, ⭐ Stars")}</span
+              >{at("tariff_col_price_stars_full", {}, "⭐ Stars")}</span
             >
             <Input
               class="input"
@@ -135,7 +178,7 @@
               placeholder="50"
               value={row.stars}
               oninput={draftRowInputHandler(tariffsStore, "hwidRows", index, "stars")}
-              aria-label={at("tariff_label_price_stars", {}, "Price in Telegram Stars")}
+              aria-label={at("tariff_label_price_stars", {}, "⭐ Stars")}
             />
             <AdminButton
               size="sm"

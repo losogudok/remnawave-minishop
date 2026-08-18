@@ -14,6 +14,8 @@
   inset: 0;
   width: 100vw;
   height: 100dvh;
+  padding: var(--content-safe-area-top) var(--content-safe-area-right)
+    var(--content-safe-area-bottom) var(--content-safe-area-left);
   background: var(--admin-bg);
   color: var(--admin-text);
   overflow: hidden;
@@ -1011,6 +1013,23 @@
   display: block;
 }
 
+/* On first entry the plot field is uncovered from left to right. The curtain
+   is limited to uPlot's data bbox, so axes stay readable throughout. */
+.admin-chart-reveal-curtain {
+  position: absolute;
+  z-index: 1;
+  display: block;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--admin-bg) 88%, var(--admin-surface-2));
+  opacity: 0;
+  pointer-events: none;
+  will-change: left, width;
+}
+
+.admin-chart-reveal-curtain.is-visible {
+  opacity: 1;
+}
+
 /* The hover highlight is a canvas laid over uPlot's own. The component clips
    uPlot's rendered `Path2D` to a window around the active period, so the bright
    line and the lit area under it sit on the curve by construction rather than
@@ -1117,6 +1136,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .admin-chart-reveal-curtain {
+    display: none;
+  }
+
   .admin-chart-tooltip {
     transition: opacity 0.16s ease;
   }
@@ -4419,8 +4442,10 @@
 
   .admin-sidebar {
     position: fixed;
-    inset: 0 auto 0 0;
+    inset: var(--content-safe-area-top) auto var(--content-safe-area-bottom)
+      var(--content-safe-area-left);
     width: 280px;
+    height: auto;
     flex: 0 0 auto;
     z-index: 80;
     transform: translateX(-100%);

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, cast
 
 from pydantic import ConfigDict, Field
@@ -96,6 +97,57 @@ class AdminBroadcastAudienceCountsOut(HttpResponseModel):
     counts: dict[str, int | None]
     audiences: list[AdminBroadcastAudienceOut] = Field(default_factory=list)
     email_enabled: bool = False
+
+
+class AdminBroadcastButtonOut(HttpResponseModel):
+    kind: str
+    label: str = ""
+    url: str = ""
+    promo_code: str = ""
+    section: str = ""
+    labels: dict[str, str] = Field(default_factory=dict)
+
+
+class AdminBroadcastOut(HttpResponseModel):
+    broadcast_id: int
+    status: str
+    target: str
+    channels: list[str]
+    texts: dict[str, str]
+    email_subjects: dict[str, str]
+    buttons: list[AdminBroadcastButtonOut]
+    scheduled_at: datetime
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    updated_at: datetime
+    recipient_count: int = 0
+    total_deliveries: int = 0
+    successful_deliveries: int = 0
+    failed_deliveries: int = 0
+    telegram_sent: int = 0
+    telegram_failed: int = 0
+    email_sent: int = 0
+    email_failed: int = 0
+    last_error: str | None = None
+
+
+class AdminBroadcastCreateOut(HttpResponseModel):
+    broadcast: AdminBroadcastOut
+    queued: int = 0
+    failed: int = 0
+    email_queued: int = 0
+    target: str
+    channels: list[str]
+
+
+class AdminBroadcastListOut(HttpResponseModel):
+    broadcasts: list[AdminBroadcastOut]
+
+
+class AdminBroadcastDeleteOut(HttpResponseModel):
+    deleted: bool = True
+    broadcast_id: int
 
 
 class AdminBroadcastShortcodeOut(HttpResponseModel):

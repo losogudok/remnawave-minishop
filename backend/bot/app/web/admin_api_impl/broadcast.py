@@ -1,4 +1,5 @@
 import logging
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from aiohttp import web
@@ -14,12 +15,13 @@ from bot.app.web.context import (
 )
 from bot.app.web.request_parsing import parse_body_or_400
 from bot.app.web.route_contracts import (
-    INTEGER_SCHEMA,
-    STRING_SCHEMA,
     RouteContract,
     ok_envelope_for,
-    ok_envelope_with,
     register_contract,
+)
+from bot.services.admin_broadcast_delivery import (
+    AdminBroadcastDeliveryService,
+    BroadcastDispatchResult,
 )
 from bot.services.audience_segmentation import (
     AUDIENCE_ACTIVE_NEVER_CONNECTED,
@@ -45,7 +47,8 @@ from bot.utils import MessageContent, send_message_via_queue
 from bot.utils.message_queue import get_queue_manager
 from bot.utils.ttl_cache import AsyncTTLCache
 from config.settings import Settings
-from db.dal import message_log_dal, promo_code_dal, user_dal
+from db.broadcast_models import AdminBroadcast
+from db.dal import broadcast_dal, message_log_dal, promo_code_dal, user_dal
 
 from .auth import (
     _require_admin_user_id,
@@ -64,8 +67,16 @@ from .common import (
     _error,
     _ok,
 )
-from .response_schemas import AdminBroadcastAudienceCountsOut, AdminBroadcastAudienceOut
-from .schemas import AdminBroadcastBody
+from .response_schemas import (
+    AdminBroadcastAudienceCountsOut,
+    AdminBroadcastAudienceOut,
+    AdminBroadcastButtonOut,
+    AdminBroadcastCreateOut,
+    AdminBroadcastDeleteOut,
+    AdminBroadcastListOut,
+    AdminBroadcastOut,
+)
+from .schemas import AdminBroadcastBody, AdminBroadcastScheduleBody
 
 logger = logging.getLogger(__name__)
 
@@ -81,15 +92,30 @@ register_contract(
     "admin_broadcast_route",
     RouteContract(
         request_model=AdminBroadcastBody,
-        response_schema=ok_envelope_with(
-            {
-                "queued": INTEGER_SCHEMA,
-                "failed": INTEGER_SCHEMA,
-                "email_queued": INTEGER_SCHEMA,
-                "target": STRING_SCHEMA,
-                "channels": {"type": "array", "items": STRING_SCHEMA},
-            }
-        ),
+        response_schema=ok_envelope_for(AdminBroadcastCreateOut),
+        models=(AdminBroadcastCreateOut, AdminBroadcastOut, AdminBroadcastButtonOut),
+    ),
+)
+register_contract(
+    "admin_broadcasts_list_route",
+    RouteContract(
+        response_schema=ok_envelope_for(AdminBroadcastListOut),
+        models=(AdminBroadcastListOut, AdminBroadcastOut, AdminBroadcastButtonOut),
+    ),
+)
+register_contract(
+    "admin_broadcast_reschedule_route",
+    RouteContract(
+        request_model=AdminBroadcastScheduleBody,
+        response_schema=ok_envelope_for(AdminBroadcastOut),
+        models=(AdminBroadcastOut, AdminBroadcastButtonOut),
+    ),
+)
+register_contract(
+    "admin_broadcast_delete_route",
+    RouteContract(
+        response_schema=ok_envelope_for(AdminBroadcastDeleteOut),
+        models=(AdminBroadcastDeleteOut,),
     ),
 )
 register_contract(
@@ -226,7 +252,7 @@ async def _validate_broadcast_promo_codes(
     return None
 
 
-async def admin_broadcast_route(request: web.Request) -> web.Response:
+async def _legacy_admin_broadcast_route(request: web.Request) -> web.Response:
     actor_id = _require_admin_user_id(request)
     body = await parse_body_or_400(request, AdminBroadcastBody)
     settings: Settings = get_settings(request)
@@ -453,6 +479,214 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
             "channels": channels,
         }
     )
+
+
+def _utc_datetime(value: datetime | None) -> datetime:
+    if value is None:
+        return datetime.now(UTC)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _broadcast_out(item: AdminBroadcast) -> AdminBroadcastOut:
+    created_at = _utc_datetime(cast(datetime | None, item.created_at))
+    updated_at = _utc_datetime(cast(datetime | None, item.updated_at) or created_at)
+    raw_buttons = list(cast(list[dict[str, Any]], item.buttons or []))
+    return AdminBroadcastOut(
+        broadcast_id=int(item.broadcast_id),
+        status=str(item.status),
+        target=str(item.target),
+        channels=[str(value) for value in list(item.channels or [])],
+        texts={str(key): str(value) for key, value in dict(item.texts or {}).items()},
+        email_subjects={
+            str(key): str(value) for key, value in dict(item.email_subjects or {}).items()
+        },
+        buttons=[
+            AdminBroadcastButtonOut(
+                kind=str(button.get("kind") or "url"),
+                label=str(button.get("label") or ""),
+                url=str(button.get("url") or ""),
+                promo_code=str(button.get("promo_code") or ""),
+                section=str(button.get("section") or ""),
+                labels={
+                    str(key): str(value) for key, value in dict(button.get("labels") or {}).items()
+                },
+            )
+            for button in raw_buttons
+            if isinstance(button, dict)
+        ],
+        scheduled_at=_utc_datetime(cast(datetime | None, item.scheduled_at)),
+        created_at=created_at,
+        started_at=cast(datetime | None, item.started_at),
+        finished_at=cast(datetime | None, item.finished_at),
+        updated_at=updated_at,
+        recipient_count=int(item.recipient_count or 0),
+        total_deliveries=int(item.total_deliveries or 0),
+        successful_deliveries=int(item.successful_deliveries or 0),
+        failed_deliveries=int(item.failed_deliveries or 0),
+        telegram_sent=int(item.telegram_sent or 0),
+        telegram_failed=int(item.telegram_failed or 0),
+        email_sent=int(item.email_sent or 0),
+        email_failed=int(item.email_failed or 0),
+        last_error=str(item.last_error) if item.last_error else None,
+    )
+
+
+async def admin_broadcast_route(request: web.Request) -> web.Response:
+    actor_id = _require_admin_user_id(request)
+    body = await parse_body_or_400(request, AdminBroadcastBody)
+    settings: Settings = get_settings(request)
+    target = str(body.target or "all").strip().lower()
+    texts = dict(body.texts)
+    text = str(body.text or "").strip()
+    default_language = str(settings.DEFAULT_LANGUAGE or "").strip().lower() or "en"
+    if text:
+        texts.setdefault(default_language, text)
+    if not texts:
+        return _error(400, "empty_text")
+
+    email_subjects = dict(body.email_subjects)
+    email_subject = str(body.email_subject or "").strip()
+    if email_subject:
+        email_subjects.setdefault(default_language, email_subject)
+
+    try:
+        channels = normalize_broadcast_channels(body.channels)
+        resolved_buttons = resolve_broadcast_buttons(
+            body.buttons,
+            settings=settings,
+            bot_username=get_bot_username(request),
+            language=settings.DEFAULT_LANGUAGE,
+            i18n=get_i18n(request),
+        )
+    except BroadcastValidationError as exc:
+        return _error(400, exc.code, exc.detail)
+
+    if "email" in channels and not settings.email_auth_configured:
+        return _error(503, "email_not_configured")
+
+    unknown = set().union(
+        *(unknown_shortcodes(value) for value in [*texts.values(), *email_subjects.values()])
+    )
+    if unknown:
+        return _error(400, "unknown_shortcode", ", ".join(sorted(unknown)))
+    for variant in texts.values():
+        html_error = telegram_html_error(variant)
+        if html_error:
+            return _error(400, "invalid_telegram_html", html_error)
+
+    requested_scheduled_at = body.scheduled_at
+    scheduled_at = _utc_datetime(requested_scheduled_at)
+    if requested_scheduled_at is not None and scheduled_at <= datetime.now(UTC):
+        return _error(400, "broadcast_schedule_future")
+
+    audience_service = _resolve_audience_service(request)
+    try:
+        user_ids = [int(user_id) for user_id in await audience_service.resolve_user_ids(target)]
+    except AudienceNotFoundError:
+        return _error(400, "invalid_audience", target)
+    except AudienceUnavailableError:
+        return _error(403, "audience_unavailable", target)
+
+    immediate = requested_scheduled_at is None
+    queue_manager = get_queue_manager()
+    if immediate and "telegram" in channels and queue_manager is None:
+        return _error(503, "queue_unavailable")
+
+    async_session_factory = get_session_factory(request)
+    async with async_session_factory() as session:
+        promo_error = await _validate_broadcast_promo_codes(
+            session, broadcast_promo_codes(resolved_buttons)
+        )
+        if promo_error is not None:
+            return promo_error
+        item = await broadcast_dal.create_broadcast(
+            session,
+            actor_id=actor_id,
+            target=target,
+            channels=channels,
+            texts=texts,
+            email_subjects=email_subjects,
+            buttons=[button.model_dump(mode="json") for button in body.buttons],
+            scheduled_at=scheduled_at,
+            is_visible=not target.startswith("user:"),
+        )
+
+    dispatch_result = BroadcastDispatchResult(0, 0, 0, channels)
+    if immediate:
+        delivery_service = AdminBroadcastDeliveryService(
+            settings=settings,
+            session_factory=async_session_factory,
+            i18n=get_i18n(request),
+            audience_service=audience_service,
+            queue_manager=queue_manager,
+            bot_username=get_bot_username(request),
+        )
+        try:
+            dispatch_result = await delivery_service.dispatch(
+                int(item.broadcast_id), user_ids=user_ids
+            )
+        except RuntimeError as exc:
+            if str(exc) == "queue_unavailable":
+                return _error(503, "queue_unavailable")
+            logger.exception("Broadcast %s could not start", item.broadcast_id)
+            return _error(500, "broadcast_dispatch_failed", str(exc))
+        except Exception as exc:
+            logger.exception("Broadcast %s could not start", item.broadcast_id)
+            return _error(500, "broadcast_dispatch_failed", str(exc))
+
+    async with async_session_factory() as session:
+        refreshed = await broadcast_dal.get_broadcast(
+            session, int(item.broadcast_id), include_deleted=True
+        )
+    payload_item = refreshed or item
+    payload = AdminBroadcastCreateOut(
+        broadcast=_broadcast_out(payload_item),
+        queued=dispatch_result.queued,
+        failed=dispatch_result.failed,
+        email_queued=dispatch_result.email_queued,
+        target=target,
+        channels=channels,
+    )
+    return _ok(payload.model_dump(mode="json"))
+
+
+async def admin_broadcasts_list_route(request: web.Request) -> web.Response:
+    _require_admin_user_id(request)
+    async with get_session_factory(request)() as session:
+        broadcasts = await broadcast_dal.list_broadcasts(session)
+    payload = AdminBroadcastListOut(broadcasts=[_broadcast_out(item) for item in broadcasts])
+    return _ok(payload.model_dump(mode="json"))
+
+
+async def admin_broadcast_reschedule_route(request: web.Request) -> web.Response:
+    _require_admin_user_id(request)
+    body = await parse_body_or_400(request, AdminBroadcastScheduleBody)
+    scheduled_at = _utc_datetime(body.scheduled_at)
+    if scheduled_at <= datetime.now(UTC):
+        return _error(400, "broadcast_schedule_future")
+    broadcast_id = int(request.match_info["id"])
+    async with get_session_factory(request)() as session:
+        item = await broadcast_dal.reschedule_broadcast(
+            session,
+            broadcast_id,
+            scheduled_at,
+        )
+    if item is None:
+        return _error(409, "broadcast_not_reschedulable")
+    return _ok(_broadcast_out(item).model_dump(mode="json"))
+
+
+async def admin_broadcast_delete_route(request: web.Request) -> web.Response:
+    _require_admin_user_id(request)
+    broadcast_id = int(request.match_info["id"])
+    async with get_session_factory(request)() as session:
+        item = await broadcast_dal.delete_broadcast(session, broadcast_id)
+    if item is None:
+        return _error(404, "broadcast_not_found")
+    payload = AdminBroadcastDeleteOut(broadcast_id=broadcast_id)
+    return _ok(payload.model_dump(mode="json"))
 
 
 async def admin_broadcast_audience_counts_route(request: web.Request) -> web.Response:

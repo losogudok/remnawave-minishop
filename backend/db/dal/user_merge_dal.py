@@ -23,6 +23,7 @@ from bot.infra.event_payloads import AccountMergedPayload
 from ..models import (
     AdAttribution,
     EmailVerificationCode,
+    FlexibleTrafficLimit,
     HwidDevicePurchase,
     LegacyImportMapping,
     LegacyReferralCode,
@@ -689,6 +690,14 @@ async def delete_user_and_relations(session: AsyncSession, user_id: int) -> bool
             or_(
                 TrafficTopup.subscription_id.in_(subscription_ids),
                 TrafficTopup.payment_id.in_(payment_ids),
+            )
+        )
+    )
+    await session.execute(
+        delete(FlexibleTrafficLimit).where(
+            or_(
+                FlexibleTrafficLimit.subscription_id.in_(subscription_ids),
+                FlexibleTrafficLimit.payment_id.in_(payment_ids),
             )
         )
     )

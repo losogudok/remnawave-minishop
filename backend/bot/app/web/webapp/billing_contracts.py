@@ -3,6 +3,7 @@ from __future__ import annotations
 from bot.app.web.route_contracts import (
     BOOLEAN_SCHEMA,
     INTEGER_SCHEMA,
+    JSON_ARRAY_SCHEMA,
     NULLABLE_INTEGER_SCHEMA,
     NULLABLE_NUMBER_SCHEMA,
     NULLABLE_STRING_SCHEMA,
@@ -24,6 +25,7 @@ from .payloads import (
     WebAppPaymentCreatePayload,
     WebAppPlansViewedPayload,
     WebAppPromoQuotePayload,
+    WebAppSubscriptionQuotePayload,
     WebAppTariffChangePayload,
 )
 
@@ -48,6 +50,40 @@ PROMO_QUOTE_RESPONSE_SCHEMA = ok_envelope_with(
         "reason_key": NULLABLE_STRING_SCHEMA,
     },
     required=["valid"],
+)
+
+SUBSCRIPTION_QUOTE_RESPONSE_SCHEMA = ok_envelope_with(
+    {
+        "payable": BOOLEAN_SCHEMA,
+        "quote_key": STRING_SCHEMA,
+        "currency": STRING_SCHEMA,
+        "base_amount": NUMBER_SCHEMA,
+        "addons_amount": NUMBER_SCHEMA,
+        "subtotal_amount": NUMBER_SCHEMA,
+        "discount_amount": NUMBER_SCHEMA,
+        "effective_amount": NUMBER_SCHEMA,
+        "base_stars": NULLABLE_INTEGER_SCHEMA,
+        "addons_stars": INTEGER_SCHEMA,
+        "effective_stars": NULLABLE_INTEGER_SCHEMA,
+        "renewal_amount": NUMBER_SCHEMA,
+        "items": JSON_ARRAY_SCHEMA,
+        "promo_code": NULLABLE_STRING_SCHEMA,
+        "discount_percent": NULLABLE_NUMBER_SCHEMA,
+        "effect_summary": NULLABLE_STRING_SCHEMA,
+    },
+    required=[
+        "payable",
+        "quote_key",
+        "currency",
+        "base_amount",
+        "addons_amount",
+        "subtotal_amount",
+        "discount_amount",
+        "effective_amount",
+        "addons_stars",
+        "renewal_amount",
+        "items",
+    ],
 )
 
 BILLING_ROUTE_CONTRACTS: dict[str, RouteContract] = {
@@ -85,6 +121,10 @@ BILLING_ROUTE_CONTRACTS: dict[str, RouteContract] = {
     "quote_promo_route": user_contract(
         request_model=WebAppPromoQuotePayload,
         response_schema=PROMO_QUOTE_RESPONSE_SCHEMA,
+    ),
+    "subscription_quote_route": user_contract(
+        request_model=WebAppSubscriptionQuotePayload,
+        response_schema=SUBSCRIPTION_QUOTE_RESPONSE_SCHEMA,
     ),
     "payment_status_route": user_contract(response_schema=PAYMENT_RESPONSE_SCHEMA),
 }

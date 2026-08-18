@@ -10,6 +10,7 @@ describe("Mini App start routes", () => {
     ["ticket_7", "/support/7"],
     ["plans", "/plans"],
     ["invite", "/invite"],
+    ["partner", "/partner"],
     ["Support", "/support"],
     ["devices", "/devices"],
     ["home", "/home"],

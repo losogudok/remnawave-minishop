@@ -33,4 +33,37 @@ describe("billingActions partner balance funding", () => {
       )
     ).toMatchObject({ use_partner_balance: true });
   });
+
+  it("prefers a device checkout add-on over legacy device renewal", () => {
+    const actions = createBillingActions({ api: vi.fn() });
+    const plan = {
+      months: 1,
+      tariff_key: "pro",
+      sale_mode: "subscription@pro",
+    };
+
+    expect(
+      actions.planPaymentBody(plan, "card", {
+        renewHwidDevices: true,
+        checkoutAddons: {
+          device_count: 2,
+          regular_limit_gb: null,
+          premium_limit_gb: null,
+        },
+      })
+    ).toMatchObject({
+      renew_hwid_devices: false,
+      checkout_addons: { device_count: 2 },
+    });
+    expect(
+      actions.planPaymentBody(plan, "card", {
+        renewHwidDevices: true,
+        checkoutAddons: {
+          device_count: 0,
+          regular_limit_gb: null,
+          premium_limit_gb: null,
+        },
+      })
+    ).toMatchObject({ renew_hwid_devices: true });
+  });
 });

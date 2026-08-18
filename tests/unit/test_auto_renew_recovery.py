@@ -375,10 +375,10 @@ class AutoRenewWorkerTests(IsolatedAsyncioTestCase):
         worker = AutoRenewRetryWorker(
             cast(Any, _settings()),
             cast(Any, SimpleNamespace()),
-            cast(Any, SimpleNamespace(recurring_active=True)),
             cast(Any, SimpleNamespace()),
         )
         cycle = SimpleNamespace(
+            provider="yookassa",
             consent_version=3,
             renewal_cycle_end=datetime.now(UTC) + timedelta(hours=1),
         )
@@ -406,21 +406,25 @@ class AutoRenewWorkerTests(IsolatedAsyncioTestCase):
         )
 
     async def test_dry_run_defers_without_charging(self) -> None:
+        recurring_service = SimpleNamespace(
+            recurring_active=True,
+            charge_saved_payment_method=AsyncMock(),
+        )
         worker = AutoRenewRetryWorker(
             cast(Any, _settings(AUTO_RENEW_RETRY_DRY_RUN=True)),
             cast(Any, SimpleNamespace()),
             cast(
                 Any,
                 SimpleNamespace(
-                    recurring_active=True,
-                    charge_saved_payment_method=AsyncMock(),
+                    recurring_provider_services={"yookassa": recurring_service},
+                    recurring_service_for=lambda _provider: recurring_service,
                 ),
             ),
-            cast(Any, SimpleNamespace()),
         )
         session = AsyncMock()
         cycle = SimpleNamespace(
             cycle_id=11,
+            provider="yookassa",
             state="transport_retry",
             subscription_id=7,
             user_id=42,
@@ -477,26 +481,30 @@ class AutoRenewWorkerTests(IsolatedAsyncioTestCase):
             await worker._retry_cycle(11)
 
         defer_cycle.assert_awaited_once()
-        worker.yookassa_service.charge_saved_payment_method.assert_not_awaited()
+        recurring_service.charge_saved_payment_method.assert_not_awaited()
 
     async def test_changed_default_method_stops_cycle_without_charging(self) -> None:
         charge = AsyncMock()
+        recurring_service = SimpleNamespace(
+            recurring_active=True,
+            charge_saved_payment_method=charge,
+        )
         worker = AutoRenewRetryWorker(
             cast(Any, _settings()),
             cast(Any, SimpleNamespace()),
             cast(
                 Any,
                 SimpleNamespace(
-                    recurring_active=True,
-                    charge_saved_payment_method=charge,
+                    recurring_provider_services={"yookassa": recurring_service},
+                    recurring_service_for=lambda _provider: recurring_service,
                 ),
             ),
-            cast(Any, SimpleNamespace()),
         )
         session = AsyncMock()
         cycle_end = datetime.now(UTC) + timedelta(hours=1)
         cycle = SimpleNamespace(
             cycle_id=11,
+            provider="yookassa",
             state="financial_retry",
             subscription_id=7,
             user_id=42,

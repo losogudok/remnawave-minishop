@@ -287,6 +287,8 @@ class ProviderCurrencySupportOut(HttpResponseModel):
     def _provider_label(spec: PaymentProviderSpec) -> str:
         if spec.id == "platega_sbp":
             return "Platega SBP/card"
+        if spec.id == "platega_card":
+            return "Platega Card"
         if spec.id == "platega_crypto":
             return "Platega Crypto"
         if spec.id == "platega_international":
@@ -299,6 +301,8 @@ class ProviderCurrencySupportOut(HttpResponseModel):
     def _settings_path(spec: PaymentProviderSpec) -> list[str]:
         if spec.id == "platega_sbp":
             return ["payments", "platega", "sbp"]
+        if spec.id == "platega_card":
+            return ["payments", "platega", "card"]
         if spec.id == "platega_crypto":
             return ["payments", "platega", "crypto"]
         if spec.id == "platega_international":
@@ -313,6 +317,7 @@ class AdminTariffsOut(HttpResponseModel):
     path: str
     catalog: AdminTariffsCatalogOut
     provider_currency_support: list[ProviderCurrencySupportOut]
+    user_hwid_device_limit: int | None = None
 
     def to_legacy_payload(self) -> dict[str, Any]:
         payload = cast(dict[str, Any], self.model_dump(mode="json"))
@@ -394,6 +399,7 @@ class AdminBroadcastBody(HttpBodyModel):
     channels: list[str] = Field(default_factory=lambda: ["telegram"])
     email_subject: Any = ""
     buttons: list[AdminBroadcastButtonBody] = Field(default_factory=list)
+    scheduled_at: datetime | None = None
 
     @field_validator("text", "target", "email_subject", mode="before")
     @classmethod
@@ -411,6 +417,10 @@ class AdminBroadcastBody(HttpBodyModel):
             return ["telegram"]
         normalized = [_strip_text(item).lower() for item in value]
         return [item for item in normalized if item]
+
+
+class AdminBroadcastScheduleBody(HttpBodyModel):
+    scheduled_at: datetime
 
 
 class AdminBroadcastPreviewBody(HttpBodyModel):

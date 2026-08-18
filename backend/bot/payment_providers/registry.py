@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 PAYMENT_PROVIDER_SPECS: tuple[PaymentProviderSpec, ...] = (
     freekassa.SPEC,
     platega.SBP_SPEC,
+    platega.CARD_SPEC,
     platega.CRYPTO_SPEC,
     platega.INTERNATIONAL_SPEC,
     platega.ALL_METHODS_SPEC,
@@ -272,6 +273,7 @@ _LOCALE_LABEL_SPEC_IDS = frozenset(
     {
         "freekassa",
         "platega_sbp",
+        "platega_card",
         "platega_crypto",
         "platega_international",
         "platega_all_methods",

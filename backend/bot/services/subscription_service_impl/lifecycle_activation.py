@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.infra.grants import GrantContext, resolve_effective_grant
+from bot.services.checkout_addons import checkout_addon_grants
 from bot.services.panel_activity import record_subscription_panel_activity
 from bot.services.payment_promo import (
     PaymentPromoRedemptionError,
@@ -185,6 +186,9 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             purchased_gb=None,
         )
         payment = await payment_dal.get_payment_by_db_id(session, payment_db_id)
+        checkout_grants = checkout_addon_grants(
+            getattr(payment, "checkout_bundle_snapshot", None) if payment else None
+        )
         try:
             hwid_renewal_devices = int(getattr(payment, "purchased_hwid_devices", 0) or 0)
         except (TypeError, ValueError):
@@ -215,10 +219,62 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             months_int = int(months)
         except Exception:
             months_int = 1
+        expected_tariff_key = tariff.key if tariff else tariff_key
+        if checkout_grants.has_addons and (
+            checkout_grants.tariff_key != expected_tariff_key
+            or checkout_grants.months != months_int
+        ):
+            logger.error(
+                "Checkout add-on snapshot mismatch for payment %s: tariff=%s/%s months=%s/%s",
+                payment_db_id,
+                checkout_grants.tariff_key,
+                expected_tariff_key,
+                checkout_grants.months,
+                months_int,
+            )
+            return None
 
-        current_active_sub = await subscription_dal.get_active_subscription_by_user_id(
-            session, user_id
-        )
+        if checkout_grants.has_addons:
+            current_active_sub = (
+                await subscription_dal.get_active_subscription_by_user_id_for_update(
+                    session, user_id
+                )
+            )
+        else:
+            current_active_sub = await subscription_dal.get_active_subscription_by_user_id(
+                session, user_id
+            )
+        if checkout_grants.active_context_present:
+            current_subscription_id = (
+                int(current_active_sub.subscription_id) if current_active_sub is not None else None
+            )
+            current_end_at = self._as_aware_utc(
+                getattr(current_active_sub, "end_date", None) if current_active_sub else None
+            )
+            if (
+                current_subscription_id != checkout_grants.active_subscription_id
+                or current_end_at != checkout_grants.active_end_at
+            ):
+                logger.error(
+                    "Checkout quote became stale for payment %s: subscription=%s/%s end=%s/%s",
+                    payment_db_id,
+                    checkout_grants.active_subscription_id,
+                    current_subscription_id,
+                    checkout_grants.active_end_at,
+                    current_end_at,
+                )
+                return None
+        if checkout_grants.has_addons and current_active_sub and tariff:
+            active_key = str(getattr(current_active_sub, "tariff_key", "") or "").strip()
+            active_tariff = self._resolve_tariff(active_key) if active_key else None
+            if active_tariff is None or active_tariff.key != tariff.key:
+                logger.error(
+                    "Subscription checkout cannot switch tariff for payment %s: %s -> %s",
+                    payment_db_id,
+                    active_key,
+                    tariff.key,
+                )
+                return None
         previous_squad_subscription = current_active_sub
         current_billing_model = self._subscription_billing_model(current_active_sub)
         current_panel_used = getattr(current_active_sub, "traffic_used_bytes", None)
@@ -390,7 +446,8 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
         else:
             topup_balance_bytes = int(getattr(current_active_sub, "topup_balance_bytes", 0) or 0)
         promo_regular_traffic_bytes = self.gb_to_bytes(applied_promo_regular_traffic_gb)
-        topup_balance_bytes += promo_regular_traffic_bytes
+        legacy_checkout_regular_bytes = self.gb_to_bytes(checkout_grants.legacy_regular_topup_gb)
+        topup_balance_bytes += promo_regular_traffic_bytes + legacy_checkout_regular_bytes
         extra_hwid_devices = 0
         hwid_traffic_bonus_bytes = 0
         hwid_devices_valid_until = None
@@ -414,18 +471,43 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             getattr(current_active_sub, "premium_topup_balance_bytes", 0) or 0
         )
         promo_premium_traffic_bytes = self.gb_to_bytes(applied_promo_premium_traffic_gb)
-        premium_topup_balance_bytes += promo_premium_traffic_bytes
+        legacy_checkout_premium_bytes = self.gb_to_bytes(checkout_grants.legacy_premium_topup_gb)
+        premium_topup_balance_bytes += promo_premium_traffic_bytes + legacy_checkout_premium_bytes
         premium_topup_used_bytes = int(
             getattr(current_active_sub, "premium_topup_used_bytes", 0) or 0
         )
         premium_used_bytes = int(getattr(current_active_sub, "premium_used_bytes", 0) or 0)
         premium_period_start_at = getattr(current_active_sub, "premium_period_start_at", None)
-        tier_baseline_bytes = (
-            tariff.monthly_bytes if tariff else self.settings.user_traffic_limit_bytes
+        base_tier_bytes = tariff.monthly_bytes if tariff else self.settings.user_traffic_limit_bytes
+        base_premium_bytes = tariff.premium_monthly_bytes if tariff else 0
+        current_tier_bytes = int(
+            getattr(current_active_sub, "tier_baseline_bytes", 0) or base_tier_bytes or 0
         )
-        premium_baseline_bytes = tariff.premium_monthly_bytes if tariff else 0
+        current_premium_bytes = int(
+            getattr(current_active_sub, "premium_baseline_bytes", 0) or base_premium_bytes or 0
+        )
+        selected_tier_bytes = (
+            self.gb_to_bytes(checkout_grants.regular_limit_gb)
+            if checkout_grants.regular_limit_gb is not None
+            else None
+        )
+        selected_premium_bytes = (
+            self.gb_to_bytes(checkout_grants.premium_limit_gb)
+            if checkout_grants.premium_limit_gb is not None
+            else None
+        )
+        tier_baseline_bytes = current_tier_bytes
+        premium_baseline_bytes = current_premium_bytes
+        if selected_tier_bytes is not None and (
+            current_active_sub is None or selected_tier_bytes > current_tier_bytes
+        ):
+            tier_baseline_bytes = selected_tier_bytes
+        if selected_premium_bytes is not None and (
+            current_active_sub is None or selected_premium_bytes > current_premium_bytes
+        ):
+            premium_baseline_bytes = selected_premium_bytes
         premium_bonus_carry = int(getattr(current_active_sub, "premium_bonus_bytes", 0) or 0)
-        if promo_premium_traffic_bytes > 0:
+        if promo_premium_traffic_bytes > 0 or legacy_checkout_premium_bytes > 0:
             premium_overflow_to_cover = max(
                 0,
                 premium_used_bytes
@@ -442,20 +524,56 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             premium_topup_used_bytes,
             premium_bonus_carry,
         )
-        subscription_amount_for_pricing = max(0.0, float(payment_amount) - hwid_renewal_price)
+        subscription_bundle_amount = max(0.0, float(payment_amount) - hwid_renewal_price)
+        subscription_amount_for_pricing = subscription_bundle_amount
+        if checkout_grants.base_subscription_amount is not None:
+            snapshot_total = (
+                checkout_grants.base_subscription_amount + checkout_grants.addons_amount
+            )
+            if snapshot_total > 0:
+                subscription_amount_for_pricing = max(
+                    0.0,
+                    subscription_bundle_amount
+                    * checkout_grants.base_subscription_amount
+                    / snapshot_total,
+                )
         effective_monthly_price = subscription_amount_for_pricing / max(1, months_int)
         regular_bonus_carry = int(getattr(current_active_sub, "regular_bonus_bytes", 0) or 0)
         regular_unl_carry = bool(getattr(current_active_sub, "regular_unlimited_override", False))
         premium_unl_carry = bool(getattr(current_active_sub, "premium_unlimited_override", False))
-        traffic_limit_bytes = self._traffic_limit_for_period_tariff(
-            tariff,
-            topup_balance_bytes,
-            regular_bonus_carry,
+        traffic_limit_bytes = self._compute_main_traffic_limit_bytes(
+            tier_baseline_bytes=tier_baseline_bytes,
+            topup_balance_bytes=topup_balance_bytes,
+            regular_bonus_bytes=regular_bonus_carry,
             regular_unlimited_override=regular_unl_carry,
             traffic_used_bytes=0,
             hwid_device_bonus_bytes=hwid_traffic_bonus_bytes,
         )
         base_hwid_limit = self._base_hwid_limit_for_tariff(tariff)
+        checkout_devices_active_now = 0
+        checkout_device_bonus_bytes = self.gb_to_bytes(checkout_grants.device_traffic_bonus_gb)
+        checkout_device_bonus_active_now = 0
+        if checkout_grants.device_count > 0:
+            if current_active_sub is None or period_start_date <= activation_at:
+                checkout_devices_active_now = checkout_grants.device_count
+                checkout_device_bonus_active_now = checkout_device_bonus_bytes
+            elif checkout_grants.device_count > extra_hwid_devices:
+                checkout_devices_active_now = checkout_grants.device_count - extra_hwid_devices
+                checkout_device_bonus_active_now = max(
+                    0,
+                    checkout_device_bonus_bytes - hwid_traffic_bonus_bytes,
+                )
+        if checkout_devices_active_now:
+            extra_hwid_devices += checkout_devices_active_now
+            hwid_traffic_bonus_bytes += checkout_device_bonus_active_now
+            traffic_limit_bytes = self._compute_main_traffic_limit_bytes(
+                tier_baseline_bytes=tier_baseline_bytes,
+                topup_balance_bytes=topup_balance_bytes,
+                regular_bonus_bytes=regular_bonus_carry,
+                regular_unlimited_override=regular_unl_carry,
+                traffic_used_bytes=0,
+                hwid_device_bonus_bytes=hwid_traffic_bonus_bytes,
+            )
         effective_hwid_limit = self._effective_hwid_limit(base_hwid_limit, extra_hwid_devices)
         premium_is_limited = self._premium_access_should_be_limited(
             tariff,
@@ -589,6 +707,81 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                     hwid_renewal_valid_until,
                 )
 
+        if (
+            checkout_devices_active_now > 0
+            and current_active_sub is not None
+            and activation_at < period_start_date
+        ):
+            await tariff_dal.create_hwid_device_purchase(
+                session,
+                subscription_id=new_or_updated_sub.subscription_id,
+                payment_id=payment_db_id,
+                purchased_devices=checkout_devices_active_now,
+                traffic_bonus_bytes=checkout_device_bonus_active_now,
+                valid_from=activation_at,
+                valid_until=period_start_date,
+            )
+
+        if checkout_grants.device_count > 0:
+            await tariff_dal.create_hwid_device_purchase(
+                session,
+                subscription_id=new_or_updated_sub.subscription_id,
+                payment_id=payment_db_id,
+                purchased_devices=checkout_grants.device_count,
+                traffic_bonus_bytes=self.gb_to_bytes(checkout_grants.device_traffic_bonus_gb),
+                valid_from=period_start_date,
+                valid_until=final_end_date,
+            )
+
+        for kind, selected_bytes, monthly_amount, monthly_stars, immediate_applies in (
+            (
+                "traffic",
+                selected_tier_bytes,
+                checkout_grants.regular_monthly_amount,
+                checkout_grants.regular_monthly_stars,
+                checkout_grants.regular_immediate_applies,
+            ),
+            (
+                "premium_traffic",
+                selected_premium_bytes,
+                checkout_grants.premium_monthly_amount,
+                checkout_grants.premium_monthly_stars,
+                checkout_grants.premium_immediate_applies,
+            ),
+        ):
+            if selected_bytes is None or tariff is None:
+                continue
+            current_bytes = current_tier_bytes if kind == "traffic" else current_premium_bytes
+            if (
+                current_active_sub is not None
+                and (immediate_applies or selected_bytes > current_bytes)
+                and activation_at < period_start_date
+            ):
+                await tariff_dal.create_flexible_traffic_limit(
+                    session,
+                    subscription_id=new_or_updated_sub.subscription_id,
+                    payment_id=payment_db_id,
+                    kind=kind,
+                    tariff_key=tariff.key,
+                    limit_bytes=selected_bytes,
+                    valid_from=activation_at,
+                    valid_until=period_start_date,
+                    monthly_amount=monthly_amount,
+                    monthly_stars_amount=monthly_stars,
+                )
+            await tariff_dal.create_flexible_traffic_limit(
+                session,
+                subscription_id=new_or_updated_sub.subscription_id,
+                payment_id=payment_db_id,
+                kind=kind,
+                tariff_key=tariff.key,
+                limit_bytes=selected_bytes,
+                valid_from=period_start_date,
+                valid_until=final_end_date,
+                monthly_amount=monthly_amount,
+                monthly_stars_amount=monthly_stars,
+            )
+
         panel_update_payload = self._build_panel_update_payload(
             panel_user_uuid=panel_user_uuid,
             expire_at=final_end_date,
@@ -658,6 +851,22 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                 purchased_bytes=promo_premium_traffic_bytes,
                 kind="promo_premium_topup",
             )
+        if legacy_checkout_regular_bytes > 0:
+            await entitlement_helpers.record_traffic_topup_best_effort(
+                session,
+                subscription_id=new_or_updated_sub.subscription_id,
+                payment_id=payment_db_id,
+                purchased_bytes=legacy_checkout_regular_bytes,
+                kind="checkout_topup",
+            )
+        if legacy_checkout_premium_bytes > 0:
+            await entitlement_helpers.record_traffic_topup_best_effort(
+                session,
+                subscription_id=new_or_updated_sub.subscription_id,
+                payment_id=payment_db_id,
+                purchased_bytes=legacy_checkout_premium_bytes,
+                kind="checkout_premium_topup",
+            )
 
         final_subscription_url = updated_panel_user.get("subscriptionUrl")
         final_panel_short_uuid = updated_panel_user.get("shortUuid", panel_short_uuid)
@@ -689,4 +898,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             "hwid_devices_valid_until": hwid_devices_renewed_until or hwid_devices_valid_until,
             "hwid_devices_renewed_count": hwid_devices_renewed_count,
             "hwid_devices_renewed_until": hwid_devices_renewed_until,
+            "checkout_addon_devices": checkout_grants.device_count,
+            "checkout_addon_regular_limit_gb": checkout_grants.regular_limit_gb,
+            "checkout_addon_premium_limit_gb": checkout_grants.premium_limit_gb,
         }

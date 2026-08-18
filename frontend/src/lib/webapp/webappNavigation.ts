@@ -7,6 +7,7 @@ type NavigationDeps = {
   loadSupport: () => void;
   openConnectLink: () => void;
   partnerProgramEnabled: () => boolean;
+  referralProgramEnabled: () => boolean;
   setActiveTab: (tab: string) => void;
   setScreen: (screen: string) => void;
   supportEnabled: () => boolean;
@@ -22,6 +23,7 @@ export function createWebappNavigation({
   loadSupport,
   openConnectLink,
   partnerProgramEnabled,
+  referralProgramEnabled,
   setActiveTab,
   setScreen,
   supportEnabled,
@@ -49,7 +51,9 @@ export function createWebappNavigation({
   }
 
   function goInvite() {
+    if (!referralProgramEnabled()) return false;
     showSection("invite");
+    return true;
   }
 
   function goPartner() {

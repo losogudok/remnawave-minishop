@@ -16,6 +16,7 @@ const ADMIN_ERROR_KEYS: Record<string, string> = {
   backup_restore_failed: "error_backup_restore_failed",
   backup_upload_failed: "error_backup_upload_failed",
   bot_username_unavailable: "error_bot_username_unavailable",
+  broadcast_schedule_future: "broadcast_schedule_future",
   button_kind_invalid: "error_invalid_payload",
   button_label_required: "error_button_label_required",
   button_label_too_long: "error_button_label_too_long",

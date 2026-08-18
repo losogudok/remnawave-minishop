@@ -1,7 +1,8 @@
+import json
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,7 @@ from config.tariffs_config import (
     default_currency_key_for_settings,
     default_payment_currency_code_for_settings,
 )
+from db.dal import tariff_dal
 from db.models import Subscription
 
 from ._typing import SubscriptionServiceMixinContract
@@ -36,14 +38,16 @@ class SubscriptionRenewalQuote:
     sale_mode: str
     tariff_key: str | None
     hwid_quote: dict[str, Any] | None
+    checkout_bundle_snapshot: str | None = None
 
 
 def _renewal_idempotence_key(
     sub: Subscription,
     *,
+    provider: str,
     renewal_cycle_end: datetime | None,
 ) -> str:
-    """Build a YooKassa-safe key stable for one renewal cycle attempt.
+    """Build a provider-safe key stable for one renewal cycle attempt.
 
     ``renewal_cycle_end`` comes from the panel event when available.  That is
     deliberately preferred over the mutable local ``Subscription.end_date``:
@@ -63,16 +67,17 @@ def _renewal_idempotence_key(
         cycle_anchor = cycle_end.astimezone(UTC).date().isoformat()
     else:
         cycle_anchor = str(cycle_end or "missing")
-    source = "|".join(
-        (
-            "yookassa-auto-renew-v1",
-            str(getattr(sub, "subscription_id", "missing")),
-            cycle_anchor,
-        )
+    provider_key = str(provider or "").strip().lower()
+    source_prefix = (
+        "yookassa-auto-renew-v1" if provider_key == "yookassa" else f"{provider_key}-auto-renew-v1"
     )
-    # YooKassa limits Idempotence-Key to 64 characters.  The fixed prefix and
-    # UUID5 digest are 40 ASCII characters and retain no customer data.
-    return f"yk-auto-{uuid.uuid5(uuid.NAMESPACE_URL, source).hex}"
+    source = "|".join(
+        (source_prefix, str(getattr(sub, "subscription_id", "missing")), cycle_anchor)
+    )
+    # Every supported provider accepts at least 64 ASCII characters. Keep the
+    # historic YooKassa prefix stable for already-open cycles.
+    prefix = "yk-auto" if provider_key == "yookassa" else "renewal"
+    return f"{prefix}-{uuid.uuid5(uuid.NAMESPACE_URL, source).hex}"
 
 
 async def _emit_auto_renew_failure(
@@ -147,6 +152,7 @@ class RenewalMixin(SubscriptionServiceMixinContract):
         tariff_key = str(getattr(sub, "tariff_key", "") or "").strip() or None
         sale_mode = f"subscription@{tariff_key}" if tariff_key else "subscription"
         amount = None
+        tariff = None
         tariffs_config = (
             self._tariffs_config() if callable(getattr(self, "_tariffs_config", None)) else None
         )
@@ -165,6 +171,65 @@ class RenewalMixin(SubscriptionServiceMixinContract):
         if not amount:
             logger.error("Auto-renew price missing for %s months", months)
             return None
+
+        base_subscription_amount = float(amount)
+        checkout_bundle_snapshot = None
+        if tariff_key and tariff is not None:
+            at = sub.end_date - timedelta(microseconds=1)
+            flexible_records = await tariff_dal.get_active_flexible_traffic_limit_records(
+                session,
+                subscription_id=int(sub.subscription_id),
+                at=at,
+            )
+            items: list[dict[str, Any]] = []
+            addon_amount = 0.0
+            for kind, base_gb in (
+                ("traffic", float(tariff.monthly_gb or 0)),
+                ("premium_traffic", float(tariff.premium_monthly_gb or 0)),
+            ):
+                record = flexible_records.get(kind)
+                if record is None:
+                    continue
+                total_gb = float(record.limit_bytes or 0) / (1024**3)
+                future_amount = float(record.monthly_amount or 0) * months
+                addon_amount += future_amount
+                items.append(
+                    {
+                        "kind": kind,
+                        "base_units": base_gb,
+                        "extra_units": max(0.0, total_gb - base_gb),
+                        "total_units": total_gb,
+                        "amount": future_amount,
+                        "stars_amount": 0,
+                        "future_amount": future_amount,
+                        "future_stars_amount": 0,
+                        "immediate_amount": 0.0,
+                        "immediate_stars_amount": 0,
+                    }
+                )
+            if items:
+                amount = float(amount) + addon_amount
+                checkout_bundle_snapshot = json.dumps(
+                    {
+                        "version": 2,
+                        "tariff_key": tariff.key,
+                        "months": months,
+                        "currency": currency,
+                        "base_subscription_amount": base_subscription_amount,
+                        "base_subscription_stars": 0,
+                        "addons_amount": addon_amount,
+                        "addons_stars": 0,
+                        "items": items,
+                        "active_context": {
+                            "subscription_id": int(sub.subscription_id),
+                            "tariff_key": tariff.key,
+                            "end_at": sub.end_date.isoformat(),
+                        },
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
 
         hwid_quote = None
         quote_hwid_renewal = getattr(
@@ -213,6 +278,7 @@ class RenewalMixin(SubscriptionServiceMixinContract):
             sale_mode=sale_mode,
             tariff_key=tariff_key,
             hwid_quote=hwid_quote,
+            checkout_bundle_snapshot=checkout_bundle_snapshot,
         )
 
     async def charge_subscription_renewal(
@@ -302,6 +368,7 @@ class RenewalMixin(SubscriptionServiceMixinContract):
         sale_mode = quote.sale_mode
         amount = quote.amount
         hwid_quote = quote.hwid_quote
+        checkout_bundle_snapshot = quote.checkout_bundle_snapshot
         try:
             entitlement_context_snapshot = build_entitlement_context_snapshot(
                 sale_mode=sale_mode,
@@ -373,8 +440,10 @@ class RenewalMixin(SubscriptionServiceMixinContract):
                     metadata=metadata,
                     hwid_quote=hwid_quote,
                     entitlement_context_snapshot=entitlement_context_snapshot,
+                    checkout_bundle_snapshot=checkout_bundle_snapshot,
                     idempotence_key=_renewal_idempotence_key(
                         sub,
+                        provider=provider,
                         renewal_cycle_end=renewal_cycle_end,
                     ),
                     renewal_cycle_end=renewal_cycle_end or getattr(sub, "end_date", None),

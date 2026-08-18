@@ -10,9 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from bot.infra.auto_renew import auto_renew_user_lock_name
 from bot.infra.redis import redis_lock
-from bot.payment_providers.shared import RecurringChargeContext
-from bot.payment_providers.yookassa.auto_renew import YooKassaRecurringSnapshot
-from bot.payment_providers.yookassa.service import YooKassaService
+from bot.payment_providers.shared import RecurringChargeContext, RecurringRequestSnapshot
 from bot.services.subscription_service_impl.core import SubscriptionService
 from config.settings import Settings
 from db.dal import auto_renew_dal, subscription_dal, user_billing_dal
@@ -32,18 +30,16 @@ class AutoRenewRetryWorker:
         self,
         settings: Settings,
         session_factory: sessionmaker,
-        yookassa_service: YooKassaService,
         subscription_service: SubscriptionService,
     ) -> None:
         self.settings = settings
         self.session_factory = session_factory
-        self.yookassa_service = yookassa_service
         self.subscription_service = subscription_service
         self._stopped = asyncio.Event()
 
     async def run(self) -> None:
-        if not self.yookassa_service.recurring_active:
-            logger.info("Auto-renew retry worker disabled: YooKassa recurring is unavailable")
+        if not self._active_provider_keys():
+            logger.info("Auto-renew retry worker disabled: recurring providers are unavailable")
             return
         while not self._stopped.is_set():
             try:
@@ -152,7 +148,7 @@ class AutoRenewRetryWorker:
             payment_method = await user_billing_dal.get_user_default_payment_method(
                 session,
                 int(cycle.user_id),
-                provider="yookassa",
+                provider=str(cycle.provider),
             )
             if (
                 payment_method is None
@@ -200,9 +196,17 @@ class AutoRenewRetryWorker:
                 await session.commit()
                 return
 
-            snapshot = YooKassaRecurringSnapshot.from_json(str(cycle.request_snapshot))
+            provider = str(cycle.provider or "").strip().lower()
+            recurring_service = self.subscription_service.recurring_service_for(provider)
+            if recurring_service is None or not bool(
+                getattr(recurring_service, "recurring_active", False)
+            ):
+                await auto_renew_dal.stop_cycle(session, cycle_id, "provider_unavailable")
+                await session.commit()
+                return
+            snapshot = RecurringRequestSnapshot.from_json(str(cycle.request_snapshot))
             retry_kind = "financial" if str(cycle.state) == "financial_retry" else "transport"
-            result = await self.yookassa_service.charge_saved_payment_method(
+            result = await recurring_service.charge_saved_payment_method(
                 RecurringChargeContext(
                     session=session,
                     user_id=int(cycle.user_id),
@@ -216,6 +220,7 @@ class AutoRenewRetryWorker:
                     metadata=snapshot.metadata,
                     hwid_quote=snapshot.hwid_quote,
                     entitlement_context_snapshot=snapshot.entitlement_context_snapshot,
+                    checkout_bundle_snapshot=snapshot.checkout_bundle_snapshot,
                     idempotence_key=str(cycle.base_idempotence_key),
                     renewal_cycle_end=cycle.renewal_cycle_end,
                     consent_version=int(cycle.consent_version or 0),
@@ -244,7 +249,10 @@ class AutoRenewRetryWorker:
             return "subscription_inactive"
         if not bool(getattr(sub, "auto_renew_enabled", False)):
             return "consent_disabled"
-        if str(getattr(sub, "provider", "") or "").strip().lower() != "yookassa":
+        if (
+            str(getattr(sub, "provider", "") or "").strip().lower()
+            != str(getattr(cycle, "provider", "") or "").strip().lower()
+        ):
             return "provider_changed"
         if int(getattr(sub, "auto_renew_consent_version", 0) or 0) != int(
             getattr(cycle, "consent_version", 0) or 0
@@ -297,6 +305,7 @@ class AutoRenewRetryWorker:
         async with self.session_factory() as session:
             candidates = await auto_renew_dal.list_due_subscriptions(
                 session,
+                providers=self._active_provider_keys(),
                 hours_ahead=lead_hours,
                 limit=self._batch_size(),
             )
@@ -329,3 +338,13 @@ class AutoRenewRetryWorker:
                         renewal_cycle_end=sub.end_date,
                     )
                     await session.commit()
+
+    def _active_provider_keys(self) -> tuple[str, ...]:
+        services = getattr(self.subscription_service, "recurring_provider_services", {}) or {}
+        return tuple(
+            sorted(
+                str(provider).strip().lower()
+                for provider, service in services.items()
+                if str(provider).strip() and bool(getattr(service, "recurring_active", False))
+            )
+        )

@@ -25,6 +25,7 @@ class QueuedMessage:
     method_name: str  # 'send_message', 'edit_message_text', etc.
     kwargs: dict[str, Any]
     callback: Callable[[Any], Awaitable[None]] | None = None  # Optional callback for result
+    error_callback: Callable[[Exception], Awaitable[None]] | None = None
 
 
 class MessageQueue:
@@ -99,14 +100,17 @@ class MessageQueue:
                                 message.chat_id,
                                 retry_exc,
                             )
+                            await self._notify_failure(message, retry_exc)
                             continue
 
                     self.total_failed += 1
                     logger.error("Failed to send queued message to %s: %s", message.chat_id, exc)
+                    await self._notify_failure(message, exc)
 
-                except Exception:
+                except Exception as exc:
                     self.total_failed += 1
                     logger.exception("Failed to send queued message to %s.", message.chat_id)
+                    await self._notify_failure(message, exc)
 
         finally:
             self.is_processing = False
@@ -168,7 +172,16 @@ class MessageQueue:
             method_name=message.method_name,
             kwargs=fallback_kwargs,
             callback=message.callback,
+            error_callback=message.error_callback,
         )
+
+    async def _notify_failure(self, message: QueuedMessage, exc: Exception) -> None:
+        if message.error_callback is None:
+            return
+        try:
+            await message.error_callback(exc)
+        except Exception:
+            logger.exception("Queued message failure callback failed for %s.", message.chat_id)
 
     async def _send_message(self, message: QueuedMessage) -> Any:
         """Send a single message - to be implemented by subclass"""
@@ -217,10 +230,23 @@ class MessageQueueManager:
         """Check if chat_id belongs to a group or channel"""
         return str(chat_id).startswith("-100")
 
-    async def send_message(self, chat_id: int, **kwargs: Any) -> None:
+    async def send_message(
+        self,
+        chat_id: int,
+        *,
+        callback: Callable[[Any], Awaitable[None]] | None = None,
+        error_callback: Callable[[Exception], Awaitable[None]] | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Queue a send_message call"""
         queue = self.group_queue if self._is_group_chat(chat_id) else self.user_queue
-        message = QueuedMessage(chat_id=chat_id, method_name="send_message", kwargs=kwargs)
+        message = QueuedMessage(
+            chat_id=chat_id,
+            method_name="send_message",
+            kwargs=kwargs,
+            callback=callback,
+            error_callback=error_callback,
+        )
         await queue.add_message(message)
 
     async def edit_message_text(self, chat_id: int, **kwargs: Any) -> None:

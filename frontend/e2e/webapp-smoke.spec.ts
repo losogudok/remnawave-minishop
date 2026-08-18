@@ -878,6 +878,86 @@ test("device traffic bonuses stay legible on mobile", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("Telegram fullscreen fallback protects webapp actions and admin chrome", async ({ page }) => {
+  await page.setViewportSize(MOBILE_VIEWPORT);
+  await page.addInitScript(() => {
+    Object.assign(window, {
+      Telegram: {
+        WebApp: {
+          expand() {},
+          initData: "",
+          isFullscreen: true,
+          offEvent() {},
+          onEvent() {},
+          platform: "ios",
+          ready() {},
+        },
+      },
+    });
+  });
+  await page.goto(APP_URL);
+  const applyTelegramFullscreenInsets = () => {
+    const style = document.documentElement.style;
+    style.setProperty("--tg-content-safe-area-inset-top", "0px");
+    style.setProperty("--tg-content-safe-area-inset-bottom", "34px");
+  };
+  await page.evaluate(applyTelegramFullscreenInsets);
+  await expect(page.locator("html")).toHaveAttribute("data-telegram-fullscreen", "true");
+
+  const phoneScreen = page.locator(".phone-screen");
+  const bottomNav = page.locator("nav.bottom-nav");
+  const renewalAction = webappAction(page, "open-payment");
+  await expect(bottomNav).toBeVisible();
+  await expect(renewalAction).toBeVisible();
+
+  const homeInsets = await phoneScreen.evaluate((element) => {
+    const phoneStyle = window.getComputedStyle(element);
+    const homeStyle = window.getComputedStyle(document.querySelector(".home-layout")!);
+    const navStyle = window.getComputedStyle(document.querySelector("nav.bottom-nav")!);
+    return {
+      top: Number.parseFloat(phoneStyle.paddingTop),
+      bottom: Number.parseFloat(phoneStyle.paddingBottom),
+      homeClearance: Number.parseFloat(homeStyle.paddingBottom),
+      navBottom: Number.parseFloat(navStyle.bottom),
+    };
+  });
+  expect(homeInsets.top).toBeLessThan(96);
+  expect(homeInsets.bottom).toBeGreaterThanOrEqual(34);
+  expect(homeInsets.homeClearance).toBeGreaterThanOrEqual(110);
+  expect(homeInsets.navBottom).toBeGreaterThanOrEqual(34);
+
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect
+    .poll(async () => {
+      const actionBox = await renewalAction.boundingBox();
+      const navBox = await bottomNav.boundingBox();
+      if (!actionBox || !navBox) return -1;
+      return navBox.y - (actionBox.y + actionBox.height);
+    })
+    .toBeGreaterThanOrEqual(20);
+
+  await bottomNav.getByRole("button", { name: "Настройки", exact: true }).click();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(page).toHaveURL(/\/demo\/runtime\/settings/);
+  const appHeader = page.locator(".phone-screen > .app-header");
+  await expect(appHeader).toBeVisible();
+  const customerHeaderTop = await appHeader.evaluate(
+    (element) => element.getBoundingClientRect().top
+  );
+  expect(customerHeaderTop).toBeGreaterThanOrEqual(96);
+
+  await page.goto("/demo/runtime/admin/stats?theme_preview=dark");
+  await page.evaluate(applyTelegramFullscreenInsets);
+  const adminHeader = page.locator(".admin-header");
+  await expect(adminHeader).toBeVisible();
+  const adminGeometry = await page.locator(".admin-screen-wrap").evaluate((element) => ({
+    paddingTop: Number.parseFloat(window.getComputedStyle(element).paddingTop),
+    headerTop: document.querySelector(".admin-header")!.getBoundingClientRect().top,
+  }));
+  expect(adminGeometry.paddingTop).toBeGreaterThanOrEqual(96);
+  expect(adminGeometry.headerTop).toBeGreaterThanOrEqual(96);
+});
+
 test("partner operations open their linked payment card", async ({ page }) => {
   await page.setViewportSize(DESKTOP_VIEWPORT);
   await page.goto(
@@ -969,13 +1049,39 @@ test("partner dashboard converts referrals when the referral system is disabled"
   await expect(banner).toContainText("Все доступные рефералы уже являются клиентами");
 });
 
-test("disabled referral mode hides referral controls without hiding promo codes", async ({
-  page,
-}) => {
+test("program entries follow the enabled feature combination", async ({ page }) => {
   await page.goto("/demo/runtime/invite?mock=partner-referral-disabled&theme_preview=dark");
 
-  await expect(page.locator(".referral-program-shell")).toBeHidden();
+  let bottomNav = page.locator(".bottom-nav");
+  const partnerNavEntry = bottomNav.getByRole("button", { name: "Партнёрка", exact: true });
+  await expect(partnerNavEntry).toBeVisible();
+  await expect(bottomNav.getByRole("button", { name: "Бонусы", exact: true })).toHaveCount(0);
+  await expect(partnerNavEntry.locator("svg path").first()).toHaveAttribute(
+    "d",
+    "m11 17 2 2a1 1 0 1 0 3-3"
+  );
+  await expect(page.locator(".referral-program-shell")).toHaveCount(0);
+  await expect(page.locator(".promo-code-input")).toHaveCount(0);
+
+  await bottomNav.getByRole("button", { name: "Настройки", exact: true }).click();
   await expect(page.locator(".promo-code-input")).toBeEditable();
+  await expect(page.locator('[data-webapp-action="open-partner-program"]')).toHaveCount(0);
+
+  await page.goto("/demo/runtime/settings?mock=partner-referral-enabled&theme_preview=dark");
+
+  bottomNav = page.locator(".bottom-nav");
+  await expect(bottomNav.getByRole("button", { name: "Бонусы", exact: true })).toBeVisible();
+  await expect(bottomNav.getByRole("button", { name: "Партнёрка", exact: true })).toHaveCount(0);
+  await expect(page.locator(".promo-code-input")).toHaveCount(0);
+  const partnerSettingsEntry = page.locator('[data-webapp-action="open-partner-program"]');
+  await expect(partnerSettingsEntry).toBeVisible();
+  await expect(partnerSettingsEntry.locator("svg path").first()).toHaveAttribute(
+    "d",
+    "m11 17 2 2a1 1 0 1 0 3-3"
+  );
+
+  await partnerSettingsEntry.click();
+  await expect(page).toHaveURL(/\/demo\/runtime\/partner\?/);
 });
 
 test("partner encryption diagnostic explains safe initial key setup", async ({ page }) => {
@@ -1299,6 +1405,57 @@ test("partner loading and empty chart states preserve their final geometry", asy
   await expect(page.locator(".admin-revenue-chart .admin-revenue-chart-body")).toHaveCount(0);
 });
 
+test("admin charts reveal on entry, morph between ranges, and respect reduced motion", async ({
+  page,
+}) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto("/demo/runtime/admin/stats?theme_preview=dark");
+
+  const revenueChart = page.locator(".admin-revenue-chart-body");
+  await expect(revenueChart).toHaveAttribute("data-chart-motion", "reveal");
+  await revenueChart.locator(".u-over").hover();
+  await expect(revenueChart).toHaveAttribute("data-chart-motion", "idle", { timeout: 2_000 });
+  await expect(revenueChart.locator(".admin-chart-tooltip.is-visible")).toBeVisible();
+
+  await page.getByRole("tab", { name: "30 дн.", exact: true }).click();
+  await expect(revenueChart).toHaveAttribute("data-chart-motion", "morph");
+  const chartGeometryFrames = [];
+  for (let frame = 0; frame < 12; frame += 1) {
+    chartGeometryFrames.push(
+      await revenueChart.evaluate((element) => {
+        const over = element.querySelector<HTMLElement>(".u-over")?.getBoundingClientRect();
+        const axes = element.querySelectorAll<HTMLElement>(".u-axis");
+        return {
+          height: over?.height ?? 0,
+          left: over?.left ?? 0,
+          top: over?.top ?? 0,
+          width: over?.width ?? 0,
+          xTop: axes[0]?.getBoundingClientRect().top ?? 0,
+          yLeft: axes[1]?.getBoundingClientRect().left ?? 0,
+        };
+      })
+    );
+    await page.waitForTimeout(20);
+  }
+  for (const key of ["height", "left", "top", "width", "xTop", "yLeft"] as const) {
+    const values = chartGeometryFrames.map((frame) => frame[key]);
+    expect(Math.max(...values) - Math.min(...values)).toBeLessThanOrEqual(0.5);
+  }
+  await expect(revenueChart).toHaveAttribute("data-chart-motion", "idle", { timeout: 2_000 });
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.reload();
+  await expect(page.locator(".admin-revenue-chart-body")).toHaveAttribute(
+    "data-chart-motion",
+    "idle"
+  );
+  await page.getByRole("tab", { name: "90 дн.", exact: true }).click();
+  await expect(page.locator(".admin-revenue-chart-body")).toHaveAttribute(
+    "data-chart-motion",
+    "idle"
+  );
+});
+
 test("partner dashboard tables stay compact, sortable, and show six rows", async ({ page }) => {
   await page.setViewportSize(DESKTOP_VIEWPORT);
   await page.goto(
@@ -1395,6 +1552,9 @@ test("broadcast promo picker fills its mobile editor row", async ({ page }) => {
         width: bounds.width,
       };
     });
+  await expect
+    .poll(async () => Math.abs((await rect(menu)).width - (await rect(combo)).width))
+    .toBeLessThanOrEqual(1);
   const [kindRect, comboRect, inputRect, triggerRect, menuRect] = await Promise.all([
     rect(kindSelect),
     rect(combo),
@@ -1410,6 +1570,128 @@ test("broadcast promo picker fills its mobile editor row", async ({ page }) => {
   expect(triggerRect.right).toBeLessThanOrEqual(inputRect.right);
   expect(triggerRect.top).toBeGreaterThanOrEqual(inputRect.top);
   expect(triggerRect.bottom).toBeLessThanOrEqual(inputRect.bottom);
+});
+
+test("message button editor offers the partner program screen", async ({ page }) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto("/demo/runtime/admin/broadcast?theme_preview=dark");
+
+  await page.getByRole("button", { name: "Добавить кнопку", exact: true }).click();
+  const row = page.locator(".admin-row-editor-broadcast").first();
+  await row.getByRole("button", { name: "Кнопки", exact: true }).click();
+  await page.getByRole("option", { name: "Экран веб-приложения", exact: true }).click();
+
+  const sectionSelect = row.getByRole("button", { name: "Выберите экран", exact: true });
+  await sectionSelect.click();
+  await page.getByRole("option", { name: "Партнёрская программа", exact: true }).click();
+
+  await expect(sectionSelect).toContainText("Партнёрская программа");
+});
+
+test("checkout sliders keep price animations bounded and defer quotes while dragging", async ({
+  page,
+}) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  let quoteRequests = 0;
+  page.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith("/api/subscription/quote")) quoteRequests += 1;
+  });
+
+  await page.goto("/demo/runtime/home?mock=checkout-addons");
+  await expect(page.locator("nav.bottom-nav")).toBeVisible();
+  const paymentOpened = await clickFirstVisibleEnabled(webappAction(page, "open-payment"));
+  expect(paymentOpened).toBe(true);
+
+  const dialog = page.locator(".dialog-card.webapp-payment-dialog");
+  await expect(dialog).toBeVisible();
+  const tariffRows = dialog.locator(".tariff-row");
+  if ((await tariffRows.count()) > 0) {
+    await tariffRows.first().click();
+    const nextButton = dialog.locator(".payment-submit-button").first();
+    if (!(await nextButton.isDisabled())) await nextButton.click();
+  }
+
+  await expect(dialog.locator(".dialog-head h2")).toHaveCount(0);
+  await expect(dialog.locator(".dialog-head .subscription-purchase-description")).toBeVisible();
+  await expect(
+    dialog.locator(".payment-dialog-body > .subscription-purchase-description")
+  ).toHaveCount(0);
+  const dialogInsets = await dialog.evaluate((element) => {
+    const dialogRect = element.getBoundingClientRect();
+    const headerRect = element.querySelector(".dialog-head")!.getBoundingClientRect();
+    const closeRect = element.querySelector(".dialog-close-button")!.getBoundingClientRect();
+    return {
+      headerLeft: headerRect.left - dialogRect.left,
+      headerRight: dialogRect.right - headerRect.right,
+      closeTop: closeRect.top - dialogRect.top,
+      closeRight: dialogRect.right - closeRect.right,
+    };
+  });
+  expect(Math.abs(dialogInsets.headerLeft - dialogInsets.headerRight)).toBeLessThanOrEqual(1);
+  expect(Math.abs(dialogInsets.closeTop - dialogInsets.closeRight)).toBeLessThanOrEqual(1);
+
+  const summary = dialog.locator(".checkout-tariff-summary-button");
+  await expect(summary).toBeVisible();
+  await summary.click();
+
+  const slider = dialog.locator(".checkout-slider").first();
+  const priceFlows = dialog.locator("number-flow-svelte");
+  await expect(slider).toBeVisible();
+  await expect(priceFlows.first()).toBeVisible();
+  await page.waitForTimeout(1_050);
+
+  const sliderBox = await slider.boundingBox();
+  expect(sliderBox, "checkout slider must have a draggable box").not.toBeNull();
+  if (!sliderBox) return;
+
+  const quoteRequestsBeforeDrag = quoteRequests;
+  const sliderY = sliderBox.y + sliderBox.height / 2;
+  await page.mouse.move(sliderBox.x + sliderBox.width * 0.15, sliderY);
+  await page.mouse.down();
+  const readAnimationState = () =>
+    priceFlows.evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const flow = node as HTMLElement & { animated?: boolean };
+        return {
+          animated: flow.animated,
+          running:
+            flow.shadowRoot
+              ?.getAnimations()
+              .filter((animation) => animation.playState === "running").length ?? 0,
+        };
+      })
+    );
+
+  await page.mouse.move(sliderBox.x + sliderBox.width * 0.85, sliderY, { steps: 3 });
+  await page.waitForTimeout(60);
+  const initialAnimationState = await readAnimationState();
+  for (let cycle = 0; cycle < 4; cycle += 1) {
+    await page.mouse.move(sliderBox.x + sliderBox.width * 0.15, sliderY, { steps: 3 });
+    await page.waitForTimeout(110);
+    await page.mouse.move(sliderBox.x + sliderBox.width * 0.85, sliderY, { steps: 3 });
+    await page.waitForTimeout(110);
+  }
+
+  const finalAnimationState = await readAnimationState();
+  const runningAnimations = (states: { running: number }[]) =>
+    states.reduce((total, { running }) => total + running, 0);
+  expect(finalAnimationState.length).toBeGreaterThan(0);
+  expect(
+    finalAnimationState.every(({ animated }) => animated !== false),
+    JSON.stringify(finalAnimationState)
+  ).toBe(true);
+  expect(runningAnimations(initialAnimationState)).toBeGreaterThan(0);
+  expect(runningAnimations(finalAnimationState)).toBeGreaterThan(0);
+  expect(runningAnimations(finalAnimationState)).toBeLessThanOrEqual(
+    runningAnimations(initialAnimationState) * 2
+  );
+  expect(quoteRequests).toBe(quoteRequestsBeforeDrag);
+
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  expect(quoteRequests).toBeLessThanOrEqual(quoteRequestsBeforeDrag + 1);
+  await closeDialog(dialog);
 });
 
 test("webapp and admin sections, dialogs, tabs stay interactive without console errors", async ({
@@ -1673,7 +1955,7 @@ test("webapp and admin sections, dialogs, tabs stay interactive without console 
   await exerciseDialogTabs(tariffDialog, 5, setPhase, "admin-tariffs:edit-tabs");
 
   setPhase("admin-tariffs:edit-save");
-  await tariffDialog.getByRole("tab").nth(0).click();
+  await tariffDialog.getByRole("tab").nth(2).click();
   await tariffDialog.locator('input[placeholder="100"]:visible').fill("750");
   await tariffDialog.getByRole("tab").nth(1).click();
   await tariffDialog.locator('input[placeholder="299"]:visible').first().fill("250");

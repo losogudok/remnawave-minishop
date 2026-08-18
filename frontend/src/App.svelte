@@ -364,6 +364,7 @@
   const partnerProgramEnabled = $derived(
     shellView.appDataView.partnerProgramEnabled || query.has("partner_scenario")
   );
+  const referralProgramEnabled = $derived(shellView.appDataView.referralProgramEnabled);
   const plans = $derived(shellView.appDataView.plans);
   const subscription = $derived(shellView.appDataView.subscription);
   const supportEnabled = $derived(shellView.appDataView.supportEnabled);
@@ -480,6 +481,7 @@
     getFallbackAdminSection: initialAdminSectionFromLocation,
     getIsAdmin: () => isAdmin,
     getPartnerProgramEnabled: () => partnerProgramEnabled,
+    getReferralProgramEnabled: () => referralProgramEnabled,
     getSupportEnabled: () => supportEnabled,
     isDocsDemo,
     loadDevices: () => {
@@ -563,6 +565,7 @@
       adminRuntime.cancelAdminAssetsPrefetch();
       syncBodyScrollLock(false);
       adminRuntime.destroyAdminMount();
+      telegramRuntime.destroy();
     };
   });
 

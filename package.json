@@ -6,10 +6,12 @@
   "scripts": {
     "build:webapp": "npm --prefix frontend run build:webapp",
     "build:docs": "npm --prefix docs-site run build",
+    "generate:readme-screenshot": "npm --prefix frontend run generate:readme-screenshot",
     "dev:docs": "npm --prefix docs-site run dev",
     "preview:docs": "npm --prefix docs-site run preview",
     "sync:docs": "npm --prefix docs-site run sync:docs",
     "check:docs": "npm --prefix docs-site run check:openapi-sync",
+    "check:lockfiles": "node scripts/check_npm_lockfiles.mjs",
     "lint:py": "python -m ruff check .",
     "lint:js": "npm --prefix frontend run lint && npm --prefix frontend run check:svelte",
     "lint": "npm run lint:py && npm run lint:js",
@@ -41,7 +43,7 @@
     "check:backend": "python scripts/check_architecture.py && npm test && npm run lint:py && npm run format:check:py && npm run typecheck:py",
     "check:e2e": "npm --prefix frontend run test:e2e",
     "check:frontend": "npm --prefix frontend run check && npm --prefix frontend run test && npm --prefix frontend run build && npm run check:e2e",
-    "check:quick": "npm run lint && npm test && npm run build:webapp",
-    "check": "npm run check:docs && npm run check:backend && npm run check:frontend"
+    "check:quick": "npm run check:lockfiles && npm run lint && npm test && npm run build:webapp",
+    "check": "npm run check:lockfiles && npm run check:docs && npm run check:backend && npm run check:frontend"
   }
 }

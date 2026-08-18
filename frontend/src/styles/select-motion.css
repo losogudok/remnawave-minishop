@@ -1,0 +1,64 @@
+:where([data-select-content], [data-combobox-content]) {
+  --ui-select-motion-x: 0px;
+  --ui-select-motion-y: 0px;
+  transform-origin: var(--bits-floating-transform-origin);
+  will-change: opacity, transform;
+}
+
+:where([data-select-content], [data-combobox-content])[data-side="bottom"] {
+  --ui-select-motion-y: -6px;
+}
+
+:where([data-select-content], [data-combobox-content])[data-side="top"] {
+  --ui-select-motion-y: 6px;
+}
+
+:where([data-select-content], [data-combobox-content])[data-side="left"] {
+  --ui-select-motion-x: 6px;
+}
+
+:where([data-select-content], [data-combobox-content])[data-side="right"] {
+  --ui-select-motion-x: -6px;
+}
+
+[data-select-content][data-state="open"],
+[data-combobox-content][data-state="open"] {
+  animation: ui-select-content-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+[data-select-content][data-state="closed"],
+[data-combobox-content][data-state="closed"] {
+  pointer-events: none;
+  animation: ui-select-content-out 0.13s ease-in both;
+}
+
+@keyframes ui-select-content-in {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--ui-select-motion-x), var(--ui-select-motion-y), 0) scale(0.975);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes ui-select-content-out {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate3d(var(--ui-select-motion-x), var(--ui-select-motion-y), 0) scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-select-content][data-state],
+  [data-combobox-content][data-state] {
+    animation-duration: 0.01ms;
+  }
+}

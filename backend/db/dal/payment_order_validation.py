@@ -55,6 +55,8 @@ def validate_existing_provider_payment_order(
     hwid_full_price: float | None,
     hwid_traffic_bonus_bytes: int | None,
     entitlement_context_snapshot: str | None,
+    checkout_bundle_snapshot: str | None,
+    checkout_bundle_hash: str | None,
 ) -> None:
     """Ensure a provider id cannot be rebound to a different entitlement."""
     comparisons = {
@@ -118,6 +120,14 @@ def validate_existing_provider_payment_order(
         "entitlement_context_snapshot": (
             getattr(payment, "entitlement_context_snapshot", None),
             entitlement_context_snapshot,
+        ),
+        "checkout_bundle_snapshot": (
+            getattr(payment, "checkout_bundle_snapshot", None),
+            checkout_bundle_snapshot,
+        ),
+        "checkout_bundle_hash": (
+            getattr(payment, "checkout_bundle_hash", None),
+            checkout_bundle_hash,
         ),
     }
     mismatched = [field for field, (stored, expected) in comparisons.items() if stored != expected]

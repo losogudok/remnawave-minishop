@@ -4,6 +4,7 @@ import {
   buildPaymentsPath,
   buildPlansViewedPath,
   buildSubscriptionPromoQuotePath,
+  buildSubscriptionQuotePath,
   buildSubscriptionAutoRenewPath,
   buildSubscriptionReissuePath,
   buildTariffChangeOptionsPath,
@@ -27,17 +28,22 @@ import type {
   PromoQuoteResponse,
   SubscriptionAutoRenewResponse,
   SubscriptionReissueResponse,
+  SubscriptionQuoteResponse,
   TariffChangeOptionsResponse,
   TariffChangePaymentResponse,
   TariffChangeResponse,
   TariffTopupOptionsResponse,
 } from "./publicApi";
+import type { CheckoutAddonSelection } from "./tariffs";
 
 type BillingApi = ApiClient["api"];
 type BillingPlan = WebappBillingPlan;
 type BillingAction = WebappBillingAction;
 type BillingTarget = WebappBillingTarget;
-export type PartnerBalancePaymentOptions = { usePartnerBalance?: boolean };
+export type PartnerBalancePaymentOptions = {
+  usePartnerBalance?: boolean;
+  checkoutAddons?: CheckoutAddonSelection;
+};
 
 export type BillingActions = {
   fetchTopupOptions(kind: string): Promise<TariffTopupOptionsResponse>;
@@ -47,6 +53,9 @@ export type BillingActions = {
   postPayment(body: PostPayload<"/api/payments">): Promise<PaymentCreateResponse>;
   fetchPaymentStatus(paymentId: string | number): Promise<PaymentStatusResponse>;
   quotePromo(body: PostPayload<"/api/subscription/quote-promo">): Promise<PromoQuoteResponse>;
+  quoteSubscription(
+    body: PostPayload<"/api/subscription/quote">
+  ): Promise<SubscriptionQuoteResponse>;
   postTariffChange(body: PostPayload<"/api/tariffs/change">): Promise<TariffChangeResponse>;
   postTariffChangePayment(
     body: PostPayload<"/api/tariffs/change-payment">
@@ -60,6 +69,7 @@ export type BillingActions = {
       renewHwidDevices?: boolean;
       promoCode?: string | null;
       usePartnerBalance?: boolean;
+      checkoutAddons?: CheckoutAddonSelection;
     }
   ): PostPayload<"/api/payments">;
   topupPaymentBody(
@@ -117,6 +127,12 @@ export function createBillingActions({ api }: { api: BillingApi }): BillingActio
     return api(buildSubscriptionPromoQuotePath(), { method: "POST", body: JSON.stringify(body) });
   }
 
+  async function quoteSubscription(
+    body: PostPayload<"/api/subscription/quote">
+  ): Promise<SubscriptionQuoteResponse> {
+    return api(buildSubscriptionQuotePath(), { method: "POST", body: JSON.stringify(body) });
+  }
+
   async function postTariffChange(
     body: PostPayload<"/api/tariffs/change">
   ): Promise<TariffChangeResponse> {
@@ -156,19 +172,24 @@ export function createBillingActions({ api }: { api: BillingApi }): BillingActio
       renewHwidDevices?: boolean;
       promoCode?: string | null;
       usePartnerBalance?: boolean;
+      checkoutAddons?: CheckoutAddonSelection;
     } = {}
   ): PostPayload<"/api/payments"> {
+    const hasDeviceCheckoutAddon = Number(options.checkoutAddons?.device_count || 0) > 0;
     const body: WebappRecord = {
       months: plan.months,
       traffic_gb: plan.traffic_gb,
       device_count: plan.device_count,
-      renew_hwid_devices: Boolean(options.renewHwidDevices),
+      renew_hwid_devices: Boolean(options.renewHwidDevices) && !hasDeviceCheckoutAddon,
       use_partner_balance: Boolean(options.usePartnerBalance),
       method,
     };
     setOptionalString(body, "tariff_key", plan.tariff_key);
     setOptionalString(body, "sale_mode", plan.sale_mode);
     setOptionalString(body, "promo_code", options.promoCode);
+    if (options.checkoutAddons) {
+      body.checkout_addons = options.checkoutAddons;
+    }
     return body as PostPayload<"/api/payments">;
   }
 
@@ -247,6 +268,7 @@ export function createBillingActions({ api }: { api: BillingApi }): BillingActio
     notifyPlansViewed,
     postPayment,
     quotePromo,
+    quoteSubscription,
     fetchPaymentStatus,
     postTariffChange,
     postTariffChangePayment,

@@ -99,6 +99,9 @@ describe("tariffSettings", () => {
       "Platega SBP/card"
     );
     expect(
+      providerSettingsPath({ provider_key: "platega_card" } as ProviderCurrencySupport)
+    ).toEqual(["payments", "platega", "card"]);
+    expect(
       providerSettingsPath({ provider_key: "platega_crypto" } as ProviderCurrencySupport)
     ).toEqual(["payments", "platega", "crypto"]);
     expect(

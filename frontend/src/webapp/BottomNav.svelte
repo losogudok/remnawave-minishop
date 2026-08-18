@@ -1,12 +1,12 @@
 <script lang="ts">
   import {
     Gift,
+    Handshake,
     Home,
     LifeBuoy,
     Settings as SettingsIcon,
     Shield,
     Smartphone,
-    WalletCards,
   } from "$components/ui/icons.js";
   import { AttentionDot } from "$components/ui/index.js";
 
@@ -19,6 +19,7 @@
     activeTab?: string;
     brand?: Record<string, unknown>;
     brandTitle?: string;
+    bonusesNavigationVisible?: boolean;
     devicesEnabled?: boolean;
     hasUnlinkedIdentity?: boolean;
     isAdmin?: boolean;
@@ -27,7 +28,7 @@
     onHome?: Action;
     onInvite?: Action;
     onPartner?: Action;
-    partnerEnabled?: boolean;
+    partnerNavigationVisible?: boolean;
     onSettings?: Action;
     onSupport?: Action;
     supportEnabled?: boolean;
@@ -41,6 +42,7 @@
     activeTab = "home",
     brand = {},
     brandTitle = "",
+    bonusesNavigationVisible = true,
     devicesEnabled = false,
     supportEnabled = true,
     supportUnreadCount = 0,
@@ -53,14 +55,18 @@
     onHome = () => {},
     onInvite = () => {},
     onPartner = () => {},
-    partnerEnabled = false,
+    partnerNavigationVisible = false,
     onSupport = () => {},
     onSettings = () => {},
     t = (key) => key,
   }: Props = $props();
 
   const visibleNavItems = $derived(
-    3 + (partnerEnabled ? 1 : 0) + (devicesEnabled ? 1 : 0) + (supportEnabled ? 1 : 0)
+    2 +
+      (bonusesNavigationVisible ? 1 : 0) +
+      (partnerNavigationVisible ? 1 : 0) +
+      (devicesEnabled ? 1 : 0) +
+      (supportEnabled ? 1 : 0)
   );
   const adminLabel = $derived(t("wa_nav_admin", {}, "Admin panel"));
 </script>
@@ -86,17 +92,19 @@
     <Home size={21} />
     <span class="bottom-nav-label">{t("wa_nav_home")}</span>
   </button>
-  <button
-    class:active={activeTab === "invite"}
-    type="button"
-    aria-label={t("wa_nav_bonuses")}
-    title={t("wa_nav_bonuses")}
-    onclick={onInvite}
-  >
-    <Gift size={21} />
-    <span class="bottom-nav-label">{t("wa_nav_bonuses")}</span>
-  </button>
-  {#if partnerEnabled}
+  {#if bonusesNavigationVisible}
+    <button
+      class:active={activeTab === "invite"}
+      type="button"
+      aria-label={t("wa_nav_bonuses")}
+      title={t("wa_nav_bonuses")}
+      onclick={onInvite}
+    >
+      <Gift size={21} />
+      <span class="bottom-nav-label">{t("wa_nav_bonuses")}</span>
+    </button>
+  {/if}
+  {#if partnerNavigationVisible}
     <button
       class:active={activeTab === "partner"}
       type="button"
@@ -104,7 +112,7 @@
       title={t("wa_nav_partner")}
       onclick={onPartner}
     >
-      <WalletCards size={21} />
+      <Handshake size={21} />
       <span class="bottom-nav-label">{t("wa_nav_partner")}</span>
     </button>
   {/if}

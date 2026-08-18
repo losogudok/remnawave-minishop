@@ -12,6 +12,7 @@ from bot.payment_providers.shared.checkout_expiration import resolve_checkout_ex
 from bot.payment_providers.shared.reconciliation import (
     _inspect_provider_payment,
     refresh_hosted_payment_status,
+    supersede_earlier_pending_hosted_checkouts,
 )
 from db.dal import payment_checkout_dal, payment_dal, payment_reconciliation_dal
 
@@ -20,13 +21,131 @@ def _payment(provider: str, *, provider_payment_id: str = "provider-1") -> Simpl
     return SimpleNamespace(
         payment_id=17,
         user_id=42,
+        amount=199.0,
+        currency="RUB",
         provider=provider,
         provider_payment_id=provider_payment_id,
         yookassa_payment_id=None,
         status=f"pending_{provider}",
+        sale_mode="subscription@standard",
+        subscription_duration_months=1,
         checkout_expires_at=None,
         created_at=datetime.now(UTC),
     )
+
+
+def test_confirmed_platega_success_is_finalized_after_monetary_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payment = _payment("platega")
+    succeeded_payment = SimpleNamespace(**{**vars(payment), "status": "succeeded"})
+    service = SimpleNamespace(
+        bot=object(),
+        settings=SimpleNamespace(traffic_sale_mode=False),
+        i18n=object(),
+        subscription_service=object(),
+        referral_service=object(),
+        get_transaction=AsyncMock(
+            return_value=(
+                True,
+                {
+                    "id": "provider-1",
+                    "payload": json.dumps({"payment_db_id": "17"}),
+                    "status": "CONFIRMED",
+                    "amount": 199.0,
+                    "currency": "RUB",
+                },
+            )
+        ),
+    )
+    claim = AsyncMock(return_value=payment)
+    finalize = AsyncMock(return_value=SimpleNamespace())
+    reload_payment = AsyncMock(return_value=succeeded_payment)
+    mark_checked = AsyncMock()
+    monkeypatch.setattr(payment_dal, "claim_payment_finalization", claim)
+    monkeypatch.setattr(payment_dal, "get_payment_by_db_id", reload_payment)
+    monkeypatch.setattr(
+        "bot.payment_providers.shared.reconciliation.finalize_successful_payment",
+        finalize,
+    )
+    monkeypatch.setattr(
+        payment_reconciliation_dal,
+        "mark_provider_payment_checked",
+        mark_checked,
+    )
+    session = SimpleNamespace()
+
+    result = asyncio.run(refresh_hosted_payment_status(session, payment, service))
+
+    assert result.status == "succeeded"
+    claim.assert_awaited_once_with(session, 17, provider_payment_id="provider-1")
+    finalize_call = finalize.await_args
+    assert finalize_call is not None
+    success_request = finalize_call.args[0]
+    assert success_request.payment is payment
+    assert success_request.provider_subscription == "platega"
+    assert success_request.sale_mode == "subscription@standard"
+    assert success_request.months == 1
+    mark_checked.assert_not_awaited()
+
+
+def test_success_with_mismatched_amount_is_not_finalized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payment = _payment("platega")
+    service = SimpleNamespace(
+        get_transaction=AsyncMock(
+            return_value=(
+                True,
+                {
+                    "id": "provider-1",
+                    "payload": json.dumps({"payment_db_id": "17"}),
+                    "status": "CONFIRMED",
+                    "amount": 1.0,
+                    "currency": "RUB",
+                },
+            )
+        )
+    )
+    claim = AsyncMock()
+    mark_checked = AsyncMock(return_value=payment)
+    monkeypatch.setattr(payment_dal, "claim_payment_finalization", claim)
+    monkeypatch.setattr(
+        payment_reconciliation_dal,
+        "mark_provider_payment_checked",
+        mark_checked,
+    )
+    session = SimpleNamespace(commit=AsyncMock())
+
+    result = asyncio.run(refresh_hosted_payment_status(session, payment, service))
+
+    assert result.status == "pending_platega"
+    claim.assert_not_awaited()
+    mark_checked.assert_awaited_once()
+
+
+def test_cloudpayments_recovery_resolves_remote_id_from_local_invoice() -> None:
+    payment = _payment("cloudpayments", provider_payment_id="")
+    service = SimpleNamespace(
+        find_payment=AsyncMock(
+            return_value=(
+                True,
+                {
+                    "InvoiceId": "17",
+                    "TransactionId": "cp-9001",
+                    "Status": "Completed",
+                    "Amount": 199.0,
+                    "Currency": "RUB",
+                },
+            )
+        )
+    )
+
+    lifecycle = asyncio.run(_inspect_provider_payment(service, payment))
+
+    assert lifecycle.state == "succeeded"
+    assert lifecycle.payment_verified is True
+    assert lifecycle.provider_payment_id == "cp-9001"
 
 
 def test_resolve_checkout_expiration_supports_provider_timestamp_shapes() -> None:
@@ -343,6 +462,53 @@ def test_pally_new_bill_is_canceled_after_equivalent_success(
         provider_cancellation_reason="superseded_by_payment_18",
         suppress_failure_notification=True,
     )
+
+
+def test_new_pally_checkout_cancels_older_link_in_same_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    previous = _payment("pally", provider_payment_id="provider-old")
+    replacement = _payment("pally", provider_payment_id="provider-new")
+    replacement.payment_id = 18
+    find_earlier = AsyncMock(return_value=[previous])
+    transition = AsyncMock(return_value=(previous, True))
+    service = SimpleNamespace(
+        cancel_pending_bill=AsyncMock(return_value=(True, {"activity": False}))
+    )
+    monkeypatch.setattr(
+        payment_checkout_dal,
+        "list_earlier_pending_provider_payments_for_checkout_scope",
+        find_earlier,
+    )
+    monkeypatch.setattr(payment_dal, "transition_provider_payment_to_terminal", transition)
+    session = SimpleNamespace(commit=AsyncMock(), rollback=AsyncMock())
+
+    asyncio.run(
+        supersede_earlier_pending_hosted_checkouts(
+            session,
+            replacement,
+            service,
+            pending_status="pending_pally",
+        )
+    )
+
+    find_earlier.assert_awaited_once_with(
+        session,
+        replacement,
+        pending_status="pending_pally",
+    )
+    service.cancel_pending_bill.assert_awaited_once_with("provider-old")
+    transition.assert_awaited_once_with(
+        session,
+        17,
+        "provider-old",
+        "canceled",
+        failure_kind="superseded_checkout",
+        provider_cancellation_party="merchant",
+        provider_cancellation_reason="superseded_by_payment_18",
+        suppress_failure_notification=True,
+    )
+    session.commit.assert_awaited_once()
 
 
 def test_pally_failure_records_processing_error_code() -> None:

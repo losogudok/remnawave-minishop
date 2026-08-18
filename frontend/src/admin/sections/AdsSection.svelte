@@ -15,6 +15,7 @@
     AdminTableSkeleton,
   } from "$components/patterns/admin/index.js";
   import { TableHandler } from "@vincjo/datatables";
+  import { adConversionCount, adRegistrationCount } from "$lib/admin/adStats";
   import type { components } from "../../lib/api/openapi.generated";
   import { sortAdminRows, type AdminSortColumn } from "$lib/admin/tableSort.js";
 
@@ -57,13 +58,13 @@
       asc: "registrations_asc",
       desc: "registrations_desc",
       defaultDirection: "desc",
-      value: (ad) => adStat(ad, "registrations"),
+      value: (ad) => adRegistrationCount(ad.stats),
     },
     {
       asc: "conversions_asc",
       desc: "conversions_desc",
       defaultDirection: "desc",
-      value: (ad) => adStat(ad, "conversions"),
+      value: (ad) => adConversionCount(ad.stats),
     },
     {
       asc: "status_asc",
@@ -91,12 +92,6 @@
   onMount(() => {
     adsStore.loadAds();
   });
-
-  function adStat(ad: Ad, key: string): number {
-    const raw = ad.stats?.[key];
-    const value = Number(raw);
-    return Number.isFinite(value) ? value : 0;
-  }
 
   function setAdsSort(sort: string): void {
     adsSort = sort;
@@ -183,10 +178,10 @@
             >
             <td data-label={at("ads_col_cost", {}, "Cost")}>{fmtMoney(ad.cost)}</td>
             <td data-label={at("ads_col_registrations", {}, "Registrations")}
-              >{adStat(ad, "registrations")}</td
+              >{adRegistrationCount(ad.stats)}</td
             >
             <td data-label={at("ads_col_conversions", {}, "Conversions")}
-              >{adStat(ad, "conversions")}</td
+              >{adConversionCount(ad.stats)}</td
             >
             <td data-label={at("ads_col_status", {}, "Status")}>
               {#if ad.is_active}

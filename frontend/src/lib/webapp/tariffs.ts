@@ -4,13 +4,49 @@ import type { WebappRecord } from "./domainTypes.js";
 type TranslateFn = (key: string, params?: Record<string, string>, fallback?: string) => string;
 type TermUnitLabel = (value: number, unit: "month") => string;
 
+export type CheckoutAddonKind = "devices" | "traffic" | "premium_traffic";
+export type CheckoutAddonOption = {
+  extra_units: number;
+  total_units: number;
+  price: number;
+  stars_price?: number;
+  traffic_bonus_gb?: number;
+};
+export type CheckoutAddonDefinition = {
+  kind: CheckoutAddonKind;
+  base_units: number;
+  max_total_units: number;
+  options: CheckoutAddonOption[];
+  initial_units?: number;
+};
+export type CheckoutAddonSelection = {
+  device_count: number;
+  regular_limit_gb: number | null;
+  premium_limit_gb: number | null;
+};
+
+export type CheckoutTariffLimit = {
+  known: boolean;
+  units: number;
+  unlimited: boolean;
+};
+
+export type CheckoutTariffSummary = {
+  devices: CheckoutTariffLimit;
+  traffic: CheckoutTariffLimit;
+  premiumTraffic: CheckoutTariffLimit;
+};
+
 export type BillingPlan = WebappRecord & {
   available_payment_method_ids?: string[] | null;
   externally_managed_price_method_ids?: string[] | null;
   billing_model?: string | null;
+  checkout_addons?: Partial<Record<CheckoutAddonKind, CheckoutAddonDefinition>>;
+  checkout_addons_unavailable_payment_method_ids?: string[] | null;
   currency?: string | null;
   description?: string | null;
   device_count?: number | string | null;
+  effective_hwid_device_limit?: number | string | null;
   hwid_renewal?: WebappRecord & {
     available?: boolean;
     currency?: string | null;
@@ -29,6 +65,10 @@ export type BillingPlan = WebappRecord & {
   mode?: string | null;
   months?: number | string | null;
   monthly_gb?: number | string | null;
+  premium_enabled?: boolean | null;
+  premium_monthly_gb?: number | string | null;
+  premium_traffic_limit_strategy?: string | null;
+  premium_unlimited?: boolean | null;
   price?: number | string | null;
   sale_mode?: string | null;
   traffic_bonus_gb?: number | string | null;
@@ -38,6 +78,7 @@ export type BillingPlan = WebappRecord & {
   tariff_name?: string | null;
   title?: string | null;
   traffic_gb?: number | string | null;
+  traffic_limit_strategy?: string | null;
   traffic_packages?: unknown[];
   valid_until_text?: string | null;
 };
@@ -57,10 +98,78 @@ export type PaymentMethod = WebappRecord & {
   id?: string | number;
   min_amount?: number | string;
   min_currency?: string;
+  minimum_amount?: number | string;
+  minimum_amount_text?: string;
   price_managed_externally?: boolean;
+  shop_limit_currency?: string;
+  shop_min_amount?: number | string;
 };
 
+export type PaymentMethodMinimum = {
+  amount: number;
+  currency: string;
+  text: string;
+};
+
+function firstFiniteValue(...values: unknown[]): number | null {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const number = Number(value);
+    if (Number.isFinite(number)) return number;
+  }
+  return null;
+}
+
+export function checkoutTariffSummary(plan: BillingPlan | null | undefined): CheckoutTariffSummary {
+  const addons = plan?.checkout_addons || {};
+  const devices = firstFiniteValue(
+    addons.devices?.base_units,
+    plan?.effective_hwid_device_limit,
+    plan?.hwid_device_limit
+  );
+  const traffic = firstFiniteValue(addons.traffic?.base_units, plan?.monthly_gb);
+  const premiumEnabled = plan?.premium_enabled;
+  const premium =
+    premiumEnabled === false
+      ? 0
+      : firstFiniteValue(addons.premium_traffic?.base_units, plan?.premium_monthly_gb);
+  const premiumKnown =
+    typeof premiumEnabled === "boolean" || premium !== null || Boolean(addons.premium_traffic);
+
+  return {
+    devices: {
+      known: devices !== null,
+      units: Math.max(0, devices || 0),
+      unlimited: devices !== null && devices <= 0,
+    },
+    traffic: {
+      known: traffic !== null,
+      units: Math.max(0, traffic || 0),
+      unlimited: traffic !== null && traffic <= 0,
+    },
+    premiumTraffic: {
+      known: premiumKnown,
+      units: Math.max(0, premium || 0),
+      unlimited: premiumEnabled !== false && plan?.premium_unlimited === true,
+    },
+  };
+}
+
 export const TELEGRAM_STARS_MINI_APP_REQUIRED = "telegram_stars_mini_app_required";
+
+export function paymentMethodMinimum(
+  method: PaymentMethod | null | undefined
+): PaymentMethodMinimum | null {
+  const amount = Number(
+    method?.min_amount ?? method?.minimum_amount ?? method?.shop_min_amount ?? 0
+  );
+  const currency = String(
+    method?.min_currency ?? method?.shop_limit_currency ?? method?.currency ?? ""
+  ).toUpperCase();
+  const text = String(method?.minimum_amount_text || "").trim();
+  if (!Number.isFinite(amount) || amount <= 0 || (!currency && !text)) return null;
+  return { amount, currency, text };
+}
 
 export function isStarsPaymentMethod(methodId: unknown): boolean {
   return String(methodId || "")
@@ -169,8 +278,9 @@ export function methodAvailableForPlan(
   ) {
     return false;
   }
-  const minimum = Number(method?.min_amount || 0);
-  const minimumCurrency = String(method?.min_currency || "").toUpperCase();
+  const minimumPayment = paymentMethodMinimum(method);
+  const minimum = Number(minimumPayment?.amount || 0);
+  const minimumCurrency = String(minimumPayment?.currency || "").toUpperCase();
   const planCurrency = String(plan?.currency || "").toUpperCase();
   if (!minimum || !minimumCurrency || minimumCurrency !== planCurrency) return true;
   return methodAmountForPlan(method, plan) >= minimum;

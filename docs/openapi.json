@@ -76,9 +76,7 @@
             "title": "Start Param"
           },
           "stats": {
-            "additionalProperties": true,
-            "title": "Stats",
-            "type": "object"
+            "$ref": "#/components/schemas/AdStatsOut"
           }
         },
         "required": [
@@ -87,6 +85,32 @@
           "is_active"
         ],
         "title": "AdOut",
+        "type": "object"
+      },
+      "AdStatsOut": {
+        "properties": {
+          "payers": {
+            "default": 0,
+            "title": "Payers",
+            "type": "integer"
+          },
+          "revenue": {
+            "default": 0.0,
+            "title": "Revenue",
+            "type": "number"
+          },
+          "starts": {
+            "default": 0,
+            "title": "Starts",
+            "type": "integer"
+          },
+          "trials": {
+            "default": 0,
+            "title": "Trials",
+            "type": "integer"
+          }
+        },
+        "title": "AdStatsOut",
         "type": "object"
       },
       "AdToggleBody": {
@@ -567,6 +591,19 @@
             "title": "Email Subjects",
             "type": "object"
           },
+          "scheduled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scheduled At"
+          },
           "target": {
             "default": "all",
             "title": "Target"
@@ -623,6 +660,271 @@
           }
         },
         "title": "AdminBroadcastButtonBody",
+        "type": "object"
+      },
+      "AdminBroadcastButtonOut": {
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "object"
+          },
+          "promo_code": {
+            "default": "",
+            "title": "Promo Code",
+            "type": "string"
+          },
+          "section": {
+            "default": "",
+            "title": "Section",
+            "type": "string"
+          },
+          "url": {
+            "default": "",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "AdminBroadcastButtonOut",
+        "type": "object"
+      },
+      "AdminBroadcastCreateOut": {
+        "properties": {
+          "broadcast": {
+            "$ref": "#/components/schemas/AdminBroadcastOut"
+          },
+          "channels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "email_queued": {
+            "default": 0,
+            "title": "Email Queued",
+            "type": "integer"
+          },
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "queued": {
+            "default": 0,
+            "title": "Queued",
+            "type": "integer"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "broadcast",
+          "target",
+          "channels"
+        ],
+        "title": "AdminBroadcastCreateOut",
+        "type": "object"
+      },
+      "AdminBroadcastDeleteOut": {
+        "properties": {
+          "broadcast_id": {
+            "title": "Broadcast Id",
+            "type": "integer"
+          },
+          "deleted": {
+            "default": true,
+            "title": "Deleted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "broadcast_id"
+        ],
+        "title": "AdminBroadcastDeleteOut",
+        "type": "object"
+      },
+      "AdminBroadcastListOut": {
+        "properties": {
+          "broadcasts": {
+            "items": {
+              "$ref": "#/components/schemas/AdminBroadcastOut"
+            },
+            "title": "Broadcasts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "broadcasts"
+        ],
+        "title": "AdminBroadcastListOut",
+        "type": "object"
+      },
+      "AdminBroadcastOut": {
+        "properties": {
+          "broadcast_id": {
+            "title": "Broadcast Id",
+            "type": "integer"
+          },
+          "buttons": {
+            "items": {
+              "$ref": "#/components/schemas/AdminBroadcastButtonOut"
+            },
+            "title": "Buttons",
+            "type": "array"
+          },
+          "channels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email_failed": {
+            "default": 0,
+            "title": "Email Failed",
+            "type": "integer"
+          },
+          "email_sent": {
+            "default": 0,
+            "title": "Email Sent",
+            "type": "integer"
+          },
+          "email_subjects": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Email Subjects",
+            "type": "object"
+          },
+          "failed_deliveries": {
+            "default": 0,
+            "title": "Failed Deliveries",
+            "type": "integer"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Finished At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Error"
+          },
+          "recipient_count": {
+            "default": 0,
+            "title": "Recipient Count",
+            "type": "integer"
+          },
+          "scheduled_at": {
+            "format": "date-time",
+            "title": "Scheduled At",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "successful_deliveries": {
+            "default": 0,
+            "title": "Successful Deliveries",
+            "type": "integer"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "telegram_failed": {
+            "default": 0,
+            "title": "Telegram Failed",
+            "type": "integer"
+          },
+          "telegram_sent": {
+            "default": 0,
+            "title": "Telegram Sent",
+            "type": "integer"
+          },
+          "texts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Texts",
+            "type": "object"
+          },
+          "total_deliveries": {
+            "default": 0,
+            "title": "Total Deliveries",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "broadcast_id",
+          "status",
+          "target",
+          "channels",
+          "texts",
+          "email_subjects",
+          "buttons",
+          "scheduled_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AdminBroadcastOut",
         "type": "object"
       },
       "AdminBroadcastPreviewBody": {
@@ -715,6 +1017,20 @@
           }
         },
         "title": "AdminBroadcastPreviewOut",
+        "type": "object"
+      },
+      "AdminBroadcastScheduleBody": {
+        "properties": {
+          "scheduled_at": {
+            "format": "date-time",
+            "title": "Scheduled At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scheduled_at"
+        ],
+        "title": "AdminBroadcastScheduleBody",
         "type": "object"
       },
       "AdminBroadcastShortcodeOut": {
@@ -3740,6 +4056,18 @@
             },
             "title": "Provider Currency Support",
             "type": "array"
+          },
+          "user_hwid_device_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Hwid Device Limit"
           }
         },
         "required": [
@@ -4779,6 +5107,82 @@
         "title": "AdminUserWithAvatarOut",
         "type": "object"
       },
+      "CheckoutAddonsConfig": {
+        "properties": {
+          "devices": {
+            "$ref": "#/components/schemas/CheckoutDeviceAddonConfig"
+          },
+          "premium_traffic": {
+            "$ref": "#/components/schemas/CheckoutTrafficAddonConfig"
+          },
+          "traffic": {
+            "$ref": "#/components/schemas/CheckoutTrafficAddonConfig"
+          }
+        },
+        "title": "CheckoutAddonsConfig",
+        "type": "object"
+      },
+      "CheckoutDeviceAddonConfig": {
+        "properties": {
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "max_extra_devices": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Max Extra Devices"
+          },
+          "price_per_device": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Price Per Device"
+          },
+          "stars_price_per_device": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stars Price Per Device"
+          }
+        },
+        "title": "CheckoutDeviceAddonConfig",
+        "type": "object"
+      },
+      "CheckoutTrafficAddonConfig": {
+        "properties": {
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "title": "CheckoutTrafficAddonConfig",
+        "type": "object"
+      },
       "CreateTicketPayload": {
         "properties": {
           "body": {
@@ -4834,6 +5238,45 @@
         "additionalProperties": false,
         "properties": {},
         "title": "EmptyObjectOut",
+        "type": "object"
+      },
+      "FlexibleTrafficLimitConfig": {
+        "properties": {
+          "max_total_gb": {
+            "exclusiveMinimum": 0,
+            "title": "Max Total Gb",
+            "type": "number"
+          },
+          "price_per_step": {
+            "minimum": 0,
+            "title": "Price Per Step",
+            "type": "number"
+          },
+          "stars_price_per_step": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stars Price Per Step"
+          },
+          "step_gb": {
+            "exclusiveMinimum": 0,
+            "title": "Step Gb",
+            "type": "number"
+          }
+        },
+        "required": [
+          "step_gb",
+          "max_total_gb",
+          "price_per_step"
+        ],
+        "title": "FlexibleTrafficLimitConfig",
         "type": "object"
       },
       "HwidDevicePackage": {
@@ -7972,6 +8415,9 @@
             "title": "Billing Model",
             "type": "string"
           },
+          "checkout_addons": {
+            "$ref": "#/components/schemas/CheckoutAddonsConfig"
+          },
           "conversion_rate_per_gb": {
             "anyOf": [
               {
@@ -8014,6 +8460,17 @@
             },
             "title": "Enabled Periods",
             "type": "array"
+          },
+          "flexible_traffic_limit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FlexibleTrafficLimitConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           },
           "hwid_device_limit": {
             "anyOf": [
@@ -8067,6 +8524,17 @@
             },
             "title": "Names",
             "type": "object"
+          },
+          "premium_flexible_traffic_limit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FlexibleTrafficLimitConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           },
           "premium_monthly_gb": {
             "anyOf": [
@@ -9145,6 +9613,52 @@
         "title": "WebAppAutoRenewPayload",
         "type": "object"
       },
+      "WebAppCheckoutAddonsPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "device_count": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Device Count"
+          },
+          "premium_limit_gb": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Premium Limit Gb"
+          },
+          "regular_limit_gb": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regular Limit Gb"
+          }
+        },
+        "title": "WebAppCheckoutAddonsPayload",
+        "type": "object"
+      },
       "WebAppDeviceDisconnectPayload": {
         "properties": {
           "token": {
@@ -9433,6 +9947,17 @@
       },
       "WebAppPaymentCreatePayload": {
         "properties": {
+          "checkout_addons": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebAppCheckoutAddonsPayload"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "comment": {
             "anyOf": [
               {
@@ -9586,6 +10111,17 @@
       },
       "WebAppPromoQuotePayload": {
         "properties": {
+          "checkout_addons": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebAppCheckoutAddonsPayload"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "comment": {
             "anyOf": [
               {
@@ -9725,6 +10261,136 @@
           "code"
         ],
         "title": "WebAppSetPasswordPayload",
+        "type": "object"
+      },
+      "WebAppSubscriptionQuotePayload": {
+        "properties": {
+          "checkout_addons": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebAppCheckoutAddonsPayload"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Comment"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "device_count": {
+            "default": null,
+            "title": "Device Count"
+          },
+          "method": {
+            "default": "",
+            "title": "Method",
+            "type": "string"
+          },
+          "months": {
+            "default": null,
+            "title": "Months"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Note"
+          },
+          "promo_code": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Promo Code"
+          },
+          "renew_hwid_devices": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Renew Hwid Devices"
+          },
+          "sale_mode": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sale Mode"
+          },
+          "tariff_key": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tariff Key"
+          },
+          "traffic_gb": {
+            "default": null,
+            "title": "Traffic Gb"
+          },
+          "use_partner_balance": {
+            "default": false,
+            "title": "Use Partner Balance",
+            "type": "boolean"
+          }
+        },
+        "title": "WebAppSubscriptionQuotePayload",
         "type": "object"
       },
       "WebAppSubscriptionReissuePayload": {
@@ -11339,40 +12005,24 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "channels": {
-                      "items": {
-                        "type": "string"
+                  "allOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ok": {
+                          "const": true,
+                          "type": "boolean"
+                        }
                       },
-                      "type": "array"
+                      "required": [
+                        "ok"
+                      ],
+                      "type": "object"
                     },
-                    "email_queued": {
-                      "type": "integer"
-                    },
-                    "failed": {
-                      "type": "integer"
-                    },
-                    "ok": {
-                      "const": true,
-                      "type": "boolean"
-                    },
-                    "queued": {
-                      "type": "integer"
-                    },
-                    "target": {
-                      "type": "string"
+                    {
+                      "$ref": "#/components/schemas/AdminBroadcastCreateOut"
                     }
-                  },
-                  "required": [
-                    "ok",
-                    "queued",
-                    "failed",
-                    "email_queued",
-                    "target",
-                    "channels"
-                  ],
-                  "type": "object"
+                  ]
                 }
               }
             },
@@ -11536,6 +12186,172 @@
           }
         ],
         "summary": "Admin Broadcast Shortcodes",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/broadcasts": {
+      "get": {
+        "operationId": "get_admin_broadcasts_list_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ok": {
+                          "const": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AdminBroadcastListOut"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Broadcasts List",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/broadcasts/{id}": {
+      "delete": {
+        "operationId": "delete_admin_broadcast_delete_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ok": {
+                          "const": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AdminBroadcastDeleteOut"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Broadcast Delete",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_admin_broadcast_reschedule_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminBroadcastScheduleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ok": {
+                          "const": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AdminBroadcastOut"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Broadcast Reschedule",
         "tags": [
           "admin"
         ]
@@ -16897,6 +17713,16 @@
                           "billing_model": {
                             "type": "string"
                           },
+                          "checkout_addons": {
+                            "additionalProperties": true,
+                            "type": "object"
+                          },
+                          "checkout_addons_unavailable_payment_method_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "currency": {
                             "type": "string"
                           },
@@ -16905,6 +17731,12 @@
                           },
                           "device_count": {
                             "type": "integer"
+                          },
+                          "effective_hwid_device_limit": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
                           },
                           "externally_managed_price_method_ids": {
                             "items": {
@@ -17053,6 +17885,21 @@
                           "months": {
                             "type": "number"
                           },
+                          "premium_enabled": {
+                            "type": "boolean"
+                          },
+                          "premium_monthly_gb": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "premium_traffic_limit_strategy": {
+                            "type": "string"
+                          },
+                          "premium_unlimited": {
+                            "type": "boolean"
+                          },
                           "price": {
                             "type": "number"
                           },
@@ -17088,6 +17935,9 @@
                           },
                           "traffic_gb": {
                             "type": "number"
+                          },
+                          "traffic_limit_strategy": {
+                            "type": "string"
                           },
                           "valid_from": {
                             "type": [
@@ -17317,6 +18167,13 @@
                             "base_amount": {
                               "type": "number"
                             },
+                            "checkout_addons": {
+                              "items": {},
+                              "type": "array"
+                            },
+                            "checkout_addons_amount": {
+                              "type": "number"
+                            },
                             "created_at": {
                               "type": "string"
                             },
@@ -17404,6 +18261,8 @@
                             "tariff_key",
                             "promo_code",
                             "promo_effect_summary",
+                            "checkout_addons",
+                            "checkout_addons_amount",
                             "created_at"
                           ],
                           "type": "object"
@@ -17426,6 +18285,16 @@
                           "billing_model": {
                             "type": "string"
                           },
+                          "checkout_addons": {
+                            "additionalProperties": true,
+                            "type": "object"
+                          },
+                          "checkout_addons_unavailable_payment_method_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "currency": {
                             "type": "string"
                           },
@@ -17434,6 +18303,12 @@
                           },
                           "device_count": {
                             "type": "integer"
+                          },
+                          "effective_hwid_device_limit": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
                           },
                           "externally_managed_price_method_ids": {
                             "items": {
@@ -17582,6 +18457,21 @@
                           "months": {
                             "type": "number"
                           },
+                          "premium_enabled": {
+                            "type": "boolean"
+                          },
+                          "premium_monthly_gb": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "premium_traffic_limit_strategy": {
+                            "type": "string"
+                          },
+                          "premium_unlimited": {
+                            "type": "boolean"
+                          },
                           "price": {
                             "type": "number"
                           },
@@ -17617,6 +18507,9 @@
                           },
                           "traffic_gb": {
                             "type": "number"
+                          },
+                          "traffic_limit_strategy": {
+                            "type": "string"
                           },
                           "valid_from": {
                             "type": [
@@ -17764,6 +18657,9 @@
                         },
                         "partner_program_enabled": {
                           "type": "boolean"
+                        },
+                        "payment_methods_display_mode": {
+                          "type": "string"
                         },
                         "referral_program_enabled": {
                           "type": "boolean"
@@ -19260,6 +20156,133 @@
         ]
       }
     },
+    "/api/subscription/quote": {
+      "post": {
+        "operationId": "post_subscription_quote_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebAppSubscriptionQuotePayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "addons_amount": {
+                      "type": "number"
+                    },
+                    "addons_stars": {
+                      "type": "integer"
+                    },
+                    "base_amount": {
+                      "type": "number"
+                    },
+                    "base_stars": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "currency": {
+                      "type": "string"
+                    },
+                    "discount_amount": {
+                      "type": "number"
+                    },
+                    "discount_percent": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "effect_summary": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "effective_amount": {
+                      "type": "number"
+                    },
+                    "effective_stars": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "items": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "payable": {
+                      "type": "boolean"
+                    },
+                    "promo_code": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "quote_key": {
+                      "type": "string"
+                    },
+                    "renewal_amount": {
+                      "type": "number"
+                    },
+                    "subtotal_amount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "payable",
+                    "quote_key",
+                    "currency",
+                    "base_amount",
+                    "addons_amount",
+                    "subtotal_amount",
+                    "discount_amount",
+                    "effective_amount",
+                    "addons_stars",
+                    "renewal_amount",
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "UserSession": []
+          },
+          {
+            "UserBearer": []
+          }
+        ],
+        "summary": "Subscription Quote",
+        "tags": [
+          "subscription"
+        ]
+      }
+    },
     "/api/subscription/quote-promo": {
       "post": {
         "operationId": "post_quote_promo_route",
@@ -20162,6 +21185,16 @@
                           "billing_model": {
                             "type": "string"
                           },
+                          "checkout_addons": {
+                            "additionalProperties": true,
+                            "type": "object"
+                          },
+                          "checkout_addons_unavailable_payment_method_ids": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
                           "currency": {
                             "type": "string"
                           },
@@ -20170,6 +21203,12 @@
                           },
                           "device_count": {
                             "type": "integer"
+                          },
+                          "effective_hwid_device_limit": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
                           },
                           "externally_managed_price_method_ids": {
                             "items": {
@@ -20318,6 +21357,21 @@
                           "months": {
                             "type": "number"
                           },
+                          "premium_enabled": {
+                            "type": "boolean"
+                          },
+                          "premium_monthly_gb": {
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "premium_traffic_limit_strategy": {
+                            "type": "string"
+                          },
+                          "premium_unlimited": {
+                            "type": "boolean"
+                          },
                           "price": {
                             "type": "number"
                           },
@@ -20353,6 +21407,9 @@
                           },
                           "traffic_gb": {
                             "type": "number"
+                          },
+                          "traffic_limit_strategy": {
+                            "type": "string"
                           },
                           "valid_from": {
                             "type": [

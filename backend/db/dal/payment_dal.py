@@ -255,6 +255,8 @@ async def ensure_payment_with_provider_id(
     hwid_full_price: float | None = None,
     hwid_traffic_bonus_bytes: int | None = None,
     entitlement_context_snapshot: str | None = None,
+    checkout_bundle_snapshot: str | None = None,
+    checkout_bundle_hash: str | None = None,
 ) -> Payment:
     """Atomically create or validate one order for a provider payment id."""
     provider_key = str(provider or "").strip().lower()
@@ -289,6 +291,8 @@ async def ensure_payment_with_provider_id(
             hwid_full_price=hwid_full_price,
             hwid_traffic_bonus_bytes=hwid_traffic_bonus_bytes,
             entitlement_context_snapshot=entitlement_context_snapshot,
+            checkout_bundle_snapshot=checkout_bundle_snapshot,
+            checkout_bundle_hash=checkout_bundle_hash,
         )
         return existing
 
@@ -315,6 +319,8 @@ async def ensure_payment_with_provider_id(
         "hwid_full_price": hwid_full_price,
         "hwid_traffic_bonus_bytes": hwid_traffic_bonus_bytes,
         "entitlement_context_snapshot": entitlement_context_snapshot,
+        "checkout_bundle_snapshot": checkout_bundle_snapshot,
+        "checkout_bundle_hash": checkout_bundle_hash,
     }
     payment_payload.update(
         {field: value for field, value in optional_fields.items() if value is not None}
@@ -355,6 +361,8 @@ async def ensure_payment_with_provider_id(
         hwid_full_price=hwid_full_price,
         hwid_traffic_bonus_bytes=hwid_traffic_bonus_bytes,
         entitlement_context_snapshot=entitlement_context_snapshot,
+        checkout_bundle_snapshot=checkout_bundle_snapshot,
+        checkout_bundle_hash=checkout_bundle_hash,
     )
     if created:
         logger.info(
@@ -466,6 +474,7 @@ async def find_recent_pending_provider_payment(
     requested_partner_balance: bool | None = None,
     tariff_change_quote_snapshot: str | None = None,
     entitlement_context_snapshot: str | None = None,
+    checkout_bundle_hash: str | None = None,
     since_minutes: int | None = None,
 ) -> Payment | None:
     """Return the most recent pending payment matching the given tariff parameters.
@@ -505,6 +514,10 @@ async def find_recent_pending_provider_payment(
         conditions.append(Payment.entitlement_context_snapshot == entitlement_context_snapshot)
     else:
         conditions.append(Payment.entitlement_context_snapshot.is_(None))
+    if checkout_bundle_hash is not None:
+        conditions.append(Payment.checkout_bundle_hash == checkout_bundle_hash)
+    else:
+        conditions.append(Payment.checkout_bundle_hash.is_(None))
     if tariff_key is not None:
         conditions.append(Payment.tariff_key == tariff_key)
     if promo_code_id is not None:
@@ -832,6 +845,17 @@ async def transition_provider_payment_to_terminal(
         return None, False
 
     if _normalize_payment_status(payment.status) in _PAYMENT_TERMINAL_STATUSES:
+        if (
+            _normalize_payment_status(payment.status) != _PAYMENT_STATUS_SUCCEEDED
+            and payment.auto_renew_cycle_id is not None
+        ):
+            from . import auto_renew_dal
+
+            await auto_renew_dal.stop_cycle(
+                session,
+                int(payment.auto_renew_cycle_id),
+                failure_kind or normalized_new_status,
+            )
         logger.info(
             "Payment record %s is already terminal with status %s; skipping duplicate update.",
             payment.payment_id,
@@ -854,6 +878,17 @@ async def transition_provider_payment_to_terminal(
         payment.provider_cancellation_reason = str(provider_cancellation_reason)[:128]
     if suppress_failure_notification:
         payment.failure_notified_at = func.now()
+    if (
+        normalized_new_status != _PAYMENT_STATUS_SUCCEEDED
+        and payment.auto_renew_cycle_id is not None
+    ):
+        from . import auto_renew_dal
+
+        await auto_renew_dal.stop_cycle(
+            session,
+            int(payment.auto_renew_cycle_id),
+            failure_kind or normalized_new_status,
+        )
     from .payment_checkout_dal import release_partner_balance_safely
 
     await release_partner_balance_safely(

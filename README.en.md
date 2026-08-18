@@ -19,7 +19,8 @@ For users:
 - Subscription status, connection link, expiry date, traffic usage, and device limits.
 - Web App login through Telegram Mini Apps `initData`, Telegram OAuth / OpenID Connect, or a
   one-time email code.
-- Trial periods, promo codes, referrals, traffic packages, extra devices, and install guides.
+- Trial periods, promo codes, referrals, flexible checkout limits, standalone traffic/device add-ons,
+  and install guides.
 - Payment integrations including YooKassa, FreeKassa, Platega, SeverPay, Wata, CryptoPay,
   Heleket, PayKilla, LAVA, Pally, CloudPayments, Stripe, Tribute, and Telegram Stars.
 - Support tickets inside the Web App plus optional external support links.
@@ -28,8 +29,8 @@ For admins:
 
 - Web App admin area for `ADMIN_IDS`.
 - User, subscription, payment, sync, broadcast, promo, support, and action-log workflows.
-- Tariff catalog editor with time-based, traffic-based, premium-traffic, Internal Squad, and
-  HWID/device options.
+- Tariff catalog editor with time-based and traffic-based plans, flexible regular/premium traffic
+  limits, Internal Squads, and HWID/device options.
 - Manual Remnawave sync, panel webhook processing, backups, themes, translations, and runtime
   settings layered over `.env`.
 

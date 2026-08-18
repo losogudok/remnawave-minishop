@@ -1,6 +1,6 @@
 from typing import Annotated, Any, Literal, cast
 
-from pydantic import BaseModel, ConfigDict, EmailStr, StringConstraints, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, field_validator
 
 from bot.services.email_auth_service import normalize_email
 
@@ -92,6 +92,16 @@ class WebAppPromoApplyPayload(BaseModel):
     code: Any = ""
 
 
+class WebAppCheckoutAddonsPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    device_count: int | None = Field(default=None, ge=0)
+    # Total resettable quota selected for each tariff accounting period.
+    # These are not consumable top-up amounts.
+    regular_limit_gb: float | None = Field(default=None, ge=0)
+    premium_limit_gb: float | None = Field(default=None, ge=0)
+
+
 class WebAppPaymentCreatePayload(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -102,6 +112,7 @@ class WebAppPaymentCreatePayload(BaseModel):
     tariff_key: OptionalTariffKeyString | None = None
     sale_mode: SaleModeString | None = None
     renew_hwid_devices: bool | None = None
+    checkout_addons: WebAppCheckoutAddonsPayload | None = None
     use_partner_balance: bool = False
     promo_code: ShortCodeString | None = None
     description: LongTextString | None = None
@@ -120,6 +131,10 @@ class WebAppPromoQuotePayload(WebAppPaymentCreatePayload):
     model_config = ConfigDict(extra="ignore")
 
     promo_code: ShortCodeString
+
+
+class WebAppSubscriptionQuotePayload(WebAppPaymentCreatePayload):
+    model_config = ConfigDict(extra="ignore")
 
 
 class WebAppAutoRenewPayload(BaseModel):

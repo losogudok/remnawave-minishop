@@ -387,6 +387,8 @@ class Payment(Base):
     partner_balance_currency_scale = Column(Integer, nullable=True)
     tariff_change_quote_snapshot = Column(Text, nullable=True)
     entitlement_context_snapshot = Column(Text, nullable=True)
+    checkout_bundle_snapshot = Column(Text, nullable=True)
+    checkout_bundle_hash = Column(String(64), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
 
@@ -549,6 +551,51 @@ class TrafficTopup(Base):
     purchased_bytes = Column(BigInteger, nullable=False)
     kind = Column(String, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    subscription = relationship("Subscription")
+    payment = relationship("Payment")
+
+
+class FlexibleTrafficLimit(Base):
+    """A resettable tariff quota override valid for an entitlement window.
+
+    Unlike :class:`TrafficTopup`, this value replaces the tariff baseline for
+    every accounting reset inside its window and is never a consumable balance.
+    Multiple rows may overlap after an upgrade; the highest active limit wins,
+    preserving already-paid entitlement while allowing future downgrades.
+    """
+
+    __tablename__ = "flexible_traffic_limits"
+    __table_args__ = (
+        UniqueConstraint(
+            "payment_id",
+            "kind",
+            "valid_from",
+            "valid_until",
+            name="uq_flexible_traffic_limit_payment_window",
+        ),
+        Index(
+            "ix_flexible_traffic_limits_subscription_window",
+            "subscription_id",
+            "kind",
+            "valid_from",
+            "valid_until",
+        ),
+    )
+
+    limit_id = Column(Integer, primary_key=True, autoincrement=True)
+    subscription_id = Column(
+        Integer, ForeignKey("subscriptions.subscription_id"), nullable=False, index=True
+    )
+    payment_id = Column(Integer, ForeignKey("payments.payment_id"), nullable=True, index=True)
+    kind = Column(String(32), nullable=False, index=True)
+    tariff_key = Column(String, nullable=False, index=True)
+    limit_bytes = Column(BigInteger, nullable=False)
+    valid_from = Column(DateTime(timezone=True), nullable=False)
+    valid_until = Column(DateTime(timezone=True), nullable=False)
+    monthly_amount = Column(Float, nullable=False, default=0)
+    monthly_stars_amount = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     subscription = relationship("Subscription")
     payment = relationship("Payment")
@@ -819,6 +866,7 @@ class LegacyImportMapping(Base):
 # backup/restore and migration tests.  Domain code imports the classes from
 # ``db.partner_models`` directly; this import exists only for registration.
 from db import activity_models as activity_models  # noqa: E402
+from db import broadcast_models as broadcast_models  # noqa: E402
 from db import partner_models as partner_models  # noqa: E402
 
 AdAttribution = activity_models.AdAttribution
@@ -829,3 +877,5 @@ MessageLog = activity_models.MessageLog
 PanelSyncStatus = activity_models.PanelSyncStatus
 SupportTicket = activity_models.SupportTicket
 SupportTicketMessage = activity_models.SupportTicketMessage
+AdminBroadcast = broadcast_models.AdminBroadcast
+AdminBroadcastDelivery = broadcast_models.AdminBroadcastDelivery

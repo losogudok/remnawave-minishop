@@ -195,6 +195,9 @@
   const subscriptionReissueEnabled = $derived(appDataView.subscriptionReissueEnabled);
   const emailAuthEnabled = $derived(appDataView.emailAuthEnabled);
   const methods = $derived(appDataView.methods);
+  const paymentMethodsDisplayMode = $derived(
+    String(appSettings.payment_methods_display_mode || "dropdown")
+  );
   const pendingPayment = $derived(appDataView.pendingPayment as PendingPaymentView | null);
   const plans = $derived(appDataView.plans);
   const referral = $derived(appDataView.referral);
@@ -522,6 +525,7 @@
       openLinkEmailDialog={openSettingsLinkEmailDialog}
       {hasMultipleTariffs}
       {methods}
+      {paymentMethodsDisplayMode}
       {pendingPayment}
       {plans}
       {selectTariff}

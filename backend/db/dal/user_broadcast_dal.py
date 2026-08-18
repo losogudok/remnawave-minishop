@@ -103,6 +103,27 @@ async def get_telegram_recipients_for_broadcast(
     return recipients
 
 
+async def get_language_codes_for_broadcast(
+    session: AsyncSession,
+    user_ids: list[int],
+    *,
+    chunk_size: int = 900,
+) -> dict[int, str | None]:
+    """Return preferred languages for a potentially large recipient set."""
+
+    languages: dict[int, str | None] = {}
+    normalized = [int(user_id) for user_id in dict.fromkeys(user_ids)]
+    for start in range(0, len(normalized), chunk_size):
+        chunk = normalized[start : start + chunk_size]
+        result = await session.execute(
+            select(User.user_id, User.language_code).where(User.user_id.in_(chunk))
+        )
+        languages.update(
+            {int(user_id): (str(language) if language else None) for user_id, language in result}
+        )
+    return languages
+
+
 async def get_all_users_with_panel_uuid(session: AsyncSession) -> list[User]:
     stmt = select(User).where(User.panel_user_uuid.is_not(None))
     result = await session.execute(stmt)

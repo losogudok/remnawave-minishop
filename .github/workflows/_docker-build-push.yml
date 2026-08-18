@@ -30,7 +30,27 @@ on:
 # contents: read for a no-push build).
 
 jobs:
+  lockfiles:
+    name: Validate npm lockfiles
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            docs-site/package-lock.json
+
+      - name: Check npm lockfiles
+        run: npm run check:lockfiles
+
   build:
+    needs: lockfiles
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

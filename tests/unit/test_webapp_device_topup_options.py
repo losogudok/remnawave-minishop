@@ -338,6 +338,8 @@ class WebAppDeviceTopupOptionsTests(IsolatedAsyncioTestCase):
             DEFAULT_LANGUAGE="en",
             DEFAULT_CURRENCY_SYMBOL="RUB",
             ADMIN_IDS=[],
+            USER_HWID_DEVICE_LIMIT=None,
+            MY_DEVICES_SECTION_ENABLED=True,
         )
         hwid_quote = {
             "price": 50,
@@ -402,6 +404,11 @@ class WebAppDeviceTopupOptionsTests(IsolatedAsyncioTestCase):
             ),
             patch.object(
                 billing_payments,
+                "_resolve_checkout_pricing_context",
+                AsyncMock(return_value=(None, None)),
+            ),
+            patch.object(
+                billing_payments,
                 "_create_subscription_payment",
                 AsyncMock(side_effect=_fake_create_payment),
             ) as create_payment,
@@ -419,6 +426,98 @@ class WebAppDeviceTopupOptionsTests(IsolatedAsyncioTestCase):
             months=1,
             currency="rub",
         )
+        create_payment.assert_awaited_once()
+
+    async def test_create_payment_route_uses_active_pricing_context_for_checkout_addons(self):
+        tariff = SimpleNamespace(
+            key="standard",
+            billing_model="period",
+            enabled_periods=[1],
+            period_price=lambda months, currency: 245 if currency == "rub" else None,
+        )
+        settings = SimpleNamespace(
+            traffic_sale_mode=False,
+            tariffs_config=SimpleNamespace(require=lambda key: tariff),
+            DEFAULT_LANGUAGE="en",
+            DEFAULT_CURRENCY_SYMBOL="RUB",
+            ADMIN_IDS=[],
+            USER_HWID_DEVICE_LIMIT=3,
+            MY_DEVICES_SECTION_ENABLED=True,
+        )
+        request = _JsonRequest(
+            {
+                "method": "pally",
+                "months": 1,
+                "tariff_key": "standard",
+                "sale_mode": "subscription",
+                "checkout_addons": {"device_count": 2},
+            },
+            app={
+                "settings": settings,
+                "async_session_factory": _SessionFactory(),
+                "subscription_service": SimpleNamespace(),
+            },
+        )
+        db_user = SimpleNamespace(
+            is_banned=False,
+            panel_user_uuid="panel-user",
+            language_code="en",
+            telegram_id=42,
+        )
+        pricing_context = SimpleNamespace(active_subscription_id=777)
+        bundled_quote = SimpleNamespace(price=721.17, stars_price=None)
+        bundle = SimpleNamespace(snapshot="renewal-bundle", digest="renewal-hash")
+
+        async def _fake_create_payment(**kwargs):
+            return billing_module.web.json_response(
+                {
+                    "ok": True,
+                    "price": kwargs["price"],
+                    "bundle": kwargs["checkout_bundle_snapshot"],
+                }
+            )
+
+        with (
+            patch.object(billing_payments, "_require_user_id", return_value=42),
+            patch.object(
+                billing_payments,
+                "_enforce_webapp_rate_limit",
+                AsyncMock(return_value=None),
+            ),
+            patch.object(
+                billing_payments,
+                "_get_cached_webapp_settings",
+                return_value={"subscription_options": {}, "stars_subscription_options": {}},
+            ),
+            patch.object(
+                billing_module.user_dal,
+                "get_user_by_id",
+                AsyncMock(return_value=db_user),
+            ),
+            patch.object(
+                billing_payments,
+                "_resolve_checkout_pricing_context",
+                AsyncMock(return_value=(pricing_context, None)),
+            ) as resolve_context,
+            patch.object(
+                billing_payments,
+                "build_checkout_bundle",
+                return_value=(bundled_quote, bundle),
+            ) as build_bundle,
+            patch.object(
+                billing_payments,
+                "_create_subscription_payment",
+                AsyncMock(side_effect=_fake_create_payment),
+            ) as create_payment,
+        ):
+            response = await billing_module.create_payment_route(request)
+
+        self.assertEqual(response.status, 200)
+        payload = json.loads(response.text)
+        self.assertEqual(payload["price"], 721.17)
+        self.assertEqual(payload["bundle"], "renewal-bundle")
+        resolve_context.assert_awaited_once()
+        self.assertIs(build_bundle.call_args.kwargs["pricing_context"], pricing_context)
         create_payment.assert_awaited_once()
 
     async def test_create_payment_route_rejects_fractional_hwid_device_count(self):

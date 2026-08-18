@@ -299,7 +299,12 @@ class HwidDeviceMixin(SubscriptionServiceMixinContract):
         basis_seconds = max(1.0, float(period_months * 30 * 24 * 60 * 60))
         billable_start = max(now, valid_from)
         billable_seconds = max(0.0, (valid_until - billable_start).total_seconds())
-        ratio = min(1.0, billable_seconds / basis_seconds)
+        ratio = self._hwid_proration_ratio(
+            billable_start=billable_start,
+            valid_until=valid_until,
+            period_months=period_months,
+            basis_seconds=basis_seconds,
+        )
         raw_price = full_price * ratio
         price = self._round_hwid_price(raw_price, currency=currency)
         min_price = getattr(package, "min_price", None)
@@ -322,6 +327,44 @@ class HwidDeviceMixin(SubscriptionServiceMixinContract):
             "traffic_bonus_gb": round(traffic_bonus_bytes / float(1024**3), 9),
             "traffic_bonus_bytes": traffic_bonus_bytes,
         }
+
+    @staticmethod
+    def _hwid_proration_ratio(
+        *,
+        billable_start: datetime,
+        valid_until: datetime,
+        period_months: int,
+        basis_seconds: float,
+    ) -> float:
+        if valid_until <= billable_start:
+            return 0.0
+
+        month_span = max(
+            0,
+            (valid_until.year - billable_start.year) * 12
+            + valid_until.month
+            - billable_start.month,
+        )
+        completed_periods = month_span // period_months
+        completed_until = billable_start
+        while completed_periods > 0:
+            try:
+                completed_until = add_months(
+                    billable_start,
+                    completed_periods * period_months,
+                )
+            except (OverflowError, ValueError):
+                completed_periods -= 1
+                continue
+            if completed_until <= valid_until:
+                break
+            completed_periods -= 1
+        if completed_periods == 0:
+            completed_until = billable_start
+
+        remainder_seconds = max(0.0, (valid_until - completed_until).total_seconds())
+        remainder_ratio = min(1.0, remainder_seconds / basis_seconds)
+        return float(completed_periods) + remainder_ratio
 
     async def quote_hwid_device_topup(
         self,

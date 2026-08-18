@@ -79,6 +79,7 @@ export type ApiResponseFor<Path extends string, Options = undefined> = JsonRespo
 >;
 export type GetResponse<Path extends string> = JsonResponse<OperationFor<Path, "get">>;
 export type PostPayload<Path extends string> = JsonRequestBody<OperationFor<Path, "post">>;
+export type PatchPayload<Path extends string> = JsonRequestBody<OperationFor<Path, "patch">>;
 export type PostResponse<Path extends string> = JsonResponse<OperationFor<Path, "post">>;
 
 export type BootstrapResponse = GetResponse<"/api/bootstrap">;
@@ -105,6 +106,7 @@ export type PlansViewedResponse = PostResponse<"/api/plans/viewed">;
 export type PromoApplyResponse = PostResponse<"/api/promo/apply">;
 export type PromoStatusResponse = PostResponse<"/api/promo/status">;
 export type PromoQuoteResponse = PostResponse<"/api/subscription/quote-promo">;
+export type SubscriptionQuoteResponse = PostResponse<"/api/subscription/quote">;
 export type ReferralWelcomeBonusResponse = PostResponse<"/api/referral/welcome-bonus/claim">;
 export type SubscriptionGuidesResponse = GetResponse<"/api/subscription-guides">;
 export type PublicSubscriptionGuidesResponse =
@@ -153,6 +155,7 @@ export type TariffChangePaymentPath = "/tariffs/change-payment";
 export type SubscriptionAutoRenewPath = "/subscription/auto-renew";
 export type SubscriptionReissuePath = "/subscription/reissue";
 export type SubscriptionPromoQuotePath = "/subscription/quote-promo";
+export type SubscriptionQuotePath = "/subscription/quote";
 export type ReferralWelcomeBonusClaimPath = "/referral/welcome-bonus/claim";
 export type PromoApplyPath = "/promo/apply";
 export type PromoStatusPath = "/promo/status";
@@ -392,6 +395,10 @@ export function buildSubscriptionPromoQuotePath(): SubscriptionPromoQuotePath {
   return "/subscription/quote-promo";
 }
 
+export function buildSubscriptionQuotePath(): SubscriptionQuotePath {
+  return "/subscription/quote";
+}
+
 export function buildReferralWelcomeBonusClaimPath(): ReferralWelcomeBonusClaimPath {
   return "/referral/welcome-bonus/claim";
 }
@@ -585,6 +592,18 @@ export function buildAdminSupportPath(ticketId?: string | number | null): AdminS
 export type AdminBroadcastPath = "/admin/broadcast";
 export function buildAdminBroadcastPath(): AdminBroadcastPath {
   return "/admin/broadcast";
+}
+
+export type AdminBroadcastsPath = "/admin/broadcasts";
+export function buildAdminBroadcastsPath(): AdminBroadcastsPath {
+  return "/admin/broadcasts";
+}
+
+export type AdminBroadcastItemPath = BuiltApiPath<"/api/admin/broadcasts/{id}">;
+export function buildAdminBroadcastItemPath(broadcastId: string | number): AdminBroadcastItemPath {
+  return builtApiPath<"/api/admin/broadcasts/{id}">(
+    `/admin/broadcasts/${encodeURIComponent(String(broadcastId))}`
+  );
 }
 
 export type AdminBroadcastAudienceCountsPath = "/admin/broadcast/audience-counts";

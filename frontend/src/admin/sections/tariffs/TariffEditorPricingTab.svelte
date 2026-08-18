@@ -138,7 +138,7 @@
             <span></span>
             <span>{at("tariff_col_period_months", {}, "Period, mo.")}</span>
             <span>{currencyPriceColumnLabel}</span>
-            <span>{at("tariff_col_price_stars_full", {}, "Price, ⭐ Stars")}</span>
+            <span>{at("tariff_col_price_stars_full", {}, "⭐ Stars")}</span>
             <span>{at("tariff_col_ref_inviter", {}, "Inviter bonus")}</span>
             <span>{at("tariff_col_ref_referee", {}, "Friend bonus")}</span>
             <span></span>
@@ -177,7 +177,7 @@
                 aria-label={currencyPriceAriaLabel}
               />
               <span class="admin-row-editor-mobile-label" aria-hidden="true"
-                >{at("tariff_col_price_stars_full", {}, "Price, ⭐ Stars")}</span
+                >{at("tariff_col_price_stars_full", {}, "⭐ Stars")}</span
               >
               <Input
                 class="input"
@@ -187,7 +187,7 @@
                 placeholder="150"
                 value={row.stars}
                 oninput={draftRowInputHandler(tariffsStore, "periodRows", index, "stars")}
-                aria-label={at("tariff_label_price_stars", {}, "Price in Telegram Stars")}
+                aria-label={at("tariff_label_price_stars", {}, "⭐ Stars")}
               />
               <span class="admin-row-editor-mobile-label" aria-hidden="true"
                 >{at("tariff_col_ref_inviter", {}, "Inviter bonus")}</span
@@ -429,7 +429,7 @@
             <span></span>
             <span>{at("tariff_col_volume_gb", {}, "Volume, GB")}</span>
             <span>{currencyPriceColumnLabel}</span>
-            <span>{at("tariff_col_price_stars_full", {}, "Price, ⭐ Stars")}</span>
+            <span>{at("tariff_col_price_stars_full", {}, "⭐ Stars")}</span>
             {#if showTribute}
               <span>{at("tariff_col_tribute_product_id", {}, "Tribute product ID")}</span>
               <span>{at("tariff_col_tribute_product_link", {}, "Tribute product link")}</span>
@@ -471,7 +471,7 @@
                 aria-label={currencyPriceAriaLabel}
               />
               <span class="admin-row-editor-mobile-label" aria-hidden="true"
-                >{at("tariff_col_price_stars_full", {}, "Price, ⭐ Stars")}</span
+                >{at("tariff_col_price_stars_full", {}, "⭐ Stars")}</span
               >
               <Input
                 class="input"
@@ -481,7 +481,7 @@
                 placeholder="150"
                 value={row.stars}
                 oninput={draftRowInputHandler(tariffsStore, "trafficRows", index, "stars")}
-                aria-label={at("tariff_label_price_stars", {}, "Price in Telegram Stars")}
+                aria-label={at("tariff_label_price_stars", {}, "⭐ Stars")}
               />
               {#if showTribute}
                 <span class="admin-row-editor-mobile-label" aria-hidden="true"

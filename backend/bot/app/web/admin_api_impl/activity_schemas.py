@@ -24,7 +24,7 @@ class AdOut(HttpResponseModel):
     cost: float
     is_active: bool
     created_at: datetime | None = None
-    stats: dict[str, Any] = Field(default_factory=dict)
+    stats: AdStatsOut = Field(default_factory=AdStatsOut)
 
     @classmethod
     def from_orm_ad(cls, campaign: Any, totals: dict[str, Any] | None = None) -> AdOut:
@@ -35,7 +35,7 @@ class AdOut(HttpResponseModel):
             cost=float(campaign.cost or 0),
             is_active=bool(campaign.is_active),
             created_at=campaign.created_at,
-            stats=totals or {},
+            stats=AdStatsOut.model_validate(totals or {}),
         )
 
 
