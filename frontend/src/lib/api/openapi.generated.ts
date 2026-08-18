@@ -2354,10 +2354,30 @@ export interface components {
        * @default null
        */
       start_param: string | null;
-      /** Stats */
-      stats?: {
-        [key: string]: unknown;
-      };
+      stats?: components["schemas"]["AdStatsOut"];
+    };
+    /** AdStatsOut */
+    AdStatsOut: {
+      /**
+       * Payers
+       * @default 0
+       */
+      payers: number;
+      /**
+       * Revenue
+       * @default 0
+       */
+      revenue: number;
+      /**
+       * Starts
+       * @default 0
+       */
+      starts: number;
+      /**
+       * Trials
+       * @default 0
+       */
+      trials: number;
     };
     /** AdToggleBody */
     AdToggleBody: {

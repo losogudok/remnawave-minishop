@@ -76,9 +76,7 @@
             "title": "Start Param"
           },
           "stats": {
-            "additionalProperties": true,
-            "title": "Stats",
-            "type": "object"
+            "$ref": "#/components/schemas/AdStatsOut"
           }
         },
         "required": [
@@ -87,6 +85,32 @@
           "is_active"
         ],
         "title": "AdOut",
+        "type": "object"
+      },
+      "AdStatsOut": {
+        "properties": {
+          "payers": {
+            "default": 0,
+            "title": "Payers",
+            "type": "integer"
+          },
+          "revenue": {
+            "default": 0.0,
+            "title": "Revenue",
+            "type": "number"
+          },
+          "starts": {
+            "default": 0,
+            "title": "Starts",
+            "type": "integer"
+          },
+          "trials": {
+            "default": 0,
+            "title": "Trials",
+            "type": "integer"
+          }
+        },
+        "title": "AdStatsOut",
         "type": "object"
       },
       "AdToggleBody": {
