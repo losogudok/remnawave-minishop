@@ -361,6 +361,8 @@ async def merge_users(
         source.email = None
     if telegram_id_to_move:
         source.telegram_id = None
+    if source_panel_uuid:
+        source.panel_user_uuid = None
     if referral_code_to_move:
         source.referral_code = None
     if email_to_move or source_panel_uuid or telegram_id_to_move or referral_code_to_move:

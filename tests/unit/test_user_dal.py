@@ -338,10 +338,16 @@ class UserDalMergeTests(unittest.IsolatedAsyncioTestCase):
             referred_by_id=None,
             referral_code=None,
         )
+
+        flush_states = []
+
+        async def _flush():
+            flush_states.append((source.panel_user_uuid, target.panel_user_uuid))
+
         session = SimpleNamespace(
             execute=AsyncMock(side_effect=lambda stmt: FakeResult()),
             delete=AsyncMock(),
-            flush=AsyncMock(),
+            flush=AsyncMock(side_effect=_flush),
             refresh=AsyncMock(),
         )
 
@@ -360,6 +366,8 @@ class UserDalMergeTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertIs(merged, target)
+        self.assertEqual(flush_states[0], (None, None))
+        self.assertEqual(flush_states[-1], (None, "panel-source"))
 
         update_tables = []
         delete_tables = []
