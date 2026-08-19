@@ -39,6 +39,7 @@
     PlanView,
     SubscriptionView,
     TariffView,
+    StringAction,
     TermUnitLabel,
     Translate,
     VoidAction,
@@ -50,7 +51,6 @@
   };
   type BalancePaymentAction = (options?: CheckoutPaymentOptions) => unknown;
   type CheckoutPromoAction = (options?: Pick<CheckoutPaymentOptions, "checkoutAddons">) => unknown;
-
   let {
     api,
     createPayment = () => {},
@@ -91,6 +91,7 @@
     continueWithSelectedTariff = () => {},
     resumePendingPayment = () => {},
     selectTariff = () => {},
+    setCheckoutPromoInput = () => {},
     t = (key) => key,
     termUnitLabel = () => "",
   }: {
@@ -133,6 +134,7 @@
     continueWithSelectedTariff?: VoidAction;
     resumePendingPayment?: (payment: PendingPaymentView) => void;
     selectTariff?: (tariff: TariffView) => void;
+    setCheckoutPromoInput?: StringAction;
     t?: Translate;
     termUnitLabel?: TermUnitLabel;
   } = $props();
@@ -765,6 +767,7 @@
     {checkoutPromoStatus}
     applyCheckoutPromo={applyPromoWithCheckoutAddons}
     {clearCheckoutPromo}
+    {setCheckoutPromoInput}
     payDisabled={!selectedPlan ||
       !paymentMethodSelected ||
       payBusy ||

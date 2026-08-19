@@ -163,6 +163,7 @@
   checkoutPromoMinTrafficGb={billingStore.checkoutPromoMinTrafficGb}
   applyCheckoutPromo={billingStore.applyCheckoutPromo}
   clearCheckoutPromo={billingStore.clearCheckoutPromo}
+  setCheckoutPromoInput={billingStore.setCheckoutPromoInput}
   {hasMultipleTariffs}
   {methods}
   {paymentMethodsDisplayMode}

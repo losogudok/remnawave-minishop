@@ -5,9 +5,11 @@
   import Input from "$components/ui/input.svelte";
 
   type Translate = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
+  type StringAction = (value: string) => void;
   type VoidAction = () => void;
 
   const noop: VoidAction = () => {};
+  const noopString: StringAction = () => {};
   const defaultTranslate: Translate = (key) => key;
 
   let {
@@ -17,6 +19,7 @@
     isError = false,
     onApply = noop,
     onClear = noop,
+    onValueChange = noopString,
     status = "",
     t = defaultTranslate,
     value = $bindable(""),
@@ -27,6 +30,7 @@
     isError?: boolean;
     onApply?: VoidAction;
     onClear?: VoidAction;
+    onValueChange?: StringAction;
     status?: string;
     t?: Translate;
     value?: string;
@@ -48,10 +52,15 @@
       id={inputId}
       name={inputName}
       class="checkout-promo-input"
-      bind:value
+      {value}
       readonly={hasAppliedCode}
       aria-invalid={Boolean(isError && statusText)}
       placeholder={t("wa_promo_enter")}
+      oninput={(event) => {
+        const nextValue = event.currentTarget.value;
+        value = nextValue;
+        onValueChange(nextValue);
+      }}
     />
     {#if hasAppliedCode}
       <button
