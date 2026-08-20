@@ -33,6 +33,7 @@
     TariffChangeAction,
     TariffChangeOptions,
     TariffChangeTarget,
+    StringAction,
     Translate,
     VoidAction,
   } from "$lib/webapp/types.js";
@@ -51,7 +52,7 @@
     closeTariffChangeModal = () => {},
     closeTopupModal = () => {},
     checkoutPromoAppliedCode = "",
-    checkoutPromoInput = $bindable(""),
+    checkoutPromoInput = "",
     checkoutPromoIsError = false,
     checkoutPromoPriceText = "",
     checkoutPromoEffectiveAmount = 0,
@@ -62,6 +63,7 @@
     checkoutPromoMinTrafficGb = null,
     applyCheckoutPromo = () => {},
     clearCheckoutPromo = () => {},
+    setCheckoutPromoInput = () => {},
     createDeviceTopupPayment = () => {},
     createTopupPayment = () => {},
     deviceTopupModalOpen = $bindable(false),
@@ -105,6 +107,7 @@
     checkoutPromoMinTrafficGb?: number | null;
     applyCheckoutPromo?: VoidAction;
     clearCheckoutPromo?: VoidAction;
+    setCheckoutPromoInput?: StringAction;
     createDeviceTopupPayment?: BalancePaymentAction;
     createTopupPayment?: BalancePaymentAction;
     deviceTopupModalOpen?: boolean;
@@ -656,12 +659,13 @@
         <CheckoutPromoRow
           inputId="webapp-topup-checkout-code"
           inputName="webapp-topup-checkout-code"
-          bind:value={checkoutPromoInput}
+          value={checkoutPromoInput}
           appliedCode={checkoutPromoAppliedCode}
           isError={checkoutPromoIsError}
           status={checkoutPromoStatus}
           onApply={applyCheckoutPromo}
           onClear={clearCheckoutPromo}
+          onValueChange={setCheckoutPromoInput}
           {t}
         />
       {/if}
@@ -768,12 +772,13 @@
         <CheckoutPromoRow
           inputId="webapp-device-topup-checkout-code"
           inputName="webapp-device-topup-checkout-code"
-          bind:value={checkoutPromoInput}
+          value={checkoutPromoInput}
           appliedCode={checkoutPromoAppliedCode}
           isError={checkoutPromoIsError}
           status={checkoutPromoStatus}
           onApply={applyCheckoutPromo}
           onClear={clearCheckoutPromo}
+          onValueChange={setCheckoutPromoInput}
           {t}
         />
       {/if}

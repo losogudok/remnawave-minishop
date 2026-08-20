@@ -80,7 +80,7 @@
     closePaymentModal = () => {},
     closeSetPasswordDialog = () => {},
     checkoutPromoAppliedCode = "",
-    checkoutPromoInput = $bindable(""),
+    checkoutPromoInput = "",
     checkoutPromoIsError = false,
     checkoutPromoPriceText = "",
     checkoutPromoEffectiveAmount = 0,
@@ -203,7 +203,7 @@
   {trafficMode}
   {closePaymentModal}
   {checkoutPromoAppliedCode}
-  bind:checkoutPromoInput
+  {checkoutPromoInput}
   {checkoutPromoIsError}
   {checkoutPromoPriceText}
   {checkoutPromoEffectiveAmount}

@@ -30,7 +30,7 @@
     selectPaymentMethod = () => {},
     checkoutQuoteError = "",
     showCheckoutPromo = false,
-    checkoutPromoInput = $bindable(""),
+    checkoutPromoInput = "",
     checkoutPromoAppliedCode = "",
     checkoutPromoIsError = false,
     checkoutPromoStatus = "",
@@ -102,7 +102,7 @@
 {/if}
 {#if showCheckoutPromo}
   <CheckoutPromoRow
-    bind:value={checkoutPromoInput}
+    value={checkoutPromoInput}
     appliedCode={checkoutPromoAppliedCode}
     isError={checkoutPromoIsError}
     status={checkoutPromoStatus}

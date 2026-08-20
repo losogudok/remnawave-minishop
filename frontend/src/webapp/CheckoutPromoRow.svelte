@@ -22,7 +22,7 @@
     onValueChange = noopString,
     status = "",
     t = defaultTranslate,
-    value = $bindable(""),
+    value = "",
   }: {
     appliedCode?: string;
     inputId?: string;
@@ -58,7 +58,6 @@
       placeholder={t("wa_promo_enter")}
       oninput={(event) => {
         const nextValue = event.currentTarget.value;
-        value = nextValue;
         onValueChange(nextValue);
       }}
     />

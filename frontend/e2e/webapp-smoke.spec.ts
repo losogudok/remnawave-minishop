@@ -1617,6 +1617,18 @@ test("checkout sliders keep price animations bounded and defer quotes while drag
   await expect(
     dialog.locator(".payment-dialog-body > .subscription-purchase-description")
   ).toHaveCount(0);
+
+  const promoInput = dialog.locator(".checkout-promo-input");
+  const promoApplyButton = dialog.locator(".checkout-promo-action .btn");
+  await expect(promoInput).toBeEditable();
+  await promoInput.pressSequentially("SAVE20");
+  await expect(promoInput).toHaveValue("SAVE20");
+  await expect(promoApplyButton).toBeEnabled();
+  await promoInput.press("ControlOrMeta+A");
+  await promoInput.press("Backspace");
+  await expect(promoInput).toHaveValue("");
+  await expect(promoApplyButton).toBeDisabled();
+
   const dialogInsets = await dialog.evaluate((element) => {
     const dialogRect = element.getBoundingClientRect();
     const headerRect = element.querySelector(".dialog-head")!.getBoundingClientRect();

@@ -76,7 +76,7 @@
     trafficMode = false,
     closePaymentModal = () => {},
     checkoutPromoAppliedCode = "",
-    checkoutPromoInput = $bindable(""),
+    checkoutPromoInput = "",
     checkoutPromoIsError = false,
     checkoutPromoPriceText = "",
     checkoutPromoEffectiveAmount = 0,
@@ -761,7 +761,7 @@
     {selectPaymentMethod}
     {checkoutQuoteError}
     showCheckoutPromo={checkoutPromoBlock()}
-    bind:checkoutPromoInput
+    {checkoutPromoInput}
     {checkoutPromoAppliedCode}
     {checkoutPromoIsError}
     {checkoutPromoStatus}
