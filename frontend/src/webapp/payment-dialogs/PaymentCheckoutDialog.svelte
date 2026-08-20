@@ -461,10 +461,12 @@
   $effect(() => {
     const definitions = checkoutAddonDefinitions(selectedPlan);
     let resetPromo = false;
-    const supported = (kind: CheckoutAddonKind, value: number | null) =>
-      value === null ||
-      Boolean(
-        definitions[kind]?.options.some(
+    const supported = (kind: CheckoutAddonKind, value: number | null) => {
+      const definition = definitions[kind];
+      return (
+        value === null ||
+        !definition ||
+        definition.options.some(
           (option) =>
             Math.abs(
               Number(kind === "devices" ? option.extra_units || 0 : option.total_units || 0) -
@@ -472,6 +474,7 @@
             ) < 1e-9
         )
       );
+    };
     if (!supported("devices", checkoutDeviceCount)) {
       checkoutDeviceCount = 0;
       resetPromo = true;

@@ -1694,6 +1694,33 @@ test("checkout sliders keep price animations bounded and defer quotes while drag
   await closeDialog(dialog);
 });
 
+test("checkout promo code is editable and applies its quoted discount", async ({ page }) => {
+  await page.setViewportSize(DESKTOP_VIEWPORT);
+  await page.goto("/demo/runtime/home?mock=checkout-no-addons");
+  await expect(page.locator("nav.bottom-nav")).toBeVisible();
+  expect(await clickFirstVisibleEnabled(webappAction(page, "open-payment"))).toBe(true);
+
+  const dialog = page.locator(".dialog-card.webapp-payment-dialog");
+  await expect(dialog).toBeVisible();
+  const tariffRows = dialog.locator(".tariff-row");
+  if ((await tariffRows.count()) > 0) {
+    await tariffRows.first().click();
+    const nextButton = dialog.locator(".payment-submit-button").first();
+    if (!(await nextButton.isDisabled())) await nextButton.click();
+  }
+
+  const promoInput = dialog.locator(".checkout-promo-input");
+  await expect(promoInput).toBeEditable();
+  await promoInput.fill("save20");
+  await expect(dialog.getByRole("button", { name: "Применить", exact: true })).toBeEnabled();
+
+  await dialog.getByRole("button", { name: "Применить", exact: true }).click();
+
+  await expect(promoInput).toHaveValue("SAVE20");
+  await expect(promoInput).toHaveAttribute("readonly", "");
+  await expect(dialog.locator(".checkout-promo-discount-marker")).toBeVisible();
+});
+
 test("webapp and admin sections, dialogs, tabs stay interactive without console errors", async ({
   page,
 }) => {
