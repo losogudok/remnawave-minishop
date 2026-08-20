@@ -12,6 +12,7 @@
     PlanView,
     SubscriptionView,
     TariffView,
+    StringAction,
     TermUnitLabel,
     Translate,
     VoidAction,
@@ -79,7 +80,7 @@
     closePaymentModal = () => {},
     closeSetPasswordDialog = () => {},
     checkoutPromoAppliedCode = "",
-    checkoutPromoInput = $bindable(""),
+    checkoutPromoInput = "",
     checkoutPromoIsError = false,
     checkoutPromoPriceText = "",
     checkoutPromoEffectiveAmount = 0,
@@ -96,6 +97,7 @@
     requestLinkEmailCode = () => {},
     requestSetPasswordCode = () => {},
     selectTariff = () => {},
+    setCheckoutPromoInput = () => {},
     t = (key) => key,
     termUnitLabel = () => "",
     verifyLinkEmailCode = () => {},
@@ -168,6 +170,7 @@
     requestLinkEmailCode?: VoidAction;
     requestSetPasswordCode?: VoidAction;
     selectTariff?: (tariff: TariffView) => void;
+    setCheckoutPromoInput?: StringAction;
     t?: Translate;
     termUnitLabel?: TermUnitLabel;
     verifyLinkEmailCode?: VoidAction;
@@ -200,7 +203,7 @@
   {trafficMode}
   {closePaymentModal}
   {checkoutPromoAppliedCode}
-  bind:checkoutPromoInput
+  {checkoutPromoInput}
   {checkoutPromoIsError}
   {checkoutPromoPriceText}
   {checkoutPromoEffectiveAmount}
@@ -215,6 +218,7 @@
   {continueWithSelectedTariff}
   {resumePendingPayment}
   {selectTariff}
+  {setCheckoutPromoInput}
   {t}
   {termUnitLabel}
 />

@@ -9,7 +9,7 @@
   import CheckoutPromoRow from "../CheckoutPromoRow.svelte";
   import PartnerBalanceDiscount from "./PartnerBalanceDiscount.svelte";
   import type { ApiClient } from "$lib/webapp/publicApi.js";
-  import type { PaymentMethodView, PlanView, Translate } from "$lib/webapp/types.js";
+  import type { PaymentMethodView, PlanView, StringAction, Translate } from "$lib/webapp/types.js";
 
   type LabelPricePair = { base: string; discounted: string };
   type PlanPricePair = { base: PlanView; discounted: PlanView };
@@ -30,12 +30,13 @@
     selectPaymentMethod = () => {},
     checkoutQuoteError = "",
     showCheckoutPromo = false,
-    checkoutPromoInput = $bindable(""),
+    checkoutPromoInput = "",
     checkoutPromoAppliedCode = "",
     checkoutPromoIsError = false,
     checkoutPromoStatus = "",
     applyCheckoutPromo = () => {},
     clearCheckoutPromo = () => {},
+    setCheckoutPromoInput = () => {},
     payDisabled = false,
     createPayment = () => {},
     partnerPrice = null,
@@ -68,6 +69,7 @@
     checkoutPromoStatus?: string;
     applyCheckoutPromo?: () => unknown;
     clearCheckoutPromo?: () => unknown;
+    setCheckoutPromoInput?: StringAction;
     payDisabled?: boolean;
     createPayment?: () => unknown;
     partnerPrice?: LabelPricePair | null;
@@ -100,12 +102,13 @@
 {/if}
 {#if showCheckoutPromo}
   <CheckoutPromoRow
-    bind:value={checkoutPromoInput}
+    value={checkoutPromoInput}
     appliedCode={checkoutPromoAppliedCode}
     isError={checkoutPromoIsError}
     status={checkoutPromoStatus}
     onApply={applyCheckoutPromo}
     onClear={clearCheckoutPromo}
+    onValueChange={setCheckoutPromoInput}
     {t}
   />
 {/if}

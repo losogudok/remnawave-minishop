@@ -151,7 +151,7 @@
   setPasswordPending={accountStore.setPasswordPending}
   setPasswordResendCooldown={accountStore.setPasswordResendCooldown}
   setPasswordStatus={accountStore.setPasswordStatus}
-  bind:checkoutPromoInput={billingStore.checkoutPromoInput}
+  checkoutPromoInput={billingStore.checkoutPromoInput}
   checkoutPromoAppliedCode={billingStore.checkoutPromoAppliedCode}
   checkoutPromoIsError={billingStore.checkoutPromoIsError}
   checkoutPromoPriceText={billingStore.checkoutPromoPriceText}
@@ -163,6 +163,7 @@
   checkoutPromoMinTrafficGb={billingStore.checkoutPromoMinTrafficGb}
   applyCheckoutPromo={billingStore.applyCheckoutPromo}
   clearCheckoutPromo={billingStore.clearCheckoutPromo}
+  setCheckoutPromoInput={billingStore.setCheckoutPromoInput}
   {hasMultipleTariffs}
   {methods}
   {paymentMethodsDisplayMode}
@@ -218,7 +219,7 @@
   closeTariffChangeConfirm={billingStore.closeTariffChangeConfirm}
   closeTariffChangeModal={billingStore.closeTariffChangeModal}
   closeTopupModal={billingStore.closeTopupModal}
-  bind:checkoutPromoInput={billingStore.checkoutPromoInput}
+  checkoutPromoInput={billingStore.checkoutPromoInput}
   checkoutPromoAppliedCode={billingStore.checkoutPromoAppliedCode}
   checkoutPromoIsError={billingStore.checkoutPromoIsError}
   checkoutPromoPriceText={billingStore.checkoutPromoPriceText}
@@ -230,6 +231,7 @@
   checkoutPromoMinTrafficGb={billingStore.checkoutPromoMinTrafficGb}
   applyCheckoutPromo={billingStore.applyCheckoutPromo}
   clearCheckoutPromo={billingStore.clearCheckoutPromo}
+  setCheckoutPromoInput={billingStore.setCheckoutPromoInput}
   createDeviceTopupPayment={billingStore.createDeviceTopupPayment}
   createTopupPayment={billingStore.createTopupPayment}
   deviceTopupOptions={billingStore.deviceTopupOptions}

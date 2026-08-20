@@ -680,6 +680,7 @@
   "admin_sync_details": "📊 Synchronization Statistics:\n🔍 Panel records checked: {panel_records_checked}\n👥 Users found in DB: {users_found_in_db}\n✨ New users created: {users_created}\n🔄 Users updated: {users_updated}\n📋 Subscriptions synced: {subscriptions_synced_count}\n   ├── Created new: {subscriptions_created}\n   └── Updated existing: {subscriptions_updated}{additional_stats}",
   "admin_sync_no_telegram_id": "\n⚠️ Records without telegramId: {count}",
   "admin_sync_not_found_in_db": "\n❌ Not found in DB: {count}",
+  "admin_sync_errors": "\n❌ Synchronization errors: {count}",
   "admin_payments_pagination_info": "📊 Showing {shown} of {total} payments (page {current_page}/{total_pages})",
   "admin_payment_traffic_label": "🗂 Traffic: <b>{traffic_gb} GB</b>",
   "admin_payment_months_label": "📅 Period: <b>{months} mo.</b>",

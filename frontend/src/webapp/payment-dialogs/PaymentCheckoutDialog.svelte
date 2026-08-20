@@ -39,6 +39,7 @@
     PlanView,
     SubscriptionView,
     TariffView,
+    StringAction,
     TermUnitLabel,
     Translate,
     VoidAction,
@@ -50,7 +51,6 @@
   };
   type BalancePaymentAction = (options?: CheckoutPaymentOptions) => unknown;
   type CheckoutPromoAction = (options?: Pick<CheckoutPaymentOptions, "checkoutAddons">) => unknown;
-
   let {
     api,
     createPayment = () => {},
@@ -76,7 +76,7 @@
     trafficMode = false,
     closePaymentModal = () => {},
     checkoutPromoAppliedCode = "",
-    checkoutPromoInput = $bindable(""),
+    checkoutPromoInput = "",
     checkoutPromoIsError = false,
     checkoutPromoPriceText = "",
     checkoutPromoEffectiveAmount = 0,
@@ -91,6 +91,7 @@
     continueWithSelectedTariff = () => {},
     resumePendingPayment = () => {},
     selectTariff = () => {},
+    setCheckoutPromoInput = () => {},
     t = (key) => key,
     termUnitLabel = () => "",
   }: {
@@ -133,6 +134,7 @@
     continueWithSelectedTariff?: VoidAction;
     resumePendingPayment?: (payment: PendingPaymentView) => void;
     selectTariff?: (tariff: TariffView) => void;
+    setCheckoutPromoInput?: StringAction;
     t?: Translate;
     termUnitLabel?: TermUnitLabel;
   } = $props();
@@ -477,18 +479,20 @@
     };
     if (!supported("devices", checkoutDeviceCount)) {
       checkoutDeviceCount = 0;
-      resetPromo = true;
     }
     if (!supported("traffic", checkoutRegularLimitGb)) {
-      checkoutRegularLimitGb = Number(definitions.traffic?.base_units || 0) || null;
-      resetPromo = true;
+      const defaultRegularLimitGb = Number(definitions.traffic?.base_units || 0) || null;
+      if (checkoutRegularLimitGb !== defaultRegularLimitGb) {
+        checkoutRegularLimitGb = defaultRegularLimitGb;
+      }
     }
     if (!supported("premium_traffic", checkoutPremiumLimitGb)) {
-      checkoutPremiumLimitGb = Number(definitions.premium_traffic?.base_units || 0) || null;
-      resetPromo = true;
+      const defaultPremiumLimitGb = Number(definitions.premium_traffic?.base_units || 0) || null;
+      if (checkoutPremiumLimitGb !== defaultPremiumLimitGb) {
+        checkoutPremiumLimitGb = defaultPremiumLimitGb;
+      }
     }
     if (checkoutDeviceCount > 0 && renewHwidDevices) renewHwidDevices = false;
-    if (resetPromo) clearCheckoutPromo();
   });
 
   $effect(() => {
@@ -762,12 +766,13 @@
     {selectPaymentMethod}
     {checkoutQuoteError}
     showCheckoutPromo={checkoutPromoBlock()}
-    bind:checkoutPromoInput
+    {checkoutPromoInput}
     {checkoutPromoAppliedCode}
     {checkoutPromoIsError}
     {checkoutPromoStatus}
     applyCheckoutPromo={applyPromoWithCheckoutAddons}
     {clearCheckoutPromo}
+    {setCheckoutPromoInput}
     payDisabled={!selectedPlan ||
       !paymentMethodSelected ||
       payBusy ||
