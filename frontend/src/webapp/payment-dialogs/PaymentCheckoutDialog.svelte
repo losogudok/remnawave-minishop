@@ -462,7 +462,6 @@
 
   $effect(() => {
     const definitions = checkoutAddonDefinitions(selectedPlan);
-    let resetPromo = false;
     const supported = (kind: CheckoutAddonKind, value: number | null) =>
       value === null ||
       Boolean(
@@ -474,20 +473,22 @@
             ) < 1e-9
         )
       );
-    if (!supported("devices", checkoutDeviceCount)) {
+    if (!supported("devices", checkoutDeviceCount) && checkoutDeviceCount !== 0) {
       checkoutDeviceCount = 0;
-      resetPromo = true;
     }
     if (!supported("traffic", checkoutRegularLimitGb)) {
-      checkoutRegularLimitGb = Number(definitions.traffic?.base_units || 0) || null;
-      resetPromo = true;
+      const defaultRegularLimitGb = Number(definitions.traffic?.base_units || 0) || null;
+      if (checkoutRegularLimitGb !== defaultRegularLimitGb) {
+        checkoutRegularLimitGb = defaultRegularLimitGb;
+      }
     }
     if (!supported("premium_traffic", checkoutPremiumLimitGb)) {
-      checkoutPremiumLimitGb = Number(definitions.premium_traffic?.base_units || 0) || null;
-      resetPromo = true;
+      const defaultPremiumLimitGb = Number(definitions.premium_traffic?.base_units || 0) || null;
+      if (checkoutPremiumLimitGb !== defaultPremiumLimitGb) {
+        checkoutPremiumLimitGb = defaultPremiumLimitGb;
+      }
     }
     if (checkoutDeviceCount > 0 && renewHwidDevices) renewHwidDevices = false;
-    if (resetPromo) clearCheckoutPromo();
   });
 
   $effect(() => {
