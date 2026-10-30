@@ -14,10 +14,11 @@ on:
   pull_request:
     branches: [main, dev]
   push:
-    branches: [main, dev]
+    branches: [dev]
   schedule:
     - cron: "27 4 * * 1" # weekly, Monday 04:27 UTC
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
   group: security-${{ github.workflow }}-${{ github.ref }}

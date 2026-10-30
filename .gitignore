@@ -9,10 +9,12 @@ scratch_*.py
 scratch/
 *.local.*
 node_modules/
+/frontend/node_modules
 .git/
 
 # Root-local scratch and run artifacts; keep ad-hoc work under tmp/.
 /tmp/
+/backups/
 /tmp_docs_preview.*.log
 /vite-*.log
 /fullstack-qa-compose.log

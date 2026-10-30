@@ -148,7 +148,10 @@ test("closing and reopening the scanner stops a camera granted to the old dialog
         ).qrCamera.pending.length
     );
   await expect.poll(state).toBe(1);
+  // The dialog moves focus on the next animation frame; Escape must reach it.
+  await expect(page.locator(".qr-scan-dialog .dialog-close-button")).toBeFocused();
   await page.keyboard.press("Escape");
+  await expect(page.locator(".qr-scan-dialog")).toHaveCount(0);
   await scan.click();
   await expect.poll(state).toBe(2);
   await page.evaluate(() =>
@@ -171,5 +174,7 @@ test("closing and reopening the scanner stops a camera granted to the old dialog
     )
     .toBe(1);
   await expect(page.locator(".qr-scan-dialog")).toBeVisible();
+  await expect(page.locator(".qr-scan-dialog .dialog-close-button")).toBeFocused();
   await page.keyboard.press("Escape");
+  await expect(page.locator(".qr-scan-dialog")).toHaveCount(0);
 });
