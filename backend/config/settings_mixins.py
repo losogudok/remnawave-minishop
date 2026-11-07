@@ -120,6 +120,7 @@ class SettingsComputedMixin(_SettingsComputedMixinBase):
             server_host=self.WEBAPP_SERVER_HOST,
             server_port=self.WEBAPP_SERVER_PORT,
             enabled=self.WEBAPP_ENABLED,
+            pwa_enabled=self.PWA_ENABLED,
             trusted_proxies=self.trusted_proxies,
         )
 

@@ -240,7 +240,16 @@ async def webapp_current_favicon_route(request: web.Request) -> web.Response:
         redirect.headers["Cache-Control"] = "no-cache"
         raise redirect
 
-    raise web.HTTPNotFound(text="webapp_favicon_not_found")
+    # The manifest and the shell always reference the root icon aliases, so a
+    # branding that cannot serve the requested size (custom .ico favicon,
+    # external SVG logo without generated PNGs) must not 404: fall back to
+    # the bundled default icon instead of breaking installability.
+    try:
+        response = _webapp_default_favicon_file_response(target_filename)
+    except web.HTTPNotFound:
+        raise web.HTTPNotFound(text="webapp_favicon_not_found") from None
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 def _webapp_root_favicon_target_filename(filename: str) -> str:

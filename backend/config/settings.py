@@ -608,6 +608,14 @@ class Settings(
         default=True,
         description="Run the subscription Mini App in the same container on a separate port.",
     )
+    PWA_ENABLED: bool = Field(
+        default=True,
+        description=(
+            "Serve the Web App manifest and service worker so the Mini App "
+            "can be installed as a standalone PWA. Disable to keep the app "
+            "browser/Telegram-only."
+        ),
+    )
     WEBAPP_SERVER_HOST: str = Field(default="0.0.0.0")
     WEBAPP_SERVER_PORT: int = Field(default=8081)
     WEBAPP_TITLE: str = Field(default="/minishop")

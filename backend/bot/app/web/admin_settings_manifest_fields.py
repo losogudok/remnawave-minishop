@@ -344,6 +344,15 @@ SETTINGS_MANIFEST: list[SettingField] = [
     SettingField("WEBAPP_LOGO_FAVICON_URL", "url", "appearance", "Favicon from logo"),
     SettingField("WEBAPP_ENABLED", "bool", "appearance", "WebApp Enabled"),
     SettingField(
+        "PWA_ENABLED",
+        "bool",
+        "appearance",
+        "Installable Web App (PWA)",
+        "Serve the Web App manifest and service worker so the Mini App can be "
+        "installed as a standalone app. Disable to keep it browser/Telegram-only.",
+        optional=False,
+    ),
+    SettingField(
         "SUBSCRIPTION_GUIDES_ENABLED",
         "bool",
         "subscription_guides",

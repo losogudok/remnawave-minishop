@@ -11,6 +11,7 @@
     Send,
     Server,
     Shield,
+    Smartphone,
     UserRound,
     WalletCards,
   } from "$components/ui/icons.js";
@@ -22,9 +23,15 @@
   import PromoActivationCard from "../PromoActivationCard.svelte";
   import TelegramNotificationsBanner from "../TelegramNotificationsBanner.svelte";
   import MenuButtonIcon from "../MenuButtonIcon.svelte";
+  import PwaInstallDialog from "../pwa/PwaInstallDialog.svelte";
   import QrLoginApprover from "../security/QrLoginApprover.svelte";
   import { formatMoney } from "$lib/webapp/formatters.js";
   import { shouldShowUserBalance } from "$lib/webapp/balanceUiPolicy.js";
+  import {
+    getPwaInstallSnapshot,
+    isPwaInstallAvailable,
+    reportPwaInstallClicked,
+  } from "$lib/webapp/pwaInstall.svelte.js";
   import {
     documentHref,
     hasInformationDocumentRole,
@@ -180,6 +187,14 @@
   const hasNativeUserAgreement = $derived(
     hasInformationDocumentRole(publicDocuments ?? [], "user_agreement")
   );
+  const pwaInstallSnapshot = $derived(getPwaInstallSnapshot());
+  const pwaInstallVisible = $derived(isPwaInstallAvailable(pwaInstallSnapshot.state));
+  let pwaInstallOpen = $state(false);
+
+  function openPwaInstall(): void {
+    reportPwaInstallClicked("settings");
+    pwaInstallOpen = true;
+  }
 
   onMount(() => {
     void publicDocumentsStore.load();
@@ -306,6 +321,27 @@
               "wa_notification_preferences_hint",
               {},
               "Choose separately what may be sent to your email and Telegram."
+            )}</small
+          >
+        </span>
+        <ArrowRight size={17} />
+      </button>
+    {/if}
+    {#if pwaInstallVisible}
+      <button
+        data-webapp-action="open-pwa-install"
+        class="settings-row settings-row-pwa-install"
+        type="button"
+        onclick={openPwaInstall}
+      >
+        <Smartphone size={21} />
+        <span>
+          <strong>{t("wa_pwa_install_settings_title", {}, "Install app")}</strong>
+          <small
+            >{t(
+              "wa_pwa_install_settings_hint",
+              {},
+              "Add Minishop to your home screen and open it in one tap."
             )}</small
           >
         </span>
@@ -471,6 +507,8 @@
     </div>
   {/if}
 </main>
+
+<PwaInstallDialog bind:open={pwaInstallOpen} signalScreen="settings" {t} />
 
 <style>
   .settings-profile-balance {

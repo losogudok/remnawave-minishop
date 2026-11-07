@@ -401,6 +401,7 @@ Xray-Core 26.3.27+, `NET_ADMIN`, nftables, корректный sniffing и вк
 | Переменная | Где менять | Назначение |
 | --- | --- | --- |
 | `WEBAPP_ENABLED` | `.env` / админка | Включает Web App. Если `False`, пользовательский Web App и админка недоступны до включения через `.env` и рестарта. |
+| `PWA_ENABLED` | `.env` / админка → Внешний вид | Отдаёт Web App manifest и service worker, чтобы Mini App устанавливался как отдельное приложение. По умолчанию `True`; при `False` (и включённом `WEBAPP_ENABLED`) manifest отвечает 404, а `/sw.js` отдаёт retiring worker (снимает регистрацию и чистит только core-кеши `minishop-pwa-v*`, уже установленные клиенты перестают перехватывать fetch/push), приложение работает как обычно в браузере и Telegram. При `WEBAPP_ENABLED=False` WebApp-listener остановлен, поэтому retirement не отдаётся до повторного включения WebApp. |
 | `SUBSCRIPTION_MINI_APP_URL` | `.env` / админка | Публичный HTTPS URL Mini App/frontend, например `https://app.domain.com/`. Используется в Telegram-кнопках, реферальных ссылках, входе по email и настройках BotFather Mini App. Не указывайте здесь `/api` или webhook-пути. |
 | `WEBAPP_API_BASE_URL` | `.env` | Browser-visible API base для `/bootstrap`, `/me`, платежей и админки. Оставьте `/api`; полный backend URL в браузер не передается. |
 | `WEBAPP_BACKEND_UPSTREAM` | frontend env | Server-side upstream frontend nginx для `/api`, `/auth`, `/open-app` и Web App assets. |

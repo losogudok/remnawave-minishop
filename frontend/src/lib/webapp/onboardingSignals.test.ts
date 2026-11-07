@@ -154,8 +154,32 @@ describe("onboarding screen and action names", () => {
 
   it("allowlist actions and drops unknown names", () => {
     expect(toOnboardingAction("connect_opened")).toBe("connect_opened");
+    expect(toOnboardingAction("pwa_install_clicked")).toBe("pwa_install_clicked");
+    expect(toOnboardingAction("pwa_app_installed")).toBe("pwa_app_installed");
     expect(toOnboardingAction("https://evil.example")).toBeNull();
     expect(toOnboardingAction("user.registered")).toBeNull();
+  });
+
+  it("reports PWA install actions without URLs or tokens", () => {
+    const win = stubWindow();
+    stubDocument([]);
+    initOnboardingSignals([validDescriptor()], { code: "campaign", utm: {} });
+    reportOnboardingAction("pwa_install_clicked", "settings", "app");
+    reportOnboardingAction("pwa_install_prompt_accepted", "settings", "app");
+    reportOnboardingAction("pwa_install_prompt_dismissed", "home", "app");
+    reportOnboardingAction("pwa_app_installed", "settings", "app");
+    reportOnboardingAction("pwa_install_unconfirmed", "home", "app");
+    const layer = win.dataLayer as OnboardingSignal[];
+    expect(layer.map((signal) => signal.event)).toEqual([
+      "minishop_pwa_install_clicked",
+      "minishop_pwa_install_prompt_accepted",
+      "minishop_pwa_install_prompt_dismissed",
+      "minishop_pwa_app_installed",
+      "minishop_pwa_install_unconfirmed",
+    ]);
+    for (const signal of layer) {
+      expect(JSON.stringify(signal)).not.toMatch(/https?:|token|s\//i);
+    }
   });
 });
 
@@ -207,6 +231,9 @@ describe("onboarding signal lifecycle", () => {
     initOnboardingSignals([], { code: "summer", utm: {} });
     reportOnboardingScreen("login", "guest");
     reportOnboardingAction("trial_activated", "trial", "app");
+    reportOnboardingAction("pwa_install_clicked", "settings", "app");
+    reportOnboardingAction("pwa_install_prompt_accepted", "settings", "app");
+    reportOnboardingAction("pwa_app_installed", "settings", "app");
     setOnboardingAuthenticated();
     expect(appended).toEqual([]);
     expect(win.dataLayer).toBeUndefined();

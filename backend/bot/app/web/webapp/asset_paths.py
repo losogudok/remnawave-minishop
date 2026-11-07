@@ -16,3 +16,7 @@ WEBAPP_DEFAULT_LOGO_PATH = "/webapp-default-logo.webp"
 WEBAPP_DEFAULT_FAVICON_DIGEST = "19b2a242e5b7bc2d"
 WEBAPP_DEFAULT_FAVICON_DIR = WEBAPP_DEFAULT_BRAND_DIR / "favicons" / WEBAPP_DEFAULT_FAVICON_DIGEST
 WEBAPP_DEFAULT_FAVICON_URL = f"{WEBAPP_FAVICON_PATH}/{WEBAPP_DEFAULT_FAVICON_DIGEST}/icon-180.png"
+PWA_MANIFEST_PATH = "/manifest.webmanifest"
+PWA_SERVICE_WORKER_PATH = "/sw.js"
+PWA_SERVICE_WORKER_SOURCE_PATH = Path(__file__).resolve().parent / "pwa_service_worker.js"
+PWA_RETIREMENT_WORKER_SOURCE_PATH = Path(__file__).resolve().parent / "pwa_retirement_worker.js"

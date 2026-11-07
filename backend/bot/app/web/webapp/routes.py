@@ -167,6 +167,7 @@ from .payloads import (
     WebAppPaymentCreatePayload as WebAppPaymentCreatePayload,
 )
 from .payment_history import payment_history_route
+from .pwa import pwa_manifest_route, pwa_service_worker_route
 from .qr_login import (
     account_qr_login_approve_route,
     account_qr_login_claim_route,
@@ -220,6 +221,8 @@ def setup_subscription_webapp_routes(app: web.Application) -> None:
         "/api/theme-effects/assets/{key}/{digest}/{path:.+}", theme_effect_asset_route
     )
     app.router.add_get("/robots.txt", robots_txt_route)
+    app.router.add_get("/manifest.webmanifest", pwa_manifest_route)
+    app.router.add_get("/sw.js", pwa_service_worker_route)
     app.router.add_get("/", index_route)
     app.router.add_get("/login/password", index_route)
     app.router.add_get("/home", index_route)

@@ -20,6 +20,7 @@
   import Button from "$components/ui/button.svelte";
   import Card from "$components/ui/card.svelte";
   import TelegramNotificationsBanner from "../TelegramNotificationsBanner.svelte";
+  import PwaInstallOffer from "../pwa/PwaInstallOffer.svelte";
   import ServerStatusCard from "../ServerStatusCard.svelte";
   import HomeCompactSummaryCard from "../HomeCompactSummaryCard.svelte";
   import HomeBalanceCard from "../HomeBalanceCard.svelte";
@@ -460,6 +461,7 @@
   {/if}
 
   <div class="home-bottom">
+    <PwaInstallOffer signalScreen="home" persistent {t} />
     {#if compactHomeEnabled}
       <UserExtensionPoint target="user.home.summary">
         <HomeCompactSummaryCard

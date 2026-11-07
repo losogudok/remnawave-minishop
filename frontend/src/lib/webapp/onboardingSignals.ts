@@ -57,7 +57,12 @@ export type OnboardingSignalAction =
   | "text_copied"
   | "share_opened"
   | "trial_activated"
-  | "auth_completed";
+  | "auth_completed"
+  | "pwa_install_clicked"
+  | "pwa_install_prompt_accepted"
+  | "pwa_install_prompt_dismissed"
+  | "pwa_app_installed"
+  | "pwa_install_unconfirmed";
 
 export type OnboardingSignalDescriptor = {
   owner: string;
@@ -162,6 +167,11 @@ const ACTIONS: ReadonlySet<string> = new Set([
   "share_opened",
   "trial_activated",
   "auth_completed",
+  "pwa_install_clicked",
+  "pwa_install_prompt_accepted",
+  "pwa_install_prompt_dismissed",
+  "pwa_app_installed",
+  "pwa_install_unconfirmed",
 ]);
 
 function emptyAttribution(): OnboardingAttribution {

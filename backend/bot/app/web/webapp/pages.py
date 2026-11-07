@@ -21,8 +21,8 @@ from .response_helpers import json_response
 # normal router 404 rather than a missing information page.
 INFORMATION_PAGE_ROUTE_PATTERN = (
     r"(?!(?:admin|api|auth|checkout|devices|favicon\.ico|fonts|health|home|icon-192\.png|"
-    r"icon-512\.png|install|invite|login|open-app|partner|plans|robots\.txt|s|settings|status|"
-    r"subscription_webapp\.css|subscription_webapp\.js|support|trial|unsubscribe|"
+    r"icon-512\.png|install|invite|login|manifest\.webmanifest|open-app|partner|plans|robots\.txt|s|settings|status|"
+    r"subscription_webapp\.css|subscription_webapp\.js|support|sw\.js|trial|unsubscribe|"
     r"webapp-default-logo\.webp|webapp-favicon|webapp-logo|webapp-theme-assets|webapp-theme-css|"
     r"webapp-uploaded-logo)(?:/|$)).+"
 )

@@ -102,6 +102,55 @@ function prepareIndexHtml(rawHtml, { cssName, jsName }) {
     .replace(/\r\n/g, "\n")
     .replace('href="/subscription_webapp.css"', `href="/${cssName}"`)
     .replace("</head>", `${jsPreload}\n  </head>`);
+  // The static fallback shell is only served when the backend is unreachable,
+  // so PWA wiring cannot be personalized per settings here. The manifest link
+  // and best-effort worker registration are static; the backend-served shell
+  // replaces both placeholders with the configured (nonce'd) variants, or
+  // drops them entirely when PWA is disabled.
+  const pwaHead = '    <link rel="manifest" href="/manifest.webmanifest" />';
+  // Same coordinated update as the backend-served (nonce'd) registration in
+  // backend/bot/app/web/webapp/pwa.py: waiting workers only activate on the
+  // page's SKIP_WAITING signal, and the page reloads once on controllerchange.
+  // The first activation only primes the controller flag (the static shell is
+  // already current), so a later update still reloads.
+  const pwaScript = [
+    '    <script type="module">',
+    '      if ("serviceWorker" in navigator) {',
+    "        let pwaHadController = Boolean(navigator.serviceWorker.controller);",
+    "        let pwaReactivated = false;",
+    "        const pwaActivateWaiting = (registration) => {",
+    "          const waiting = registration && registration.waiting;",
+    "          if (waiting) {",
+    '            try { waiting.postMessage({ type: "SKIP_WAITING" }); } catch (err) {}',
+    "          }",
+    "        };",
+    '        navigator.serviceWorker.addEventListener("controllerchange", () => {',
+    "          if (pwaHadController && !pwaReactivated) {",
+    "            pwaReactivated = true;",
+    "            window.location.reload();",
+    "          }",
+    "          pwaHadController = Boolean(navigator.serviceWorker.controller);",
+    "        });",
+    '        window.addEventListener("load", () => {',
+    '          navigator.serviceWorker.register("/sw.js", { scope: "/" })',
+    "            .then((registration) => {",
+    "              pwaActivateWaiting(registration);",
+    '              registration.addEventListener("updatefound", () => {',
+    "                const installing = registration.installing;",
+    "                if (installing) {",
+    '                  installing.addEventListener("statechange", () => {',
+    '                    if (installing.state === "installed" && navigator.serviceWorker.controller) {',
+    "                      pwaActivateWaiting(registration);",
+    "                    }",
+    "                  });",
+    "                }",
+    "              });",
+    "            })",
+    "            .catch(() => {});",
+    "        });",
+    "      }",
+    "    </script>",
+  ].join("\n");
   const lines = html.split("\n");
   const output = lines
     .map((line) =>
@@ -109,6 +158,8 @@ function prepareIndexHtml(rawHtml, { cssName, jsName }) {
         ? `    <script type="module" src="/${jsName}"></script>`
         : line
     )
+    .map((line) => (line.includes("WEBAPP_PWA_HEAD") ? pwaHead : line))
+    .map((line) => (line.includes("WEBAPP_PWA_SCRIPT") ? pwaScript : line))
     .filter(
       (line) =>
         !line.includes("WEBAPP_I18N_SCRIPT") &&

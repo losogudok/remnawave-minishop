@@ -171,6 +171,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "USER_TRAFFIC_STRATEGY": "NO_RESET",
     "WEBAPP_DEVICES_CACHE_TTL_SECONDS": 5,
     "WEBAPP_ENABLED": True,
+    "PWA_ENABLED": True,
     "WEBAPP_FAVICON_URL": None,
     "WEBAPP_FAVICON_USE_CUSTOM": False,
     "WEBAPP_LOGO_FAVICON_URL": None,
@@ -276,6 +277,7 @@ class SettingsStub(SimpleNamespace):
             server_host=getattr(self, "WEBAPP_SERVER_HOST", "0.0.0.0"),
             server_port=int(getattr(self, "WEBAPP_SERVER_PORT", 8080)),
             enabled=bool(getattr(self, "WEBAPP_ENABLED", True)),
+            pwa_enabled=bool(getattr(self, "PWA_ENABLED", True)),
             trusted_proxies=self.trusted_proxies,
         )
 

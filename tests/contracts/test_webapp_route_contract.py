@@ -102,6 +102,8 @@ class WebAppRouteContractTests(unittest.TestCase):
             ("GET", "/auth/telegram/callback"): "telegram_oauth_callback_route",
             ("GET", "/health"): "health_route",
             ("GET", "/robots.txt"): "robots_txt_route",
+            ("GET", "/manifest.webmanifest"): "pwa_manifest_route",
+            ("GET", "/sw.js"): "pwa_service_worker_route",
             ("GET", "/webapp-logo"): "webapp_logo_route",
             ("GET", "/webapp-uploaded-logo/{filename}"): "webapp_uploaded_logo_route",
             ("GET", "/subscription_webapp.css"): "css_asset_route",

@@ -148,6 +148,7 @@ from .onboarding_signals import (
     collect_onboarding_signal_descriptors,
     onboarding_signals_csp_hosts,
 )
+from .pwa import apply_pwa_shell_markup, pwa_enabled
 from .response_helpers import json_response
 
 _TEXT_FILE_CACHE: dict[tuple[str, bool], tuple[int, int, str]] = {}
@@ -216,6 +217,8 @@ async def _security_headers_middleware(
 
 _EDGE_TOKEN_EXACT_PATHS = {
     "/open-app",
+    "/manifest.webmanifest",
+    "/sw.js",
     "/webapp-logo",
     "/webapp-default-logo.webp",
     "/favicon.ico",
@@ -767,6 +770,11 @@ async def index_route(request: web.Request) -> web.Response:
         'href="/subscription_webapp.css"',
         f'href="/{css_asset_name}"',
         1,
+    )
+    html = apply_pwa_shell_markup(
+        html,
+        enabled=pwa_enabled(settings),
+        nonce=request.get("csp_nonce", ""),
     )
     is_admin_route = request.path == "/admin" or request.path.startswith("/admin/")
     preload_markup = _webapp_shell_preload_markup(

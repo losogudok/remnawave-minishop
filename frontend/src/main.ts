@@ -10,7 +10,10 @@ import {
   informationPagePathFromLocation,
 } from "./lib/webapp/informationPages";
 import { computeThemeView } from "./lib/webapp/themeView";
+import { initPwaInstall } from "./lib/webapp/pwaInstall.svelte";
 import "./styles.css";
+
+initPwaInstall();
 
 const PUBLIC_INSTALL_PRELOAD_KEY = "__RW_PUBLIC_INSTALL_PRELOAD__";
 const BOOTSTRAP_TIMEOUT_MS = 4000;

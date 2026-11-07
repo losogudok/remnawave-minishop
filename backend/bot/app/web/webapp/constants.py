@@ -29,6 +29,8 @@ User-agent: Applebot-Extended
 Disallow: /
 """
 WEBAPP_CONFIG_PLACEHOLDER = "<!-- WEBAPP_CONFIG_SCRIPT -->"
+WEBAPP_PWA_HEAD_PLACEHOLDER = "<!-- WEBAPP_PWA_HEAD -->"
+WEBAPP_PWA_SCRIPT_PLACEHOLDER = "<!-- WEBAPP_PWA_SCRIPT -->"
 WEBAPP_CSRF_COOKIE_NAME = "rw_webapp_csrf"
 WEBAPP_CSRF_EXEMPT_PATHS = {
     "/api/auth/telegram/nonce",

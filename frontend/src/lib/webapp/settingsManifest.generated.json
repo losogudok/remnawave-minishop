@@ -1306,6 +1306,25 @@
         "value": "",
         "overridden": false,
         "updated_at": null
+      },
+      {
+        "key": "PWA_ENABLED",
+        "type": "bool",
+        "section": "appearance",
+        "section_order": 2,
+        "subsection": null,
+        "label": "Installable Web App (PWA)",
+        "description": "Serve the Web App manifest and service worker so the Mini App can be installed as a standalone app. Disable to keep it browser/Telegram-only.",
+        "i18n_label_key": "admin_settings_field_pwa_enabled_label",
+        "i18n_description_key": "admin_settings_field_pwa_enabled_description",
+        "i18n_subsection_key": null,
+        "i18n_placeholder_key": null,
+        "placeholder": "",
+        "optional": false,
+        "secret": false,
+        "value": "",
+        "overridden": false,
+        "updated_at": null
       }
     ]
   },

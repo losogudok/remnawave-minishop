@@ -51,6 +51,7 @@ class WebAppSettings(BaseModel):
     server_host: str
     server_port: int
     enabled: bool
+    pwa_enabled: bool = True
     trusted_proxies: list[str]
 
 

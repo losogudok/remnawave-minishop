@@ -20,6 +20,7 @@
   } from "../lib/webapp/themeStyle.js";
 
   import UserExtensions from "./extensions/UserExtensions.svelte";
+  import PwaInstallOffer from "./pwa/PwaInstallOffer.svelte";
   import type { UserNavigationItem } from "$lib/webapp/extensionHost";
   import WebAppShell from "./WebAppShell.svelte";
   import HomeScreen from "./screens/HomeScreen.svelte";
@@ -460,6 +461,9 @@
     bind:parentSection={extensionParent}
     bind:sections={extensionSections}
   >
+    {#if screen !== "home"}
+      <PwaInstallOffer signalScreen={screen === "settings" ? "settings" : "home"} {t} />
+    {/if}
     {#if screen === "home"}
       <HomeScreen
         {appSettings}

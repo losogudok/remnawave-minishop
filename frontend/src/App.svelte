@@ -15,6 +15,7 @@
   } from "./lib/webapp/onboardingSignals";
   import { Toaster, toast as sonnerToast } from "svelte-sonner";
   import { Tooltip } from "$components/ui/primitives.js";
+  import { setPwaInstallTelegramContext } from "./lib/webapp/pwaInstall.svelte";
 
   import AppModeContent from "./webapp/AppModeContent.svelte";
   import ThemeEffectsHost from "./webapp/ThemeEffectsHost.svelte";
@@ -431,6 +432,10 @@
       t,
     })
   );
+
+  $effect(() => {
+    setPwaInstallTelegramContext(shellView.telegramMiniAppContext);
+  });
 
   const telegramNotificationsNeedPrompt = $derived(
     shellView.accountView.telegramNotificationsNeedPrompt
