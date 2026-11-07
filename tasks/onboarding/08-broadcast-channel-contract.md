@@ -2,6 +2,8 @@
 
 Layer: Core. Dependencies: ONB-06. Status: implemented and integrated into local `main`.
 
+Acceptance evidence and limits: [implementation status](README.md#implementation-status--2026-11-05).
+
 ## Scope
 
 Extend the existing admin broadcasts with an additive delivery-channel contract,

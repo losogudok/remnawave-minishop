@@ -181,6 +181,7 @@ export default defineConfig({
             { label: 'Контракт плагинов', slug: 'development/plugin-contract' },
             { label: 'Архитектура', slug: 'reference/architecture' },
             { label: 'Единый dev stand', slug: 'development/dev-stand' },
+            { label: 'Приёмка онбординга (2026-11-05)', slug: 'development/onboarding-acceptance-2026-11-05' },
             { label: 'Деплой форка', slug: 'development/production-fork' },
             { label: 'Staging форка', slug: 'development/staging-fork' },
             { label: 'Окружения тестов', slug: 'reference/test-environments' },

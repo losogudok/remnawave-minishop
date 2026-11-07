@@ -3,6 +3,8 @@
 Layer: existing plugin UI where sufficient; small Core additions where necessary.
 Dependencies: ONB-10. Status: implemented and integrated into local `main`.
 
+Acceptance evidence and limits: [implementation status](README.md#implementation-status--2026-11-05).
+
 ## Scope
 
 Offer installation of Minishop as a standalone web app on supported phone/desktop

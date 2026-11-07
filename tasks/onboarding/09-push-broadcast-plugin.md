@@ -2,6 +2,8 @@
 
 Layer: plugin. Dependencies: ONB-07/ONB-08. Status: implemented and integrated into local `main`.
 
+Acceptance evidence and limits: [implementation status](README.md#implementation-status--2026-11-05).
+
 ## Scope
 
 Register Web Push as a delivery channel in existing admin broadcasts. Allow news

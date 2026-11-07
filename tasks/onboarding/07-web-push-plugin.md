@@ -2,6 +2,8 @@
 
 Layer: plugin. Dependencies: ONB-06/ONB-10. Status: implemented and integrated into local `main`.
 
+Acceptance evidence and limits: [implementation status](README.md#implementation-status--2026-11-05).
+
 ## Scope
 
 Own browser subscription enrollment/preferences, endpoint persistence, credentials,

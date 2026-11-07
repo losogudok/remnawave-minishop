@@ -2,6 +2,8 @@
 
 Layer: Core. Dependencies: none. Status: implemented and integrated into local `main`.
 
+Acceptance evidence and limits: [implementation status](README.md#implementation-status--2026-11-05).
+
 ## Scope
 
 Provide an additive, vendor-neutral contract for deployment-enabled integrations to initialize

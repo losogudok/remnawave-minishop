@@ -2,6 +2,8 @@
 
 Layer: plugin. Dependencies: ONB-04. Status: implemented and integrated into local `main`.
 
+Acceptance evidence and limits: [implementation status](README.md#implementation-status--2026-11-05).
+
 ## Scope
 
 Collect the agreed funnel: visit, registration, trial/purchase, instructions viewed,

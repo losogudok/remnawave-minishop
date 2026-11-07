@@ -2,6 +2,8 @@
 
 Layer: Core. Dependencies: none. Status: implemented and integrated into local `main`.
 
+Acceptance evidence and limits: [implementation status](README.md#implementation-status--2026-11-05).
+
 ## Scope
 
 Add optional localized introduction text below the login-page logo/branding.
