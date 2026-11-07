@@ -14,6 +14,7 @@
     | "maxlength"
     | "autocomplete"
     | "disabled"
+    | "readonly"
     | "class"
     | "onkeydown"
     | "oninput"
@@ -29,6 +30,7 @@
     maxlength?: HTMLInputAttributes["maxlength"];
     autocomplete?: HTMLInputAttributes["autocomplete"];
     disabled?: boolean;
+    readonly?: boolean;
     class?: string;
     controlSize?: ControlSize;
     onkeydown?: HTMLInputAttributes["onkeydown"];
@@ -51,6 +53,7 @@
     maxlength = undefined,
     autocomplete = undefined,
     disabled = false,
+    readonly = false,
     class: className = "",
     controlSize,
     onkeydown,
@@ -97,6 +100,7 @@
   {maxlength}
   {autocomplete}
   {disabled}
+  {readonly}
   {...rest}
 />
 

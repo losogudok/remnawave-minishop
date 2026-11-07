@@ -39,6 +39,10 @@
   const hasAppliedCode = $derived(Boolean(appliedCode));
   const statusText = $derived(String(status || "").trim());
   const markerText = $derived(statusText || t("wa_promo_applied", {}, "Applied"));
+
+  function updateValue(event: Event & { currentTarget: EventTarget & HTMLInputElement }): void {
+    value = event.currentTarget.value;
+  }
 </script>
 
 <div
