@@ -280,7 +280,10 @@ export function createTranslationsStore({
       const updates: TranslationUpdates = {};
       const deletes: TranslationDelete[] = [];
       for (const change of Object.values(dirty)) {
-        if (change.deleted || String(change.value ?? "") === "") {
+        // Only an explicit Reset (deleted flag) reverts to base. An emptied
+        // field is a deliberate empty override (e.g. wa_login_intro hides the
+        // block) and must be sent as an update so it survives reload.
+        if (change.deleted) {
           deletes.push({ lang: change.lang, key: change.key });
           continue;
         }

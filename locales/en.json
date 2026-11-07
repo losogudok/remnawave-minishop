@@ -1100,6 +1100,7 @@
   "wa_or": "or",
   "wa_login_telegram_button": "Sign in with Telegram",
   "wa_login_telegram_unavailable_button": "Telegram unavailable",
+  "wa_login_intro": "Sign in to manage your subscription, payments, and devices.",
   "wa_auth_legal_intro": "By creating an account, you agree to the",
   "wa_auth_legal_privacy": "privacy policy",
   "wa_auth_legal_and": "and",

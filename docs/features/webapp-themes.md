@@ -415,6 +415,22 @@ CSS можно писать для пользовательской части �
 }
 ```
 
+Приветственный текст входа (ключ перевода `wa_login_intro`) выводится как обычный текст
+в элементе `.auth-intro`. Его оформление можно менять в CSS пользовательской темы:
+
+```css
+.theme-key-neon .auth-intro {
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.6;
+  text-align: left;
+  white-space: pre-line;
+}
+```
+
+Замените `neon` на ключ своей темы. HTML и CSS внутри перевода не исполняются;
+пустой перевод скрывает элемент.
+
 Часть поверхностей рендерится вне `.app-shell`: тосты (`.app-toast`), выпадающие списки
 (`.language-select-content`, `.admin-select-content`, `.install-platform-content`), тултипы полей.
 Селектор `.theme-key-<key> .app-toast` до них не достанет, потому что элемент лежит рядом с шеллом,

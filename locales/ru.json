@@ -1100,6 +1100,7 @@
   "wa_or": "или",
   "wa_login_telegram_button": "Войти через телеграм",
   "wa_login_telegram_unavailable_button": "Telegram недоступен",
+  "wa_login_intro": "Войдите, чтобы управлять подпиской, оплатой и устройствами.",
   "wa_auth_legal_intro": "Создавая аккаунт, вы соглашаетесь с",
   "wa_auth_legal_privacy": "политикой конфиденциальности",
   "wa_auth_legal_and": "и",

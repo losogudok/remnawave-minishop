@@ -172,6 +172,9 @@
   const authCardHeight = $derived(authPanelHeight ? `${authPanelHeight}px` : undefined);
   const showLanguageSelect = $derived(languageOptions.length > 1);
   const showInviteOnlyHint = $derived(shouldShowInviteOnlyHint(CFG));
+  const loginIntro = $derived(
+    t("wa_login_intro", {}, "Sign in to manage your subscription, payments, and devices.")
+  );
   const languageSelectContentProps = { trapFocus: false } as Record<string, unknown>;
 
   function isCompact(provider: string): boolean {
@@ -228,6 +231,9 @@
       <div class="login-brand login-brand-auth">
         <BrandMark {brand} size="xl" />
         <h1>{brandTitle}</h1>
+        {#if loginIntro.trim()}
+          <p class="auth-intro">{loginIntro}</p>
+        {/if}
       </div>
       {#if CFG.maintenanceModeEnabled === true}
         <StatusMessage class="auth-maintenance-note" role="status">

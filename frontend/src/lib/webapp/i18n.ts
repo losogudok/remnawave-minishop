@@ -54,13 +54,21 @@ export function createI18n({
   function t(key: string, params: Record<string, unknown> = {}, fallback = ""): string {
     const lang = currentLang();
     const lookupKey = resolveLocaleKey(key);
-    const variants = [
-      messages?.[lang]?.[lookupKey],
-      messages?.en?.[lookupKey],
-      messages?.ru?.[lookupKey],
-      fallback,
-      key,
-    ];
+    const langMessages = messages?.[lang];
+    if (
+      langMessages &&
+      Object.prototype.hasOwnProperty.call(langMessages, lookupKey) &&
+      typeof langMessages[lookupKey] === "string"
+    ) {
+      const raw = langMessages[lookupKey] as string;
+      // An explicitly emptied string is an intentional "hide this copy" signal
+      // from the admin translations panel. Return it as-is instead of falling
+      // through to another language or the fallback literal, so callers can
+      // hide the block (backend gettext already preserves empty overrides).
+      if (!raw.length) return raw;
+      return formatTemplate(raw, params);
+    }
+    const variants = [messages?.en?.[lookupKey], messages?.ru?.[lookupKey], fallback, key];
     const raw = variants.find((value) => typeof value === "string" && value.length);
     return formatTemplate(raw, params);
   }

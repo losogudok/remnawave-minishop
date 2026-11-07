@@ -167,9 +167,15 @@
     lang: string,
     dirty = dirtyFor(lang, item.key)
   ): string {
-    return (
-      localeValue(item, lang, dirty) || effectiveValue(item, lang) || baseValue(item, lang) || "-"
-    );
+    // A pending Reset previews the base text it will revert to.
+    if (dirty?.deleted) return effectiveValue(item, lang) || baseValue(item, lang) || "-";
+    // An explicit edit — including an intentionally emptied string — previews
+    // as-is so clearing the field reads as empty instead of base text.
+    if (dirty) return dirty.value || "-";
+    // A saved empty override stays visible as empty instead of falling back to
+    // base text, so the collapsed row matches the hidden guest block.
+    if (isOverridden(item, lang)) return valueRecord(item, lang).override || "-";
+    return effectiveValue(item, lang) || baseValue(item, lang) || "-";
   }
 
   function itemAudience(item: TranslationItem, group: TranslationGroup | null = null): string {

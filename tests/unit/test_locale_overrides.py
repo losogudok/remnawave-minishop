@@ -131,6 +131,25 @@ def test_json_i18n_applies_locale_overrides(tmp_path):
     assert i18n.base_locales_data["ru"]["welcome"] == "Привет, {name}!"
 
 
+def test_login_intro_base_keys_and_explicit_empty_override() -> None:
+    from bot.app.web.webapp.assets import _filter_webapp_i18n_payload
+
+    i18n = JsonI18n(path=str(REPO_ROOT / "locales"), default="en")
+    for lang in ("ru", "en"):
+        assert i18n.base_locales_data[lang]["wa_login_intro"].strip()
+    assert group_id_for_locale_key("wa_login_intro") == "webapp"
+    assert audience_for_locale_key("wa_login_intro") == "user"
+
+    payload = _filter_webapp_i18n_payload(i18n.locales_data, "webapp", "ru")
+    assert payload["ru"]["wa_login_intro"].strip()
+
+    i18n.set_locale_overrides({"ru": {"wa_login_intro": ""}})
+    assert i18n.gettext("ru", "wa_login_intro") == ""
+    payload = _filter_webapp_i18n_payload(i18n.locales_data, "webapp", "ru")
+    assert payload["ru"]["wa_login_intro"] == ""
+    assert i18n.gettext("en", "wa_login_intro").strip()
+
+
 def test_json_i18n_resolves_locale_key_aliases(tmp_path):
     locales = tmp_path / "locales"
     locales.mkdir()
@@ -837,3 +856,112 @@ def test_update_locale_overrides_allows_db_only_when_file_is_missing_and_unwrita
     assert result["file_written"] is False
     assert db_state == {"ru": {"welcome": "Только БД"}}
     assert i18n.gettext("ru", "welcome") == "Только БД"
+
+
+def test_update_locale_overrides_preserves_explicit_empty_intro(tmp_path):
+    locales = tmp_path / "locales"
+    locales.mkdir()
+    _write_locale(locales, "ru", {"wa_login_intro": "Войдите, чтобы управлять подпиской."})
+    _write_locale(locales, "en", {"wa_login_intro": "Sign in to manage your subscription."})
+    i18n = JsonI18n(str(locales), default="ru")
+    overrides_path = tmp_path / "locales-overrides.json"
+    db_state = {}
+
+    async def get_all(_session):
+        return db_state
+
+    async def bulk_apply(_session, *, updates, updated_by):
+        assert updated_by == 7
+        for (lang, key), (set_flag, value) in updates.items():
+            if set_flag:
+                db_state.setdefault(lang, {})[key] = value
+            else:
+                db_state.get(lang, {}).pop(key, None)
+
+    async def run():
+        with (
+            patch.object(
+                locale_override_service.locale_overrides_dal,
+                "get_all_overrides",
+                AsyncMock(side_effect=get_all),
+            ),
+            patch.object(
+                locale_override_service.locale_overrides_dal,
+                "bulk_apply",
+                AsyncMock(side_effect=bulk_apply),
+            ),
+        ):
+            return await locale_override_service.update_locale_overrides(
+                i18n,
+                _SessionFactory(),
+                updates={"ru": {"wa_login_intro": ""}},
+                deletes=[],
+                actor_id=7,
+                overrides_path=overrides_path,
+            )
+
+    result = asyncio.run(run())
+
+    assert result["ok"] is True
+    assert db_state == {"ru": {"wa_login_intro": ""}}
+    assert json.loads(overrides_path.read_text(encoding="utf-8")) == {"ru": {"wa_login_intro": ""}}
+    assert i18n.gettext("ru", "wa_login_intro") == ""
+    assert i18n.gettext("en", "wa_login_intro") == "Sign in to manage your subscription."
+
+
+def test_update_locale_overrides_delete_reverts_intro_to_base(tmp_path):
+    locales = tmp_path / "locales"
+    locales.mkdir()
+    _write_locale(locales, "ru", {"wa_login_intro": "Войдите, чтобы управлять подпиской."})
+    _write_locale(locales, "en", {"wa_login_intro": "Sign in to manage your subscription."})
+    overrides_path = tmp_path / "locales-overrides.json"
+    overrides_path.write_text(
+        json.dumps({"ru": {"wa_login_intro": ""}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    i18n = JsonI18n(str(locales), default="ru")
+    db_state = {"ru": {"wa_login_intro": ""}}
+
+    async def get_all(_session):
+        return db_state
+
+    async def bulk_apply(_session, *, updates, updated_by):
+        assert updated_by == 7
+        for (lang, key), (set_flag, value) in updates.items():
+            if set_flag:
+                db_state.setdefault(lang, {})[key] = value
+            else:
+                db_state.get(lang, {}).pop(key, None)
+        for lang in list(db_state):
+            if not db_state[lang]:
+                db_state.pop(lang)
+
+    async def run():
+        with (
+            patch.object(
+                locale_override_service.locale_overrides_dal,
+                "get_all_overrides",
+                AsyncMock(side_effect=get_all),
+            ),
+            patch.object(
+                locale_override_service.locale_overrides_dal,
+                "bulk_apply",
+                AsyncMock(side_effect=bulk_apply),
+            ),
+        ):
+            return await locale_override_service.update_locale_overrides(
+                i18n,
+                _SessionFactory(),
+                updates={},
+                deletes=[{"lang": "ru", "key": "wa_login_intro"}],
+                actor_id=7,
+                overrides_path=overrides_path,
+            )
+
+    result = asyncio.run(run())
+
+    assert result == {"ok": True, "applied": 0, "reverted": 1, "file_written": True}
+    assert db_state == {}
+    assert json.loads(overrides_path.read_text(encoding="utf-8")) == {}
+    assert i18n.gettext("ru", "wa_login_intro") == "Войдите, чтобы управлять подпиской."
+    assert i18n.gettext("en", "wa_login_intro") == "Sign in to manage your subscription."
