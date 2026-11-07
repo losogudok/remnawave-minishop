@@ -191,11 +191,15 @@ services:
       PGDATABASE: ${POSTGRES_DB}
     volumes:
       - ./deploy/dev/seed-minishop.sql:/seed/seed-minishop.sql:ro
+      - ./deploy/dev/seed-minishop.sh:/seed/seed-minishop.sh:ro
+      - ./deploy/dev/seed-remnawave-identities.sql:/seed/seed-remnawave-identities.sql:ro
     networks:
       - remnawave-minishop
-    command: ["sh", "-ec", "psql -v ON_ERROR_STOP=1 -f /seed/seed-minishop.sql"]
+    command: ["sh", "/seed/seed-minishop.sh"]
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      remnawave-dev-seed:
         condition: service_completed_successfully
 
   dev-mock-data:

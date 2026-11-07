@@ -14,7 +14,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.app.web.context import (
-    get_bot,
+    get_optional_bot,
 )
 from bot.app.web.request_parsing import parse_body_or_400
 from bot.app.web.webapp.cache_helpers import (
@@ -299,7 +299,9 @@ async def _ensure_cached_telegram_avatar(
         return avatar
     _AVATAR_RETRY_AFTER.pop(int(telegram_id), None)
 
-    bot: Bot = get_bot(request)
+    bot = get_optional_bot(request)
+    if bot is None:
+        return avatar
     try:
         fetched = await asyncio.wait_for(
             _fetch_telegram_avatar(bot, int(telegram_id)),

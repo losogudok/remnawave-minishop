@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ipaddress
 import json
 import logging
 import time
@@ -19,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from bot.app.web.context import get_app_panel_service, get_app_settings, get_optional_app_bot
 from bot.infra.redis import cache_get_json, redis_key
@@ -314,6 +316,25 @@ def payment_provider_alerts(settings: Any, app: Any) -> list[ConfigAlert]:
     return alerts
 
 
+def _local_http_mini_app_allowed(url: str, runtime_mode: str) -> bool:
+    if runtime_mode not in {"development", "test"}:
+        return False
+    try:
+        parsed = urlsplit(url)
+        host = parsed.hostname
+        if (
+            parsed.scheme != "http"
+            or not host
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.port == 0
+        ):
+            return False
+        return host == "localhost" or ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def settings_alerts(settings: Any) -> list[ConfigAlert]:
     alerts: list[ConfigAlert] = []
 
@@ -326,7 +347,9 @@ def settings_alerts(settings: Any) -> list[ConfigAlert]:
                 sections=(SECTION_SETTINGS,),
             )
         )
-    elif not mini_app_url.lower().startswith("https://"):
+    elif not mini_app_url.lower().startswith("https://") and not _local_http_mini_app_allowed(
+        mini_app_url, settings.APP_RUNTIME_MODE
+    ):
         alerts.append(
             ConfigAlert(
                 id="mini_app_url_not_https",

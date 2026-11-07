@@ -36,6 +36,7 @@ class _SettingsNamespace(SimpleNamespace):
 
 def _settings(**overrides):
     base = {
+        "APP_RUNTIME_MODE": "production",
         "BACKUP_DIR": "data/backups",
         "BACKUP_COMPOSE_SOURCE_DIR": None,
         "TARIFFS_CONFIG_PATH": "data/tariffs.json",
@@ -247,6 +248,47 @@ class SettingsAlertsTests(unittest.TestCase):
         ids = _alert_ids(alerts)
         self.assertIn("mini_app_url_not_https", ids)
         self.assertEqual(alerts[ids.index("mini_app_url_not_https")].severity, "error")
+
+    def test_local_http_is_allowed_only_in_development_and_test(self):
+        for runtime in ("development", "test"):
+            for url in (
+                "http://127.0.0.1:18082/",
+                "http://localhost:18082/app",
+                "http://[::1]:18082/",
+            ):
+                with self.subTest(runtime=runtime, url=url):
+                    alerts = health.settings_alerts(
+                        _settings(APP_RUNTIME_MODE=runtime, SUBSCRIPTION_MINI_APP_URL=url)
+                    )
+                    self.assertNotIn("mini_app_url_not_https", _alert_ids(alerts))
+
+    def test_local_http_still_reports_an_error_in_production_and_staging(self):
+        for runtime in ("production", "staging"):
+            with self.subTest(runtime=runtime):
+                alerts = health.settings_alerts(
+                    _settings(
+                        APP_RUNTIME_MODE=runtime,
+                        SUBSCRIPTION_MINI_APP_URL="http://127.0.0.1:18082/",
+                    )
+                )
+                self.assertIn("mini_app_url_not_https", _alert_ids(alerts))
+
+    def test_development_does_not_exempt_remote_or_malformed_http_urls(self):
+        for url in (
+            "http://shop.example.com",
+            "http://192.168.1.1:18082/",
+            "http://localhost.example.com/",
+            "http://127.0.0.1.example.com/",
+            "http://user:password@127.0.0.1/",
+            "http://127.0.0.1:bad/",
+            "http://[::1",
+            "ftp://127.0.0.1/",
+        ):
+            with self.subTest(url=url):
+                alerts = health.settings_alerts(
+                    _settings(APP_RUNTIME_MODE="development", SUBSCRIPTION_MINI_APP_URL=url)
+                )
+                self.assertIn("mini_app_url_not_https", _alert_ids(alerts))
 
     def test_missing_redis_reported(self):
         alerts = health.settings_alerts(_settings(REDIS_URL=None))

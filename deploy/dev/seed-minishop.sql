@@ -1,3 +1,25 @@
+-- seed-minishop.sh supplies verified identities from the seeded Panel database.
+-- The wrapper runs this file in one transaction, including identity validation.
+CREATE TEMP TABLE minishop_dev_panel_users (
+    username text PRIMARY KEY,
+    panel_user_uuid text NOT NULL CHECK (panel_user_uuid <> ''),
+    panel_short_uuid text NOT NULL CHECK (panel_short_uuid <> '')
+) ON COMMIT DROP;
+
+INSERT INTO minishop_dev_panel_users
+SELECT username, panel_user_uuid, panel_short_uuid
+FROM jsonb_to_recordset(:'panel_seed_users'::jsonb)
+    AS identities(username text, panel_user_uuid text, panel_short_uuid text);
+
+DO $$
+BEGIN
+    IF (SELECT count(*) FROM minishop_dev_panel_users) <> 3 OR
+        (SELECT count(*) FROM minishop_dev_panel_users
+         WHERE username IN ('runes_admin', 'runes_active', 'runes_expired')) <> 3 THEN
+        RAISE EXCEPTION 'Expected all three seeded Panel users';
+    END IF;
+END $$;
+
 INSERT INTO users (
     user_id,
     username,
@@ -23,7 +45,7 @@ INSERT INTO users (
         'Admin',
         'ru',
         false,
-        '00000000-0000-4000-8000-000000000001',
+        (SELECT panel_user_uuid FROM minishop_dev_panel_users WHERE username = 'runes_admin'),
         'RUNESADMIN',
         'enabled',
         true
@@ -38,7 +60,7 @@ INSERT INTO users (
         'Active',
         'ru',
         false,
-        '00000000-0000-4000-8000-000000000002',
+        (SELECT panel_user_uuid FROM minishop_dev_panel_users WHERE username = 'runes_active'),
         'RUNESACTIVE',
         'unknown',
         true
@@ -53,7 +75,7 @@ INSERT INTO users (
         'Expired',
         'en',
         false,
-        '00000000-0000-4000-8000-000000000003',
+        (SELECT panel_user_uuid FROM minishop_dev_panel_users WHERE username = 'runes_expired'),
         'RUNESEXPIRED',
         'blocked',
         false
@@ -91,6 +113,7 @@ INSERT INTO subscriptions (
     panel_user_uuid,
     panel_subscription_uuid,
     install_share_token,
+    install_share_panel_short_uuid,
     start_date,
     end_date,
     duration_months,
@@ -126,9 +149,10 @@ INSERT INTO subscriptions (
 ) VALUES
     (
         910000001,
-        '00000000-0000-4000-8000-000000000001',
+        (SELECT panel_user_uuid FROM minishop_dev_panel_users WHERE username = 'runes_admin'),
         '10000000-0000-4000-8000-000000000001',
-        'devsharetokenadmin000001',
+        replace(gen_random_uuid()::text, '-', ''),
+        (SELECT panel_short_uuid FROM minishop_dev_panel_users WHERE username = 'runes_admin'),
         now() - interval '10 days',
         now() + interval '20 days',
         1,
@@ -164,9 +188,10 @@ INSERT INTO subscriptions (
     ),
     (
         910000002,
-        '00000000-0000-4000-8000-000000000002',
+        (SELECT panel_user_uuid FROM minishop_dev_panel_users WHERE username = 'runes_active'),
         '10000000-0000-4000-8000-000000000002',
-        'devsharetokenactive00001',
+        replace(gen_random_uuid()::text, '-', ''),
+        (SELECT panel_short_uuid FROM minishop_dev_panel_users WHERE username = 'runes_active'),
         now() - interval '5 days',
         now() + interval '55 days',
         2,
@@ -202,9 +227,10 @@ INSERT INTO subscriptions (
     ),
     (
         910000003,
-        '00000000-0000-4000-8000-000000000003',
+        (SELECT panel_user_uuid FROM minishop_dev_panel_users WHERE username = 'runes_expired'),
         '10000000-0000-4000-8000-000000000003',
-        'devsharetokenexpired0001',
+        replace(gen_random_uuid()::text, '-', ''),
+        (SELECT panel_short_uuid FROM minishop_dev_panel_users WHERE username = 'runes_expired'),
         now() - interval '75 days',
         now() - interval '15 days',
         1,
@@ -241,7 +267,14 @@ INSERT INTO subscriptions (
 ON CONFLICT (panel_subscription_uuid) DO UPDATE SET
     user_id = EXCLUDED.user_id,
     panel_user_uuid = EXCLUDED.panel_user_uuid,
-    install_share_token = EXCLUDED.install_share_token,
+    install_share_token = CASE
+        WHEN subscriptions.install_share_token ~ '^[a-f0-9]{32}$'
+            AND subscriptions.panel_user_uuid = EXCLUDED.panel_user_uuid
+            AND subscriptions.install_share_panel_short_uuid = EXCLUDED.install_share_panel_short_uuid
+        THEN subscriptions.install_share_token
+        ELSE EXCLUDED.install_share_token
+    END,
+    install_share_panel_short_uuid = EXCLUDED.install_share_panel_short_uuid,
     start_date = EXCLUDED.start_date,
     end_date = EXCLUDED.end_date,
     duration_months = EXCLUDED.duration_months,
