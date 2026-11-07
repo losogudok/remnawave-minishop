@@ -18,6 +18,8 @@ from bot.app.web.route_contracts import (
     ok_envelope_with,
 )
 
+from .onboarding_signals import OnboardingSignalDescriptorOut
+
 STRING_ARRAY_SCHEMA: dict[str, Any] = {"type": "array", "items": STRING_SCHEMA}
 NUMBER_ARRAY_SCHEMA: dict[str, Any] = {"type": "array", "items": NUMBER_SCHEMA}
 JSON_ARRAY_SCHEMA: dict[str, Any] = {"type": "array", "items": {}}
@@ -86,6 +88,9 @@ class WebappBootstrapConfigOut(HttpResponseModel):
     checkout_plans: list[dict[str, Any]] = Field(default_factory=list, alias="checkoutPlans")
     app_version: str = Field(alias="appVersion")
     app_repository_url: str = Field(alias="appRepositoryUrl")
+    onboarding_signals: list[OnboardingSignalDescriptorOut] = Field(
+        default_factory=list, alias="onboardingSignals"
+    )
 
 
 class WebappBootstrapOut(HttpResponseModel):

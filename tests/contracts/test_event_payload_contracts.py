@@ -418,6 +418,7 @@ def test_small_event_payloads_match_legacy_wire_dicts():
         "event": "user.expired",
         "panel_user_uuid": "abc",
         "telegram_id": 42,
+        "occurred_at": None,
     }
 
 

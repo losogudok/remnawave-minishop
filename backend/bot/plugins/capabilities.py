@@ -11,4 +11,5 @@ CORE_PLUGIN_CAPABILITIES: dict[str, int] = {
     "durable_jobs": 1,
     "rewards": 1,
     "backups": 1,
+    "onboarding_signals": 1,
 }

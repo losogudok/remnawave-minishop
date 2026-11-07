@@ -51,6 +51,7 @@ class ExtensionRegistry:
             value.backups,
             value.storage,
             value.message_shortcodes,
+            value.signals,
         ):
             seen: set[str] = set()
             for item in collection:

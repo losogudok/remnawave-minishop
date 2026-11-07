@@ -4284,6 +4284,91 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/plugins/ga4funnel/bind": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Ga4Funnel Bind */
+    post: operations["post_ga4funnel_bind_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/plugins/ga4funnel/config": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Ga4Funnel Config */
+    get: operations["get_ga4funnel_config_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/plugins/ga4funnel/frame": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Ga4Funnel Frame */
+    get: operations["get_ga4funnel_frame_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/plugins/ga4funnel/frame.mjs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Ga4Funnel Frame Script */
+    get: operations["get_ga4funnel_frame_script_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/plugins/ga4funnel/signals.mjs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Ga4Funnel Signals */
+    get: operations["get_ga4funnel_signals_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/plugins/guide_media/media/{digest}.webp": {
     parameters: {
       query?: never;
@@ -9341,6 +9426,20 @@ export interface components {
       /** Step Gb */
       step_gb: number;
     };
+    /** Ga4BindBody */
+    Ga4BindBody: {
+      /** Client Id */
+      client_id: string;
+    };
+    /** Ga4ConfigOut */
+    Ga4ConfigOut: {
+      /** Debug Mode */
+      debug_mode: boolean;
+      /** Enabled */
+      enabled: boolean;
+      /** Measurement Id */
+      measurement_id: string;
+    };
     /** GiftTokenBody */
     GiftTokenBody: {
       /** Token */
@@ -9889,6 +9988,29 @@ export interface components {
       system_email: boolean;
       /** System Telegram */
       system_telegram: boolean;
+    };
+    /**
+     * OnboardingSignalDescriptorOut
+     * @description Public browser descriptor for one enabled signal integration.
+     */
+    OnboardingSignalDescriptorOut: {
+      /** Config */
+      config?: {
+        [key: string]: components["schemas"]["JsonValue"];
+      };
+      /** Connect Hosts */
+      connect_hosts?: string[];
+      /**
+       * Entry
+       * @default
+       */
+      entry: string;
+      /** Id */
+      id: string;
+      /** Owner */
+      owner: string;
+      /** Scripts */
+      scripts?: string[];
     };
     /** @enum {string} */
     OverallStatus:
@@ -13441,6 +13563,8 @@ export interface components {
       maintenanceModeEnabled: boolean;
       /** Notificationpreferencesenabled */
       notificationPreferencesEnabled: boolean;
+      /** Onboardingsignals */
+      onboardingSignals?: components["schemas"]["OnboardingSignalDescriptorOut"][];
       /**
        * Primarycolor
        * @default null
@@ -22216,6 +22340,119 @@ export interface operations {
             /** @constant */
             ok: true;
           };
+        };
+      };
+    };
+  };
+  post_ga4funnel_bind_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Ga4BindBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  get_ga4funnel_config_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            debug_mode: boolean;
+            enabled: boolean;
+            measurement_id: string;
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  get_ga4funnel_frame_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/html": string;
+        };
+      };
+    };
+  };
+  get_ga4funnel_frame_script_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/javascript": string;
+        };
+      };
+    };
+  };
+  get_ga4funnel_signals_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/javascript": string;
         };
       };
     };

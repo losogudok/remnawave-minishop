@@ -148,6 +148,7 @@
 | `event` | `str` | обязательно |
 | `panel_user_uuid` | `str | None` | `None` |
 | `telegram_id` | `int | str | None` | `None` |
+| `occurred_at` | `str | None` | `None` |
 
 ## `partner.application_decided`
 

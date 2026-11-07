@@ -366,6 +366,9 @@ class PanelWebhookReceivedPayload(EventPayload):
     event: str
     panel_user_uuid: str | None = None
     telegram_id: int | str | None = None
+    # Best-effort UTC ISO-8601 occurrence reported by the panel. Additive:
+    # receivers treat a missing/invalid value as "received now".
+    occurred_at: str | None = None
 
 
 class DeviceConnectedPayload(EventPayload):

@@ -144,12 +144,19 @@ from .constants import (
 from .csrf_origin import browser_origin_allowed, browser_origin_present
 from .html_payload import image_preload_markup, json_script_payload
 from .maintenance import request_maintenance_mode_enabled
+from .onboarding_signals import (
+    collect_onboarding_signal_descriptors,
+    onboarding_signals_csp_hosts,
+)
 from .response_helpers import json_response
 
 _TEXT_FILE_CACHE: dict[tuple[str, bool], tuple[int, int, str]] = {}
 _I18N_PAYLOAD_CACHE: dict[
     tuple[int, str, str, tuple[tuple[str, int, int], ...]], dict[str, Any]
 ] = {}
+_ONBOARDING_SIGNALS_CSP_KEY: web.RequestKey[dict[str, Any]] = web.RequestKey(
+    "onboarding_signals_csp", dict
+)
 _ASSET_NAME_CACHE_TTL_SECONDS = 30.0
 WEBAPP_HTML_CACHE_CONTROL = "no-store, no-cache, must-revalidate, max-age=0"
 WEBAPP_LEGACY_ASSET_CACHE_CONTROL = "no-store, no-cache, must-revalidate, max-age=0"
@@ -167,17 +174,26 @@ async def _security_headers_middleware(
     except web.HTTPException as exc:
         response = exc
     nonce = request.get("csp_nonce", "")
+    csp_extra = request.get(_ONBOARDING_SIGNALS_CSP_KEY, {}) or {}
+    csp_script_hosts = " ".join(csp_extra.get("script_hosts", []))
+    csp_connect_hosts = " ".join(csp_extra.get("connect_hosts", []))
+    script_src = f"script-src 'self' 'nonce-{nonce}' https://telegram.org"
+    if csp_script_hosts:
+        script_src += f" {csp_script_hosts}"
+    connect_src = "connect-src 'self' https://oauth.telegram.org"
+    if csp_connect_hosts:
+        connect_src += f" {csp_connect_hosts}"
     response.headers.setdefault(
         "Content-Security-Policy",
         (
             "default-src 'self'; "
-            f"script-src 'self' 'nonce-{nonce}' https://telegram.org; "
+            f"{script_src}; "
             "frame-src 'self' https://oauth.telegram.org; "
             "frame-ancestors 'self' https://web.telegram.org https://t.me; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "  # noqa: E501
             "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net data:; "
             "img-src 'self' data: blob: https:; "
-            "connect-src 'self' https://oauth.telegram.org; "
+            f"{connect_src}; "
             "object-src 'none'; "
             "base-uri 'self'; "
             "form-action 'self'"
@@ -509,7 +525,10 @@ def _cached_json_response(
     return response
 
 
-def _build_webapp_bootstrap_payload(request: web.Request) -> dict[str, Any]:
+def _build_webapp_bootstrap_payload(
+    request: web.Request,
+    onboarding_signals: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     settings: Settings = get_settings(request)
     cached = _get_cached_webapp_settings(request)
     webapp_settings = settings.webapp_settings
@@ -592,6 +611,7 @@ def _build_webapp_bootstrap_payload(request: web.Request) -> dict[str, Any]:
                 initial_language,
                 tariff_access_code=request_tariff_access_code(request),
             ),
+            "onboardingSignals": onboarding_signals if onboarding_signals is not None else [],
             "appVersion": _resolve_app_version(),
             "appRepositoryUrl": APP_REPOSITORY_URL,
         },
@@ -600,7 +620,17 @@ def _build_webapp_bootstrap_payload(request: web.Request) -> dict[str, Any]:
 
 
 async def bootstrap_route(request: web.Request) -> web.Response:
-    payload = {"ok": True, **_build_webapp_bootstrap_payload(request)}
+    try:
+        signals = await collect_onboarding_signal_descriptors(get_settings(request))
+    except Exception:
+        logger.warning("Onboarding signal collection failed for bootstrap", exc_info=True)
+        signals = []
+    try:
+        dumped = [item.model_dump(mode="json") for item in signals]
+    except Exception:
+        logger.warning("Onboarding signal payload failed validation", exc_info=True)
+        dumped = []
+    payload = {"ok": True, **_build_webapp_bootstrap_payload(request, dumped)}
     payload["config"]["maintenanceModeEnabled"] = await request_maintenance_mode_enabled(request)
     return _cached_json_response(
         request,
@@ -708,7 +738,26 @@ async def index_route(request: web.Request) -> web.Response:
     themes_catalog = settings.webapp_themes_catalog
     primary_color = settings.WEBAPP_PRIMARY_COLOR or "#00fe7a"
     initial_theme = _initial_theme_for_request(request, themes_catalog)
-    bootstrap = _build_webapp_bootstrap_payload(request)
+    try:
+        signals = await collect_onboarding_signal_descriptors(get_settings(request))
+    except Exception:
+        logger.warning("Onboarding signal collection failed for index", exc_info=True)
+        signals = []
+    try:
+        script_hosts, connect_hosts = onboarding_signals_csp_hosts(signals)
+    except Exception:
+        logger.warning("Onboarding signal CSP extraction failed", exc_info=True)
+        script_hosts, connect_hosts = [], []
+    request[_ONBOARDING_SIGNALS_CSP_KEY] = {
+        "script_hosts": script_hosts,
+        "connect_hosts": connect_hosts,
+    }
+    try:
+        signal_payload = [item.model_dump(mode="json") for item in signals]
+    except Exception:
+        logger.warning("Onboarding signal payload failed validation", exc_info=True)
+        signal_payload = []
+    bootstrap = _build_webapp_bootstrap_payload(request, signal_payload)
     config = bootstrap["config"]
     config["maintenanceModeEnabled"] = await request_maintenance_mode_enabled(request)
     html = _strip_marked_block(html, DEV_MOCK_START_MARKER, DEV_MOCK_END_MARKER)

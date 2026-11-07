@@ -6,11 +6,12 @@ from bot.app.web.route_contracts import (
 )
 
 from .contract_schemas import WebappBootstrapOut, WebappI18nOut, public_contract
+from .onboarding_signals import OnboardingSignalDescriptorOut
 
 ASSET_ROUTE_CONTRACTS: dict[str, RouteContract] = {
     "bootstrap_route": public_contract(
         response_schema=ok_envelope_for(WebappBootstrapOut),
-        models=(WebappBootstrapOut,),
+        models=(WebappBootstrapOut, OnboardingSignalDescriptorOut),
     ),
     "i18n_route": public_contract(
         response_schema=ok_envelope_for(WebappI18nOut),

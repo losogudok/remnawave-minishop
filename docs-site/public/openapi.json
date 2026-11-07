@@ -10269,6 +10269,45 @@
         "title": "FlexibleTrafficLimitConfig",
         "type": "object"
       },
+      "Ga4BindBody": {
+        "properties": {
+          "client_id": {
+            "maxLength": 41,
+            "minLength": 3,
+            "pattern": "^[0-9]{1,20}\\.[0-9]{1,20}$",
+            "title": "Client Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id"
+        ],
+        "title": "Ga4BindBody",
+        "type": "object"
+      },
+      "Ga4ConfigOut": {
+        "properties": {
+          "debug_mode": {
+            "title": "Debug Mode",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "measurement_id": {
+            "title": "Measurement Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "measurement_id",
+          "debug_mode"
+        ],
+        "title": "Ga4ConfigOut",
+        "type": "object"
+      },
       "GiftTokenBody": {
         "properties": {
           "token": {
@@ -11478,6 +11517,51 @@
           "system_telegram"
         ],
         "title": "NotificationPreferencesPatchBody",
+        "type": "object"
+      },
+      "OnboardingSignalDescriptorOut": {
+        "description": "Public browser descriptor for one enabled signal integration.",
+        "properties": {
+          "config": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Config",
+            "type": "object"
+          },
+          "connect_hosts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Connect Hosts",
+            "type": "array"
+          },
+          "entry": {
+            "default": "",
+            "title": "Entry",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "owner": {
+            "title": "Owner",
+            "type": "string"
+          },
+          "scripts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scripts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "owner",
+          "id"
+        ],
+        "title": "OnboardingSignalDescriptorOut",
         "type": "object"
       },
       "OverallStatus": {
@@ -19524,6 +19608,13 @@
           "notificationPreferencesEnabled": {
             "title": "Notificationpreferencesenabled",
             "type": "boolean"
+          },
+          "onboardingSignals": {
+            "items": {
+              "$ref": "#/components/schemas/OnboardingSignalDescriptorOut"
+            },
+            "title": "Onboardingsignals",
+            "type": "array"
           },
           "primaryColor": {
             "anyOf": [
@@ -39451,6 +39542,165 @@
         "summary": "Plans Viewed",
         "tags": [
           "plans"
+        ]
+      }
+    },
+    "/api/plugins/ga4funnel/bind": {
+      "post": {
+        "operationId": "post_ga4funnel_bind_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Ga4BindBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "UserSession": []
+          },
+          {
+            "UserBearer": []
+          }
+        ],
+        "summary": "Ga4Funnel Bind",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/ga4funnel/config": {
+      "get": {
+        "operationId": "get_ga4funnel_config_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "debug_mode": {
+                      "type": "boolean"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "measurement_id": {
+                      "type": "string"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "enabled",
+                    "measurement_id",
+                    "debug_mode"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [],
+        "summary": "Ga4Funnel Config",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/ga4funnel/frame": {
+      "get": {
+        "operationId": "get_ga4funnel_frame_route",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Response"
+          }
+        },
+        "security": [],
+        "summary": "Ga4Funnel Frame",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/ga4funnel/frame.mjs": {
+      "get": {
+        "operationId": "get_ga4funnel_frame_script_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/javascript": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Response"
+          }
+        },
+        "security": [],
+        "summary": "Ga4Funnel Frame Script",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/ga4funnel/signals.mjs": {
+      "get": {
+        "operationId": "get_ga4funnel_signals_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/javascript": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Response"
+          }
+        },
+        "security": [],
+        "summary": "Ga4Funnel Signals",
+        "tags": [
+          "plugins"
         ]
       }
     },

@@ -140,7 +140,14 @@ def test_panel_webhook_service_emits_received_event():
     )
     asyncio.run(service.handle_event("user.expired", {"uuid": "abc", "telegramId": 42}))
 
-    assert received == [{"event": "user.expired", "panel_user_uuid": "abc", "telegram_id": 42}]
+    assert received == [
+        {
+            "event": "user.expired",
+            "panel_user_uuid": "abc",
+            "telegram_id": 42,
+            "occurred_at": None,
+        }
+    ]
 
 
 def test_create_user_emits_user_registered(monkeypatch):

@@ -25,6 +25,7 @@ const descriptions = {
   'features/partner-program.md': 'Партнёрские заявки, атрибуция, комиссии, ручные выплаты, оплата балансом и эксплуатация.',
   'features/subscriptions.md': 'Обзор моделей тарифов, лимитов и жизненного цикла подписок Remnawave Minishop.',
   'features/notifications.md': 'Каналы Telegram и email для пользовательских, админских и сервисных уведомлений Remnawave Minishop.',
+  'features/analytics.md': 'Опциональная воронка онбординга в Google Analytics 4: браузерные шаги, подтверждённые серверные события и ограничения.',
   'features/tariffs.md': 'Настройка каталога тарифов, периодов, цен, premium-сквадов, трафика и HWID-устройств.',
   'features/web-app.md': 'Telegram Mini App, публичные инструкции, проксирование и реферальные ссылки.',
   'features/server-status.md': 'Статус серверов в Mini App через внешнюю страницу, Uptime Kuma или xray-checker.',

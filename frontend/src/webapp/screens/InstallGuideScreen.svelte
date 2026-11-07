@@ -27,6 +27,12 @@
     resolveInstallTarget,
   } from "$lib/webapp/installTargets.js";
   import {
+    classifyInstallOpenTarget,
+    reportInstallInteraction,
+    resolveInstallSignalKind,
+    type InstallOpenTargetInfo,
+  } from "$lib/webapp/onboardingSignals";
+  import {
     detectInstallPlatformKey,
     installIconColorStyle,
     installScreenshotsForApp,
@@ -270,24 +276,86 @@
     return key === "ios" || key === "android" || key === "androidTV" ? Smartphone : Monitor;
   }
 
-  function openResolvedLink(url: string) {
+  function installSignalTarget(): {
+    screen: "install" | "public_install";
+    surface: "app" | "public";
+  } {
+    return publicMode
+      ? { screen: "public_install", surface: "public" }
+      : { screen: "install", surface: "app" };
+  }
+
+  function openResolvedLink(url: string, explicitKind?: "download" | "import") {
     if (isUnsafeInstallUrl(url)) {
       openConnectLink();
       return;
     }
+    // Explicit semantic reporting at the instruction boundary: download vs
+    // import comes from button semantics (resource primary-subscription /
+    // subscriptionLink vs external), with safe fields only. The URL scheme
+    // is only a fallback when no semantic info is available. The generic
+    // wrapper stays silent on install screens to avoid conflated duplicates.
+    const target = installSignalTarget();
+    try {
+      reportInstallInteraction(
+        explicitKind ?? classifyInstallOpenTarget(url),
+        target.screen,
+        target.surface
+      );
+    } catch {
+      // Reporting never blocks the product action.
+    }
     (openAppLink || openExternalLink)(url);
   }
 
-  async function handleButton(action?: InstallGuideButtonAction) {
+  function explicitInstallKind(
+    rawButton?: { type?: unknown; action?: unknown },
+    url = ""
+  ): "download" | "import" {
+    try {
+      const buttonType = typeof rawButton?.type === "string" ? rawButton.type : undefined;
+      let target: InstallOpenTargetInfo = null;
+      const rawAction =
+        rawButton?.action && typeof rawButton.action === "object"
+          ? (rawButton.action as Record<string, unknown>)
+          : null;
+      const rawTarget =
+        rawAction && typeof rawAction.target === "object" && rawAction.target !== null
+          ? (rawAction.target as Record<string, unknown>)
+          : null;
+      if (rawTarget) {
+        target = {
+          kind: typeof rawTarget.kind === "string" ? rawTarget.kind : undefined,
+          resourceId: typeof rawTarget.resourceId === "string" ? rawTarget.resourceId : undefined,
+          representation:
+            typeof rawTarget.representation === "string" ? rawTarget.representation : undefined,
+        };
+      }
+      return resolveInstallSignalKind({ buttonType, target, url });
+    } catch {
+      return "download";
+    }
+  }
+
+  async function handleButton(
+    action?: InstallGuideButtonAction,
+    rawButton?: { type?: unknown; action?: unknown }
+  ) {
     if (!action) return;
     if (action.kind === "copy") {
+      const target = installSignalTarget();
+      try {
+        reportInstallInteraction("copy", target.screen, target.surface);
+      } catch {
+        // Reporting never blocks the product action.
+      }
       await copyText(
         action.value,
         localized(config?.baseTranslations?.linkCopiedToClipboard, t("wa_copied", {}, "Copied"))
       );
       return;
     }
-    openResolvedLink(action.value);
+    openResolvedLink(action.value, explicitInstallKind(rawButton, action.value));
   }
 
   async function updateQr(value: unknown) {
@@ -307,12 +375,24 @@
   }
 
   async function copySubscriptionLink() {
+    const target = installSignalTarget();
+    try {
+      reportInstallInteraction("copy", target.screen, target.surface);
+    } catch {
+      // Reporting never blocks the product action.
+    }
     await copyText(selectedConnectionLink, t("wa_install_link_copied", {}, "Link copied"));
   }
 
   async function shareInstallGuide() {
     const url = shareUrl || (typeof window !== "undefined" ? window.location.href : "");
     if (!url) return;
+    const target = installSignalTarget();
+    try {
+      reportInstallInteraction("share", target.screen, target.surface);
+    } catch {
+      // Reporting never blocks the product action.
+    }
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
       try {
         await navigator.share({
@@ -520,7 +600,8 @@
                         {#each block.buttons as button, buttonIndex}
                           <Button
                             variant={button.type === "copyButton" ? "secondary" : "default"}
-                            onclick={() => handleButton(buttonActions[blockIndex]?.[buttonIndex])}
+                            onclick={() =>
+                              handleButton(buttonActions[blockIndex]?.[buttonIndex], button)}
                           >
                             {#if button.type === "copyButton"}
                               <Copy size={16} />

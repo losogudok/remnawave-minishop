@@ -455,6 +455,7 @@ def manifest_payload() -> list[dict]:
         "backups": 9,
         "devices": 10,
         "subscription_guides": 10,
+        "analytics": 12,
         "system": 12,
         "migrations": 13,
     }

@@ -179,18 +179,39 @@ async def _handle_panel_event(ctx: PluginContext, payload: dict[str, Any]) -> No
             ctx.require_session_factory(),
             keys=SUBSCRIPTION_NOTIFICATION_RUNTIME_SETTING_KEYS,
         )
+    occurred_at = payload.get("occurred_at")
+    occurred_at_value = (
+        occurred_at if isinstance(occurred_at, str) and occurred_at.strip() else None
+    )
+    if occurred_at_value is None:
+        if isinstance(context, dict):
+            await service.handle_event(
+                event_name,
+                payload.get("user") or {},
+                meta=meta if isinstance(meta, dict) else None,
+                context=context,
+            )
+        else:
+            await service.handle_event(
+                event_name,
+                payload.get("user") or {},
+                meta=meta if isinstance(meta, dict) else None,
+            )
+        return
     if isinstance(context, dict):
         await service.handle_event(
             event_name,
             payload.get("user") or {},
             meta=meta if isinstance(meta, dict) else None,
             context=context,
+            occurred_at=occurred_at_value,
         )
     else:
         await service.handle_event(
             event_name,
             payload.get("user") or {},
             meta=meta if isinstance(meta, dict) else None,
+            occurred_at=occurred_at_value,
         )
 
 

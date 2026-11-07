@@ -134,6 +134,78 @@ class HandleWebhookQueueingTests(unittest.IsolatedAsyncioTestCase):
         # event_id combines event name with the strongest available identifier.
         self.assertEqual(entry["event_id"], "user.expires_in_24_hours:99")
 
+    async def test_enqueues_panel_occurrence_timestamp(self):
+        service = _make_service()
+        captured: list[dict] = []
+
+        async def fake_enqueue(settings, provider, payload, *, event_id=None):
+            captured.append(payload)
+            return True
+
+        body = json.dumps(
+            {
+                "event": "user.first_connected",
+                "timestamp": "2026-11-01T10:00:00Z",
+                "data": {"user": {"uuid": "panel-user-1", "telegramId": 99}},
+            }
+        ).encode()
+
+        with patch.object(pws, "enqueue_webhook_event", fake_enqueue):
+            response = await service.handle_webhook(body, _sign(body))
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(captured[0]["occurred_at"], "2026-11-01T10:00:00+00:00")
+
+    async def test_invalid_panel_occurrence_timestamp_is_ignored(self):
+        service = _make_service()
+        captured: list[dict] = []
+
+        async def fake_enqueue(settings, provider, payload, *, event_id=None):
+            captured.append(payload)
+            return True
+
+        body = json.dumps(
+            {
+                "event": "user.first_connected",
+                "timestamp": "not-a-date",
+                "data": {"user": {"uuid": "panel-user-1"}},
+            }
+        ).encode()
+
+        with patch.object(pws, "enqueue_webhook_event", fake_enqueue):
+            response = await service.handle_webhook(body, _sign(body))
+
+        self.assertEqual(response.status, 200)
+        self.assertNotIn("occurred_at", captured[0])
+
+    async def test_extreme_occurrence_values_never_break_routing(self):
+        for timestamp in (10**400, "0001-01-01T00:00:00+14:00"):
+            with self.subTest(timestamp=str(timestamp)[:32]):
+                service = _make_service()
+                captured: list[dict] = []
+
+                async def fake_enqueue(
+                    settings, provider, payload, *, event_id=None, _bucket=captured
+                ):
+                    _bucket.append(payload)
+                    return True
+
+                body = json.dumps(
+                    {
+                        "name": "user.modified",
+                        "timestamp": timestamp,
+                        "payload": {"uuid": "panel-user-1", "telegramId": 99},
+                    }
+                ).encode()
+
+                with patch.object(pws, "enqueue_webhook_event", fake_enqueue):
+                    response = await service.handle_webhook(body, _sign(body))
+
+                self.assertEqual(response.status, 200)
+                self.assertEqual(len(captured), 1)
+                self.assertNotIn("occurred_at", captured[0])
+                self.assertEqual(captured[0]["user"]["uuid"], "panel-user-1")
+
     async def test_enqueues_new_expiration_event_with_signed_hours_meta(self):
         service = _make_service()
         captured: list[dict] = []
@@ -637,6 +709,49 @@ class _FakeSessionContext:
 
     async def __aexit__(self, exc_type, exc, tb):
         return False
+
+
+class PanelOccurrenceEmissionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_handle_event_includes_occurred_at_in_emitted_payload(self):
+        service = _make_service()
+        emitted: list[Any] = []
+
+        async def capture(model, **kwargs):
+            emitted.append(model)
+
+        with patch.object(pws.events, "emit_model", capture):
+            await service.handle_event(
+                "user.first_connected",
+                {"uuid": "panel-user-1", "telegramId": 99},
+                occurred_at="2026-11-01T10:00:00+00:00",
+            )
+
+        self.assertEqual(len(emitted), 1)
+        self.assertEqual(emitted[0].occurred_at, "2026-11-01T10:00:00+00:00")
+
+    async def test_main_worker_forwards_queued_occurrence_timestamp(self):
+        import main_worker
+
+        service = SimpleNamespace(handle_event=AsyncMock())
+        ctx = SimpleNamespace(
+            settings=SimpleNamespace(),
+            require_panel_webhook_service=lambda: service,
+            require_session_factory=lambda: object(),
+        )
+        payload = {
+            "event": "user.first_connected",
+            "user": {"uuid": "panel-user-1"},
+            "occurred_at": "2026-11-01T10:00:00+00:00",
+        }
+
+        await main_worker._handle_panel_event(ctx, payload)
+
+        service.handle_event.assert_awaited_once_with(
+            "user.first_connected",
+            payload["user"],
+            meta=None,
+            occurred_at="2026-11-01T10:00:00+00:00",
+        )
 
 
 class _FakeSessionFactory:

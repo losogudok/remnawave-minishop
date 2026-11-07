@@ -1,10 +1,13 @@
 import type { ApiClient } from "./publicApi";
 import type { components } from "../api/openapi.generated";
+import { sanitizeOnboardingAttribution, type OnboardingAttribution } from "./onboardingSignals";
 
 let context: components["schemas"]["AdPublicContextOut"] | null = null;
+let observedAcquisition: OnboardingAttribution | null = null;
 
 export function clearAdvertisingContext(): void {
   context = null;
+  observedAcquisition = null;
 }
 
 export function advertisingCheckoutCode(): string {
@@ -13,8 +16,28 @@ export function advertisingCheckoutCode(): string {
     : "";
 }
 
+/**
+ * Sanitized acquisition metadata for onboarding signal integrations.
+ * Only the campaign code and known utm values are exposed; raw URLs,
+ * tokens and offer codes never leave this module. Reads the observed visit
+ * params captured before URL cleanup (not the backend configured default),
+ * so callers must run after `captureAdvertising` settles to keep
+ * attribution ordered before URL cleanup. Existing advertising behavior
+ * (context/checkout/offer) is unchanged.
+ */
+export function advertisingAttribution(): OnboardingAttribution {
+  if (observedAcquisition) {
+    return { code: observedAcquisition.code, utm: { ...observedAcquisition.utm } };
+  }
+  return sanitizeOnboardingAttribution({
+    code: context?.code || "",
+    utm: context?.utm || {},
+  });
+}
+
 export async function captureAdvertising(api: ApiClient["api"]): Promise<typeof context> {
   context = null;
+  observedAcquisition = null;
   const url = new URL(window.location.href);
   const params = url.searchParams;
   const launch = new URLSearchParams(window.location.hash.slice(1));
@@ -36,6 +59,15 @@ export async function captureAdvertising(api: ApiClient["api"]): Promise<typeof 
   const utm: Record<string, string> = {};
   for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) {
     if (params.getAll(key).length === 1 && params.get(key)) utm[key] = params.get(key) || "";
+  }
+  // Capture + sanitize the observed visit acquisition before any URL cleanup,
+  // so the actual visit source survives even when the backend returns a
+  // configured default. This does not change existing context/checkout/offer
+  // behavior below.
+  try {
+    observedAcquisition = sanitizeOnboardingAttribution({ code, utm });
+  } catch {
+    observedAcquisition = null;
   }
   const fingerprint = JSON.stringify({ code, utm });
   const previous = window.history.state as Record<string, unknown> | null;

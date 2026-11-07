@@ -1,5 +1,10 @@
 import type { components } from "$lib/api/openapi.generated";
 import { builtApiPath, unwrap, type ApiClient } from "./publicApi";
+import {
+  reportOnboardingAction,
+  toOnboardingAction,
+  type OnboardingSignalAction,
+} from "./onboardingSignals";
 import { withRoutePrefix } from "./routes";
 import { APP_SECTION_PATHS } from "./constants";
 
@@ -7,6 +12,14 @@ export type UserExtensionPlugin = components["schemas"]["ExtensionPluginOut"];
 export type UserExtensionView = components["schemas"]["ExtensionViewOut"];
 export type UserNavigationItem = { id: string; path: string; label: string; icon: string };
 type Translate = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
+
+const PLUGIN_REPORTABLE_ACTIONS: ReadonlySet<string> = new Set([
+  "connect_opened",
+  "app_opened",
+  "external_opened",
+  "text_copied",
+  "share_opened",
+]);
 
 export function extensionPath(owner: string, view: string, prefix = ""): string {
   if (!/^[a-z][a-z0-9_-]{0,63}$/.test(owner) || !/^[a-z][a-z0-9-]{1,63}$/.test(view)) {
@@ -49,6 +62,27 @@ export function createExtensionHost(
     confirm: (message: string) => ui?.confirm(message) ?? Promise.resolve(false),
     appearance: Object.freeze({ version: 1, rootClass: "plugin-host" }),
     back: () => window.history.back(),
+    signals: Object.freeze({
+      version: 1 as const,
+      /**
+       * Report a sanitized product action from a plugin view. Only
+       * allowlisted click actions are accepted and they are attributed to
+       * the extensions section; screen views, authentication and trial
+       * milestones stay Core-reported. Never sends URLs, text or tokens.
+       */
+      report(action: string): void {
+        const valid = toOnboardingAction(String(action || ""));
+        if (!valid || !PLUGIN_REPORTABLE_ACTIONS.has(valid)) return;
+        reportOnboardingAction(
+          valid as Extract<
+            OnboardingSignalAction,
+            "connect_opened" | "app_opened" | "external_opened" | "text_copied" | "share_opened"
+          >,
+          "extensions",
+          "app"
+        );
+      },
+    }),
     async request(path: string, options: RequestInit = {}) {
       const result = await client.apiUnchecked(extensionRequestPath(owner, path), options);
       if (result.ok !== true) throw result;

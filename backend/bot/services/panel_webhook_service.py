@@ -92,6 +92,57 @@ _LEGACY_EXPIRATION_HOURS_TO_EVENT = {
 }
 
 
+def _coerce_occurred_at(value: object) -> str | None:
+    """Best-effort UTC ISO-8601 from panel timestamps; invalid values are ignored."""
+
+    try:
+        if value is None or value is False:
+            return None
+        if isinstance(value, datetime):
+            parsed = value if value.tzinfo else value.replace(tzinfo=UTC)
+            return parsed.astimezone(UTC).isoformat()
+        if isinstance(value, (int, float)):
+            if value <= 0:
+                return None
+            seconds = float(value) / 1000.0 if value > 10_000_000_000 else float(value)
+            return datetime.fromtimestamp(seconds, tz=UTC).isoformat()
+        text = str(value).strip()
+        if not text:
+            return None
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC).isoformat()
+    except (OverflowError, ValueError, TypeError, OSError):
+        # Optional metadata must never break webhook routing.
+        return None
+
+
+def _webhook_occurred_at(
+    payload: dict[str, Any],
+    event_data: dict[str, Any],
+    meta: dict[str, Any],
+) -> str | None:
+    """Extract the panel-reported occurrence for downstream funnel events."""
+
+    nested_user = event_data.get("user")
+    user_data = nested_user if isinstance(nested_user, dict) else {}
+    for candidate in (
+        payload.get("timestamp"),
+        payload.get("occurredAt"),
+        event_data.get("firstConnectedAt"),
+        user_data.get("firstConnectedAt"),
+        meta.get("timestamp"),
+    ):
+        try:
+            occurred_at = _coerce_occurred_at(candidate)
+        except Exception:
+            continue
+        if occurred_at:
+            return occurred_at
+    return None
+
+
 class PanelWebhookService(PanelWebhookPayloadMixin):
     # Cap parallel background event handlers so an expiry burst from the panel
     # cannot exhaust the DB pool or the YooKassa client.
@@ -190,6 +241,7 @@ class PanelWebhookService(PanelWebhookPayloadMixin):
         user_payload: dict[str, Any],
         meta: dict[str, Any] | None = None,
         context: dict[str, Any] | None = None,
+        occurred_at: str | None = None,
     ) -> None:
         # Preserve Mini Shop's historical webhook/user contract on Remnawave
         # 3.x, where numeric ``id`` replaced ``uuid``.
@@ -199,6 +251,7 @@ class PanelWebhookService(PanelWebhookPayloadMixin):
                 event=event_name,
                 panel_user_uuid=self._payload_panel_uuid(user_payload) or None,
                 telegram_id=user_payload.get("telegramId"),
+                occurred_at=occurred_at,
             )
         )
 
@@ -818,6 +871,7 @@ class PanelWebhookService(PanelWebhookPayloadMixin):
         event_data = payload.get("payload") or payload.get("data", {})
         event_data_dict = event_data if isinstance(event_data, dict) else {}
         meta = self._webhook_meta(payload, event_data_dict)
+        occurred_at = _webhook_occurred_at(payload, event_data_dict, meta)
         context: dict[str, Any] | None = None
         if event_name_text == TORRENT_BLOCKER_EVENT:
             try:
@@ -865,6 +919,8 @@ class PanelWebhookService(PanelWebhookPayloadMixin):
             queued_payload["meta"] = meta
         if context is not None:
             queued_payload["context"] = context
+        if occurred_at is not None:
+            queued_payload["occurred_at"] = occurred_at
         queued = await enqueue_webhook_event(
             self.settings,
             "panel",
@@ -884,6 +940,7 @@ class PanelWebhookService(PanelWebhookPayloadMixin):
                     user_data,
                     meta,
                     context=context,
+                    occurred_at=occurred_at,
                 ),
                 name=f"panel_event_{event_name}",
             )
@@ -898,17 +955,22 @@ class PanelWebhookService(PanelWebhookPayloadMixin):
         meta: dict[str, Any] | None = None,
         *,
         context: dict[str, Any] | None = None,
+        occurred_at: str | None = None,
     ) -> None:
         async with self._event_semaphore:
             try:
+                kwargs: dict[str, Any] = {}
+                if occurred_at is not None:
+                    kwargs["occurred_at"] = occurred_at
                 if context is None:
-                    await self.handle_event(event_name, user_payload, meta=meta)
+                    await self.handle_event(event_name, user_payload, meta=meta, **kwargs)
                 else:
                     await self.handle_event(
                         event_name,
                         user_payload,
                         meta=meta,
                         context=context,
+                        **kwargs,
                     )
             except Exception:
                 logger.exception("Panel webhook background handler failed for event %s", event_name)

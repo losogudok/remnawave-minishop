@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bot.app.web.admin_settings_analytics_manifest_fields import ANALYTICS_SETTINGS_FIELDS
 from bot.app.web.admin_settings_manifest_email_fields import EMAIL_SETTINGS_FIELDS
 from bot.app.web.admin_settings_manifest_login_fields import LOGIN_METHOD_SETTINGS_FIELDS
 from bot.app.web.admin_settings_manifest_types import TRAFFIC_STRATEGY_CHOICES, SettingField
@@ -972,4 +973,5 @@ SETTINGS_MANIFEST: list[SettingField] = [
             "off takes effect without a restart."
         ),
     ),
+    *ANALYTICS_SETTINGS_FIELDS,
 ]

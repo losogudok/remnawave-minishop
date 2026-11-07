@@ -1,6 +1,18 @@
 <script lang="ts">
   import { onMount, tick, untrack } from "svelte";
-  import { captureAdvertising } from "./lib/webapp/advertising";
+  import { advertisingAttribution, captureAdvertising } from "./lib/webapp/advertising";
+  import {
+    destroyOnboardingSignals,
+    initOnboardingSignals,
+    parseOnboardingSignalDescriptors,
+    reportOnboardingAction,
+    reportOnboardingScreen,
+    resetOnboardingAuth,
+    setOnboardingAuthenticated,
+    toOnboardingScreen,
+    withOnboardingSignalActions,
+    type OnboardingSignalContext,
+  } from "./lib/webapp/onboardingSignals";
   import { Toaster, toast as sonnerToast } from "svelte-sonner";
   import { Tooltip } from "$components/ui/primitives.js";
 
@@ -171,6 +183,15 @@
   const routePathnameFromLocation = docsDemoRouter.routePathnameFromLocation;
   const syncAppSectionPath = docsDemoRouter.syncAppSectionPath;
   const I18N: WebappRecord = injectedI18n || {};
+
+  const onboardingDescriptors = parseOnboardingSignalDescriptors(CFG.onboardingSignals);
+  function onboardingSignalContext(): OnboardingSignalContext {
+    return toOnboardingScreen(shellState.mode, shellState.screen);
+  }
+  function reportCurrentOnboardingScreen(): void {
+    const mapped = onboardingSignalContext();
+    if (mapped) reportOnboardingScreen(mapped.screen, mapped.surface);
+  }
 
   resetShellState({
     appLaunchTarget: isAppLaunchRoute ? readExternalAppLaunchTarget() : "",
@@ -460,6 +481,44 @@
     supportStore.setActive(Boolean(mode === "app" && screen === "support" && supportEnabled));
   });
 
+  let onboardingPreviousMode = "";
+  $effect(() => {
+    const currentMode = mode;
+    if (currentMode === "app") {
+      setOnboardingAuthenticated();
+      if (onboardingPreviousMode === "login" || onboardingPreviousMode === "publicInstall") {
+        reportOnboardingAction("auth_completed", "home", "app");
+      }
+    } else if (currentMode === "login" || currentMode === "publicInstall") {
+      // Logout/account-transition semantics: the shell stays mounted across
+      // accounts, so reset auth state on leaving the app. Adapters observe
+      // `isAuthenticated() === false` while logged out, and the next
+      // account's `auth_completed`/`trial_activated` re-emit instead of being
+      // suppressed by the previous account's flags. Drop the previous
+      // account's activation result so the guest effect cannot replay it.
+      if (onboardingPreviousMode === "app") {
+        resetOnboardingAuth();
+        actionsStore.trialActivationResult = null;
+      }
+    }
+    onboardingPreviousMode = currentMode;
+  });
+
+  $effect(() => {
+    reportCurrentOnboardingScreen();
+  });
+
+  $effect(() => {
+    if (!trialActivationResult) return;
+    // Never report trial on guest/public surfaces: the activation belongs
+    // to the authenticated account. The mode/screen tracking would otherwise
+    // rerun this effect on logout and emit the previous account's result.
+    if (mode !== "app") return;
+    const mapped = onboardingSignalContext();
+    if (!mapped || mapped.surface !== "app") return;
+    reportOnboardingAction("trial_activated", mapped.screen, mapped.surface);
+  });
+
   $effect(() => {
     // Re-run after a file theme's stylesheet finishes loading so its root CSS
     // variables are available to body/portal surfaces and Telegram chrome.
@@ -664,12 +723,17 @@
       if (context?.offer_available && context.offer_mode === "activation") {
         actionsStore.setPromoCode(context.offer_code || "");
       }
+      // Attribution is handed to signal integrations only after capture
+      // settles, preserving ordering before advertising URL cleanup.
+      initOnboardingSignals(onboardingDescriptors, advertisingAttribution());
+      reportCurrentOnboardingScreen();
       bootRuntime.boot();
     });
     return () => {
       disposed = true;
       window.removeEventListener("popstate", onPopState);
       cleanupResumeLifecycle();
+      destroyOnboardingSignals();
       authStore.stopTelegramLoginWatchdog();
       authStore.clearCooldownTimer();
       accountStore.clearLinkEmailResendTimer();
@@ -684,36 +748,39 @@
     };
   });
 
-  shellState.appActions = createShellAppActions({
-    accountStore,
-    actionsStore,
-    adminRuntime,
-    authStore,
-    billing,
-    billingStore,
-    canUseInstallGuides,
-    clearLanguageClickGuard,
-    demoAuth,
-    devicesStore,
-    externalLinkActions: {
-      openAppLaunchTarget,
-      openAppLink,
-      openExternalLink,
-      refreshAppLaunchTarget,
-    },
-    getRoutePathname: routePathnameFromLocation,
-    getSelectedPlan: () => selectedPlan,
-    getShellView: () => shellView,
-    getTrialActivationResult: () => trialActivationResult,
-    installGuidesStore,
-    loadData,
-    refreshTelegram: telegramRuntime.refreshTelegram,
-    routePrefix,
-    showToast,
-    supportStore,
-    syncAppSectionPath,
-    t,
-  });
+  shellState.appActions = withOnboardingSignalActions(
+    createShellAppActions({
+      accountStore,
+      actionsStore,
+      adminRuntime,
+      authStore,
+      billing,
+      billingStore,
+      canUseInstallGuides,
+      clearLanguageClickGuard,
+      demoAuth,
+      devicesStore,
+      externalLinkActions: {
+        openAppLaunchTarget,
+        openAppLink,
+        openExternalLink,
+        refreshAppLaunchTarget,
+      },
+      getRoutePathname: routePathnameFromLocation,
+      getSelectedPlan: () => selectedPlan,
+      getShellView: () => shellView,
+      getTrialActivationResult: () => trialActivationResult,
+      installGuidesStore,
+      loadData,
+      refreshTelegram: telegramRuntime.refreshTelegram,
+      routePrefix,
+      showToast,
+      supportStore,
+      syncAppSectionPath,
+      t,
+    }),
+    onboardingSignalContext
+  );
 
   const adminPanelProps: AdminPanelProps = $derived(
     buildAppAdminPanelProps({

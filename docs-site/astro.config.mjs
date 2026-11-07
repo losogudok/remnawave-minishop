@@ -144,6 +144,7 @@ export default defineConfig({
             { label: 'Создание и публикация тем', slug: 'features/theme-packages' },
             { label: 'JavaScript-эффекты тем', slug: 'features/theme-effects' },
             { label: 'Уведомления', slug: 'features/notifications' },
+            { label: 'Аналитика GA4', slug: 'features/analytics' },
             { label: 'Поддержка/тикеты', slug: 'features/support' },
             { label: 'Статус серверов', slug: 'features/server-status' },
             { label: 'Бэкапы', slug: 'features/backups' },

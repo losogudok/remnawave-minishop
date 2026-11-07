@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import Field, PrivateAttr, SecretStr, ValidationError
 from pydantic_settings import SettingsConfigDict
 
+from config.settings_analytics import AnalyticsSettings
 from config.settings_auth import AuthenticationSettings
 from config.settings_defaults import (
     DEFAULT_SUBSCRIPTION_PURCHASE_DESCRIPTION_EN,
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 class Settings(
     SettingsComputedMixin,
+    AnalyticsSettings,
     SettingsValidationMixin,
     AuthenticationSettings,
     InvitationSettings,

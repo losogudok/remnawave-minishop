@@ -141,9 +141,61 @@ ViewPolicy = Callable[[UserContext, str], Awaitable[bool]]
 
 
 @dataclass(frozen=True)
+class SignalContext:
+    """Guest-safe context for onboarding signal integrations.
+
+    There is deliberately no user session here: signal descriptors are
+    collected for the public bootstrap before authentication, so resolvers
+    must not require an account. Browser-to-account binding happens later
+    through the advertised lifecycle (see ``bot.app.web.webapp.onboarding_signals``).
+    """
+
+    settings: Settings
+
+
+@dataclass(frozen=True)
+class OnboardingSignalsContribution:
+    """One deployment-enabled browser integration for the onboarding funnel.
+
+    ``entry`` is an optional same-origin module served by the plugin's own
+    public ``setup_web`` route (``/api/plugins/<owner>/...``); it is imported
+    with a dynamic ``import()`` after attribution is ready. ``scripts`` are
+    full ``https://`` vendor URLs (for example a tag manager) injected in
+    declaration order. ``connect_hosts`` are ``https://`` origins added to the
+    page Content-Security-Policy. ``config`` carries only flat public values
+    (measurement identifiers, flags); secrets, user identifiers, tokens and
+    raw URLs are never accepted here.
+    """
+
+    entry: str = ""
+    scripts: tuple[str, ...] = ()
+    connect_hosts: tuple[str, ...] = ()
+    config: dict[str, JsonValue] = field(default_factory=dict)
+
+
+SignalsResolver = Callable[[SignalContext], Awaitable[OnboardingSignalsContribution | None]]
+
+
+@dataclass(frozen=True)
 class GuideProvider:
     id: str
     resolve: GuideResolver
+
+
+@dataclass(frozen=True)
+class OnboardingSignalProvider:
+    """An opt-in browser integration observing sanitized onboarding signals.
+
+    ``resolve`` returns ``None`` when the integration is disabled (for
+    example no measurement identifier is configured); a disabled integration
+    contributes no descriptor, no asset and no Content-Security-Policy
+    origin, and Core issues no third-party request for it. Raising or
+    returning an invalid contribution only skips this provider: collection
+    never blocks the page, authentication, checkout or instructions.
+    """
+
+    id: str
+    resolve: SignalsResolver
 
 
 @dataclass(frozen=True)
@@ -234,4 +286,12 @@ class ExtensionContributions:
     view_policy: ViewPolicy | None = None
     # Supported core commands, explicitly requested by the trusted plugin.
     permissions: frozenset[str] = field(default_factory=frozenset)
+    # Onboarding signal integrations observing the guest/public/authenticated
+    # funnel through sanitized Core lifecycle callbacks. No DOM scraping, no
+    # fetch/history interception: providers only receive allowlisted signals.
+    # NOTE: `signals` stays last among positional fields so historical 10-arg
+    # positional construction `ExtensionContributions(guides, ..., view_policy,
+    # permissions)` keeps mapping `permissions` correctly (ONB-04 positional
+    # compat); `guide_media` is kw-only and does not affect positional order.
+    signals: tuple[OnboardingSignalProvider, ...] = ()
     guide_media: tuple[GuideMediaProvider, ...] = field(default=(), kw_only=True)

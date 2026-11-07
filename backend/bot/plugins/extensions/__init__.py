@@ -46,6 +46,12 @@ from .contracts import (
     MessageShortcodeContext as MessageShortcodeContext,
 )
 from .contracts import (
+    OnboardingSignalProvider as OnboardingSignalProvider,
+)
+from .contracts import (
+    OnboardingSignalsContribution as OnboardingSignalsContribution,
+)
+from .contracts import (
     OperationContext as OperationContext,
 )
 from .contracts import (
@@ -62,6 +68,12 @@ from .contracts import (
 )
 from .contracts import (
     ResourceResult as ResourceResult,
+)
+from .contracts import (
+    SignalContext as SignalContext,
+)
+from .contracts import (
+    SignalsResolver as SignalsResolver,
 )
 from .contracts import (
     UserContext as UserContext,
