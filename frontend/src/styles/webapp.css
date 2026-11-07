@@ -4646,6 +4646,7 @@ a {
   }
 
   .settings-list .settings-row {
+    grid-column: 1 / -1;
     min-height: 48px;
   }
 
