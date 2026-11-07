@@ -28,6 +28,10 @@ from bot.services.audience_segmentation import (
     AudienceSegmentationService,
     AudienceUnavailableError,
 )
+from bot.services.broadcast_channels import (
+    TELEGRAM_MESSAGE_MAX_LENGTH,
+    broadcast_channel_descriptors,
+)
 from bot.services.broadcast_email_service import (
     BroadcastEmailRecipient,
     schedule_broadcast_emails,
@@ -63,7 +67,9 @@ from .broadcast_content import (
     normalize_broadcast_channels,
     resolve_broadcast_buttons,
     resolve_localized_text,
+    selected_channel_descriptors,
     telegram_markup_for_buttons,
+    validate_broadcast_content_limits,
 )
 from .common import (
     _error,
@@ -73,6 +79,7 @@ from .response_schemas import (
     AdminBroadcastAudienceCountsOut,
     AdminBroadcastAudienceOut,
     AdminBroadcastButtonOut,
+    AdminBroadcastChannelOut,
     AdminBroadcastCreateOut,
     AdminBroadcastDeleteOut,
     AdminBroadcastFailureOut,
@@ -87,9 +94,11 @@ logger = logging.getLogger(__name__)
 BROADCAST_TARGET_ACTIVE_NEVER_CONNECTED = AUDIENCE_ACTIVE_NEVER_CONNECTED
 BROADCAST_TARGETS = AUDIENCE_TARGETS
 # Telegram rejects messages over 4096 chars; a shortcode expansion can push a
-# per-recipient message past the limit, so we skip+count those rather than let
-# the queue fail them later with an opaque error.
-TELEGRAM_MESSAGE_MAX_LENGTH = 4096
+# per-recipient message past the limit, so the service skips+counts those
+# rather than letting the queue fail them later with an opaque error. The
+# value comes from the broadcast channel contract so providers and the HTTP
+# layer validate against the same limit.
+_MAX_TEXT_LENGTH = TELEGRAM_MESSAGE_MAX_LENGTH
 _ADMIN_BROADCAST_AUDIENCE_COUNT_CACHES: dict[tuple[int, int], AsyncTTLCache] = {}
 
 register_contract(
@@ -102,6 +111,7 @@ register_contract(
             AdminBroadcastCreateOut,
             AdminBroadcastOut,
             AdminBroadcastButtonOut,
+            AdminBroadcastChannelOut,
         ),
     ),
 )
@@ -138,7 +148,11 @@ register_contract(
     "admin_broadcast_audience_counts_route",
     RouteContract(
         response_schema=ok_envelope_for(AdminBroadcastAudienceCountsOut),
-        models=(AdminBroadcastAudienceCountsOut, AdminBroadcastAudienceOut),
+        models=(
+            AdminBroadcastAudienceCountsOut,
+            AdminBroadcastAudienceOut,
+            AdminBroadcastChannelOut,
+        ),
     ),
 )
 
@@ -294,12 +308,16 @@ async def _legacy_admin_broadcast_route(request: web.Request) -> web.Response:
 
     telegram_enabled = "telegram" in channels
     email_enabled = "email" in channels
-    if email_enabled and not settings.smtp_delivery_configured:
-        return _error(503, "email_not_configured")
+    unsupported = [channel for channel in channels if channel not in {"telegram", "email"}]
+    if unsupported:
+        # This legacy direct-send path predates pluggable transports; it must
+        # not silently ignore a channel it cannot deliver.
+        return _error(400, "invalid_channel", ", ".join(unsupported))
+    descriptors, channel_error = selected_channel_descriptors(settings, channels)
+    if channel_error is not None:
+        return channel_error
 
     queue_manager = get_queue_manager() if telegram_enabled else None
-    if telegram_enabled and not queue_manager:
-        return _error(503, "queue_unavailable")
 
     if (
         target == BROADCAST_TARGET_ACTIVE_NEVER_CONNECTED
@@ -313,6 +331,13 @@ async def _legacy_admin_broadcast_route(request: web.Request) -> web.Response:
         email_subjects.setdefault(
             str(settings.DEFAULT_LANGUAGE or "").strip().lower() or "en", email_subject
         )
+    content_error = validate_broadcast_content_limits(
+        descriptors,
+        texts=texts,
+        email_subjects=email_subjects,
+    )
+    if content_error is not None:
+        return content_error
     # Every language variant is checked, not just the default one: a broken
     # shortcode or tag in one of them would only surface for the customers who
     # read that language.
@@ -418,7 +443,7 @@ async def _legacy_admin_broadcast_route(request: web.Request) -> web.Response:
                 lang = _language(uid, None)
                 variant = _variant(texts, lang)
                 message_text = _render(variant, uid, lang, escape=True) if personalize else variant
-                if len(message_text) > TELEGRAM_MESSAGE_MAX_LENGTH:
+                if len(message_text) > _MAX_TEXT_LENGTH:
                     failed += 1
                     logger.warning(
                         "Broadcast skipped for user %s: rendered text %s chars exceeds limit",
@@ -572,6 +597,11 @@ def _broadcast_out(item: AdminBroadcast) -> AdminBroadcastOut:
         telegram_failed=int(item.telegram_failed or 0),
         email_sent=int(item.email_sent or 0),
         email_failed=int(item.email_failed or 0),
+        channel_stats={
+            str(channel): dict(stats)
+            for channel, stats in dict(getattr(item, "channel_stats", None) or {}).items()
+            if isinstance(stats, dict)
+        },
         last_error=str(item.last_error) if item.last_error else None,
     )
 
@@ -610,8 +640,17 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
     except BroadcastValidationError as exc:
         return _error(400, exc.code, exc.detail)
 
-    if "email" in channels and not settings.smtp_delivery_configured:
-        return _error(503, "email_not_configured")
+    descriptors, channel_error = selected_channel_descriptors(settings, channels)
+    if channel_error is not None:
+        return channel_error
+
+    content_error = validate_broadcast_content_limits(
+        descriptors,
+        texts=texts,
+        email_subjects=email_subjects,
+    )
+    if content_error is not None:
+        return content_error
 
     unknown = set().union(
         *(
@@ -625,10 +664,14 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
     )
     if unknown:
         return _error(400, "unknown_shortcode", ", ".join(sorted(unknown)))
-    for variant in texts.values():
-        html_error = telegram_html_error(variant)
-        if html_error:
-            return _error(400, "invalid_telegram_html", html_error)
+    # Push renders plain text and strips markup itself. When no selected
+    # channel consumes Telegram HTML, HTML-only mistakes must not block a
+    # push-only campaign; mixed campaigns with Telegram/email still validate.
+    if any(descriptor.supports_html for descriptor in descriptors):
+        for variant in texts.values():
+            html_error = telegram_html_error(variant)
+            if html_error:
+                return _error(400, "invalid_telegram_html", html_error)
 
     requested_scheduled_at = body.scheduled_at
     scheduled_at = _utc_datetime(requested_scheduled_at)
@@ -642,11 +685,6 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
         return _error(400, "invalid_audience", target)
     except AudienceUnavailableError:
         return _error(403, "audience_unavailable", target)
-
-    immediate = requested_scheduled_at is None
-    queue_manager = get_queue_manager()
-    if immediate and "telegram" in channels and queue_manager is None:
-        return _error(503, "queue_unavailable")
 
     exclude_blocked_telegram = (
         body.exclude_blocked_telegram
@@ -788,6 +826,28 @@ async def admin_broadcast_audience_counts_route(request: web.Request) -> web.Res
         )
         audiences = []
 
+    channels = [
+        AdminBroadcastChannelOut(
+            name=descriptor.name,
+            label_key=descriptor.label_key,
+            fallback_label=descriptor.fallback_label,
+            order=descriptor.order,
+            available=descriptor.available,
+            reason=descriptor.reason,
+            supports_html=descriptor.supports_html,
+            supports_subject=descriptor.supports_subject,
+            supports_image=descriptor.supports_image,
+            supports_buttons=descriptor.supports_buttons,
+            max_text_length=descriptor.max_text_length,
+            supports_push_preview=descriptor.supports_push_preview,
+            destination_level=descriptor.destination_level,
+        )
+        for descriptor in broadcast_channel_descriptors(settings)
+    ]
+    email_enabled = next(
+        (channel.available for channel in channels if channel.name == "email"),
+        bool(settings.smtp_delivery_configured),
+    )
     return _ok(
         AdminBroadcastAudienceCountsOut(
             counts=counts,
@@ -804,6 +864,7 @@ async def admin_broadcast_audience_counts_route(request: web.Request) -> web.Res
                 )
                 for audience in audiences
             ],
-            email_enabled=bool(settings.smtp_delivery_configured),
+            channels=channels,
+            email_enabled=email_enabled,
         ).model_dump(mode="json")
     )

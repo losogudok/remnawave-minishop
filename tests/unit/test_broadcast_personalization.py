@@ -13,6 +13,7 @@ from PIL import Image
 from bot.app.web.admin_api_impl import broadcast as broadcast_route_module
 from bot.app.web.admin_api_impl import broadcast_shortcodes as broadcast_shortcodes_module
 from bot.middlewares.i18n import JsonI18n
+from bot.services import broadcast_channels_builtin as builtin_module
 from bot.services.broadcast_personalization import (
     SHORTCODES,
     TELEGRAM_BROADCAST_ALLOWED_TAGS,
@@ -475,7 +476,7 @@ class AdminBroadcastPersonalizationRouteTest(unittest.IsolatedAsyncioTestCase):
         request = _request({"target": "all", "text": "Hi {frist_name}", "channels": ["telegram"]})
         with (
             patch.object(broadcast_route_module, "_require_admin_user_id", return_value=1),
-            patch.object(broadcast_route_module, "get_queue_manager", return_value=_FakeQueue()),
+            patch.object(builtin_module, "get_queue_manager", return_value=_FakeQueue()),
         ):
             response = await broadcast_route_module.admin_broadcast_route(cast(Any, request))
         self.assertEqual(response.status, 400)
@@ -497,7 +498,7 @@ class AdminBroadcastPersonalizationRouteTest(unittest.IsolatedAsyncioTestCase):
         )
         with (
             patch.object(broadcast_route_module, "_require_admin_user_id", return_value=1),
-            patch.object(broadcast_route_module, "get_queue_manager", return_value=_FakeQueue()),
+            patch.object(builtin_module, "get_queue_manager", return_value=_FakeQueue()),
         ):
             response = await broadcast_route_module.admin_broadcast_route(cast(Any, request))
         self.assertEqual(response.status, 400)
@@ -506,7 +507,7 @@ class AdminBroadcastPersonalizationRouteTest(unittest.IsolatedAsyncioTestCase):
         request = _request({"target": "all", "text": "<p>bad</p>", "channels": ["telegram"]})
         with (
             patch.object(broadcast_route_module, "_require_admin_user_id", return_value=1),
-            patch.object(broadcast_route_module, "get_queue_manager", return_value=_FakeQueue()),
+            patch.object(builtin_module, "get_queue_manager", return_value=_FakeQueue()),
         ):
             response = await broadcast_route_module.admin_broadcast_route(cast(Any, request))
         self.assertEqual(response.status, 400)
@@ -550,7 +551,7 @@ class AdminBroadcastPersonalizationRouteTest(unittest.IsolatedAsyncioTestCase):
                 "_resolve_audience_service",
                 return_value=SimpleNamespace(resolve_user_ids=resolve_user_ids),
             ),
-            patch.object(broadcast_route_module, "get_queue_manager", return_value=_FakeQueue()),
+            patch.object(builtin_module, "get_queue_manager", return_value=_FakeQueue()),
             patch.object(broadcast_route_module.broadcast_dal, "create_broadcast", create),
         ):
             response = await broadcast_route_module.admin_broadcast_route(cast(Any, request))

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buttonsForPayload, createBroadcastStore } from "./broadcastStore.svelte";
-import { historyItemFromWire } from "./broadcastHistory";
+import { channelStatsRows, historyItemFromWire } from "./broadcastHistory";
 
 function makeSessionStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
@@ -193,6 +193,271 @@ describe("broadcastStore", () => {
     const payload = JSON.parse(api.mock.calls[0][1].body);
     expect(payload.channels).toEqual(["email"]);
     expect(payload.exclude_blocked_telegram).toBeNull();
+  });
+
+  it("parses broadcast channel descriptors and keeps unavailable channels out of payloads", async () => {
+    const api = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        counts: { all: 2 },
+        channels: [
+          {
+            name: "telegram",
+            label_key: "broadcast_channel_telegram",
+            fallback_label: "Telegram",
+            order: 10,
+            available: true,
+            supports_html: true,
+            supports_subject: false,
+            supports_image: true,
+            supports_buttons: true,
+            max_text_length: 4096,
+          },
+          {
+            name: "email",
+            label_key: "broadcast_channel_email",
+            fallback_label: "Email",
+            order: 20,
+            available: false,
+            reason: "email_not_configured",
+            supports_html: true,
+            supports_subject: true,
+            supports_image: true,
+            supports_buttons: true,
+            max_text_length: 0,
+          },
+          {
+            name: "push",
+            label_key: "broadcast_channel_push",
+            fallback_label: "Web Push",
+            order: 30,
+            available: true,
+            supports_html: false,
+            supports_subject: true,
+            supports_image: false,
+            supports_buttons: false,
+            max_text_length: 180,
+            supports_push_preview: true,
+            destination_level: "endpoint",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        queued: 1,
+        failed: 0,
+        email_queued: 0,
+        channels: ["telegram", "push"],
+      });
+    const store = makeStore(api);
+
+    await store.loadCounts();
+    expect(store.broadcastChannels.map((channel) => channel.name)).toEqual([
+      "telegram",
+      "email",
+      "push",
+    ]);
+    expect(store.broadcastChannels[2]).toMatchObject({
+      supportsPushPreview: true,
+      destinationLevel: "endpoint",
+      maxTextLength: 180,
+    });
+    expect(store.broadcastEmailAvailable).toBe(false);
+    expect(store.broadcastEmailEnabled).toBe(false);
+
+    store.updateField({
+      broadcastText: "Hello",
+      selectedChannels: ["telegram", "email", "push"],
+    });
+    await store.runBroadcast();
+
+    const payload = JSON.parse(api.mock.calls[1][1].body);
+    expect(payload.channels).toEqual(["telegram", "push"]);
+    expect(store.broadcastTelegramEnabled).toBe(true);
+    expect(store.broadcastEmailEnabled).toBe(false);
+  });
+
+  it("rejects text longer than the selected channel capability limit", async () => {
+    const api = vi.fn().mockResolvedValue({
+      ok: true,
+      counts: { all: 2 },
+      channels: [
+        {
+          name: "telegram",
+          label_key: "broadcast_channel_telegram",
+          fallback_label: "Telegram",
+          order: 10,
+          available: true,
+          supports_html: true,
+          supports_subject: false,
+          supports_image: true,
+          supports_buttons: true,
+          max_text_length: 5,
+        },
+      ],
+    });
+    const store = makeStore(api);
+
+    await store.loadCounts();
+    store.updateField({ broadcastText: "Hello world" });
+    expect(store.canSubmit()).toBe(false);
+
+    store.updateField({ broadcastText: "Hi" });
+    expect(store.canSubmit()).toBe(true);
+  });
+
+  it("lets push shorten mixed text instead of rejecting the campaign", async () => {
+    const telegram = {
+      name: "telegram",
+      label_key: "broadcast_channel_telegram",
+      fallback_label: "Telegram",
+      order: 10,
+      available: true,
+      supports_html: true,
+      supports_subject: false,
+      supports_image: true,
+      supports_buttons: true,
+      max_text_length: 4096,
+    };
+    const push = {
+      name: "push",
+      label_key: "broadcast_channel_push",
+      fallback_label: "Web Push",
+      order: 30,
+      available: true,
+      supports_html: false,
+      supports_subject: false,
+      supports_image: false,
+      supports_buttons: true,
+      max_text_length: 320,
+      supports_push_preview: true,
+      destination_level: "endpoint",
+    };
+    const api = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, counts: { all: 2 }, channels: [telegram, push] })
+      .mockResolvedValueOnce({
+        ok: true,
+        queued: 2,
+        failed: 0,
+        email_queued: 0,
+        channels: ["telegram", "push"],
+      });
+    const store = makeStore(api);
+    await store.loadCounts();
+    store.updateField({
+      broadcastText: "x".repeat(500),
+      selectedChannels: ["telegram", "push"],
+    });
+    expect(store.canSubmit()).toBe(true);
+
+    await store.runBroadcast();
+    const payload = JSON.parse(api.mock.calls[1][1].body);
+    expect(payload.channels).toEqual(["telegram", "push"]);
+
+    store.updateField({ selectedChannels: ["push"], broadcastText: "x".repeat(500) });
+    expect(store.canSubmit()).toBe(true);
+  });
+
+  it("renders per-channel history stats and falls back to legacy counters", () => {
+    const at = (_key: string, _params?: Record<string, unknown>, fallback?: string) =>
+      fallback || _key;
+    const item = historyItemFromWire({
+      broadcast_id: 3,
+      channels: ["telegram", "email"],
+      channel_stats: {
+        telegram: { users: 2, deliveries: 2, sent: 2, failed: 0 },
+        email: { users: 1, deliveries: 2, sent: 1, failed: 1, reason: "" },
+      },
+    });
+    expect(item).not.toBeNull();
+
+    expect(channelStatsRows(item!, at)).toEqual([
+      expect.objectContaining({
+        name: "telegram",
+        label: "Telegram",
+        users: 2,
+        deliveries: 2,
+        sent: 2,
+        failed: 0,
+      }),
+      expect.objectContaining({
+        name: "email",
+        label: "Email",
+        users: 1,
+        deliveries: 2,
+        sent: 1,
+        failed: 1,
+      }),
+    ]);
+
+    const legacy = historyItemFromWire({
+      broadcast_id: 4,
+      channels: ["telegram"],
+      telegram_sent: 7,
+      telegram_failed: 3,
+    });
+    expect(channelStatsRows(legacy!, at)).toEqual([
+      expect.objectContaining({
+        name: "telegram",
+        users: null,
+        deliveries: null,
+        sent: 7,
+        failed: 3,
+      }),
+    ]);
+  });
+
+  it("drops a selected channel when its provider disappears from the catalog", async () => {
+    const telegram = {
+      name: "telegram",
+      label_key: "broadcast_channel_telegram",
+      fallback_label: "Telegram",
+      order: 10,
+      available: true,
+      supports_html: true,
+      supports_subject: false,
+      supports_image: true,
+      supports_buttons: true,
+      max_text_length: 4096,
+    };
+    const removedPush = {
+      name: "removed-push",
+      label_key: "broadcast_channel_removed_push",
+      fallback_label: "Removed push",
+      order: 30,
+      available: true,
+      supports_html: false,
+      supports_subject: false,
+      supports_image: false,
+      supports_buttons: false,
+      max_text_length: 180,
+    };
+    const api = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, counts: { all: 1 }, channels: [telegram, removedPush] })
+      .mockResolvedValueOnce({ ok: true, counts: { all: 1 }, channels: [telegram] })
+      .mockResolvedValueOnce({
+        ok: true,
+        queued: 1,
+        failed: 0,
+        email_queued: 0,
+        channels: ["telegram"],
+      });
+    const store = makeStore(api);
+
+    await store.loadCounts();
+    store.updateField({ selectedChannels: ["telegram", "removed-push"] });
+    expect(store.selectedChannels).toEqual(["telegram", "removed-push"]);
+
+    await store.loadCounts({ force: true });
+    expect(store.selectedChannels).toEqual(["telegram"]);
+
+    store.updateField({ broadcastText: "Hello" });
+    await store.runBroadcast();
+    const payload = JSON.parse(api.mock.calls[2][1].body);
+    expect(payload.channels).toEqual(["telegram"]);
   });
 
   it("preserves a negative internal user id for an email-only message", async () => {

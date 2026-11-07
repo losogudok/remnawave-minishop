@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from bot.app.web.admin_api_impl import broadcast as broadcast_routes
+from bot.services import broadcast_channels_builtin as builtin_module
 from bot.services.admin_broadcast_delivery import AdminBroadcastDeliveryService
 from db.base import Base
 from db.broadcast_models import AdminBroadcast, AdminBroadcastDelivery
@@ -130,6 +131,7 @@ class BroadcastRecipientCountTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(broadcast_dal, "begin_broadcast", AsyncMock(return_value=item)),
             patch.object(service, "_queue_deliveries", AsyncMock()),
+            patch.object(builtin_module, "get_queue_manager", return_value=object()),
         ):
             await service.dispatch(int(item.broadcast_id))
         audience.resolve_user_ids.assert_awaited_once_with("all")

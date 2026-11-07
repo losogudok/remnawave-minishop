@@ -39,6 +39,9 @@ from .chain_0107_cleaned_trial_history import CHAIN_0107_CLEANED_TRIAL_HISTORY
 from .chain_0108_telegram_observations import CHAIN_0108_TELEGRAM_OBSERVATIONS
 from .chain_0109_subscription_days_payments import CHAIN_0109_SUBSCRIPTION_DAYS_PAYMENTS
 from .chain_0110_push_notification_preference import CHAIN_0110_PUSH_NOTIFICATION_PREFERENCE
+from .chain_0111_broadcast_channel_destinations import (
+    CHAIN_0111_BROADCAST_CHANNEL_DESTINATIONS,
+)
 from .engine import Migration
 
 MIGRATIONS: list[Migration] = [
@@ -79,4 +82,5 @@ MIGRATIONS: list[Migration] = [
     *CHAIN_0108_TELEGRAM_OBSERVATIONS,
     *CHAIN_0109_SUBSCRIPTION_DAYS_PAYMENTS,
     *CHAIN_0110_PUSH_NOTIFICATION_PREFERENCE,
+    *CHAIN_0111_BROADCAST_CHANNEL_DESTINATIONS,
 ]

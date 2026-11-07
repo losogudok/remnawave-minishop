@@ -8,14 +8,27 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import case, func, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bot.services.broadcast_channels import get_broadcast_channel_provider
 from db.broadcast_models import AdminBroadcast, AdminBroadcastDelivery
-from db.dal import user_broadcast_dal
 
 ACTIVE_BROADCAST_STATUSES = ("scheduled", "queued", "running")
 FINAL_DELIVERY_STATUSES = ("sent", "failed")
+CHANNEL_STATS_COUNT_KEYS = ("queued", "sent", "failed", "skipped")
+
+
+def _channel_stats_entry(*, reason: str = "") -> dict[str, Any]:
+    return {
+        "users": 0,
+        "deliveries": 0,
+        "queued": 0,
+        "sent": 0,
+        "failed": 0,
+        "skipped": 0,
+        "reason": reason,
+    }
 
 
 def utc_now() -> datetime:
@@ -39,24 +52,27 @@ async def create_broadcast(
 ) -> AdminBroadcast:
     recipient_ids: set[int] = set()
     total_deliveries = 0
-    if "telegram" in channels:
-        telegram_ids = {
-            user_id
-            for user_id, _ in await user_broadcast_dal.get_telegram_recipients_for_broadcast(
-                session, user_ids, exclude_blocked=exclude_blocked_telegram
-            )
+    channel_stats: dict[str, dict[str, Any]] = {}
+    for channel in channels:
+        provider = get_broadcast_channel_provider(channel)
+        if provider is None:
+            # The API rejects unknown channels, but a direct caller must not
+            # silently fall through to another transport.
+            channel_stats[str(channel)] = _channel_stats_entry(reason="provider_absent")
+            continue
+        recipients = await provider.resolve_recipients(
+            session,
+            user_ids=user_ids,
+            exclude_blocked_telegram=bool(exclude_blocked_telegram),
+        )
+        channel_user_ids = {int(recipient.user_id) for recipient in recipients}
+        recipient_ids.update(channel_user_ids)
+        total_deliveries += len(recipients)
+        channel_stats[str(channel)] = {
+            **_channel_stats_entry(),
+            "users": len(channel_user_ids),
+            "deliveries": len(recipients),
         }
-        recipient_ids.update(telegram_ids)
-        total_deliveries += len(telegram_ids)
-    if "email" in channels:
-        email_ids = {
-            user_id
-            for user_id, _, _ in await user_broadcast_dal.get_email_recipients_for_broadcast(
-                session, user_ids
-            )
-        }
-        recipient_ids.update(email_ids)
-        total_deliveries += len(email_ids)
 
     status = "scheduled" if scheduled_at > utc_now() else "queued"
     item = AdminBroadcast(
@@ -73,6 +89,7 @@ async def create_broadcast(
         scheduled_at=scheduled_at,
         recipient_count=len(recipient_ids),
         total_deliveries=total_deliveries,
+        channel_stats=channel_stats,
     )
     session.add(item)
     await session.commit()
@@ -178,6 +195,7 @@ async def begin_broadcast(session: AsyncSession, broadcast_id: int) -> AdminBroa
         return None
     item.status = "running"
     item.started_at = item.started_at or utc_now()
+    item.finished_at = None
     item.updated_at = utc_now()
     await session.commit()
     await session.refresh(item)
@@ -202,13 +220,24 @@ async def recover_interrupted_broadcasts(session: AsyncSession) -> int:
         .where(AdminBroadcastDelivery.status == "queued")
         .values(status="pending", queued_at=None)
     )
+    active_delivery_broadcasts = (
+        select(AdminBroadcastDelivery.broadcast_id)
+        .where(AdminBroadcastDelivery.status.in_(("pending", "queued")))
+        .distinct()
+    )
     await session.execute(
         update(AdminBroadcast)
         .where(
             AdminBroadcast.deleted_at.is_(None),
-            AdminBroadcast.status == "running",
+            or_(
+                AdminBroadcast.status == "running",
+                and_(
+                    AdminBroadcast.status.in_(("queued", "completed", "completed_with_errors")),
+                    AdminBroadcast.broadcast_id.in_(active_delivery_broadcasts),
+                ),
+            ),
         )
-        .values(status="queued", updated_at=utc_now())
+        .values(status="queued", finished_at=None, updated_at=utc_now())
     )
     await session.commit()
     return recovered
@@ -222,25 +251,48 @@ async def add_deliveries(
     existing_stmt = select(
         AdminBroadcastDelivery.user_id,
         AdminBroadcastDelivery.channel,
+        AdminBroadcastDelivery.destination_key,
     ).where(AdminBroadcastDelivery.broadcast_id == broadcast.broadcast_id)
-    existing = {(int(uid), str(channel)) for uid, channel in (await session.execute(existing_stmt))}
+    existing_rows = {
+        (int(user_id), str(channel), str(destination_key or "default"))
+        for user_id, channel, destination_key in (await session.execute(existing_stmt))
+    }
+    existing_legacy = {
+        (user_id, channel)
+        for user_id, channel, destination_key in existing_rows
+        if destination_key == "legacy"
+    }
     for payload in deliveries:
-        key = (int(payload["user_id"]), str(payload["channel"]))
-        if key in existing:
+        user_id = int(payload["user_id"])
+        channel = str(payload["channel"])
+        destination_key = str(payload.get("destination_key") or "default")
+        key = (user_id, channel, destination_key)
+        # Historical rows carry ``legacy``; their default destination is the
+        # same recipient, so a recovered old campaign does not grow a duplicate.
+        # Distinct endpoint keys (including ``default``) never collide.
+        if key in existing_rows or (
+            destination_key == "default" and (user_id, channel) in existing_legacy
+        ):
             continue
-        existing.add(key)
+        existing_rows.add(key)
         session.add(
             AdminBroadcastDelivery(
                 broadcast_id=broadcast.broadcast_id,
-                user_id=key[0],
-                channel=key[1],
+                user_id=user_id,
+                channel=channel,
+                destination_key=destination_key,
                 destination=str(payload["destination"]),
                 language_code=payload.get("language_code"),
                 status="pending",
             )
         )
     await session.flush()
-    await refresh_broadcast_stats(session, int(broadcast.broadcast_id), commit=False)
+    await refresh_broadcast_stats(
+        session,
+        int(broadcast.broadcast_id),
+        commit=False,
+        finalize=False,
+    )
     await session.commit()
     return await pending_deliveries(session, int(broadcast.broadcast_id))
 
@@ -248,15 +300,16 @@ async def add_deliveries(
 async def pending_deliveries(
     session: AsyncSession,
     broadcast_id: int,
+    *,
+    channel: str | None = None,
 ) -> list[AdminBroadcastDelivery]:
-    stmt = (
-        select(AdminBroadcastDelivery)
-        .where(
-            AdminBroadcastDelivery.broadcast_id == broadcast_id,
-            AdminBroadcastDelivery.status == "pending",
-        )
-        .order_by(AdminBroadcastDelivery.delivery_id.asc())
+    stmt = select(AdminBroadcastDelivery).where(
+        AdminBroadcastDelivery.broadcast_id == broadcast_id,
+        AdminBroadcastDelivery.status == "pending",
     )
+    if channel is not None:
+        stmt = stmt.where(AdminBroadcastDelivery.channel == channel)
+    stmt = stmt.order_by(AdminBroadcastDelivery.delivery_id.asc())
     return list((await session.execute(stmt)).scalars().all())
 
 
@@ -306,82 +359,116 @@ async def refresh_broadcast_stats(
     broadcast_id: int,
     *,
     commit: bool = True,
+    finalize: bool = True,
 ) -> AdminBroadcast | None:
     item = await get_broadcast(session, broadcast_id, include_deleted=True, for_update=True)
     if item is None:
         return None
-    stmt = select(
-        func.count(AdminBroadcastDelivery.delivery_id),
-        func.count(func.distinct(AdminBroadcastDelivery.user_id)),
-        func.coalesce(func.sum(case((AdminBroadcastDelivery.status == "sent", 1), else_=0)), 0),
-        func.coalesce(func.sum(case((AdminBroadcastDelivery.status == "failed", 1), else_=0)), 0),
-        func.coalesce(
-            func.sum(
-                case(
-                    (
-                        (AdminBroadcastDelivery.channel == "telegram")
-                        & (AdminBroadcastDelivery.status == "sent"),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ),
-            0,
-        ),
-        func.coalesce(
-            func.sum(
-                case(
-                    (
-                        (AdminBroadcastDelivery.channel == "telegram")
-                        & (AdminBroadcastDelivery.status == "failed"),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ),
-            0,
-        ),
-        func.coalesce(
-            func.sum(
-                case(
-                    (
-                        (AdminBroadcastDelivery.channel == "email")
-                        & (AdminBroadcastDelivery.status == "sent"),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ),
-            0,
-        ),
-        func.coalesce(
-            func.sum(
-                case(
-                    (
-                        (AdminBroadcastDelivery.channel == "email")
-                        & (AdminBroadcastDelivery.status == "failed"),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ),
-            0,
-        ),
-    ).where(AdminBroadcastDelivery.broadcast_id == broadcast_id)
-    values = (await session.execute(stmt)).one()
-    (
-        item.total_deliveries,
-        item.recipient_count,
-        item.successful_deliveries,
-        item.failed_deliveries,
-        item.telegram_sent,
-        item.telegram_failed,
-        item.email_sent,
-        item.email_failed,
-    ) = (int(value or 0) for value in values)
+    totals = (
+        await session.execute(
+            select(
+                func.count(AdminBroadcastDelivery.delivery_id),
+                func.count(func.distinct(AdminBroadcastDelivery.user_id)),
+                func.coalesce(
+                    func.sum(case((AdminBroadcastDelivery.status == "sent", 1), else_=0)), 0
+                ),
+                func.coalesce(
+                    func.sum(case((AdminBroadcastDelivery.status == "failed", 1), else_=0)), 0
+                ),
+            ).where(AdminBroadcastDelivery.broadcast_id == broadcast_id)
+        )
+    ).one()
+    channel_status_rows = (
+        await session.execute(
+            select(
+                AdminBroadcastDelivery.channel,
+                AdminBroadcastDelivery.status,
+                func.count(AdminBroadcastDelivery.delivery_id),
+            )
+            .where(AdminBroadcastDelivery.broadcast_id == broadcast_id)
+            .group_by(AdminBroadcastDelivery.channel, AdminBroadcastDelivery.status)
+        )
+    ).all()
+    channel_user_rows = (
+        await session.execute(
+            select(
+                AdminBroadcastDelivery.channel,
+                func.count(func.distinct(AdminBroadcastDelivery.user_id)),
+            )
+            .where(AdminBroadcastDelivery.broadcast_id == broadcast_id)
+            .group_by(AdminBroadcastDelivery.channel)
+        )
+    ).all()
+
+    existing_stats = {
+        str(channel): dict(stats)
+        for channel, stats in dict(item.channel_stats or {}).items()
+        if isinstance(stats, dict)
+    }
+    stats: dict[str, dict[str, Any]] = {}
+
+    def _entry(channel: str) -> dict[str, Any]:
+        if channel not in stats:
+            reason = str(existing_stats.get(channel, {}).get("reason") or "")
+            stats[channel] = _channel_stats_entry(reason=reason)
+        return stats[channel]
+
+    for channel in [*list(item.channels or []), *existing_stats]:
+        if str(channel):
+            _entry(str(channel))
+
+    for channel, status, count in channel_status_rows:
+        entry = _entry(str(channel))
+        amount = int(count or 0)
+        entry["deliveries"] = int(entry["deliveries"]) + amount
+        if status in {"pending", "queued"}:
+            entry["queued"] = int(entry["queued"]) + amount
+        elif status == "sent":
+            entry["sent"] = int(entry["sent"]) + amount
+        elif status == "failed":
+            entry["failed"] = int(entry["failed"]) + amount
+        elif status == "skipped":
+            entry["skipped"] = int(entry["skipped"]) + amount
+
+    for channel, user_count in channel_user_rows:
+        _entry(str(channel))["users"] = int(user_count or 0)
+
+    item.channel_stats = stats
+    item.total_deliveries = int(totals[0] or 0)
+    item.recipient_count = int(totals[1] or 0)
+    item.successful_deliveries = int(totals[2] or 0)
+    item.failed_deliveries = int(totals[3] or 0)
+    item.telegram_sent = int(stats.get("telegram", {}).get("sent", 0))
+    item.telegram_failed = int(stats.get("telegram", {}).get("failed", 0))
+    item.email_sent = int(stats.get("email", {}).get("sent", 0))
+    item.email_failed = int(stats.get("email", {}).get("failed", 0))
+
     processed = int(item.successful_deliveries) + int(item.failed_deliveries)
-    if item.status == "running" and processed >= int(item.total_deliveries):
-        item.status = "completed" if int(item.failed_deliveries) == 0 else "completed_with_errors"
+    non_terminal = max(0, int(item.total_deliveries) - processed)
+    has_channel_failure = any(str(entry.get("reason") or "") for entry in stats.values())
+    if non_terminal > 0 and item.status in {"completed", "completed_with_errors"}:
+        # A campaign with any pending/queued row is not finished. This also
+        # repairs a campaign finalized by an earlier bug before a slow channel
+        # persisted its rows.
+        item.status = "running"
+        item.finished_at = None
+    elif (
+        item.status in {"completed", "completed_with_errors"}
+        and has_channel_failure
+        and item.status != "completed_with_errors"
+    ):
+        # A channel outcome can be recorded after the last delivery callback
+        # finalized the campaign; surface it instead of keeping a false success.
+        item.status = "completed_with_errors"
+    if finalize and item.status == "running" and non_terminal == 0:
+        # A selected channel may have zero rows because its provider vanished
+        # or became unavailable. That is a finished campaign with a per-channel
+        # outcome, not a silent success.
+        item.status = (
+            "completed_with_errors"
+            if int(item.failed_deliveries) > 0 or has_channel_failure
+            else "completed"
+        )
         item.finished_at = item.finished_at or utc_now()
     item.updated_at = utc_now()
     if commit:
@@ -390,11 +477,100 @@ async def refresh_broadcast_stats(
     return item
 
 
+async def record_channel_outcome(
+    session: AsyncSession,
+    broadcast_id: int,
+    channel: str,
+    outcome: str,
+    *,
+    commit: bool = True,
+) -> AdminBroadcast | None:
+    """Persist a stable per-channel outcome for a channel with no deliveries."""
+
+    item = await get_broadcast(session, broadcast_id, include_deleted=True, for_update=True)
+    if item is None:
+        return None
+    stats = {
+        str(name): dict(values)
+        for name, values in dict(item.channel_stats or {}).items()
+        if isinstance(values, dict)
+    }
+    entry = _channel_stats_entry(reason=str(outcome or ""))
+    existing = stats.get(str(channel))
+    if isinstance(existing, dict):
+        for key in ("users", "deliveries", *CHANNEL_STATS_COUNT_KEYS):
+            value = existing.get(key)
+            if isinstance(value, int):
+                entry[key] = value
+    stats[str(channel)] = entry
+    item.channel_stats = stats
+    item.updated_at = utc_now()
+    if commit:
+        await session.commit()
+    return item
+
+
+async def fail_channel_deliveries(
+    session: AsyncSession,
+    broadcast_id: int,
+    channel: str,
+    error: str,
+    *,
+    outcome: str = "provider_error",
+    finalize: bool = True,
+) -> int:
+    """Mark only one channel's unfinished rows as failed and record why."""
+
+    result = await session.execute(
+        update(AdminBroadcastDelivery)
+        .where(
+            AdminBroadcastDelivery.broadcast_id == broadcast_id,
+            AdminBroadcastDelivery.channel == channel,
+            AdminBroadcastDelivery.status.not_in(FINAL_DELIVERY_STATUSES),
+        )
+        .values(
+            status="failed",
+            error=str(error or "delivery_failed")[:1000],
+            finished_at=utc_now(),
+        )
+    )
+    await session.flush()
+    await record_channel_outcome(session, broadcast_id, channel, outcome, commit=False)
+    await refresh_broadcast_stats(
+        session,
+        broadcast_id,
+        commit=False,
+        finalize=finalize,
+    )
+    await session.commit()
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
 async def finish_empty_broadcast(session: AsyncSession, broadcast_id: int) -> None:
     item = await get_broadcast(session, broadcast_id, include_deleted=True, for_update=True)
     if item is None:
         return
-    item.status = "completed"
+    non_terminal = int(
+        (
+            await session.execute(
+                select(func.count(AdminBroadcastDelivery.delivery_id)).where(
+                    AdminBroadcastDelivery.broadcast_id == broadcast_id,
+                    AdminBroadcastDelivery.status.not_in(FINAL_DELIVERY_STATUSES),
+                )
+            )
+        ).scalar_one()
+        or 0
+    )
+    if non_terminal:
+        # Never finish a campaign that still has a live delivery row.
+        return
+    stats = {
+        str(name): dict(values)
+        for name, values in dict(item.channel_stats or {}).items()
+        if isinstance(values, dict)
+    }
+    has_channel_failure = any(str(entry.get("reason") or "") for entry in stats.values())
+    item.status = "completed_with_errors" if has_channel_failure else "completed"
     item.finished_at = utc_now()
     item.updated_at = utc_now()
     await session.commit()

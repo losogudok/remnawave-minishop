@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { AdminButton, AdminSectionHeader } from "$components/patterns/admin/index.js";
   import { Checkbox, ImageAttachment, Input } from "$components/ui/index.js";
   import { Send } from "$components/ui/icons.js";
   import MessageButtonsEditor from "$lib/admin/components/MessageButtonsEditor.svelte";
   import MessageComposer from "$lib/admin/components/MessageComposer.svelte";
+  import { broadcastChannelReason } from "$lib/admin/stores/broadcastChannels";
   import { getBroadcastStore } from "$lib/admin/context";
   import type { BroadcastButtonDraft } from "$lib/admin/stores/broadcastStore.svelte";
 
@@ -26,18 +28,30 @@
   // screen, so the composer offers the same set in both places.
   const broadcastStore = getBroadcastStore();
   const shortcodes = $derived(broadcastStore.broadcastShortcodes);
+  const pushChannel = $derived(
+    broadcastStore.broadcastChannels.find((channel) => channel.name === "push")
+  );
+  const pushAvailable = $derived(Boolean(pushChannel?.available));
+  onMount(() => {
+    void broadcastStore.loadCounts();
+  });
 
   let text = $state("");
   let image = $state<File | null>(null);
   let emailSubject = $state("");
   let telegramEnabled = $state(false);
   let emailEnabled = $state(false);
+  let pushEnabled = $state(false);
   let buttons = $state<BroadcastButtonDraft[]>([]);
   let busy = $state(false);
   let result = $state<{ kind: "ok" | "error"; message: string } | null>(null);
 
   const channels = $derived(
-    [telegramEnabled ? "telegram" : "", emailEnabled ? "email" : ""].filter(Boolean)
+    [
+      telegramEnabled ? "telegram" : "",
+      emailEnabled ? "email" : "",
+      pushEnabled && pushAvailable ? "push" : "",
+    ].filter(Boolean)
   );
   /** The field a button kind actually needs filled in before it can be sent. */
   function buttonTarget(button: BroadcastButtonDraft): string {
@@ -50,7 +64,11 @@
     buttons.every((button) => button.label.trim() && Boolean(buttonTarget(button)))
   );
   const canSend = $derived(
-    !busy && userId !== null && Boolean(text.trim() || image) && channels.length > 0 && buttonsValid
+    !busy &&
+      userId !== null &&
+      Boolean(text.trim() || (image && (telegramEnabled || emailEnabled))) &&
+      channels.length > 0 &&
+      buttonsValid
   );
 
   // Unavailable delivery channels stay off instead of reporting a successful
@@ -124,7 +142,7 @@
     description={at(
       "user_message_hint",
       {},
-      "Rich text with shortcodes and buttons, delivered to Telegram and email."
+      "Messages with shortcodes, delivered to Telegram, email, and subscribed Web Push devices."
     )}
   />
   <div class="admin-user-action-sheet-body admin-user-message-body">
@@ -194,6 +212,28 @@
                 >{at("user_message_no_email", {}, "no linked address")}</small
               >{/if}
           </label>
+          {#if pushChannel}
+            <label class="admin-check" class:is-disabled={!pushAvailable}>
+              <Checkbox
+                id="user-message-channel-push"
+                name="user-message-channel-push"
+                ariaLabel={at(pushChannel.labelKey, {}, pushChannel.fallbackLabel)}
+                bind:checked={pushEnabled}
+                disabled={busy || !pushAvailable}
+              />
+              {at(pushChannel.labelKey, {}, pushChannel.fallbackLabel)}
+              {#if !pushAvailable && pushChannel.reason}
+                <small class="admin-muted">{broadcastChannelReason(pushChannel.reason, at)}</small>
+              {/if}
+              <small class="admin-muted">
+                {at(
+                  "user_message_push_hint",
+                  {},
+                  "Plain text to subscribed devices; images and inline buttons are not displayed."
+                )}
+              </small>
+            </label>
+          {/if}
         </div>
         {#if emailEnabled}
           <label class="admin-field-label">

@@ -12,10 +12,35 @@ export type BroadcastFailuresPage = {
 };
 
 export type BroadcastFailureKind =
-  "blocked" | "unavailable" | "rate_limit" | "content" | "email" | "telegram";
+  | "blocked"
+  | "unavailable"
+  | "rate_limit"
+  | "content"
+  | "email"
+  | "telegram"
+  | "push_gone"
+  | "push_disabled"
+  | "push";
 
 export function broadcastFailureKind(error: string, channel: string): BroadcastFailureKind {
   const detail = error.toLowerCase();
+  if (channel === "push") {
+    if (
+      /endpoint_gone|subscription_expired|subscription_revoked|account_reassigned|revoked|storage_key_rotated/.test(
+        detail
+      )
+    ) {
+      return "push_gone";
+    }
+    if (
+      /preference_disabled|provider_disabled|user_banned|user_inactive|subscription_missing/.test(
+        detail
+      )
+    ) {
+      return "push_disabled";
+    }
+    return "push";
+  }
   if (channel === "telegram") {
     if (/bot was blocked|blocked by the user/.test(detail)) return "blocked";
     if (/chat not found|user is deactivated|user not found|can't initiate/.test(detail)) {

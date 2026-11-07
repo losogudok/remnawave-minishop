@@ -12,10 +12,16 @@ from sqlalchemy.orm import sessionmaker
 
 from bot.middlewares.i18n import JsonI18n
 from bot.services import admin_broadcast_delivery as delivery_module
+from bot.services import broadcast_channels_builtin as builtin_module
 from bot.services.admin_broadcast_delivery import AdminBroadcastDeliveryService
+from bot.services.broadcast_channels import (
+    BroadcastChannelMessage,
+    BroadcastDispatchContext,
+)
 from bot.services.broadcast_personalization import BroadcastUserContext
 from bot.utils.message_queue import MessageQueueManager, QueuedMessage, TelegramMessageQueue
 from db.broadcast_models import AdminBroadcast, AdminBroadcastDelivery
+from db.dal import user_dal
 from tests.support.settings_stub import settings_stub
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -82,10 +88,44 @@ def _delivery(**overrides: Any) -> AdminBroadcastDelivery:
         "user_id": 1,
         "channel": "telegram",
         "destination": "111",
+        "destination_key": "default",
         "language_code": "en",
     }
     values.update(overrides)
     return cast(AdminBroadcastDelivery, SimpleNamespace(**values))
+
+
+def _dispatch_context(
+    service: AdminBroadcastDeliveryService,
+    delivery: AdminBroadcastDelivery,
+    *,
+    queue: _Queue | None = None,
+    text: str = "Hello",
+    on_queued: AsyncMock | None = None,
+    on_result: AsyncMock | None = None,
+) -> BroadcastDispatchContext:
+    message = BroadcastChannelMessage(
+        delivery_id=int(delivery.delivery_id),
+        user_id=int(delivery.user_id),
+        destination=str(delivery.destination),
+        destination_key=str(delivery.destination_key),
+        language_code=delivery.language_code,
+        text=text,
+    )
+    return BroadcastDispatchContext(
+        broadcast=_broadcast(),
+        deliveries=[delivery],
+        messages=[message],
+        settings=service.settings,
+        i18n=service.i18n,
+        bot_username=service.bot_username,
+        session_factory=service.session_factory,
+        queue_manager=cast(Any, queue),
+        audience_service=service.audience_service,
+        image=None,
+        on_queued=on_queued or AsyncMock(),
+        on_result=on_result or AsyncMock(),
+    )
 
 
 class AdminBroadcastDeliveryTests(unittest.IsolatedAsyncioTestCase):
@@ -161,7 +201,7 @@ class AdminBroadcastDeliveryTests(unittest.IsolatedAsyncioTestCase):
         ]
         with (
             patch.object(delivery_module, "load_message_image", AsyncMock(return_value=stored)),
-            patch.object(delivery_module, "prepare_telegram_photo", prepare),
+            patch.object(builtin_module, "prepare_telegram_photo", prepare),
             patch.object(service, "_mark_queued", AsyncMock()),
             patch.object(delivery_module.broadcast_dal, "refresh_broadcast_stats", AsyncMock()),
         ):
@@ -196,12 +236,12 @@ class AdminBroadcastDeliveryTests(unittest.IsolatedAsyncioTestCase):
                 AsyncMock(return_value={-555: "ru"}),
             ),
             patch.object(
-                delivery_module.user_dal,
+                builtin_module.user_dal,
                 "get_telegram_recipients_for_broadcast",
                 telegram_recipients,
             ),
             patch.object(
-                delivery_module.user_dal,
+                builtin_module.user_dal,
                 "get_email_recipients_for_broadcast",
                 AsyncMock(return_value=[(-555, "linked@example.com", "ru")]),
             ),
@@ -238,7 +278,7 @@ class AdminBroadcastDeliveryTests(unittest.IsolatedAsyncioTestCase):
         )
         session = SimpleNamespace(execute=AsyncMock(return_value=result))
 
-        recipients = await delivery_module.user_dal.get_telegram_recipients_for_broadcast(
+        recipients = await user_dal.get_telegram_recipients_for_broadcast(
             session,
             [1, 2, 303, 4, 5],
             exclude_blocked=True,
@@ -282,7 +322,11 @@ class AdminBroadcastDeliveryTests(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 delivery_module, "load_broadcast_contexts", AsyncMock(return_value=contexts)
             ),
-            patch.object(delivery_module, "schedule_broadcast_emails", side_effect=schedule),
+            patch.object(
+                builtin_module.broadcast_email_service,
+                "schedule_broadcast_emails",
+                side_effect=schedule,
+            ),
             patch.object(delivery_module.broadcast_dal, "mark_delivery_queued", AsyncMock()),
             patch.object(delivery_module.broadcast_dal, "refresh_broadcast_stats", AsyncMock()),
         ):
@@ -321,29 +365,30 @@ class AdminBroadcastDeliveryTests(unittest.IsolatedAsyncioTestCase):
         queue = _Queue()
         service = _service(queue)
         image = BufferedInputFile(b"prepared JPEG", filename="test-image.jpg")
+        provider = builtin_module.TelegramBroadcastChannelProvider()
+        mark_queued = AsyncMock()
+        mark_result = AsyncMock()
+        context = _dispatch_context(
+            service,
+            _delivery(),
+            queue=queue,
+            on_queued=mark_queued,
+            on_result=mark_result,
+        )
 
-        with (
-            patch.object(service, "_mark_queued", AsyncMock()) as mark_queued,
-            patch.object(service, "_mark_result", AsyncMock()) as mark_result,
-        ):
-            await service._queue_telegram(
-                _delivery(),
-                "Hello",
-                [],
-                image=image,
-            )
+        await provider._queue_telegram(context, context.messages[0], image=image)
 
-            self.assertEqual(len(queue.messages), 1)
-            queued = queue.messages[0]
-            self.assertIs(queued["photo"], image)
-            self.assertEqual(queued["caption"], "Hello")
-            self.assertEqual(queued["parse_mode"], "HTML")
-            self.assertIsNone(queued["reply_markup"])
-            self.assertNotIn("text", queued)
-            await queued["callback"](object())
+        self.assertEqual(len(queue.messages), 1)
+        queued = queue.messages[0]
+        self.assertIs(queued["photo"], image)
+        self.assertEqual(queued["caption"], "Hello")
+        self.assertEqual(queued["parse_mode"], "HTML")
+        self.assertIsNone(queued["reply_markup"])
+        self.assertNotIn("text", queued)
+        await queued["callback"](object())
 
         mark_queued.assert_awaited_once_with(1)
-        mark_result.assert_awaited_once_with(1, success=True, error=None)
+        mark_result.assert_awaited_once_with(1, True, None)
 
 
 class MessageQueueDeliveryCallbackTests(unittest.IsolatedAsyncioTestCase):
@@ -418,21 +463,27 @@ class MessageQueueDeliveryCallbackTests(unittest.IsolatedAsyncioTestCase):
     async def test_broadcast_failure_records_blocked_user_status(self) -> None:
         queue = _Queue()
         service = _service(queue)
+        provider = builtin_module.TelegramBroadcastChannelProvider()
+        mark_queued = AsyncMock()
+        mark_result = AsyncMock()
+        context = _dispatch_context(
+            service,
+            _delivery(user_id=7),
+            queue=queue,
+            on_queued=mark_queued,
+            on_result=mark_result,
+        )
         error = TelegramForbiddenError(
             method=SendMessage(chat_id=111, text="Hello"),
             message="Forbidden: bot was blocked by the user",
         )
 
-        with (
-            patch.object(
-                delivery_module,
-                "record_telegram_notification_failure",
-                AsyncMock(return_value="blocked"),
-            ) as record_failure,
-            patch.object(service, "_mark_queued", AsyncMock()),
-            patch.object(service, "_mark_result", AsyncMock()) as mark_result,
-        ):
-            await service._queue_telegram(_delivery(user_id=7), "Hello", [])
+        with patch.object(
+            builtin_module,
+            "record_telegram_notification_failure",
+            AsyncMock(return_value="blocked"),
+        ) as record_failure:
+            await provider._queue_telegram(context, context.messages[0])
             await queue.messages[0]["error_callback"](error)
 
         record_failure.assert_awaited_once()
@@ -440,4 +491,4 @@ class MessageQueueDeliveryCallbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(record_failure.await_args.args, (service.session_factory, 7, error))
         self.assertEqual(record_failure.await_args.kwargs["telegram_id"], 111)
         self.assertIsNotNone(record_failure.await_args.kwargs["attempted_at"])
-        mark_result.assert_awaited_once_with(1, success=False, error=str(error))
+        mark_result.assert_awaited_once_with(1, False, str(error))

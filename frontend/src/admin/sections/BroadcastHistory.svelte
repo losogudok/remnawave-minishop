@@ -3,6 +3,11 @@
   import { TableHandler } from "@vincjo/datatables";
   import { getBroadcastStore } from "$lib/admin/context";
   import type { BroadcastHistoryItem } from "$lib/admin/stores/broadcastHistory";
+  import {
+    channelLabel,
+    channelReasonLabel,
+    channelStatsRows,
+  } from "$lib/admin/stores/broadcastHistory";
   import { sortAdminRows, type AdminSortColumn } from "$lib/admin/tableSort.js";
   import { DateInput } from "$components/ui/index.js";
   import { CalendarDays, CircleQuestionMark, Trash2 } from "$components/ui/icons.js";
@@ -37,6 +42,9 @@
   const loading = $derived(Boolean(broadcastStore.broadcastHistoryLoading));
   const selectedBroadcast = $derived(
     history.find((item) => item.broadcastId === selectedBroadcastId) || null
+  );
+  const selectedChannelStats = $derived(
+    selectedBroadcast ? channelStatsRows(selectedBroadcast, at) : []
   );
   const failuresBroadcast = $derived(
     history.find((item) => item.broadcastId === failuresBroadcastId) || null
@@ -405,7 +413,8 @@
                   >{targetLabel(item.target)}</td
                 >
                 <td data-label={at("broadcast_channels_label", {}, "Delivery channels")}
-                  >{item.channels.join(" · ") || "—"}</td
+                  >{item.channels.map((channel) => channelLabel(channel, at)).join(" · ") ||
+                    "—"}</td
                 >
                 <td data-label={at("broadcast_scheduled_at", {}, "Scheduled")}
                   >{formatDate(item.scheduledAt)}</td
@@ -485,7 +494,10 @@
         </div>
         <div>
           <dt>{at("broadcast_channels_label", {}, "Delivery channels")}</dt>
-          <dd>{selectedBroadcast.channels.join(" · ") || "—"}</dd>
+          <dd>
+            {selectedBroadcast.channels.map((channel) => channelLabel(channel, at)).join(" · ") ||
+              "—"}
+          </dd>
         </div>
         <div>
           <dt>{at("broadcast_recipients", {}, "Recipients")}</dt>
@@ -533,14 +545,20 @@
           <span style={`width:${progress(selectedBroadcast)}%`}></span>
         </div>
         <div class="broadcast-progress-stats">
-          {#if selectedBroadcast.channels.includes("telegram")}
-            <span
-              >Telegram: {selectedBroadcast.telegramSent} ✓ · {selectedBroadcast.telegramFailed} ×</span
-            >
-          {/if}
-          {#if selectedBroadcast.channels.includes("email")}
-            <span>Email: {selectedBroadcast.emailSent} ✓ · {selectedBroadcast.emailFailed} ×</span>
-          {/if}
+          {#each selectedChannelStats as stats (stats.name)}
+            <span>
+              {stats.label}: {stats.sent} ✓ · {stats.failed} ×
+              {#if stats.queued}· {stats.queued}
+                {at("broadcast_channel_stats_queued", {}, "queued")}{/if}
+              {#if stats.users !== null}· {stats.users}
+                {at("broadcast_channel_stats_users", {}, "users")}{/if}
+              {#if stats.deliveries !== null}· {stats.deliveries}
+                {stats.name === "push"
+                  ? at("broadcast_channel_stats_devices", {}, "devices")
+                  : at("broadcast_channel_stats_deliveries", {}, "deliveries")}{/if}
+              {#if stats.reason}· {channelReasonLabel(stats.reason, at)}{/if}
+            </span>
+          {/each}
         </div>
       </div>
 

@@ -10,6 +10,15 @@ describe("broadcast delivery failures", () => {
     expect(broadcastFailureKind("Bad Request: chat not found", "telegram")).toBe("unavailable");
   });
 
+  it("classifies push endpoint, preference and transport failures", () => {
+    expect(broadcastFailureKind("endpoint_gone", "push")).toBe("push_gone");
+    expect(broadcastFailureKind("subscription_expired", "push")).toBe("push_gone");
+    expect(broadcastFailureKind("preference_disabled", "push")).toBe("push_disabled");
+    expect(broadcastFailureKind("provider_disabled", "push")).toBe("push_disabled");
+    expect(broadcastFailureKind("transient_error", "push")).toBe("push");
+    expect(broadcastFailureKind("smtp_down", "email")).toBe("email");
+  });
+
   it("keeps the total while parsing a page of failures", () => {
     expect(
       broadcastFailuresFromWire({

@@ -20,13 +20,22 @@ logger = logging.getLogger(__name__)
 
 async def report_pending_broadcast_callbacks(
     settings: Any,
-    session_factory: sessionmaker,
+    session_factory: sessionmaker | None = None,
     *,
     limit: int = 32,
 ) -> int:
     """Report unreported terminal push rows; return the confirmed count."""
 
     from db.dal import broadcast_dal
+
+    if session_factory is None:
+        # Revocation/account-switch callbacks may not own a request-scoped
+        # factory; use the one the plugin configured during setup.
+        from .broadcast import get_broadcast_session_factory
+
+        session_factory = get_broadcast_session_factory()
+        if session_factory is None:
+            return 0
 
     store = WebPushStore(settings, session_factory)
     candidates = await store.list_unreported_broadcast_callbacks(limit=limit)

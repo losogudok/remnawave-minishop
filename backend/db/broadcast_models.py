@@ -61,6 +61,10 @@ class AdminBroadcast(Base):
     telegram_failed = Column(Integer, nullable=False, default=0)
     email_sent = Column(Integer, nullable=False, default=0)
     email_failed = Column(Integer, nullable=False, default=0)
+    # Per-channel accounting: {channel: {users, deliveries, queued, sent,
+    # failed, skipped, reason}}. Legacy Telegram/email counters above stay for
+    # older clients and historical rows.
+    channel_stats = Column(JSON, nullable=False, default=dict)
     last_error = Column(Text, nullable=True)
 
     deliveries = relationship(
@@ -78,7 +82,8 @@ class AdminBroadcastDelivery(Base):
             "broadcast_id",
             "user_id",
             "channel",
-            name="uq_admin_broadcast_delivery_user_channel",
+            "destination_key",
+            name="uq_admin_broadcast_delivery_user_channel_destination",
         ),
         Index("ix_admin_broadcast_deliveries_broadcast_status", "broadcast_id", "status"),
     )
@@ -92,6 +97,15 @@ class AdminBroadcastDelivery(Base):
     )
     user_id = Column(BigInteger, nullable=False, index=True)
     channel = Column(String(16), nullable=False)
+    # Endpoint identity inside one channel: "default" for a user-level
+    # transport (Telegram chat, email address) and a stable endpoint id for
+    # multi-device channels. Historical rows keep "legacy".
+    destination_key = Column(
+        String(128),
+        nullable=False,
+        default="default",
+        server_default="legacy",
+    )
     destination = Column(Text, nullable=False)
     language_code = Column(String(16), nullable=True)
     status = Column(String(16), nullable=False, default="pending", index=True)

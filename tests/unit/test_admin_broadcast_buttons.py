@@ -19,6 +19,7 @@ from bot.app.web.admin_api_impl.broadcast_content import (
 )
 from bot.app.web.admin_api_impl.schemas import AdminBroadcastBody, AdminBroadcastButtonBody
 from bot.middlewares.i18n import JsonI18n
+from bot.services import broadcast_channels_builtin as builtin_module
 from bot.services import broadcast_email_service
 from bot.services.audience_segmentation import AudienceSegmentationService
 from bot.services.broadcast_email_service import (
@@ -390,7 +391,7 @@ class AdminBroadcastRouteTest(unittest.IsolatedAsyncioTestCase):
                 "_resolve_audience_service",
                 return_value=_FakeAudienceService(),
             ),
-            patch.object(broadcast_route_module, "get_queue_manager", return_value=_FakeQueue()),
+            patch.object(builtin_module, "get_queue_manager", return_value=_FakeQueue()),
             patch.object(broadcast_route_module.broadcast_dal, "create_broadcast", create),
             patch.object(
                 broadcast_route_module.message_log_dal,
@@ -431,7 +432,7 @@ class AdminBroadcastRouteTest(unittest.IsolatedAsyncioTestCase):
                 "_resolve_audience_service",
                 return_value=_FakeAudienceService(),
             ),
-            patch.object(broadcast_route_module, "get_queue_manager", return_value=_FakeQueue()),
+            patch.object(builtin_module, "get_queue_manager", return_value=_FakeQueue()),
             patch.object(
                 broadcast_route_module.broadcast_dal,
                 "create_broadcast",
@@ -487,7 +488,7 @@ class AdminBroadcastRouteTest(unittest.IsolatedAsyncioTestCase):
                 "_resolve_audience_service",
                 return_value=AudienceSegmentationService(cast(sessionmaker, None)),
             ),
-            patch.object(broadcast_route_module, "get_queue_manager", return_value=_FakeQueue()),
+            patch.object(builtin_module, "get_queue_manager", return_value=_FakeQueue()),
         ):
             response = await broadcast_route_module.admin_broadcast_route(cast(Any, request))
 
@@ -555,7 +556,7 @@ class AdminBroadcastRouteTest(unittest.IsolatedAsyncioTestCase):
                 "_resolve_audience_service",
                 return_value=_FakeAudienceService(),
             ),
-            patch.object(broadcast_route_module, "get_queue_manager", return_value=_FakeQueue()),
+            patch.object(builtin_module, "get_queue_manager", return_value=_FakeQueue()),
             patch.object(broadcast_route_module.broadcast_dal, "create_broadcast", create),
             patch(
                 "bot.services.admin_broadcast_delivery.AdminBroadcastDeliveryService.dispatch",
@@ -624,7 +625,7 @@ class AdminBroadcastRouteTest(unittest.IsolatedAsyncioTestCase):
                 "_resolve_audience_service",
                 return_value=_FakeAudienceService(),
             ),
-            patch.object(broadcast_route_module, "get_queue_manager", return_value=_FakeQueue()),
+            patch.object(builtin_module, "get_queue_manager", return_value=_FakeQueue()),
             patch.object(broadcast_route_module.broadcast_dal, "create_broadcast", create),
         ):
             response = await broadcast_route_module.admin_broadcast_route(cast(Any, request))

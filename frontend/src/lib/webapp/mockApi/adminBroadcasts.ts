@@ -102,6 +102,38 @@ export function adminBroadcastDemoResponse({
     return {
       ok: true,
       counts: { all: 1280, active: 742, inactive: 538, expired: 311, never: 227, admins: 2 },
+      channels: [
+        {
+          name: "telegram",
+          label_key: "broadcast_channel_telegram",
+          fallback_label: "Telegram",
+          order: 10,
+          available: true,
+          reason: "",
+          supports_html: true,
+          supports_subject: false,
+          supports_image: true,
+          supports_buttons: true,
+          max_text_length: 4096,
+          supports_push_preview: false,
+          destination_level: "user",
+        },
+        {
+          name: "email",
+          label_key: "broadcast_channel_email",
+          fallback_label: "Email",
+          order: 20,
+          available: true,
+          reason: "",
+          supports_html: true,
+          supports_subject: true,
+          supports_image: true,
+          supports_buttons: true,
+          max_text_length: 0,
+          supports_push_preview: false,
+          destination_level: "user",
+        },
+      ],
       email_enabled: true,
     };
   }

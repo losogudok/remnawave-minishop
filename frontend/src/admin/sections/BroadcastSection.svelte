@@ -1,13 +1,25 @@
 <script lang="ts">
-  import { getBroadcastStore, getTranslationsStore } from "$lib/admin/context";
+  import { getBroadcastStore, getSettingsStore, getTranslationsStore } from "$lib/admin/context";
   import { Checkbox, DateInput, ImageAttachment, Input } from "$components/ui/index.js";
   import { Send } from "$components/ui/icons.js";
   import { onMount } from "svelte";
   import { Label } from "$components/ui/primitives.js";
   import { AdminButton, AdminSelect } from "$components/patterns/admin/index.js";
+  import BroadcastPushPreview from "$lib/admin/components/BroadcastPushPreview.svelte";
   import MessageButtonsEditor from "$lib/admin/components/MessageButtonsEditor.svelte";
   import MessageComposer from "$lib/admin/components/MessageComposer.svelte";
   import MessageLocaleTabs from "$lib/admin/components/MessageLocaleTabs.svelte";
+  import {
+    broadcastChannelReason,
+    hardTextLimit,
+    selectedPushPreviewChannel,
+  } from "$lib/admin/stores/broadcastChannels";
+  import {
+    buildPushPreview,
+    pushPreviewClickTarget,
+    pushPreviewHasUndeliveredButtons,
+    webappTitleFromSettingsSections,
+  } from "$lib/admin/stores/broadcastPushPreview";
   import { previewHtmlFromWire } from "$lib/richtext/telegramHtml";
   import BroadcastHistory from "./BroadcastHistory.svelte";
 
@@ -15,6 +27,7 @@
 
   let { at, currentLang = "en" }: { at: TranslateFn; currentLang?: string } = $props();
   const broadcastStore = getBroadcastStore();
+  const settingsStore = getSettingsStore();
   const translationsStore = getTranslationsStore();
 
   // The tab set is whatever the deployment has, so adding a language on the
@@ -84,13 +97,42 @@
   const broadcastBusy = $derived(broadcastStore.broadcastBusy);
   const broadcastCounts = $derived(broadcastStore.broadcastCounts as Record<string, number> | null);
   const broadcastCountsLoading = $derived(Boolean(broadcastStore.broadcastCountsLoading));
-  const telegramEnabled = $derived(broadcastStore.broadcastTelegramEnabled);
-  const emailEnabled = $derived(broadcastStore.broadcastEmailEnabled);
-  const emailAvailable = $derived(broadcastStore.broadcastEmailAvailable);
-  const emailAvailabilityKnown = $derived(broadcastStore.broadcastEmailAvailabilityKnown);
-  const emailSelectable = $derived(!emailAvailabilityKnown || emailAvailable);
+  const channels = $derived(broadcastStore.broadcastChannels);
+  const selectedChannels = $derived(broadcastStore.selectedChannels);
+  const subjectSupported = $derived(
+    channels.some((channel) => selectedChannels.includes(channel.name) && channel.supportsSubject)
+  );
+  const buttonsSupported = $derived(
+    channels.some((channel) => selectedChannels.includes(channel.name) && channel.supportsButtons)
+  );
+  const imageSupported = $derived(
+    channels.some((channel) => selectedChannels.includes(channel.name) && channel.supportsImage)
+  );
+  const textLimit = $derived(hardTextLimit(channels, selectedChannels));
+  const activeTextTooLong = $derived(textLimit > 0 && activeText.length > textLimit);
   const emailSubject = $derived(broadcastStore.broadcastEmailSubject);
   const broadcastButtons = $derived(broadcastStore.broadcastButtons);
+  const pushPreviewChannel = $derived(selectedPushPreviewChannel(channels, selectedChannels));
+  const webappTitle = $derived(
+    webappTitleFromSettingsSections(
+      settingsStore.settingsSections,
+      at("broadcast_push_app_name", {}, "Minishop")
+    )
+  );
+  const pushPreview = $derived.by(() =>
+    pushPreviewChannel ? buildPushPreview(activeText, webappTitle) : null
+  );
+  const pushClickTarget = $derived.by(() =>
+    pushPreviewChannel
+      ? pushPreviewClickTarget(
+          broadcastButtons,
+          typeof window === "undefined" ? "" : window.location.origin
+        )
+      : "/"
+  );
+  const pushHasUndeliveredButtons = $derived(
+    pushPreviewChannel ? pushPreviewHasUndeliveredButtons(broadcastButtons) : false
+  );
   const promoOptions = $derived(broadcastStore.broadcastPromoOptions);
   const promoOptionsLoading = $derived(Boolean(broadcastStore.broadcastPromoOptionsLoading));
   const promoOptionsLoaded = $derived(Boolean(broadcastStore.broadcastPromoOptionsLoaded));
@@ -103,7 +145,16 @@
     const date = new Date(scheduledAt);
     return !scheduledAt || Number.isNaN(date.getTime()) || date.getTime() <= scheduleNow;
   });
-  const submitEnabled = $derived(!scheduleInvalid && broadcastStore.canSubmit());
+  const submitEnabled = $derived(
+    !scheduleInvalid && !activeTextTooLong && broadcastStore.canSubmit()
+  );
+
+  function toggleChannel(name: string, checked: boolean): void {
+    const next = checked
+      ? [...selectedChannels.filter((channel) => channel !== name), name]
+      : selectedChannels.filter((channel) => channel !== name);
+    broadcastStore.updateField({ selectedChannels: next });
+  }
   const handleTargetChange = (value: string) => {
     broadcastStore.updateField({ broadcastTarget: value, broadcastTargetError: null });
     writeTargetToRoute(value);
@@ -170,6 +221,11 @@
   );
 
   onMount(() => {
+    if (!settingsStore.settingsSections?.length && !settingsStore.settingsLoading) {
+      // The push preview must use the configured WEBAPP_TITLE, not a
+      // localized stand-in, as the fallback title for empty/long first lines.
+      void settingsStore.loadSettings();
+    }
     const scheduleTimer = window.setInterval(() => {
       scheduleNow = Date.now();
     }, 15_000);
@@ -223,35 +279,23 @@
         <div class="admin-field-label broadcast-control-panel">
           <span>{at("broadcast_channels_label", {}, "Delivery channels")}</span>
           <div class="broadcast-channels">
-            <label class="broadcast-channel">
-              <Checkbox
-                checked={telegramEnabled}
-                ariaLabel={at("broadcast_channel_telegram", {}, "Telegram")}
-                onCheckedChange={(checked) =>
-                  broadcastStore.updateField({ broadcastTelegramEnabled: checked })}
-              />
-              <span>{at("broadcast_channel_telegram", {}, "Telegram")}</span>
-            </label>
-            <label class="broadcast-channel">
-              <Checkbox
-                checked={emailEnabled && emailSelectable}
-                disabled={emailAvailabilityKnown && !emailAvailable}
-                ariaLabel={at("broadcast_channel_email", {}, "Email")}
-                onCheckedChange={(checked) =>
-                  broadcastStore.updateField({ broadcastEmailEnabled: checked })}
-              />
-              <span>{at("broadcast_channel_email", {}, "Email")}</span>
-            </label>
+            {#each channels as channel (channel.name)}
+              <label class="broadcast-channel" class:is-unavailable={!channel.available}>
+                <Checkbox
+                  checked={selectedChannels.includes(channel.name)}
+                  disabled={!channel.available}
+                  ariaLabel={at(channel.labelKey, {}, channel.fallbackLabel)}
+                  onCheckedChange={(checked) => toggleChannel(channel.name, checked)}
+                />
+                <span>{at(channel.labelKey, {}, channel.fallbackLabel)}</span>
+                {#if !channel.available && channel.reason}
+                  <small class="admin-muted broadcast-channel-reason"
+                    >{broadcastChannelReason(channel.reason, at)}</small
+                  >
+                {/if}
+              </label>
+            {/each}
           </div>
-          {#if emailAvailabilityKnown && !emailAvailable}
-            <small class="admin-muted"
-              >{at(
-                "broadcast_email_unavailable_hint",
-                {},
-                "Email channel unavailable: SMTP is not configured"
-              )}</small
-            >
-          {/if}
         </div>
         <div class="admin-field-label broadcast-control-panel broadcast-language-control">
           <span>{at("broadcast_language_label", {}, "Language")}</span>
@@ -308,7 +352,7 @@
           {/if}
         </div>
       </div>
-      {#if emailEnabled && emailSelectable}
+      {#if subjectSupported}
         <Label.Root class="admin-field-label">
           <span>{at("broadcast_email_subject_label", {}, "Email subject")}</span>
           <Input
@@ -336,28 +380,39 @@
           {at}
           placeholder={at("broadcast_editor_placeholder", {}, "Broadcast text...")}
         />
+        {#if activeTextTooLong}
+          <small class="admin-field-error">
+            {at(
+              "broadcast_text_too_long",
+              { max: textLimit },
+              `The message is longer than ${textLimit} characters`
+            )}
+          </small>
+        {/if}
       </div>
 
-      <div class="admin-field-label">
-        <span>{at("message_image_label", {}, "Image")}</span>
-        <ImageAttachment
-          bind:file={broadcastStore.broadcastImage}
-          disabled={broadcastBusy}
-          labels={{
-            drop: at("message_image_drop", {}, "Drop an image here or"),
-            choose: at("message_image_choose", {}, "choose a file"),
-            remove: at("message_image_remove", {}, "Remove image"),
-            hint: at("message_image_hint", {}, "HEIC, HEIF, JPEG, PNG or WebP, up to 8 MB"),
-            invalidType: at(
-              "message_image_invalid_type",
-              {},
-              "Choose a HEIC, HEIF, JPEG, PNG or WebP image"
-            ),
-            tooLarge: at("message_image_too_large", {}, "The image must be no larger than 8 MB"),
-            previewAlt: at("message_image_preview_alt", {}, "Image preview"),
-          }}
-        />
-      </div>
+      {#if imageSupported}
+        <div class="admin-field-label">
+          <span>{at("message_image_label", {}, "Image")}</span>
+          <ImageAttachment
+            bind:file={broadcastStore.broadcastImage}
+            disabled={broadcastBusy}
+            labels={{
+              drop: at("message_image_drop", {}, "Drop an image here or"),
+              choose: at("message_image_choose", {}, "choose a file"),
+              remove: at("message_image_remove", {}, "Remove image"),
+              hint: at("message_image_hint", {}, "HEIC, HEIF, JPEG, PNG or WebP, up to 8 MB"),
+              invalidType: at(
+                "message_image_invalid_type",
+                {},
+                "Choose a HEIC, HEIF, JPEG, PNG or WebP image"
+              ),
+              tooLarge: at("message_image_too_large", {}, "The image must be no larger than 8 MB"),
+              previewAlt: at("message_image_preview_alt", {}, "Image preview"),
+            }}
+          />
+        </div>
+      {/if}
 
       <div class="admin-field-label">
         <div class="broadcast-preview-head">
@@ -401,30 +456,60 @@
           >
         {/if}
       </div>
-      <div class="admin-field-label">
-        <span>{at("broadcast_buttons_label", {}, "Buttons")}</span>
-        <small class="admin-muted"
-          >{at(
-            "broadcast_buttons_hint",
-            {},
-            "Up to 4 buttons: inline buttons in Telegram, link buttons in email. Promo codes activate in one tap."
-          )}</small
-        >
-        <MessageButtonsEditor
-          language={activeLanguage}
-          buttons={broadcastButtons}
-          {at}
-          max={broadcastStore.MAX_BROADCAST_BUTTONS}
-          {promoOptions}
-          {promoOptionsLoading}
-          {promoOptionsLoaded}
-          onAdd={broadcastStore.addButton}
-          onRemove={broadcastStore.removeButton}
-          onUpdate={broadcastStore.updateButton}
-          onReorder={broadcastStore.moveButton}
-          onRequestPromoOptions={broadcastStore.loadPromoOptions}
-        />
-      </div>
+
+      {#if pushPreview}
+        <div class="admin-field-label">
+          <div class="broadcast-preview-head">
+            <span>{at("broadcast_push_preview_title", {}, "Push notification preview")}</span>
+            <small class="admin-muted"
+              >{at(
+                "broadcast_push_channel_hint",
+                {},
+                "Every active subscribed device receives its own delivery."
+              )}</small
+            >
+          </div>
+          <BroadcastPushPreview
+            title={pushPreview.title}
+            body={pushPreview.body}
+            clickTarget={pushClickTarget}
+            titleLength={pushPreview.titleLength}
+            bodyLength={pushPreview.bodyLength}
+            titleTruncated={pushPreview.titleTruncated}
+            bodyTruncated={pushPreview.bodyTruncated}
+            hasImage={Boolean(broadcastStore.broadcastImage)}
+            hasUndeliveredButtons={pushHasUndeliveredButtons}
+            {at}
+          />
+        </div>
+      {/if}
+
+      {#if buttonsSupported}
+        <div class="admin-field-label">
+          <span>{at("broadcast_buttons_label", {}, "Buttons")}</span>
+          <small class="admin-muted"
+            >{at(
+              "broadcast_buttons_hint",
+              {},
+              "Up to 4 buttons: inline buttons in Telegram, link buttons in email. Promo codes activate in one tap."
+            )}</small
+          >
+          <MessageButtonsEditor
+            language={activeLanguage}
+            buttons={broadcastButtons}
+            {at}
+            max={broadcastStore.MAX_BROADCAST_BUTTONS}
+            {promoOptions}
+            {promoOptionsLoading}
+            {promoOptionsLoaded}
+            onAdd={broadcastStore.addButton}
+            onRemove={broadcastStore.removeButton}
+            onUpdate={broadcastStore.updateButton}
+            onReorder={broadcastStore.moveButton}
+            onRequestPromoOptions={broadcastStore.loadPromoOptions}
+          />
+        </div>
+      {/if}
       <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
         <AdminButton
           variant="primary"
@@ -493,6 +578,16 @@
     gap: 8px;
     align-items: center;
     cursor: pointer;
+  }
+
+  .broadcast-channel.is-unavailable {
+    cursor: default;
+    opacity: 0.8;
+  }
+
+  .broadcast-channel-reason {
+    font-size: 11px;
+    line-height: 1.25;
   }
 
   .broadcast-schedule-row {

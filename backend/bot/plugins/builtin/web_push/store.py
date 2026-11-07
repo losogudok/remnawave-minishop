@@ -578,6 +578,63 @@ class WebPushStore:
                 return False
         return True
 
+    async def record_broadcast_failure(
+        self,
+        *,
+        broadcast_id: int,
+        broadcast_delivery_id: int,
+        user_id: int,
+        error_code: str = "enqueue_failed",
+        now: datetime | None = None,
+    ) -> bool:
+        """Persist a terminal enqueue failure for the Core callback outbox.
+
+        No endpoint exists for this delivery, so the worker must never claim
+        it. The row is terminal immediately and the unique Core delivery id
+        makes repeated reports idempotent. ``subscription_id`` deliberately
+        uses an empty sentinel: the callback flusher only needs the delivery
+        id, state and error code.
+        """
+
+        moment = now or datetime.now(UTC)
+        async with self.session_factory() as session:
+            existing = (
+                await session.execute(
+                    select(WebPushDelivery.id).where(
+                        WebPushDelivery.broadcast_delivery_id == int(broadcast_delivery_id)
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return False
+            session.add(
+                WebPushDelivery(
+                    id=secrets.token_hex(16),
+                    kind="broadcast",
+                    user_id=int(user_id),
+                    subscription_id="",
+                    broadcast_id=int(broadcast_id),
+                    broadcast_delivery_id=int(broadcast_delivery_id),
+                    title="",
+                    body="",
+                    url="/",
+                    tag=None,
+                    state=DELIVERY_FAILED,
+                    attempts=0,
+                    max_attempts=0,
+                    next_attempt_at=moment,
+                    error_code=str(error_code)[:64],
+                    created_at=moment,
+                    updated_at=moment,
+                )
+            )
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                return False
+        return True
+
     async def claim_due_deliveries(
         self,
         *,

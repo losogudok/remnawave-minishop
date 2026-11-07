@@ -15,6 +15,15 @@ import {
   type PostPayload,
 } from "../../webapp/publicApi";
 import { historyItemFromWire, type BroadcastHistoryItem } from "./broadcastHistory";
+import {
+  asBroadcastChannels,
+  channelNamesForPayload,
+  defaultBroadcastChannels,
+  hardTextLimit,
+  type BroadcastChannelDescriptor,
+} from "./broadcastChannels";
+
+export type { BroadcastChannelDescriptor } from "./broadcastChannels";
 import { broadcastFailuresFromWire, type BroadcastFailuresPage } from "./broadcastFailures";
 import { snapshotForPayload } from "./snapshotForPayload.svelte";
 import { messageRequestBody } from "$lib/messageImage";
@@ -63,6 +72,7 @@ type StoredCounts = {
   loadedAt: number;
   emailAvailable: boolean | null;
   audiences: BroadcastAudienceDescriptor[] | null;
+  channels: BroadcastChannelDescriptor[] | null;
 };
 /** A message addressed to one customer, composed outside the broadcast draft. */
 export type SingleUserMessage = {
@@ -94,6 +104,8 @@ export type BroadcastState = {
   broadcastCountsLoading: boolean;
   broadcastCountsLoadedAt: number;
   broadcastAudiencesLoaded: boolean;
+  broadcastChannels: BroadcastChannelDescriptor[];
+  selectedChannels: string[];
   broadcastTelegramEnabled: boolean;
   broadcastEmailEnabled: boolean;
   broadcastEmailAvailable: boolean;
@@ -179,6 +191,25 @@ function asBroadcastAudiences(value: unknown): BroadcastAudienceDescriptor[] {
       return true;
     })
     .sort((left, right) => left.order - right.order || left.target.localeCompare(right.target));
+}
+
+function applyChannelSelection(
+  snapshot: BroadcastStore,
+  selectedChannels: string[]
+): BroadcastStore {
+  const knownChannels = new Set(snapshot.broadcastChannels.map((channel) => channel.name));
+  const availableChannels = new Set(
+    snapshot.broadcastChannels.filter((channel) => channel.available).map((channel) => channel.name)
+  );
+  const selected = [...new Set(selectedChannels)].filter(
+    (name) => knownChannels.has(name) && availableChannels.has(name)
+  );
+  return {
+    ...snapshot,
+    selectedChannels: selected,
+    broadcastTelegramEnabled: selected.includes("telegram"),
+    broadcastEmailEnabled: selected.includes("email"),
+  };
 }
 
 export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions): BroadcastStore {
@@ -269,6 +300,10 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
   }
 
   const cachedCounts = readStoredCounts();
+  const initialChannels =
+    cachedCounts?.channels && cachedCounts.channels.length
+      ? cachedCounts.channels
+      : defaultBroadcastChannels(cachedCounts?.emailAvailable ?? true);
 
   const state = $state<BroadcastStore>({
     broadcastTarget: "all",
@@ -283,6 +318,8 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
     broadcastCountsLoadedAt: cachedCounts?.loadedAt || 0,
     broadcastAudiencesLoaded:
       cachedCounts?.audiences !== null && cachedCounts?.audiences !== undefined,
+    broadcastChannels: initialChannels,
+    selectedChannels: ["telegram"],
     broadcastTelegramEnabled: true,
     broadcastEmailEnabled: false,
     broadcastEmailAvailable: cachedCounts?.emailAvailable ?? false,
@@ -335,6 +372,7 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
       stateSnapshot.broadcastCounts &&
       stateSnapshot.broadcastAudiencesLoaded &&
       stateSnapshot.broadcastEmailAvailabilityKnown &&
+      stateSnapshot.broadcastChannels.length > 0 &&
       Date.now() - Number(stateSnapshot.broadcastCountsLoadedAt || 0) < COUNTS_CACHE_TTL_MS
     );
   }
@@ -352,8 +390,11 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
       const audiences = Array.isArray(payload?.audiences)
         ? asBroadcastAudiences(payload.audiences)
         : null;
+      const channels = Array.isArray(payload?.channels)
+        ? asBroadcastChannels(payload.channels)
+        : null;
       if (!counts || Date.now() - loadedAt > COUNTS_DISPLAY_CACHE_TTL_MS) return null;
-      return { counts, loadedAt, emailAvailable, audiences };
+      return { counts, loadedAt, emailAvailable, audiences, channels };
     } catch {
       return null;
     }
@@ -363,13 +404,16 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
     counts: BroadcastCounts,
     loadedAt: number,
     emailAvailable: boolean,
-    audiences: BroadcastAudienceDescriptor[]
+    audiences: BroadcastAudienceDescriptor[],
+    channels: BroadcastChannelDescriptor[]
   ): void {
     try {
       if (typeof window === "undefined" || !window.sessionStorage) return;
       window.sessionStorage.setItem(
         COUNTS_STORAGE_KEY,
-        JSON.stringify(snapshotForPayload({ counts, loadedAt, emailAvailable, audiences }))
+        JSON.stringify(
+          snapshotForPayload({ counts, loadedAt, emailAvailable, audiences, channels })
+        )
       );
     } catch {
       // Ignore storage quota/privacy errors; in-memory counts still work.
@@ -395,40 +439,56 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
           const emailAvailable = Boolean(payload.email_enabled);
           const counts = asBroadcastCounts(payload.counts);
           const audiences = asBroadcastAudiences(payload.audiences);
+          const parsedChannels = asBroadcastChannels(payload.channels);
+          const channels = parsedChannels.length
+            ? parsedChannels
+            : defaultBroadcastChannels(emailAvailable);
+          const emailChannel = channels.find((channel) => channel.name === "email");
+          const resolvedEmailAvailable = emailChannel ? emailChannel.available : emailAvailable;
           const options = targetOptions(audiences);
           if (!counts) {
-            updateState((s) => ({
-              ...s,
-              broadcastEmailAvailable: emailAvailable,
-              broadcastEmailAvailabilityKnown: true,
-              broadcastEmailEnabled: s.broadcastEmailEnabled && emailAvailable,
-              broadcastAudiencesLoaded: true,
-              BROADCAST_TARGET_OPTIONS: options,
-              broadcastTarget: options.some(
-                (option) => option.value === s.broadcastTarget && !option.disabled
+            updateState((s) =>
+              applyChannelSelection(
+                {
+                  ...s,
+                  broadcastChannels: channels,
+                  broadcastEmailAvailable: resolvedEmailAvailable,
+                  broadcastEmailAvailabilityKnown: true,
+                  broadcastAudiencesLoaded: true,
+                  BROADCAST_TARGET_OPTIONS: options,
+                  broadcastTarget: options.some(
+                    (option) => option.value === s.broadcastTarget && !option.disabled
+                  )
+                    ? s.broadcastTarget
+                    : "all",
+                },
+                s.selectedChannels
               )
-                ? s.broadcastTarget
-                : "all",
-            }));
+            );
             return;
           }
           const loadedAt = Date.now();
-          updateState((s) => ({
-            ...s,
-            broadcastCounts: counts,
-            broadcastCountsLoadedAt: loadedAt,
-            broadcastAudiencesLoaded: true,
-            broadcastEmailAvailable: emailAvailable,
-            broadcastEmailAvailabilityKnown: true,
-            broadcastEmailEnabled: s.broadcastEmailEnabled && emailAvailable,
-            BROADCAST_TARGET_OPTIONS: options,
-            broadcastTarget: options.some(
-              (option) => option.value === s.broadcastTarget && !option.disabled
+          updateState((s) =>
+            applyChannelSelection(
+              {
+                ...s,
+                broadcastCounts: counts,
+                broadcastCountsLoadedAt: loadedAt,
+                broadcastAudiencesLoaded: true,
+                broadcastChannels: channels,
+                broadcastEmailAvailable: resolvedEmailAvailable,
+                broadcastEmailAvailabilityKnown: true,
+                BROADCAST_TARGET_OPTIONS: options,
+                broadcastTarget: options.some(
+                  (option) => option.value === s.broadcastTarget && !option.disabled
+                )
+                  ? s.broadcastTarget
+                  : "all",
+              },
+              s.selectedChannels
             )
-              ? s.broadcastTarget
-              : "all",
-          }));
-          writeStoredCounts(counts, loadedAt, emailAvailable, audiences);
+          );
+          writeStoredCounts(counts, loadedAt, resolvedEmailAvailable, audiences, channels);
         }
       } catch {
         // Counts are advisory; ignore failures and keep existing/plain labels.
@@ -442,15 +502,7 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
   }
 
   function channelsForPayload(snapshot: BroadcastState): string[] {
-    const channels: string[] = [];
-    if (snapshot.broadcastTelegramEnabled) channels.push("telegram");
-    if (
-      snapshot.broadcastEmailEnabled &&
-      (!snapshot.broadcastEmailAvailabilityKnown || snapshot.broadcastEmailAvailable)
-    ) {
-      channels.push("email");
-    }
-    return channels;
+    return channelNamesForPayload(snapshot);
   }
 
   function canSubmit(): boolean {
@@ -463,7 +515,13 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
       !state.broadcastImage
     )
       return false;
-    if (!channelsForPayload(state).length) return false;
+    const selected = channelsForPayload(state);
+    if (!selected.length) return false;
+    const limit = hardTextLimit(state.broadcastChannels, selected);
+    if (limit > 0) {
+      const variants = [state.broadcastText, ...Object.values(state.broadcastTexts)];
+      if (variants.some((text) => text.length > limit)) return false;
+    }
     if (state.broadcastScheduleEnabled) {
       const scheduledAt = new Date(state.broadcastScheduledAt);
       if (!state.broadcastScheduledAt || Number.isNaN(scheduledAt.getTime())) return false;
@@ -692,7 +750,20 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
   }
 
   function updateField(fields: Partial<BroadcastState>): void {
-    updateState((s) => ({ ...s, ...fields }));
+    updateState((s) => {
+      let selectedChannels = fields.selectedChannels ?? s.selectedChannels;
+      if (fields.broadcastTelegramEnabled !== undefined) {
+        selectedChannels = fields.broadcastTelegramEnabled
+          ? [...selectedChannels.filter((name) => name !== "telegram"), "telegram"]
+          : selectedChannels.filter((name) => name !== "telegram");
+      }
+      if (fields.broadcastEmailEnabled !== undefined) {
+        selectedChannels = fields.broadcastEmailEnabled
+          ? [...selectedChannels.filter((name) => name !== "email"), "email"]
+          : selectedChannels.filter((name) => name !== "email");
+      }
+      return applyChannelSelection({ ...s, ...fields }, selectedChannels);
+    });
   }
 
   async function loadShortcodes(): Promise<void> {

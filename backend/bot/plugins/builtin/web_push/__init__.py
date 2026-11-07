@@ -40,14 +40,26 @@ class WebPushPlugin(Plugin):
     plugin_api_max_version = 1
 
     def setup(self, ctx: PluginContext) -> None:
+        from bot.services.broadcast_channels import register_broadcast_channel_provider
         from bot.services.notification_channels import register_notification_channel_provider
 
         if ctx.session_factory is None:
             return
+        from .broadcast import (
+            WebPushBroadcastChannelProvider,
+            configure_broadcast_session_factory,
+        )
         from .provider import WebPushChannelProvider
 
+        configure_broadcast_session_factory(ctx.session_factory)
         register_notification_channel_provider(
             WebPushChannelProvider(ctx.settings, ctx.session_factory)
+        )
+        # Registered even while Web Push is disabled: the composer then shows
+        # the stable unavailability reason instead of silently missing a
+        # selected channel, and enabling the plugin requires no restart.
+        register_broadcast_channel_provider(
+            WebPushBroadcastChannelProvider(ctx.settings, ctx.session_factory)
         )
 
     def setup_web(self, ctx: PluginContext, app: web.Application, *, scope: str) -> None:

@@ -2041,6 +2041,13 @@
             "title": "Audiences",
             "type": "array"
           },
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/AdminBroadcastChannelOut"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
           "counts": {
             "additionalProperties": {
               "anyOf": [
@@ -2336,6 +2343,83 @@
         "title": "AdminBroadcastButtonOut",
         "type": "object"
       },
+      "AdminBroadcastChannelOut": {
+        "properties": {
+          "available": {
+            "default": true,
+            "title": "Available",
+            "type": "boolean"
+          },
+          "destination_level": {
+            "default": "user",
+            "enum": [
+              "user",
+              "endpoint"
+            ],
+            "title": "Destination Level",
+            "type": "string"
+          },
+          "fallback_label": {
+            "title": "Fallback Label",
+            "type": "string"
+          },
+          "label_key": {
+            "title": "Label Key",
+            "type": "string"
+          },
+          "max_text_length": {
+            "default": 4096,
+            "title": "Max Text Length",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "order": {
+            "default": 100,
+            "title": "Order",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "supports_buttons": {
+            "default": true,
+            "title": "Supports Buttons",
+            "type": "boolean"
+          },
+          "supports_html": {
+            "default": true,
+            "title": "Supports Html",
+            "type": "boolean"
+          },
+          "supports_image": {
+            "default": true,
+            "title": "Supports Image",
+            "type": "boolean"
+          },
+          "supports_push_preview": {
+            "default": false,
+            "title": "Supports Push Preview",
+            "type": "boolean"
+          },
+          "supports_subject": {
+            "default": false,
+            "title": "Supports Subject",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "label_key",
+          "fallback_label"
+        ],
+        "title": "AdminBroadcastChannelOut",
+        "type": "object"
+      },
       "AdminBroadcastCreateOut": {
         "properties": {
           "broadcast": {
@@ -2484,6 +2568,14 @@
             },
             "title": "Buttons",
             "type": "array"
+          },
+          "channel_stats": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Channel Stats",
+            "type": "object"
           },
           "channels": {
             "items": {

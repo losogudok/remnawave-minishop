@@ -5853,6 +5853,8 @@ export interface components {
     AdminBroadcastAudienceCountsOut: {
       /** Audiences */
       audiences?: components["schemas"]["AdminBroadcastAudienceOut"][];
+      /** Channels */
+      channels?: components["schemas"]["AdminBroadcastChannelOut"][];
       /** Counts */
       counts: {
         [key: string]: number | null;
@@ -6036,6 +6038,66 @@ export interface components {
        */
       url: string;
     };
+    /** AdminBroadcastChannelOut */
+    AdminBroadcastChannelOut: {
+      /**
+       * Available
+       * @default true
+       */
+      available: boolean;
+      /**
+       * Destination Level
+       * @default user
+       * @enum {string}
+       */
+      destination_level: "user" | "endpoint";
+      /** Fallback Label */
+      fallback_label: string;
+      /** Label Key */
+      label_key: string;
+      /**
+       * Max Text Length
+       * @default 4096
+       */
+      max_text_length: number;
+      /** Name */
+      name: string;
+      /**
+       * Order
+       * @default 100
+       */
+      order: number;
+      /**
+       * Reason
+       * @default
+       */
+      reason: string;
+      /**
+       * Supports Buttons
+       * @default true
+       */
+      supports_buttons: boolean;
+      /**
+       * Supports Html
+       * @default true
+       */
+      supports_html: boolean;
+      /**
+       * Supports Image
+       * @default true
+       */
+      supports_image: boolean;
+      /**
+       * Supports Push Preview
+       * @default false
+       */
+      supports_push_preview: boolean;
+      /**
+       * Supports Subject
+       * @default false
+       */
+      supports_subject: boolean;
+    };
     /** AdminBroadcastCreateOut */
     AdminBroadcastCreateOut: {
       broadcast: components["schemas"]["AdminBroadcastOut"];
@@ -6103,6 +6165,12 @@ export interface components {
       broadcast_id: number;
       /** Buttons */
       buttons: components["schemas"]["AdminBroadcastButtonOut"][];
+      /** Channel Stats */
+      channel_stats?: {
+        [key: string]: {
+          [key: string]: unknown;
+        };
+      };
       /** Channels */
       channels: string[];
       /**

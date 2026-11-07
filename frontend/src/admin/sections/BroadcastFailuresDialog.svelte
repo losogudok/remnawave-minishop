@@ -2,6 +2,7 @@
   import Dialog from "$components/ui/dialog.svelte";
   import { AdminButton } from "$components/patterns/admin/index.js";
   import type { BroadcastHistoryItem } from "$lib/admin/stores/broadcastHistory";
+  import { channelLabel } from "$lib/admin/stores/broadcastHistory";
   import {
     broadcastFailureKind,
     type BroadcastFailure,
@@ -69,6 +70,9 @@
       content: ["broadcast_failure_content", "Message rejected"],
       email: ["broadcast_failure_email", "Email delivery failed"],
       telegram: ["broadcast_failure_telegram", "Telegram delivery failed"],
+      push_gone: ["broadcast_failure_push_gone", "Push device is no longer subscribed"],
+      push_disabled: ["broadcast_failure_push_disabled", "Push was disabled for this recipient"],
+      push: ["broadcast_failure_push", "Push delivery failed"],
     } as const;
     const [key, fallback] = titles[kind];
     return at(key, {}, fallback);
@@ -100,6 +104,18 @@
       telegram: [
         "broadcast_failure_telegram_hint",
         "Telegram did not accept this delivery. Check its response below.",
+      ],
+      push_gone: [
+        "broadcast_failure_push_gone_hint",
+        "The browser subscription expired or was revoked. The device must enable push again.",
+      ],
+      push_disabled: [
+        "broadcast_failure_push_disabled_hint",
+        "The recipient disabled push, signed out, or the server kill switch stopped this delivery.",
+      ],
+      push: [
+        "broadcast_failure_push_hint",
+        "The browser push service did not accept this delivery. Check its response below.",
       ],
     } as const;
     const [key, fallback] = hints[kind];
@@ -166,7 +182,7 @@
             <li class="broadcast-failures-item">
               <div class="broadcast-failures-item-head">
                 <strong
-                  >{failure.channel === "email" ? "Email" : "Telegram"} · {at(
+                  >{channelLabel(failure.channel, at)} · {at(
                     "broadcast_failures_user",
                     { id: failure.userId },
                     `User #${failure.userId}`

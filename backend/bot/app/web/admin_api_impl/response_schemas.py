@@ -143,9 +143,26 @@ class AdminBroadcastAudienceOut(HttpResponseModel):
     icon: str | None = None
 
 
+class AdminBroadcastChannelOut(HttpResponseModel):
+    name: str
+    label_key: str
+    fallback_label: str
+    order: int = 100
+    available: bool = True
+    reason: str = ""
+    supports_html: bool = True
+    supports_subject: bool = False
+    supports_image: bool = True
+    supports_buttons: bool = True
+    max_text_length: int = 4096
+    supports_push_preview: bool = False
+    destination_level: Literal["user", "endpoint"] = "user"
+
+
 class AdminBroadcastAudienceCountsOut(HttpResponseModel):
     counts: dict[str, int | None]
     audiences: list[AdminBroadcastAudienceOut] = Field(default_factory=list)
+    channels: list[AdminBroadcastChannelOut] = Field(default_factory=list)
     email_enabled: bool = False
 
 
@@ -185,6 +202,7 @@ class AdminBroadcastOut(HttpResponseModel):
     telegram_failed: int = 0
     email_sent: int = 0
     email_failed: int = 0
+    channel_stats: dict[str, dict[str, Any]] = Field(default_factory=dict)
     last_error: str | None = None
 
 
