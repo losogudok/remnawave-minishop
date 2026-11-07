@@ -1,0 +1,238 @@
+# Independent public staging; never combine this with the production Compose.
+# Application images are supplied by CI as scanned digest references.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app-environment: &app-environment
+  POSTGRES_HOST: stage-postgres
+  REDIS_URL: redis://stage-redis:6379/0
+  WEB_SERVER_INTERNAL_PORT: "8080"
+  PANEL_API_URL: http://stage-panel:3000/api
+  PANEL_WRITE_MODE: live
+  SUBSCRIPTION_PAGE_CONFIG_PANEL_ENABLED: "True"
+  TRUSTED_PROXIES: 127.0.0.1,::1,host:stage-frontend,host:caddy-remnawave
+
+x-app: &app
+  logging: *logging
+  init: true
+  env_file: ${STAGING_ENV_FILE:?set absolute STAGING_ENV_FILE}
+  environment: *app-environment
+  volumes:
+    - shop-data:/app/data
+  networks: [default]
+
+services:
+  stage-postgres:
+    logging: *logging
+    image: postgres:17.11
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+    volumes:
+      - shop-db:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  stage-redis:
+    logging: *logging
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: [redis-server, --appendonly, "yes"]
+    volumes:
+      - shop-redis:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  stage-mailpit:
+    logging: *logging
+    image: axllent/mailpit:v1.33.0
+    restart: unless-stopped
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_WEBROOT: /mail/
+      MP_UI_AUTH_FILE: /run/secrets/mailpit.htpasswd
+      MP_SMTP_AUTH: staging:${SMTP_PASSWORD:?set staging SMTP password}
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+      MP_SMTP_DISABLE_RDNS: "true"
+      MP_DISABLE_VERSION_CHECK: "true"
+      MP_MAX_MESSAGES: "1000"
+    volumes:
+      - mailpit-data:/data
+      - ${STAGING_MAIL_AUTH_FILE:-/opt/remnawave-dev/mailpit.htpasswd}:/run/secrets/mailpit.htpasswd:ro
+    networks: [default, proxy]
+
+  stage-migrate:
+    <<: *app
+    image: ${STAGING_BACKEND_IMAGE:?set scanned backend digest}
+    command: [python, backend/main_migrate.py]
+    environment:
+      <<: *app-environment
+      MINISHOP_PLUGIN_SAFE_MODE: "1"
+    depends_on:
+      stage-postgres:
+        condition: service_healthy
+      stage-redis:
+        condition: service_healthy
+
+  stage-backend:
+    <<: *app
+    image: ${STAGING_BACKEND_IMAGE:?set scanned backend digest}
+    restart: unless-stopped
+    networks: [default, proxy]
+    ports:
+      - "127.0.0.1:18080:8080"
+    depends_on:
+      stage-postgres:
+        condition: service_healthy
+      stage-redis:
+        condition: service_healthy
+      stage-panel:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, -fsS, http://127.0.0.1:8080/healthz]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  stage-worker:
+    <<: *app
+    image: ${STAGING_WORKER_IMAGE:?set scanned worker digest}
+    restart: unless-stopped
+    depends_on:
+      stage-backend:
+        condition: service_healthy
+
+  stage-frontend:
+    logging: *logging
+    image: ${STAGING_FRONTEND_IMAGE:?set scanned frontend digest}
+    restart: unless-stopped
+    environment:
+      WEBAPP_API_BASE_URL: /api
+      WEBAPP_BACKEND_UPSTREAM: http://stage-backend:8081
+      WEBAPP_BACKEND_UPSTREAM_HOST: stage-backend
+    ports:
+      - "127.0.0.1:18082:80"
+    networks: [default, proxy]
+    depends_on:
+      stage-backend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://127.0.0.1/health | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  stage-panel-db:
+    logging: *logging
+    image: postgres:17.11
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${STAGING_PANEL_DB_PASSWORD:?set independent Panel DB password}
+      POSTGRES_DB: postgres
+    volumes:
+      - panel-db:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d postgres]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  stage-panel-redis:
+    logging: *logging
+    image: valkey/valkey:9-alpine
+    restart: unless-stopped
+    command: [valkey-server, --save, "", --appendonly, "no", --port, "0", --unixsocket, /var/run/valkey/valkey.sock, --unixsocketperm, "777"]
+    volumes:
+      - panel-valkey:/var/run/valkey
+    healthcheck:
+      test: [CMD, valkey-cli, -s, /var/run/valkey/valkey.sock, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  stage-panel:
+    logging: *logging
+    image: remnawave/backend:3.4.7
+    restart: unless-stopped
+    environment:
+      APP_PORT: "3000"
+      METRICS_PORT: "3001"
+      API_INSTANCES: "1"
+      DATABASE_URL: postgresql://postgres:${STAGING_PANEL_DB_PASSWORD:?set Panel DB password}@stage-panel-db:5432/postgres
+      REDIS_SOCKET: /var/run/valkey/valkey.sock
+      APP_SECRET: ${STAGING_PANEL_APP_SECRET:?set independent Panel secret}
+      PANEL_DOMAIN: ${STAGING_PANEL_DOMAIN:?set staging Panel domain}
+      FRONT_END_DOMAIN: https://${STAGING_PANEL_DOMAIN}
+      SUB_PUBLIC_DOMAIN: ${STAGING_SUB_DOMAIN:?set staging subscription domain}
+      METRICS_USER: staging
+      METRICS_PASS: ${STAGING_PANEL_METRICS_PASSWORD:?set metrics password}
+      WEBHOOK_ENABLED: "true"
+      WEBHOOK_URL: http://stage-backend:8080/webhook/panel
+      WEBHOOK_SECRET_HEADER: ${PANEL_WEBHOOK_SECRET:?set independent webhook secret}
+      EXPIRATION_NOTIFICATIONS_ENABLED: "true"
+      EXPIRATION_NOTIFICATIONS: "[-72,-48,-24,24]"
+    ports:
+      - "127.0.0.1:13000:3000"
+    networks: [default, proxy]
+    volumes:
+      - panel-valkey:/var/run/valkey
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    healthcheck:
+      test: [CMD-SHELL, curl -fsS http://localhost:3001/health]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    depends_on:
+      stage-panel-db:
+        condition: service_healthy
+      stage-panel-redis:
+        condition: service_healthy
+
+  stage-subscription:
+    logging: *logging
+    image: remnawave/subscription-page:7.2.6
+    restart: unless-stopped
+    environment:
+      APP_PORT: "3010"
+      REMNAWAVE_PANEL_URL: http://stage-panel:3000
+      REMNAWAVE_API_TOKEN: ${PANEL_API_KEY:?set staging Panel API key}
+      MARZBAN_LEGACY_LINK_ENABLED: "false"
+      TRUST_PROXY: "1"
+    ports:
+      - "127.0.0.1:13010:3010"
+    networks: [default, proxy]
+    depends_on:
+      stage-panel:
+        condition: service_healthy
+
+networks:
+  proxy:
+    external: true
+    name: remnawave-network
+
+# Project-scoped names: none of the production or local-development volumes
+# and none of the copied production configuration are reused.
+volumes:
+  shop-db:
+  shop-redis:
+  shop-data:
+  panel-db:
+  panel-valkey:
+  mailpit-data:

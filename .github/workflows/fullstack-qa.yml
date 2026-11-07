@@ -3,8 +3,6 @@ name: Full-stack QA
 on:
   pull_request:
     branches: [main, dev]
-  push:
-    branches: [dev]
   workflow_dispatch:
   workflow_call:
   schedule:

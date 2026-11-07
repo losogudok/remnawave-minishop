@@ -165,3 +165,19 @@ jobs:
               docker buildx imagetools create --prefer-index=false --tag "$tag" "$IMAGE_REFERENCE"
             fi
           done <<< "$CHANNEL_TAGS"
+
+      - name: Record scanned image for deployment
+        env:
+          IMAGE_REFERENCE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          mkdir -p deployment-images
+          printf '%s\n%s\n' "$SOURCE_COMMIT" "$IMAGE_REFERENCE" > deployment-images/${{ matrix.target }}.txt
+
+      - name: Upload scanned image reference
+        uses: actions/upload-artifact@v7
+        with:
+          name: deployment-image-${{ matrix.target }}
+          path: deployment-images/${{ matrix.target }}.txt
+          retention-days: 7
+          overwrite: true

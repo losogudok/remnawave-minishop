@@ -7,8 +7,6 @@ name: PR checks
 on:
   pull_request:
     branches: [main, dev]
-  push:
-    branches: [dev]
   workflow_dispatch:
   workflow_call:
 

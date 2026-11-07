@@ -1,0 +1,25 @@
+# Import into the existing edge Caddyfile. All upstream names are staging-only.
+https://dev-app.lookmaimanengineer.cc {
+    encode zstd gzip
+    header X-Robots-Tag "noindex, nofollow, noarchive"
+    reverse_proxy stage-frontend:80
+}
+
+https://dev-wh.lookmaimanengineer.cc {
+    redir /mail /mail/ 308
+    handle /mail/* {
+        reverse_proxy stage-mailpit:8025
+    }
+    handle {
+        reverse_proxy stage-backend:8080
+    }
+}
+
+https://dev-pnl.lookmaimanengineer.cc {
+    reverse_proxy stage-panel:3000
+}
+
+https://dev-sub.lookmaimanengineer.cc {
+    respond / 404
+    reverse_proxy stage-subscription:3010
+}

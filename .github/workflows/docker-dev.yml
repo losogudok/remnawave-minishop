@@ -1,4 +1,4 @@
-name: Dev images
+name: Dev CI/CD
 
 on:
   push:
@@ -14,10 +14,102 @@ permissions:
   packages: write
 
 jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  fullstack:
+    uses: ./.github/workflows/fullstack-qa.yml
+
+  security:
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/security.yml
+
   publish:
+    needs: [checks, fullstack, security]
     uses: ./.github/workflows/_docker-publish-ghcr.yml
     with:
       source_ref: ${{ github.sha }}
       source_commit: ${{ github.sha }}
       channel: dev
     secrets: inherit
+
+  deploy:
+    needs: publish
+    if: github.repository == 'losogudok/remnawave-minishop' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_APP_URL }}
+    steps:
+      - name: Check out tested source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download scanned image references from this run
+        uses: actions/download-artifact@v8
+        with:
+          pattern: deployment-image-*
+          path: deployment-images
+          merge-multiple: true
+
+      - name: Validate source and image references
+        env:
+          DEPLOY_COMMIT: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          with Path(os.environ["GITHUB_ENV"]).open("a") as output:
+              for target in ("backend", "worker", "frontend"):
+                  commit, image = Path(f"deployment-images/{target}.txt").read_text().splitlines()
+                  if commit != os.environ["DEPLOY_COMMIT"]:
+                      raise SystemExit("Image belongs to a different commit")
+                  pattern = rf"ghcr\.io/losogudok/remnawave-minishop-{target}@sha256:[0-9a-f]{{64}}"
+                  if not re.fullmatch(pattern, image):
+                      raise SystemExit("Expected a scanned immutable image reference")
+                  output.write(f"STAGING_{target.upper()}_IMAGE={image}\n")
+          PY
+
+      - name: Deploy scanned images over SSH
+        env:
+          DEPLOY_COMMIT: ${{ github.sha }}
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STAGING_APP_URL: ${{ vars.STAGING_APP_URL }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key_file=$(mktemp)
+          hosts_file=$(mktemp)
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$key_file"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$hosts_file"
+          ssh_command=(ssh -i "$key_file" -p "${DEPLOY_PORT:-22}" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o HostKeyAlias=minishop-staging \
+            -o UserKnownHostsFile="$hosts_file" -o ConnectTimeout=15 \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=6 \
+            "$DEPLOY_USER@$DEPLOY_HOST")
+          cleanup() {
+            "${ssh_command[@]}" 'rm -f /opt/remnawave-dev/.docker/config.json' || true
+            rm -f "$key_file" "$hosts_file"
+          }
+          trap cleanup EXIT
+          # New GHCR packages may initially be private. Use this job's short-lived
+          # token in a staging-only Docker config, and remove it on completion.
+          printf '%s\n' "$REGISTRY_TOKEN" | "${ssh_command[@]}" \
+            'umask 077; mkdir -p /opt/remnawave-dev/.docker; docker --config /opt/remnawave-dev/.docker login ghcr.io --username losogudok --password-stdin'
+          "${ssh_command[@]}" \
+            "bash -s -- $DEPLOY_COMMIT $STAGING_BACKEND_IMAGE $STAGING_WORKER_IMAGE $STAGING_FRONTEND_IMAGE" \
+            < scripts/deploy-staging.sh
+          "${ssh_command[@]}" "grep -qx $DEPLOY_COMMIT /opt/remnawave-dev/deployed-commit"
+          curl --fail --silent --show-error "${STAGING_APP_URL%/}/manifest.webmanifest" > /dev/null

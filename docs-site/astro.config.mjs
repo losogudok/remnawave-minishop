@@ -182,6 +182,7 @@ export default defineConfig({
             { label: 'Архитектура', slug: 'reference/architecture' },
             { label: 'Единый dev stand', slug: 'development/dev-stand' },
             { label: 'Деплой форка', slug: 'development/production-fork' },
+            { label: 'Staging форка', slug: 'development/staging-fork' },
             { label: 'Окружения тестов', slug: 'reference/test-environments' },
             { label: 'Рецепты изменений', slug: 'development/how-to' },
             { label: 'Карта Graphify', slug: 'development/graphify' },
