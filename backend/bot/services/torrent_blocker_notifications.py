@@ -17,6 +17,13 @@ from sqlalchemy.orm import sessionmaker
 
 from bot.middlewares.i18n import JsonI18n
 from bot.services.message_audit import log_user_message_delivery
+from bot.services.notification_channels import (
+    ChannelOutcomeStatus,
+    NotificationOccurrence,
+    fanout_push_occurrence,
+    occurrence_id_for,
+    plaintext_for_push,
+)
 from bot.services.telegram_notifications import (
     TELEGRAM_NOTIFICATIONS_BLOCKED,
     TELEGRAM_NOTIFICATIONS_ENABLED,
@@ -39,6 +46,7 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_TORRENT_NOTIFICATION_EVENT = "telegram_torrent_blocker_notification_sent"
 EMAIL_TORRENT_NOTIFICATION_EVENT = "email_torrent_blocker_notification_sent"
+PUSH_TORRENT_NOTIFICATION_EVENT = "push_torrent_blocker_notification_sent"
 _FINGERPRINT_DOMAIN = b"minishop:torrent-blocker-report:v1\0"
 
 
@@ -143,6 +151,7 @@ class TorrentBlockerReport:
 class TorrentBlockerNotificationDelivery:
     telegram_sent: bool = False
     email_sent: bool = False
+    push_sent: bool = False
 
 
 class TorrentBlockerDeliveryError(RuntimeError):
@@ -261,12 +270,25 @@ class TorrentBlockerNotificationService:
             if email_error is not None:
                 failures.append(("email", email_error))
 
+            push_sent, push_error = await self._deliver_push(
+                session,
+                user_id=user_id,
+                enabled=plan.push,
+                fingerprint=report.fingerprint,
+                report=report,
+                message_text=message_text,
+                sent_at=now,
+            )
+            if push_error is not None:
+                failures.append(("push", push_error))
+
             if failures:
                 error = TorrentBlockerDeliveryError([channel for channel, _exc in failures])
                 raise error from failures[0][1]
             return TorrentBlockerNotificationDelivery(
                 telegram_sent=telegram_sent,
                 email_sent=email_sent,
+                push_sent=push_sent,
             )
 
     async def _deliver_channel(
@@ -316,6 +338,147 @@ class TorrentBlockerNotificationService:
                 fingerprint=fingerprint,
             )
             return False, exc
+
+    async def _deliver_push(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: int,
+        enabled: bool,
+        fingerprint: str,
+        report: TorrentBlockerReport,
+        message_text: str,
+        sent_at: datetime,
+    ) -> tuple[bool, Exception | None]:
+        if not enabled:
+            self._log_outcome(
+                outcome="channel_disabled",
+                channel="push",
+                user_id=user_id,
+                fingerprint=fingerprint,
+            )
+            return False, None
+
+        locked_user = await user_dal.lock_user_by_id(session, user_id)
+        if locked_user is None:
+            self._log_outcome(
+                outcome="user_deleted",
+                channel="push",
+                user_id=user_id,
+                fingerprint=fingerprint,
+            )
+            return False, None
+
+        suppression_reason = await self._channel_suppression_reason(
+            session,
+            user_id=user_id,
+            event_type=PUSH_TORRENT_NOTIFICATION_EVENT,
+            fingerprint=fingerprint,
+            now=sent_at,
+        )
+        if suppression_reason is not None:
+            self._log_outcome(
+                outcome=suppression_reason,
+                channel="push",
+                user_id=user_id,
+                fingerprint=fingerprint,
+            )
+            return False, None
+
+        language = str(locked_user.language_code or self.settings.DEFAULT_LANGUAGE or "ru")
+        try:
+            push_title = str(self.i18n.gettext(language, "torrent_blocker_email_subject"))
+        except Exception:
+            push_title = "Torrent activity blocked"
+        occurrence = NotificationOccurrence(
+            occurrence_id=occurrence_id_for("torrent-blocked", fingerprint),
+            category=UserNotificationCategory.LIMITS,
+            user_id=user_id,
+            push_title=push_title,
+            push_body=plaintext_for_push(message_text),
+            push_url=(str(self.settings.SUBSCRIPTION_MINI_APP_URL or "").strip() or None),
+        )
+        try:
+            outcomes = await fanout_push_occurrence(
+                settings=self.settings,
+                user=locked_user,
+                occurrence=occurrence,
+            )
+        except Exception as exc:
+            logger.exception("Transient torrent blocker push failure; user_id=%s", user_id)
+            self._log_outcome(
+                outcome="transient_failure",
+                channel="push",
+                user_id=user_id,
+                fingerprint=fingerprint,
+            )
+            return False, exc
+        delivered = [outcome.destination for outcome in outcomes if outcome.delivered]
+        pending = [
+            outcome
+            for outcome in outcomes
+            if outcome.status == ChannelOutcomeStatus.FAILED
+            or (outcome.status == ChannelOutcomeStatus.SKIPPED and outcome.reason == "in_progress")
+        ]
+        if pending:
+            # Partial device success must not record per-destination audit rows:
+            # the fingerprint-wide suppression check would treat them as
+            # completion for the whole fingerprint and suppress the retry of
+            # the failed destinations. The same holds for destinations whose
+            # delivery is still locked in progress by another backend/worker:
+            # committing the delivered audit rows now would let the next
+            # replay see the fingerprint as done and lose the pending devices.
+            # Delivered destinations stay suppressed by per-destination fanout
+            # dedup while failed and in-progress ones remain retryable (same
+            # boundary as the lifecycle/trial partial fixes).
+            try:
+                await session.rollback()
+            except Exception:
+                logger.exception("Failed to roll back partial torrent blocker push audit")
+            self._log_outcome(
+                outcome="transient_failure",
+                channel="push",
+                user_id=user_id,
+                fingerprint=fingerprint,
+            )
+            return bool(delivered), RuntimeError("torrent blocker push delivery failed")
+        if not delivered:
+            self._log_outcome(
+                outcome="channel_unavailable",
+                channel="push",
+                user_id=user_id,
+                fingerprint=fingerprint,
+            )
+            return False, None
+        try:
+            for destination in delivered:
+                await log_user_message_delivery(
+                    session,
+                    target_user_id=user_id,
+                    event_type=PUSH_TORRENT_NOTIFICATION_EVENT,
+                    channel="push",
+                    recipient=destination,
+                    content=(f"fingerprint={fingerprint} message_key=torrent_blocker_notification"),
+                    timestamp=sent_at,
+                )
+            await session.commit()
+        except Exception as exc:
+            await session.rollback()
+            logger.exception("Transient torrent blocker push failure; user_id=%s", user_id)
+            self._log_outcome(
+                outcome="transient_failure",
+                channel="push",
+                user_id=user_id,
+                fingerprint=fingerprint,
+            )
+            return False, exc
+        self._log_outcome(
+            outcome="sent",
+            channel="push",
+            user_id=user_id,
+            fingerprint=fingerprint,
+        )
+        return True, None
 
     async def _resolve_user(
         self,

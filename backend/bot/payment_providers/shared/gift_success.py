@@ -114,5 +114,6 @@ async def finalize_gift_payment(req: PaymentSuccessRequest) -> PaymentSuccessOut
             log_prefix=req.log_prefix,
             user=user,
             sale_mode=req.sale_mode,
+            payment_db_id=payment_id,
         )
     return PaymentSuccessOutcome(None, None, None, 0, 0, user, language)

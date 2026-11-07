@@ -9,6 +9,7 @@ from .ga4funnel import Ga4FunnelPlugin
 from .guide_media import GuideMediaPlugin
 from .lknpd import LknpdPlugin
 from .telemetry import TelemetryPlugin
+from .web_push import WebPushPlugin
 
 #: Plugin classes instantiated by the loader, in activation order.
 BUILTIN_PLUGINS = (
@@ -16,6 +17,7 @@ BUILTIN_PLUGINS = (
     LknpdPlugin,
     Ga4FunnelPlugin,
     GuideMediaPlugin,
+    WebPushPlugin,
 )
 
 __all__ = [
@@ -24,4 +26,5 @@ __all__ = [
     "GuideMediaPlugin",
     "LknpdPlugin",
     "TelemetryPlugin",
+    "WebPushPlugin",
 ]

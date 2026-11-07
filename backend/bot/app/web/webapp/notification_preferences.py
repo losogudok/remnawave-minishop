@@ -60,7 +60,8 @@ async def account_notification_preferences_route(request: web.Request) -> web.Re
         user = await user_dal.lock_user_by_id(session, user_id)
         if user is None or user.is_banned:
             return _json_error(403, "access_denied", "Access denied")
-        apply_user_notification_preferences(user, body.to_preferences())
+        current = UserNotificationPreferences.from_user(user)
+        apply_user_notification_preferences(user, body.to_preferences(current))
         preferences = _preferences_payload(user)
     await _invalidate_webapp_user_caches(settings, user_id)
     return json_response({"ok": True, "notification_preferences": preferences})
@@ -102,6 +103,7 @@ async def email_notification_preferences_update_route(request: web.Request) -> w
                 marketing_telegram=current.marketing_telegram,
                 system_email=body.system_email,
                 system_telegram=current.system_telegram,
+                push_enabled=current.push_enabled,
             ),
         )
         user_id = int(user.user_id)

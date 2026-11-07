@@ -79,3 +79,85 @@ def test_footer_is_unchanged_when_user_preferences_are_disabled() -> None:
     )
 
     assert content is original
+
+
+def test_single_push_preference_round_trip() -> None:
+    from bot.services.user_notification_preferences import apply_user_notification_preferences
+
+    user = _user(push_notifications_enabled=False)
+    preferences = UserNotificationPreferences.from_user(user)
+
+    assert preferences.push_enabled is False
+    # Telegram/email preferences are preserved alongside the push toggle.
+    assert preferences.as_dict() == {
+        "marketing_email": True,
+        "marketing_telegram": True,
+        "system_email": True,
+        "system_telegram": True,
+        "push": False,
+    }
+
+    apply_user_notification_preferences(user, UserNotificationPreferences())
+    assert user.push_notifications_enabled is True
+    assert UserNotificationPreferences.from_user(user).push_enabled is True
+
+
+def test_patch_body_omitted_fields_preserve_push() -> None:
+    from bot.app.web.webapp.notification_preference_schemas import NotificationPreferencesPatchBody
+
+    current = UserNotificationPreferences(
+        marketing_email=False,
+        marketing_telegram=False,
+        system_email=False,
+        system_telegram=False,
+        push_enabled=False,
+    )
+    # Empty PATCH preserves every existing value, including push=False.
+    merged = NotificationPreferencesPatchBody().to_preferences(current)
+    assert merged == current
+
+    # Explicit toggle flips only the targeted field.
+    toggled = NotificationPreferencesPatchBody(push=True).to_preferences(current)
+    assert toggled.push_enabled is True
+    assert toggled.marketing_email is False
+    assert toggled.system_telegram is False
+
+
+def test_patch_body_explicit_push_toggle() -> None:
+    from bot.app.web.webapp.notification_preference_schemas import NotificationPreferencesPatchBody
+
+    current = UserNotificationPreferences()
+    assert current.push_enabled is True
+    disabled = NotificationPreferencesPatchBody(push=False).to_preferences(current)
+    assert disabled.push_enabled is False
+    assert disabled.marketing_email is True
+
+
+def test_email_unsubscribe_flow_preserves_push() -> None:
+    from bot.services.user_notification_preferences import apply_user_notification_preferences
+
+    user = _user(push_notifications_enabled=False)
+    current = UserNotificationPreferences.from_user(user)
+    assert current.push_enabled is False
+    # Mirrors email_notification_preferences_update_route: only email flags
+    # change; telegram and push stay exactly as stored.
+    apply_user_notification_preferences(
+        user,
+        UserNotificationPreferences(
+            marketing_email=False,
+            marketing_telegram=current.marketing_telegram,
+            system_email=False,
+            system_telegram=current.system_telegram,
+            push_enabled=current.push_enabled,
+        ),
+    )
+    assert user.push_notifications_enabled is False
+
+
+def test_preferences_out_response_exposes_push() -> None:
+    from bot.app.web.webapp.notification_preference_schemas import NotificationPreferencesOut
+
+    out = NotificationPreferencesOut.from_user(_user(push_notifications_enabled=False))
+    assert out.model_dump(mode="json")["push"] is False
+    out_enabled = NotificationPreferencesOut.from_user(_user(push_notifications_enabled=True))
+    assert out_enabled.model_dump(mode="json")["push"] is True

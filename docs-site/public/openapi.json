@@ -11473,6 +11473,16 @@
             "title": "Marketing Telegram",
             "type": "boolean"
           },
+          "push": {
+            "default": true,
+            "title": "Push",
+            "type": "boolean"
+          },
+          "push_notifications_enabled": {
+            "default": true,
+            "title": "Push Notifications Enabled",
+            "type": "boolean"
+          },
           "system_email": {
             "title": "System Email",
             "type": "boolean"
@@ -11494,28 +11504,78 @@
       "NotificationPreferencesPatchBody": {
         "properties": {
           "marketing_email": {
-            "title": "Marketing Email",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Marketing Email"
           },
           "marketing_telegram": {
-            "title": "Marketing Telegram",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Marketing Telegram"
+          },
+          "push": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Push"
+          },
+          "push_notifications_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Push Notifications Enabled"
           },
           "system_email": {
-            "title": "System Email",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "System Email"
           },
           "system_telegram": {
-            "title": "System Telegram",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "System Telegram"
           }
         },
-        "required": [
-          "marketing_email",
-          "marketing_telegram",
-          "system_email",
-          "system_telegram"
-        ],
         "title": "NotificationPreferencesPatchBody",
         "type": "object"
       },
@@ -15305,6 +15365,173 @@
           "enabled"
         ],
         "title": "PublicSubscriptionGuidesOut",
+        "type": "object"
+      },
+      "PushDeviceOut": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Created At"
+          },
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Seen At"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "current"
+        ],
+        "title": "PushDeviceOut",
+        "type": "object"
+      },
+      "PushStatusBody": {
+        "properties": {
+          "endpoint": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Endpoint"
+          }
+        },
+        "title": "PushStatusBody",
+        "type": "object"
+      },
+      "PushSubscribeBody": {
+        "properties": {
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "subscription": {
+            "$ref": "#/components/schemas/PushSubscriptionBody"
+          }
+        },
+        "required": [
+          "subscription"
+        ],
+        "title": "PushSubscribeBody",
+        "type": "object"
+      },
+      "PushSubscriptionBody": {
+        "properties": {
+          "endpoint": {
+            "maxLength": 4096,
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "expirationTime": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Expirationtime"
+          },
+          "keys": {
+            "$ref": "#/components/schemas/PushSubscriptionKeysBody"
+          }
+        },
+        "required": [
+          "endpoint",
+          "keys"
+        ],
+        "title": "PushSubscriptionBody",
+        "type": "object"
+      },
+      "PushSubscriptionKeysBody": {
+        "properties": {
+          "auth": {
+            "maxLength": 128,
+            "title": "Auth",
+            "type": "string"
+          },
+          "p256dh": {
+            "maxLength": 512,
+            "title": "P256Dh",
+            "type": "string"
+          }
+        },
+        "required": [
+          "p256dh",
+          "auth"
+        ],
+        "title": "PushSubscriptionKeysBody",
+        "type": "object"
+      },
+      "PushUnsubscribeBody": {
+        "properties": {
+          "device_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Device Id"
+          },
+          "endpoint": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Endpoint"
+          }
+        },
+        "title": "PushUnsubscribeBody",
         "type": "object"
       },
       "RepositoryRequest": {
@@ -38519,6 +38746,9 @@
                             "marketing_telegram": {
                               "type": "boolean"
                             },
+                            "push": {
+                              "type": "boolean"
+                            },
                             "system_email": {
                               "type": "boolean"
                             },
@@ -39733,6 +39963,320 @@
         },
         "security": [],
         "summary": "Guide Media Public Media",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/web_push/status": {
+      "post": {
+        "operationId": "post_web_push_status_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushStatusBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "configured": {
+                      "type": "boolean"
+                    },
+                    "current_device_id": {
+                      "type": "string"
+                    },
+                    "devices": {
+                      "items": {
+                        "$ref": "#/components/schemas/PushDeviceOut"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "preference_enabled": {
+                      "type": "boolean"
+                    },
+                    "public_key": {
+                      "type": "string"
+                    },
+                    "pwa_enabled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "configured",
+                    "pwa_enabled",
+                    "public_key",
+                    "preference_enabled",
+                    "devices",
+                    "current_device_id"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "UserSession": []
+          },
+          {
+            "UserBearer": []
+          }
+        ],
+        "summary": "Web Push Status",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/web_push/subscription": {
+      "delete": {
+        "operationId": "delete_web_push_unsubscribe_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushUnsubscribeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "configured": {
+                      "type": "boolean"
+                    },
+                    "current_device_id": {
+                      "type": "string"
+                    },
+                    "devices": {
+                      "items": {
+                        "$ref": "#/components/schemas/PushDeviceOut"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "preference_enabled": {
+                      "type": "boolean"
+                    },
+                    "public_key": {
+                      "type": "string"
+                    },
+                    "pwa_enabled": {
+                      "type": "boolean"
+                    },
+                    "revoked": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "revoked",
+                    "configured",
+                    "pwa_enabled",
+                    "public_key",
+                    "preference_enabled",
+                    "devices",
+                    "current_device_id"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "UserSession": []
+          },
+          {
+            "UserBearer": []
+          }
+        ],
+        "summary": "Web Push Unsubscribe",
+        "tags": [
+          "plugins"
+        ]
+      },
+      "post": {
+        "operationId": "post_web_push_subscribe_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushSubscribeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "configured": {
+                      "type": "boolean"
+                    },
+                    "current_device_id": {
+                      "type": "string"
+                    },
+                    "device_id": {
+                      "type": "string"
+                    },
+                    "devices": {
+                      "items": {
+                        "$ref": "#/components/schemas/PushDeviceOut"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "preference_enabled": {
+                      "type": "boolean"
+                    },
+                    "public_key": {
+                      "type": "string"
+                    },
+                    "pwa_enabled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "device_id",
+                    "configured",
+                    "pwa_enabled",
+                    "public_key",
+                    "preference_enabled",
+                    "devices",
+                    "current_device_id"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "UserSession": []
+          },
+          {
+            "UserBearer": []
+          }
+        ],
+        "summary": "Web Push Subscribe",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/plugins/web_push/subscription/sync": {
+      "post": {
+        "operationId": "post_web_push_sync_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushSubscribeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "configured": {
+                      "type": "boolean"
+                    },
+                    "current_device_id": {
+                      "type": "string"
+                    },
+                    "device_id": {
+                      "type": "string"
+                    },
+                    "devices": {
+                      "items": {
+                        "$ref": "#/components/schemas/PushDeviceOut"
+                      },
+                      "type": "array"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "preference_enabled": {
+                      "type": "boolean"
+                    },
+                    "public_key": {
+                      "type": "string"
+                    },
+                    "pwa_enabled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "device_id",
+                    "configured",
+                    "pwa_enabled",
+                    "public_key",
+                    "preference_enabled",
+                    "devices",
+                    "current_device_id"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "UserSession": []
+          },
+          {
+            "UserBearer": []
+          }
+        ],
+        "summary": "Web Push Sync",
         "tags": [
           "plugins"
         ]

@@ -18,3 +18,6 @@ class UserNotificationPreferenceColumns:
     system_notifications_telegram_enabled = Column(
         Boolean, nullable=False, default=True, server_default=text("true")
     )
+    push_notifications_enabled = Column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )

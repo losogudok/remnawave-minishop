@@ -2,6 +2,7 @@
   import { ArrowLeft, Megaphone } from "$components/ui/icons.js";
   import Card from "$components/ui/card.svelte";
   import NotificationPreferencesPanel from "$components/patterns/NotificationPreferencesPanel.svelte";
+  import PushNotificationsCard from "../push/PushNotificationsCard.svelte";
   import {
     normalizeNotificationPreferences,
     type NotificationPreferences,
@@ -57,12 +58,12 @@
     }
   });
 
-  async function updateNotificationPreferences(next: NotificationPreferences): Promise<void> {
-    if (notificationPreferencesBusy) return;
+  async function updateNotificationPreferences(next: NotificationPreferences): Promise<boolean> {
+    if (notificationPreferencesBusy) return false;
     const previous = notificationPreferences;
     notificationPreferences = next;
     notificationPreferencesStatus = "";
-    if (!api) return;
+    if (!api) return false;
     notificationPreferencesBusy = true;
     try {
       const response = await api(buildAccountNotificationPreferencesPath(), {
@@ -77,6 +78,7 @@
         {},
         "Notification preferences saved"
       );
+      return true;
     } catch (_error) {
       notificationPreferences = previous;
       notificationPreferencesStatus = t(
@@ -84,6 +86,7 @@
         {},
         "Could not save notification preferences"
       );
+      return false;
     } finally {
       notificationPreferencesBusy = false;
     }
@@ -134,5 +137,13 @@
         "Personal administrator messages, security messages and support replies are always delivered."
       )}
     onChange={updateNotificationPreferences}
+  />
+
+  <PushNotificationsCard
+    {api}
+    {t}
+    preferences={notificationPreferences}
+    disabled={notificationPreferencesBusy}
+    onPreferencesChange={updateNotificationPreferences}
   />
 </main>

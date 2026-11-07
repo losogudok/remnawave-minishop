@@ -22,6 +22,10 @@ class UserNotificationPreferences:
     marketing_telegram: bool = True
     system_email: bool = True
     system_telegram: bool = True
+    # Single Web Push opt-in covering service/support updates and
+    # news/promotions. There is intentionally no separate marketing push
+    # toggle: enabling notifications enables both.
+    push_enabled: bool = True
 
     @classmethod
     def from_user(cls, user: Any) -> UserNotificationPreferences:
@@ -32,6 +36,7 @@ class UserNotificationPreferences:
             ),
             system_email=bool(getattr(user, "system_notifications_email_enabled", True)),
             system_telegram=bool(getattr(user, "system_notifications_telegram_enabled", True)),
+            push_enabled=bool(getattr(user, "push_notifications_enabled", True)),
         )
 
     def as_dict(self) -> dict[str, bool]:
@@ -40,6 +45,7 @@ class UserNotificationPreferences:
             "marketing_telegram": self.marketing_telegram,
             "system_email": self.system_email,
             "system_telegram": self.system_telegram,
+            "push": self.push_enabled,
         }
 
 
@@ -58,6 +64,7 @@ def apply_user_notification_preferences(
     user.marketing_notifications_telegram_enabled = preferences.marketing_telegram
     user.system_notifications_email_enabled = preferences.system_email
     user.system_notifications_telegram_enabled = preferences.system_telegram
+    user.push_notifications_enabled = preferences.push_enabled
 
 
 def notification_email_for_user(user: Any) -> str:

@@ -28,6 +28,12 @@ from bot.services.event_reactions_payment_details import (
     _format_failed_payment_details,
     _int_or_none,
 )
+from bot.services.notification_channels import (
+    NotificationOccurrence,
+    fanout_push_occurrence,
+    occurrence_id_for,
+    plaintext_for_push,
+)
 from bot.services.notification_service import NotificationService
 from bot.services.telegram_notifications import record_telegram_notification_failure
 from bot.services.user_email_notifications import send_user_notification_email
@@ -625,8 +631,13 @@ class CoreEventReactions(PartnerEventReactionsMixin):
                 payload.get("payment_db_id"),
             )
             return
-        if not await _claim_payment_failure_notification(self.ctx, payload.get("payment_db_id")):
-            return
+        # The outer payment-wide claim guards Telegram/email only. Push has its
+        # own independent per-destination dedup inside fanout_push_occurrence,
+        # so a replay after Telegram/email success must still retry a failed
+        # push instead of returning early on the outer claim.
+        telegram_email_claimed = await _claim_payment_failure_notification(
+            self.ctx, payload.get("payment_db_id")
+        )
         user = await self._load_user(user_id)
         chat_id = telegram_recipient(user, user_id)
         plan = user_notification_delivery_plan(
@@ -670,7 +681,13 @@ class CoreEventReactions(PartnerEventReactionsMixin):
                     getattr(payment, "payment_id", None),
                 )
         telegram_error: Exception | None = None
-        if plan.telegram and self.ctx.bot is not None and chat_id is not None:
+        email_sent = False
+        if not telegram_email_claimed:
+            logger.info(
+                "Skipping duplicate Telegram/email canceled payment notification for payment %s.",
+                payload.get("payment_db_id"),
+            )
+        elif plan.telegram and self.ctx.bot is not None and chat_id is not None:
             try:
                 reply_markup = (
                     get_autorenew_cancel_keyboard(
@@ -714,15 +731,46 @@ class CoreEventReactions(PartnerEventReactionsMixin):
                 "email",
             )
         )
-        if email_requested and user is not None:
-            email_sent = await send_user_notification_email(
-                settings=self.ctx.settings,
-                i18n=self.ctx.i18n,
-                user=user,
-                subject_key="email_payment_failed_subject",
-                message_text=message_text,
-                dashboard_url=(getattr(self.ctx.settings, "SUBSCRIPTION_MINI_APP_URL", "") or None),
-            )
+        if email_requested and user is not None and telegram_email_claimed:
+            try:
+                email_sent = await send_user_notification_email(
+                    settings=self.ctx.settings,
+                    i18n=self.ctx.i18n,
+                    user=user,
+                    subject_key="email_payment_failed_subject",
+                    message_text=message_text,
+                    dashboard_url=(
+                        getattr(self.ctx.settings, "SUBSCRIPTION_MINI_APP_URL", "") or None
+                    ),
+                )
+            except Exception:
+                # Email must never suppress the independent push fan-out below.
+                logger.exception("Failed to send canceled payment email to user %s.", user_id)
+                email_sent = False
+        if user is not None:
+            # Push mirrors the same business occurrence independently: a
+            # Telegram failure (or success) never suppresses push delivery.
+            try:
+                await fanout_push_occurrence(
+                    settings=self.ctx.settings,
+                    user=user,
+                    occurrence=NotificationOccurrence(
+                        occurrence_id=occurrence_id_for(
+                            "payment-failed", payload.get("payment_db_id") or "unknown"
+                        ),
+                        category=UserNotificationCategory.PAYMENTS,
+                        user_id=int(getattr(user, "user_id", 0) or 0),
+                        push_title=str(translator("email_payment_failed_subject")),
+                        push_body=plaintext_for_push(message_text),
+                        push_url=(
+                            getattr(self.ctx.settings, "SUBSCRIPTION_MINI_APP_URL", "") or None
+                        ),
+                    ),
+                )
+            except Exception:
+                logger.exception("Failed to fan out canceled payment push for user %s.", user_id)
+        if not telegram_email_claimed:
+            return
         if telegram_error is None or email_sent is True:
             await _mark_payment_failure_notification_sent(
                 self.ctx,
@@ -801,13 +849,45 @@ class CoreEventReactions(PartnerEventReactionsMixin):
             )
         )
         if email_requested:
-            await send_user_notification_email(
+            try:
+                await send_user_notification_email(
+                    settings=self.ctx.settings,
+                    i18n=self.ctx.i18n,
+                    user=inviter,
+                    subject_key="email_referral_bonus_subject",
+                    message_text=message_text,
+                    dashboard_url=(
+                        getattr(self.ctx.settings, "SUBSCRIPTION_MINI_APP_URL", "") or None
+                    ),
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to send referral bonus email to inviter %s.", inviter_user_id
+                )
+        try:
+            await fanout_push_occurrence(
                 settings=self.ctx.settings,
-                i18n=self.ctx.i18n,
                 user=inviter,
-                subject_key="email_referral_bonus_subject",
-                message_text=message_text,
-                dashboard_url=(getattr(self.ctx.settings, "SUBSCRIPTION_MINI_APP_URL", "") or None),
+                occurrence=NotificationOccurrence(
+                    occurrence_id=occurrence_id_for(
+                        "referral-bonus",
+                        payload.get("inviter_user_id"),
+                        payload.get("referee_user_id"),
+                        payload.get("reason"),
+                        payload.get("inviter_bonus_kind"),
+                        payload.get("payment_db_id"),
+                        payload.get("gift_id"),
+                    ),
+                    category=UserNotificationCategory.REFERRALS,
+                    user_id=int(inviter_user_id),
+                    push_title=str(translator("email_referral_bonus_subject")),
+                    push_body=plaintext_for_push(message_text),
+                    push_url=(getattr(self.ctx.settings, "SUBSCRIPTION_MINI_APP_URL", "") or None),
+                ),
+            )
+        except Exception:
+            logger.exception(
+                "Failed to fan out referral bonus push to inviter %s.", inviter_user_id
             )
 
     async def on_account_merged(self, event_name: str, payload: dict[str, Any]) -> None:

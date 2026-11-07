@@ -21,6 +21,7 @@ from sqlalchemy.sql import func
 
 from db import cleaned_trial_models as cleaned_trial_models
 from db import provider_mandate_models, subscription_notification_models
+from db import web_push_models as web_push_models
 from db.base import Base
 from db.user_account_identity_columns import UserAccountIdentityColumns
 from db.user_notification_preference_columns import UserNotificationPreferenceColumns

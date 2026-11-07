@@ -9,6 +9,8 @@ from bot.services.tariff_worker_shared import (
     PREMIUM_WARNING_DEPLETED_LEVEL,
     PREMIUM_WARNING_LEVEL_OFFSET,
     deliver_traffic_warning,
+    retry_warning_push_if_pending,
+    warning_period_identity,
 )
 from db.dal import tariff_dal
 from db.models import Subscription
@@ -66,21 +68,6 @@ class TariffWorkerPremiumWarningMixin:
 
         # Fully exhausted or over quota — one message per period (same idea as regular traffic at 100%).  # noqa: E501
         if ratio >= 1.0:
-            depleted_existing = await tariff_dal.get_warning(
-                session,
-                subscription_id=sub.subscription_id,
-                period_start_at=period_start_at,
-                level=PREMIUM_WARNING_DEPLETED_LEVEL,
-            )
-            if depleted_existing:
-                return
-            await tariff_dal.create_warning(
-                session,
-                subscription_id=sub.subscription_id,
-                period_start_at=period_start_at,
-                level=PREMIUM_WARNING_DEPLETED_LEVEL,
-                traffic_limit_bytes=None,
-            )
             user_lang = await self._user_lang(session, sub.user_id)
             _ = (
                 (lambda k, _user_lang=user_lang, **kw: self.i18n.gettext(_user_lang, k, **kw))
@@ -107,9 +94,42 @@ class TariffWorkerPremiumWarningMixin:
             if reset_note:
                 text = f"{text}\n\n{reset_note}"
             warning_key = "traffic_warning_premium_depleted"
+            subject_key = "email_traffic_warning_premium_depleted_subject"
             audit_content = (
                 f"kind=premium warning_key={warning_key} "
                 f"used_bytes={used_val} limit_bytes={limit_val}"
+            )
+            depleted_existing = await tariff_dal.get_warning(
+                session,
+                subscription_id=sub.subscription_id,
+                period_start_at=period_start_at,
+                level=PREMIUM_WARNING_DEPLETED_LEVEL,
+            )
+            if depleted_existing:
+                # The marker is recorded before delivery: retry a failed push
+                # on later ticks despite the marker.
+                await retry_warning_push_if_pending(
+                    session,
+                    settings=self.settings,
+                    user_id=sub.user_id,
+                    subscription_id=sub.subscription_id,
+                    text=text,
+                    audit_content=audit_content,
+                    audit_logger=_log_user_message_delivery,
+                    warning_key=warning_key,
+                    level=PREMIUM_WARNING_DEPLETED_LEVEL,
+                    kind="premium",
+                    push_title=_(subject_key),
+                    period=warning_period_identity(period_start_at),
+                    logger=logger,
+                )
+                return
+            await tariff_dal.create_warning(
+                session,
+                subscription_id=sub.subscription_id,
+                period_start_at=period_start_at,
+                level=PREMIUM_WARNING_DEPLETED_LEVEL,
+                traffic_limit_bytes=None,
             )
             markup = self._traffic_topup_markup(user_lang, "premium") if self.bot else None
             await deliver_traffic_warning(
@@ -129,6 +149,10 @@ class TariffWorkerPremiumWarningMixin:
                 telegram_failure_message=(
                     "Failed to send premium traffic depleted warning to user %s"
                 ),
+                subscription_id=sub.subscription_id,
+                level=PREMIUM_WARNING_DEPLETED_LEVEL,
+                push_title=_("email_traffic_warning_premium_depleted_subject"),
+                period=warning_period_identity(period_start_at),
             )
             return
 
@@ -138,21 +162,6 @@ class TariffWorkerPremiumWarningMixin:
             if ratio < level / 100:
                 continue
             storage_level = PREMIUM_WARNING_LEVEL_OFFSET + int(level)
-            warning = await tariff_dal.get_warning(
-                session,
-                subscription_id=sub.subscription_id,
-                period_start_at=period_start_at,
-                level=storage_level,
-            )
-            if warning:
-                continue
-            await tariff_dal.create_warning(
-                session,
-                subscription_id=sub.subscription_id,
-                period_start_at=period_start_at,
-                level=storage_level,
-                traffic_limit_bytes=None,
-            )
             user_lang = await self._user_lang(session, sub.user_id)
             _ = (
                 (lambda k, _user_lang=user_lang, **kw: self.i18n.gettext(_user_lang, k, **kw))
@@ -181,9 +190,42 @@ class TariffWorkerPremiumWarningMixin:
             if reset_note:
                 text = f"{text}\n\n{reset_note}"
             warning_key = "traffic_warning_premium_almost"
+            subject_key = "email_traffic_warning_premium_almost_subject"
             audit_content = (
                 f"kind=premium warning_key={warning_key} level={int(level)} "
                 f"used_bytes={used_val} limit_bytes={limit_val}"
+            )
+            warning = await tariff_dal.get_warning(
+                session,
+                subscription_id=sub.subscription_id,
+                period_start_at=period_start_at,
+                level=storage_level,
+            )
+            if warning:
+                # The marker is recorded before delivery: retry a failed push
+                # on later ticks despite the marker.
+                await retry_warning_push_if_pending(
+                    session,
+                    settings=self.settings,
+                    user_id=sub.user_id,
+                    subscription_id=sub.subscription_id,
+                    text=text,
+                    audit_content=audit_content,
+                    audit_logger=_log_user_message_delivery,
+                    warning_key=warning_key,
+                    level=storage_level,
+                    kind="premium",
+                    push_title=_(subject_key),
+                    period=warning_period_identity(period_start_at),
+                    logger=logger,
+                )
+                continue
+            await tariff_dal.create_warning(
+                session,
+                subscription_id=sub.subscription_id,
+                period_start_at=period_start_at,
+                level=storage_level,
+                traffic_limit_bytes=None,
             )
             markup = self._traffic_topup_markup(user_lang, "premium") if self.bot else None
             await deliver_traffic_warning(
@@ -201,4 +243,8 @@ class TariffWorkerPremiumWarningMixin:
                 warning_key=warning_key,
                 logger=logger,
                 telegram_failure_message="Failed to send premium traffic warning to user %s",
+                subscription_id=sub.subscription_id,
+                level=storage_level,
+                push_title=_("email_traffic_warning_premium_almost_subject"),
+                period=warning_period_identity(period_start_at),
             )

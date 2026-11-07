@@ -16,6 +16,7 @@
   import { Toaster, toast as sonnerToast } from "svelte-sonner";
   import { Tooltip } from "$components/ui/primitives.js";
   import { setPwaInstallTelegramContext } from "./lib/webapp/pwaInstall.svelte";
+  import { createPushAccountSync } from "./lib/webapp/webPush.js";
 
   import AppModeContent from "./webapp/AppModeContent.svelte";
   import ThemeEffectsHost from "./webapp/ThemeEffectsHost.svelte";
@@ -377,6 +378,21 @@
     syncBodyScrollLock,
     syncLoadedRoute,
   } = appFactories;
+
+  const pushAccountSync = createPushAccountSync(api);
+
+  // The browser endpoint is shared by every account in this browser profile.
+  // Rebind it on every authenticated identity transition, not only when the
+  // notification settings screen happens to mount. This never asks for
+  // permission: it only POSTs an already-existing subscription.
+  $effect(() => {
+    const userId = String(user?.id || "").trim();
+    if (!userId || mode !== "app") {
+      pushAccountSync.reset();
+      return;
+    }
+    void pushAccountSync.syncForAccount(userId);
+  });
 
   $effect(() => {
     if (mode !== "app" || !data?.user) return;

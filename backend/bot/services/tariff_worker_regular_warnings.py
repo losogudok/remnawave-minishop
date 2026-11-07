@@ -5,7 +5,11 @@ from typing import TYPE_CHECKING, Any, Protocol
 from aiogram.utils.text_decorations import html_decoration as hd
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.services.tariff_worker_shared import deliver_traffic_warning
+from bot.services.tariff_worker_shared import (
+    deliver_traffic_warning,
+    retry_warning_push_if_pending,
+    warning_period_identity,
+)
 from db.dal import tariff_dal
 from db.models import Subscription
 
@@ -65,22 +69,6 @@ class TariffWorkerRegularWarningMixin:
             threshold = level / 100
             if ratio < threshold:
                 continue
-            warning = await tariff_dal.get_warning(
-                session,
-                subscription_id=sub.subscription_id,
-                period_start_at=warning_period_start if tariff.billing_model == "period" else None,
-                level=level,
-                traffic_limit_bytes=limit_val if tariff.billing_model == "traffic" else None,
-            )
-            if warning:
-                continue
-            await tariff_dal.create_warning(
-                session,
-                subscription_id=sub.subscription_id,
-                period_start_at=warning_period_start if tariff.billing_model == "period" else None,
-                level=level,
-                traffic_limit_bytes=limit_val if tariff.billing_model == "traffic" else None,
-            )
             user_lang = await self._user_lang(session, sub.user_id)
             _ = (
                 (lambda k, _user_lang=user_lang, **kw: self.i18n.gettext(_user_lang, k, **kw))
@@ -127,6 +115,40 @@ class TariffWorkerRegularWarningMixin:
                 f"kind=regular warning_key={warning_key} level={level} "
                 f"used_bytes={used_val} limit_bytes={limit_val}"
             )
+            warning = await tariff_dal.get_warning(
+                session,
+                subscription_id=sub.subscription_id,
+                period_start_at=warning_period_start if tariff.billing_model == "period" else None,
+                level=level,
+                traffic_limit_bytes=limit_val if tariff.billing_model == "traffic" else None,
+            )
+            if warning:
+                # The marker is recorded before delivery, so a failed push must
+                # be retried on later ticks despite the marker; Telegram/email
+                # are not resent.
+                await retry_warning_push_if_pending(
+                    session,
+                    settings=self.settings,
+                    user_id=sub.user_id,
+                    subscription_id=sub.subscription_id,
+                    text=text,
+                    audit_content=audit_content,
+                    audit_logger=_log_user_message_delivery,
+                    warning_key=warning_key,
+                    level=level,
+                    kind="regular",
+                    push_title=_(subject_key),
+                    period=warning_period_identity(warning_period_start),
+                    logger=logger,
+                )
+                continue
+            await tariff_dal.create_warning(
+                session,
+                subscription_id=sub.subscription_id,
+                period_start_at=warning_period_start if tariff.billing_model == "period" else None,
+                level=level,
+                traffic_limit_bytes=limit_val if tariff.billing_model == "traffic" else None,
+            )
             markup = self._traffic_topup_markup(user_lang, "regular") if self.bot else None
             await deliver_traffic_warning(
                 session,
@@ -143,6 +165,10 @@ class TariffWorkerRegularWarningMixin:
                 warning_key=warning_key,
                 logger=logger,
                 telegram_failure_message="Failed to send traffic warning to user %s",
+                subscription_id=sub.subscription_id,
+                level=level,
+                push_title=_(subject_key),
+                period=warning_period_identity(warning_period_start),
             )
         if ratio >= 1.0 and not sub.is_throttled:
             logger.info(

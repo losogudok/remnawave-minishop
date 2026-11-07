@@ -559,6 +559,7 @@ WEBAPP_USER_SCHEMA: dict[str, Any] = {
                 "marketing_telegram": BOOLEAN_SCHEMA,
                 "system_email": BOOLEAN_SCHEMA,
                 "system_telegram": BOOLEAN_SCHEMA,
+                "push": BOOLEAN_SCHEMA,
             },
         },
         "email_addresses": {

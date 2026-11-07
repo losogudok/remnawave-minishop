@@ -20,6 +20,13 @@ from bot.middlewares.i18n import JsonI18n
 from bot.services.device_topup_availability import resolve_device_topup_availability
 from bot.services.message_audit import log_user_message_delivery
 from bot.services.message_composition import mini_app_section_link
+from bot.services.notification_channels import (
+    ChannelOutcomeStatus,
+    NotificationOccurrence,
+    fanout_push_occurrence,
+    occurrence_id_for,
+    plaintext_for_push,
+)
 from bot.services.panel_api_service import PanelApiService
 from bot.services.telegram_notifications import (
     TELEGRAM_NOTIFICATIONS_ENABLED,
@@ -163,10 +170,10 @@ class HwidDeviceNotificationService:
                 user,
             ),
         }
-        pending: dict[str, list[str]] = {"telegram": [], "email": []}
+        pending: dict[str, list[str]] = {"telegram": [], "email": [], "push": []}
         for kind in messages:
             plan = plans[kind]
-            for channel in ("telegram", "email"):
+            for channel in ("telegram", "email", "push"):
                 if not bool(getattr(plan, channel)):
                     continue
                 key = self._delivery_key(kind, fingerprint, channel)
@@ -224,6 +231,29 @@ class HwidDeviceNotificationService:
                 )
             else:
                 retry_channels.append("email")
+
+        if pending["push"]:
+            sent, retry = await self._send_push(
+                session,
+                user=user,
+                subscription=subscription,
+                fingerprint=fingerprint,
+                kinds=pending["push"],
+                messages=messages,
+                dashboard_url=dashboard_url,
+                lang=lang,
+            )
+            if sent and not retry:
+                await self._record_deliveries(
+                    session,
+                    subscription.subscription_id,
+                    fingerprint,
+                    pending["push"],
+                    "push",
+                    now,
+                )
+            if retry:
+                retry_channels.append("push")
 
         return HwidDeviceNotificationResult(tuple(retry_channels))
 
@@ -466,6 +496,74 @@ class HwidDeviceNotificationService:
         except Exception:
             logger.exception("Failed to send HWID device notification email")
             return False
+
+    async def _send_push(
+        self,
+        session: AsyncSession,
+        *,
+        user: User,
+        subscription: Subscription,
+        fingerprint: str,
+        kinds: list[str],
+        messages: dict[str, str],
+        dashboard_url: str | None,
+        lang: str,
+    ) -> tuple[bool, bool]:
+        """Mirror device notices to push per kind; never suppresses other channels."""
+
+        sent_any = False
+        failed_any = False
+        for kind in kinds:
+            category = (
+                UserNotificationCategory.DEVICE_LIMIT
+                if kind == "limit"
+                else UserNotificationCategory.DEVICE_ACTIVITY
+            )
+            subject_key = (
+                "email_device_limit_reached_subject"
+                if kind == "limit"
+                else "email_device_connected_subject"
+            )
+            occurrence = NotificationOccurrence(
+                occurrence_id=occurrence_id_for(f"device-{kind}", fingerprint),
+                category=category,
+                user_id=int(getattr(user, "user_id", 0) or 0),
+                push_title=str(self.i18n.gettext(lang, subject_key)),
+                push_body=plaintext_for_push(messages[kind]),
+                push_url=dashboard_url,
+            )
+            try:
+                outcomes = await fanout_push_occurrence(
+                    settings=self.settings,
+                    user=user,
+                    occurrence=occurrence,
+                )
+            except Exception:
+                logger.exception("Failed to fan out HWID device push for kind %s", kind)
+                failed_any = True
+                continue
+            delivered = [outcome.destination for outcome in outcomes if outcome.delivered]
+            if any(outcome.status == ChannelOutcomeStatus.FAILED for outcome in outcomes):
+                failed_any = True
+            if not delivered:
+                continue
+            sent_any = True
+            for destination in delivered:
+                try:
+                    await log_user_message_delivery(
+                        session,
+                        target_user_id=user.user_id,
+                        event_type="push_device_notification_sent",
+                        channel="push",
+                        recipient=destination,
+                        content=(
+                            f"kinds={kind} subscription_id={subscription.subscription_id} "
+                            f"event_ref={fingerprint}"
+                        ),
+                    )
+                except Exception:
+                    logger.exception("Failed to audit HWID device push for kind %s", kind)
+        return sent_any, failed_any
 
     async def _record_deliveries(
         self,

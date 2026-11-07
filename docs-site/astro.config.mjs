@@ -145,6 +145,7 @@ export default defineConfig({
             { label: 'JavaScript-эффекты тем', slug: 'features/theme-effects' },
             { label: 'Уведомления', slug: 'features/notifications' },
             { label: 'Аналитика GA4', slug: 'features/analytics' },
+            { label: 'Уведомления в браузере', slug: 'features/web-push' },
             { label: 'Поддержка/тикеты', slug: 'features/support' },
             { label: 'Статус серверов', slug: 'features/server-status' },
             { label: 'Бэкапы', slug: 'features/backups' },

@@ -8,7 +8,10 @@ from bot.app.web.webapp.notification_preference_schemas import (
     NotificationPreferencesOut,
     NotificationPreferencesPatchBody,
 )
-from bot.services.user_notification_preferences import apply_user_notification_preferences
+from bot.services.user_notification_preferences import (
+    UserNotificationPreferences,
+    apply_user_notification_preferences,
+)
 from db.dal import user_dal
 
 from .auth import _require_admin_user_id
@@ -25,7 +28,9 @@ async def admin_user_notification_preferences_route(request: web.Request) -> web
         user = await user_dal.lock_user_by_id(session, target_id)
         if user is None:
             return _error(404, "not_found", "User not found")
-        apply_user_notification_preferences(user, body.to_preferences())
+        apply_user_notification_preferences(
+            user, body.to_preferences(UserNotificationPreferences.from_user(user))
+        )
         preferences = NotificationPreferencesOut.from_user(user).model_dump(mode="json")
     await _invalidate_after_admin_user_mutation(settings, target_id, include_devices=False)
     return _ok({"notification_preferences": preferences})

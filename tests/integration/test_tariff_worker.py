@@ -1002,9 +1002,15 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
             )
             tariff = settings.tariffs_config.require("standard")
 
-            with patch(
-                "bot.services.tariff_worker.tariff_dal.get_warning",
-                new=AsyncMock(return_value=True),
+            with (
+                patch(
+                    "bot.services.tariff_worker.tariff_dal.get_warning",
+                    new=AsyncMock(return_value=True),
+                ),
+                patch(
+                    "bot.services.tariff_worker_shared.user_dal.get_user_by_id",
+                    new=AsyncMock(return_value=SimpleNamespace(user_id=123, language_code="en")),
+                ),
             ):
                 await worker._maybe_warn_or_throttle(
                     AsyncMock(),
@@ -1068,9 +1074,15 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
             )
             tariff = settings.tariffs_config.require("standard")
 
-            with patch(
-                "bot.services.tariff_worker.tariff_dal.get_warning",
-                new=AsyncMock(return_value=True),
+            with (
+                patch(
+                    "bot.services.tariff_worker.tariff_dal.get_warning",
+                    new=AsyncMock(return_value=True),
+                ),
+                patch(
+                    "bot.services.tariff_worker_shared.user_dal.get_user_by_id",
+                    new=AsyncMock(return_value=SimpleNamespace(user_id=123, language_code="en")),
+                ),
             ):
                 await worker._sync_premium_squad_limit(
                     AsyncMock(),
@@ -1140,6 +1152,10 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
                 patch(
                     "bot.services.tariff_worker.tariff_dal.get_warning",
                     new=AsyncMock(return_value=True),
+                ),
+                patch(
+                    "bot.services.tariff_worker_shared.user_dal.get_user_by_id",
+                    new=AsyncMock(return_value=SimpleNamespace(user_id=123, language_code="en")),
                 ),
                 patch(
                     "bot.services.tariff_worker_premium.tariff_dal.sum_traffic_topups",
@@ -2073,9 +2089,15 @@ class TariffWorkerTests(unittest.IsolatedAsyncioTestCase):
             )
             tariff = settings.tariffs_config.require("standard")
 
-            with patch(
-                "bot.services.tariff_worker.tariff_dal.get_warning",
-                new=AsyncMock(return_value=True),
+            with (
+                patch(
+                    "bot.services.tariff_worker.tariff_dal.get_warning",
+                    new=AsyncMock(return_value=True),
+                ),
+                patch(
+                    "bot.services.tariff_worker_shared.user_dal.get_user_by_id",
+                    new=AsyncMock(return_value=SimpleNamespace(user_id=123, language_code="en")),
+                ),
             ):
                 await worker._sync_premium_squad_limit(
                     AsyncMock(),

@@ -31,10 +31,14 @@ class UserNotificationCategory(StrEnum):
 class UserNotificationDeliveryPlan:
     telegram: bool = False
     email: bool = False
+    push: bool = False
 
     @property
     def any_enabled(self) -> bool:
-        return self.telegram or self.email
+        return self.telegram or self.email or self.push
+
+
+PUSH_NOTIFICATIONS_ENABLED_SETTING = "USER_NOTIFICATION_PUSH_ENABLED"
 
 
 _CATEGORY_SETTING_KEYS: dict[UserNotificationCategory, tuple[str, str]] = {
@@ -86,9 +90,36 @@ def user_notification_channel_selected(
     category: UserNotificationCategory,
     channel: str,
 ) -> bool:
+    if channel == "push":
+        return push_notifications_selected(settings, category)
+    if channel != "telegram" and channel != "email":
+        # Unknown channels never fall through to another channel (in
+        # particular, never to email): they are simply not selected.
+        return False
     telegram_key, email_key = _CATEGORY_SETTING_KEYS[category]
     key = telegram_key if channel == "telegram" else email_key
     return bool(getattr(settings, key, True))
+
+
+def push_notifications_selected(settings: Any, category: UserNotificationCategory) -> bool:
+    """Whether automatic push mirroring is selected for a category.
+
+    Push has a single Core kill-switch shared by every category (service,
+    support, and news/promotions) instead of per-category channel toggles.
+    """
+
+    del category
+    return bool(getattr(settings, PUSH_NOTIFICATIONS_ENABLED_SETTING, True))
+
+
+def push_notifications_allowed(user: Any) -> bool:
+    """Return the single user Web Push opt-in, independent of other channels.
+
+    One preference covers service/support updates and news/promotions, and it
+    never depends on Telegram delivery state or Telegram ownership.
+    """
+
+    return bool(getattr(user, "push_notifications_enabled", True))
 
 
 def user_notification_channel_allowed(
@@ -99,6 +130,12 @@ def user_notification_channel_allowed(
     """Return the user's opt-in independently from channel availability."""
 
     preferences = UserNotificationPreferences.from_user(user)
+    if channel == "push":
+        return push_notifications_allowed(user)
+    if channel != "telegram" and channel != "email":
+        # Unknown channels never fall through to another channel (in
+        # particular, never to email): they are simply not allowed.
+        return False
     if category == UserNotificationCategory.SUPPORT:
         return True
     if category == UserNotificationCategory.MARKETING:
@@ -161,11 +198,15 @@ def user_notification_delivery_plan(
     *,
     telegram_available: bool | None = None,
     email_available: bool | None = None,
+    push_available: bool | None = None,
 ) -> UserNotificationDeliveryPlan:
     """Resolve enabled channels, including the optional single-channel fallback.
 
     Fallback is intentionally based on recipient availability, not a transient
     send failure. When both preferences are disabled, no fallback is possible.
+    Push is resolved independently of the Telegram/email fallback: another
+    channel succeeding or failing never enables or suppresses push, and push
+    availability never depends on Telegram delivery state or ownership.
     """
 
     if user_notifications_blocked(user):
@@ -179,7 +220,9 @@ def user_notification_delivery_plan(
     effective_telegram_selected = telegram_selected and telegram_allowed
     effective_email_selected = email_selected and email_allowed
     if not effective_telegram_selected and not effective_email_selected:
-        return UserNotificationDeliveryPlan()
+        return UserNotificationDeliveryPlan(
+            push=_push_plan_enabled(settings, category, user, push_available)
+        )
 
     if telegram_available is None:
         telegram_available = telegram_recipient(user) is not None
@@ -189,17 +232,39 @@ def user_notification_delivery_plan(
 
     send_telegram = effective_telegram_selected and telegram_available
     send_email = effective_email_selected and email_available
+    send_push = _push_plan_enabled(settings, category, user, push_available)
     if send_telegram or send_email:
         return UserNotificationDeliveryPlan(
             telegram=send_telegram,
             email=send_email,
+            push=send_push,
         )
 
     fallback_enabled = bool(settings.USER_NOTIFICATION_SINGLE_CHANNEL_FALLBACK_ENABLED)
     if not fallback_enabled or telegram_selected == email_selected:
-        return UserNotificationDeliveryPlan()
+        return UserNotificationDeliveryPlan(push=send_push)
 
     return UserNotificationDeliveryPlan(
         telegram=bool(telegram_allowed and telegram_available),
         email=bool(email_allowed and email_available),
+        push=send_push,
     )
+
+
+def _push_plan_enabled(
+    settings: Any,
+    category: UserNotificationCategory,
+    user: Any,
+    push_available: bool | None,
+) -> bool:
+    if not push_notifications_selected(settings, category):
+        return False
+    if not push_notifications_allowed(user):
+        return False
+    if push_available is None:
+        # Local import: notification_channels owns the provider registry and
+        # already depends on this policy module.
+        from bot.services.notification_channels import push_provider_available
+
+        return push_provider_available(settings)
+    return bool(push_available)

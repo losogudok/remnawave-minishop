@@ -15,6 +15,13 @@ from bot.middlewares.i18n import JsonI18n
 from bot.services.email_auth_service import EmailAuthService
 from bot.services.email_templates import render_subscription_lifecycle_notification
 from bot.services.message_audit import log_user_message_delivery
+from bot.services.notification_channels import (
+    ChannelOutcomeStatus,
+    NotificationOccurrence,
+    fanout_push_occurrence,
+    occurrence_id_for,
+    plaintext_for_push,
+)
 from bot.services.telegram_notifications import (
     TELEGRAM_NOTIFICATIONS_BLOCKED,
     TELEGRAM_NOTIFICATIONS_ENABLED,
@@ -51,11 +58,12 @@ class SubscriptionNotificationStage:
 class SubscriptionNotificationDelivery:
     telegram_sent: bool = False
     email_sent: bool = False
+    push_sent: bool = False
     retry_channels: tuple[str, ...] = ()
 
     @property
     def any_sent(self) -> bool:
-        return self.telegram_sent or self.email_sent
+        return self.telegram_sent or self.email_sent or self.push_sent
 
     @property
     def needs_retry(self) -> bool:
@@ -173,9 +181,21 @@ class SubscriptionLifecycleNotificationService:
             sent_at=sent_at,
             enabled=plan.email,
         )
+        push_sent = await self._send_push(
+            session,
+            sub,
+            stage,
+            resolved_user,
+            lang=lang,
+            email_message_text=email_message_text,
+            recipient=recipient_email,
+            sent_at=sent_at,
+            enabled=plan.push,
+        )
         return SubscriptionNotificationDelivery(
             telegram_sent=telegram_sent,
             email_sent=email_sent,
+            push_sent=push_sent,
             retry_channels=("telegram",) if telegram_retry else (),
         )
 
@@ -345,6 +365,122 @@ class SubscriptionLifecycleNotificationService:
             ),
             timestamp=sent_at,
         )
+        return True
+
+    def _push_title(self, stage: SubscriptionNotificationStage, lang: str) -> str:
+        """Channel-appropriate push title reusing the email subject strings."""
+
+        if stage.key == "before_2d_autorenew":
+            return self.i18n.gettext(lang, "email_subscription_lifecycle_subject_autorenew")
+        if stage.key == "expired":
+            return self.i18n.gettext(lang, "email_subscription_lifecycle_subject_expired")
+        if stage.key == "expired_24h_after":
+            return self.i18n.gettext(lang, "email_subscription_lifecycle_subject_expired_after")
+        if stage.hours_before is not None:
+            return self.i18n.gettext(
+                lang,
+                "email_subscription_lifecycle_subject_before_hours",
+                hours=stage.hours_before,
+            )
+        if stage.hours_after is not None:
+            return self.i18n.gettext(
+                lang,
+                "email_subscription_lifecycle_subject_expired_after_hours",
+                hours=stage.hours_after,
+            )
+        return self.i18n.gettext(
+            lang,
+            "email_subscription_lifecycle_subject_before_days",
+            days=max(0, int(stage.days_left or 0)),
+        )
+
+    @staticmethod
+    def _period_part(sub: Subscription) -> str | None:
+        end_date = SubscriptionLifecycleNotificationService._as_utc(getattr(sub, "end_date", None))
+        if end_date is None:
+            return None
+        try:
+            return str(int(end_date.timestamp()))
+        except (OverflowError, OSError, ValueError):
+            return end_date.isoformat()
+
+    async def _send_push(
+        self,
+        session: AsyncSession,
+        sub: Subscription,
+        stage: SubscriptionNotificationStage,
+        user: User | None,
+        *,
+        lang: str,
+        email_message_text: str,
+        recipient: str,
+        sent_at: datetime,
+        enabled: bool,
+    ) -> bool:
+        if not enabled or user is None:
+            return False
+        if await self._already_sent(session, sub.subscription_id, stage.key, "push"):
+            return False
+        occurrence = NotificationOccurrence(
+            occurrence_id=occurrence_id_for(
+                "subscription-notice",
+                sub.subscription_id,
+                stage.key,
+                self._period_part(sub),
+            ),
+            category=UserNotificationCategory.SUBSCRIPTIONS,
+            user_id=int(getattr(sub, "user_id", 0) or 0),
+            push_title=self._push_title(stage, lang),
+            push_body=plaintext_for_push(email_message_text),
+            push_url=self._renewal_dashboard_url(recipient, sub),
+        )
+        outcomes = await fanout_push_occurrence(
+            settings=self.settings,
+            user=user,
+            occurrence=occurrence,
+        )
+        sent_destinations = [outcome.destination for outcome in outcomes if outcome.delivered]
+        if not sent_destinations:
+            return False
+        has_failed = any(outcome.status == ChannelOutcomeStatus.FAILED for outcome in outcomes)
+        # Partial device success must not record the coarse stage:push marker:
+        # delivered destinations are suppressed by per-destination fanout dedup
+        # while failed ones stay retryable. Only a fully delivered fan-out
+        # marks the channel complete.
+        if has_failed:
+            for destination in sent_destinations:
+                await log_user_message_delivery(
+                    session,
+                    target_user_id=getattr(sub, "user_id", None),
+                    event_type="push_subscription_notification_sent",
+                    channel="push",
+                    recipient=destination,
+                    content=(
+                        f"stage={stage.key} message_key={stage.message_key} "
+                        f"subscription_id={getattr(sub, 'subscription_id', '')}"
+                    ),
+                    timestamp=sent_at,
+                )
+            return True
+        await subscription_dal.record_subscription_notification(
+            session,
+            sub.subscription_id,
+            self._channel_key(stage.key, "push"),
+            sent_at=sent_at,
+        )
+        for destination in sent_destinations:
+            await log_user_message_delivery(
+                session,
+                target_user_id=getattr(sub, "user_id", None),
+                event_type="push_subscription_notification_sent",
+                channel="push",
+                recipient=destination,
+                content=(
+                    f"stage={stage.key} message_key={stage.message_key} "
+                    f"subscription_id={getattr(sub, 'subscription_id', '')}"
+                ),
+                timestamp=sent_at,
+            )
         return True
 
     async def _already_sent(

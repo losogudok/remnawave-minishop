@@ -19,8 +19,14 @@ from bot.infra.performance import performance_operation
 from bot.infra.redis import redis_lock
 from bot.middlewares.i18n import JsonI18n
 from bot.services.message_audit import log_user_message_delivery
+from bot.services.notification_channels import (
+    occurrence_id_for,
+    plaintext_for_push,
+    push_provider_available,
+)
 from bot.services.panel_api_service import PanelApiService
 from bot.services.subscription_service_impl.core import SubscriptionService
+from bot.services.tariff_worker_shared import deliver_warning_push_only, warning_period_identity
 from bot.services.user_email_notifications import send_user_notification_email
 from bot.services.user_notification_policy import (
     UserNotificationCategory,
@@ -294,7 +300,11 @@ class TariffWorkerCoreMixin:
         return format_traffic_reset_date(value, user_lang)
 
     def _traffic_notice_channels_available(self) -> bool:
-        return bool(self.bot) or bool(getattr(self.settings, "email_auth_configured", False))
+        return (
+            bool(self.bot)
+            or bool(getattr(self.settings, "email_auth_configured", False))
+            or push_provider_available(self.settings)
+        )
 
     def _first_traffic_warning_threshold_ratio(self) -> float:
         levels = [100]
@@ -314,6 +324,16 @@ class TariffWorkerCoreMixin:
         ratio = max(0, int(used_bytes or 0)) / limit
         return ratio < self._first_traffic_warning_threshold_ratio()
 
+    @staticmethod
+    def _reset_push_occurrence_id(
+        subscription_id: int,
+        warning_key: str,
+        period: str | None = None,
+    ) -> str:
+        """Stable push occurrence identity for one traffic reset notice."""
+
+        return occurrence_id_for("traffic-reset", subscription_id, warning_key, period)
+
     async def _send_traffic_reset_notice(
         self,
         session: AsyncSession,
@@ -324,6 +344,7 @@ class TariffWorkerCoreMixin:
         kind: str,
         warning_key: str,
         audit_content: str,
+        period_start_at: datetime | None = None,
     ) -> None:
         user_id = int(getattr(sub, "user_id", 0) or 0)
         if user_id == 0:
@@ -348,6 +369,9 @@ class TariffWorkerCoreMixin:
                 email=None,
                 telegram_notifications_status="unknown",
             )
+        user_lang = str(getattr(user, "language_code", "") or "").strip() or str(
+            self.settings.DEFAULT_LANGUAGE or "ru"
+        )
         chat_id = telegram_recipient(user, user_id)
         plan = user_notification_delivery_plan(
             self.settings,
@@ -378,20 +402,56 @@ class TariffWorkerCoreMixin:
                     user_id,
                 )
 
-        if not plan.email:
-            return
-        dashboard_url = str(getattr(self.settings, "SUBSCRIPTION_MINI_APP_URL", "") or "").strip()
-        await send_user_notification_email(
-            settings=self.settings,
-            i18n=self.i18n,
-            user=user,
-            subject_key=subject_key,
-            message_text=message_text,
-            dashboard_url=dashboard_url or None,
-            session=session,
-            audit_event_type="email_traffic_reset_notice_sent",
-            audit_content=f"{audit_content} subject_key={subject_key} warning_key={warning_key}",
-        )
+        if plan.email:
+            dashboard_url = str(
+                getattr(self.settings, "SUBSCRIPTION_MINI_APP_URL", "") or ""
+            ).strip()
+            await send_user_notification_email(
+                settings=self.settings,
+                i18n=self.i18n,
+                user=user,
+                subject_key=subject_key,
+                message_text=message_text,
+                dashboard_url=dashboard_url or None,
+                session=session,
+                audit_event_type="email_traffic_reset_notice_sent",
+                audit_content=(
+                    f"{audit_content} subject_key={subject_key} warning_key={warning_key}"
+                ),
+            )
+
+        if plan.push:
+            push_title: str | None = None
+            if self.i18n is not None:
+                try:
+                    push_title = str(self.i18n.gettext(user_lang, subject_key))
+                except Exception:
+                    logger.exception(
+                        "TariffTrafficWorker: failed to translate reset notice title for user %s",
+                        user_id,
+                    )
+                    push_title = None
+            await deliver_warning_push_only(
+                session,
+                settings=self.settings,
+                user=user,
+                user_id=user_id,
+                subscription_id=int(getattr(sub, "subscription_id", 0) or 0),
+                text=plaintext_for_push(message_text),
+                audit_content=audit_content,
+                audit_logger=log_user_message_delivery,
+                warning_key=warning_key,
+                level=None,
+                kind=kind,
+                push_title=push_title,
+                event_type="push_traffic_reset_notice_sent",
+                occurrence_id=self._reset_push_occurrence_id(
+                    int(getattr(sub, "subscription_id", 0) or 0),
+                    warning_key,
+                    warning_period_identity(period_start_at),
+                ),
+                logger=logger,
+            )
 
     def _traffic_topup_markup(self, user_lang: str, kind: str) -> InlineKeyboardMarkup | None:
         if not self.bot:

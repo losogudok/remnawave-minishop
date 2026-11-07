@@ -29,6 +29,7 @@ from config.settings_models import (
 )
 from config.settings_telegram import TelegramTransportSettings
 from config.settings_trial import TrialSettings
+from config.settings_web_push import WebPushSettings
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ logger = logging.getLogger(__name__)
 class Settings(
     SettingsComputedMixin,
     AnalyticsSettings,
+    WebPushSettings,
     SettingsValidationMixin,
     AuthenticationSettings,
     InvitationSettings,
@@ -357,6 +359,7 @@ class Settings(
     SUBSCRIPTION_NOTIFICATION_WORKER_TICK_SECONDS: int = Field(default=300)
     USER_NOTIFICATION_PREFERENCES_ENABLED: bool = Field(default=True)
     USER_NOTIFICATION_SINGLE_CHANNEL_FALLBACK_ENABLED: bool = Field(default=True)
+    USER_NOTIFICATION_PUSH_ENABLED: bool = Field(default=True)
     USER_NOTIFICATION_PAYMENTS_TELEGRAM_ENABLED: bool = Field(default=True)
     USER_NOTIFICATION_PAYMENTS_EMAIL_ENABLED: bool = Field(default=True)
     USER_NOTIFICATION_TRAFFIC_TELEGRAM_ENABLED: bool = Field(default=True)

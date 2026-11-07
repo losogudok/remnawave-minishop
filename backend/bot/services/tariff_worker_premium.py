@@ -42,6 +42,8 @@ from .tariff_worker_shared import (
     TARIFF_WORKER_SQUAD_CONFIRMATION_CACHE_TTL_SECONDS,
     fmt_bytes,
     resolve_flexible_limit_baseline,
+    retry_warning_push_if_pending,
+    warning_period_identity,
 )
 
 logger = logging.getLogger(__name__)
@@ -115,6 +117,10 @@ class TariffWorkerPremiumMixin(
         def _traffic_reset_notice_is_reassuring(
             self, used_bytes: int, limit_bytes: int
         ) -> bool: ...
+        @staticmethod
+        def _reset_push_occurrence_id(
+            subscription_id: int, warning_key: str, period: str | None = None
+        ) -> str: ...
         async def _send_traffic_reset_notice(
             self,
             session: AsyncSession,
@@ -125,6 +131,7 @@ class TariffWorkerPremiumMixin(
             kind: str,
             warning_key: str,
             audit_content: str,
+            period_start_at: datetime | None = None,
         ) -> None: ...
         async def _sync_premium_connection_state(
             self,
@@ -678,21 +685,6 @@ class TariffWorkerPremiumMixin(
         )
         if warned_current_period:
             return
-        reset_notice = await tariff_dal.get_warning(
-            session,
-            subscription_id=sub.subscription_id,
-            period_start_at=period_start_at,
-            level=self.PREMIUM_RESET_NOTICE_LEVEL,
-        )
-        if reset_notice:
-            return
-        await tariff_dal.create_warning(
-            session,
-            subscription_id=sub.subscription_id,
-            period_start_at=period_start_at,
-            level=self.PREMIUM_RESET_NOTICE_LEVEL,
-            traffic_limit_bytes=None,
-        )
 
         user_lang = await self._user_lang(session, sub.user_id)
         _ = (
@@ -709,10 +701,49 @@ class TariffWorkerPremiumMixin(
             **usage,
         )
         warning_key = "traffic_reset_premium"
+        subject_key = "email_traffic_reset_premium_subject"
         audit_content = (
             f"kind=premium warning_key={warning_key} used_bytes={int(used)} "
             f"limit_bytes={int(limit)} period_start={period_start_at.isoformat()}"
         )
+        reset_notice = await tariff_dal.get_warning(
+            session,
+            subscription_id=sub.subscription_id,
+            period_start_at=period_start_at,
+            level=self.PREMIUM_RESET_NOTICE_LEVEL,
+        )
+        if reset_notice:
+            # The marker is recorded before delivery: retry a failed push on
+            # later ticks despite the marker.
+            await retry_warning_push_if_pending(
+                session,
+                settings=self.settings,
+                user_id=sub.user_id,
+                subscription_id=sub.subscription_id,
+                text=text,
+                audit_content=audit_content,
+                audit_logger=log_user_message_delivery,
+                warning_key=warning_key,
+                level=None,
+                kind="premium",
+                push_title=_(subject_key),
+                event_type="push_traffic_reset_notice_sent",
+                occurrence_id=self._reset_push_occurrence_id(
+                    sub.subscription_id,
+                    warning_key,
+                    warning_period_identity(period_start_at),
+                ),
+                logger=logger,
+            )
+            return
+        await tariff_dal.create_warning(
+            session,
+            subscription_id=sub.subscription_id,
+            period_start_at=period_start_at,
+            level=self.PREMIUM_RESET_NOTICE_LEVEL,
+            traffic_limit_bytes=None,
+        )
+
         await self._send_traffic_reset_notice(
             session,
             sub=sub,
@@ -721,6 +752,7 @@ class TariffWorkerPremiumMixin(
             kind="premium",
             warning_key=warning_key,
             audit_content=audit_content,
+            period_start_at=period_start_at,
         )
 
     async def _premium_servers_text(self, tariff: _PremiumTariff, translate: Any) -> str:

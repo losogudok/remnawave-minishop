@@ -18,6 +18,11 @@ from bot.infra.event_payloads import (
 )
 from bot.infra.payment_events import build_payment_succeeded_payload
 from bot.keyboards.inline.user_keyboards import get_connect_and_main_keyboard
+from bot.services.notification_channels import (
+    NotificationOccurrence,
+    fanout_push_occurrence,
+    occurrence_id_for,
+)
 from bot.services.partner_commission_service import PartnerCommissionService
 from bot.services.partner_common import currency_scale, minor_to_decimal_string
 from bot.services.payment_fulfillment import (
@@ -26,7 +31,6 @@ from bot.services.payment_fulfillment import (
 )
 from bot.services.user_balance_service import UserBalanceService
 from bot.services.user_notification_policy import (
-    UserNotificationCategory,
     telegram_recipient,
     user_notification_delivery_plan,
 )
@@ -56,26 +60,17 @@ from .entitlement_context import (
 )
 from .independent_success import resolve_independent_payment
 from .success_messages import (
-    _HWID_DEVICE_MODES,
     SuccessMessage,
     append_hwid_renewal_note,
     append_hwid_renewed_note,
     build_success_message,
     is_traffic_sale_base,
 )
+from .success_push import _success_notification_category, send_payment_success_push
 
 logger = logging.getLogger(__name__)
 
 PAYMENT_STATUS_PENDING_FINALIZATION = "succeeded_pending_finalization"
-
-
-def _success_notification_category(sale_mode: str) -> UserNotificationCategory:
-    base = sale_mode_base(sale_mode)
-    if is_traffic_sale_base(base):
-        return UserNotificationCategory.TRAFFIC
-    if base in _HWID_DEVICE_MODES:
-        return UserNotificationCategory.DEVICES
-    return UserNotificationCategory.PAYMENTS
 
 
 async def resolve_user_language(
@@ -142,6 +137,7 @@ async def send_success_message_to_user(
     log_prefix: str = "payment_providers",
     user: User | None = None,
     sale_mode: str = "subscription",
+    payment_db_id: int | None = None,
 ) -> None:
     """Send the rendered success text with the standard connect keyboard."""
     chat_id = telegram_recipient(user, user_id)
@@ -151,29 +147,40 @@ async def send_success_message_to_user(
         user,
         telegram_available=chat_id is not None,
     )
-    if not plan.telegram or chat_id is None or bot is None:
-        return
-    markup = None
-    if include_keyboard:
-        markup = get_connect_and_main_keyboard(
-            language,
-            i18n,
-            settings,
-            config_link_display,
-            connect_button_url=connect_button_url,
-            install_share_url=install_share_url,
-            preserve_message=True,
+    if plan.telegram and chat_id is not None and bot is not None:
+        markup = None
+        if include_keyboard:
+            markup = get_connect_and_main_keyboard(
+                language,
+                i18n,
+                settings,
+                config_link_display,
+                connect_button_url=connect_button_url,
+                install_share_url=install_share_url,
+                preserve_message=True,
+            )
+        try:
+            await bot.send_message(
+                chat_id,
+                text,
+                reply_markup=markup,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+        except Exception:
+            logger.exception("%s: failed to notify user %s.", log_prefix, user_id)
+    if user is not None:
+        await send_payment_success_push(
+            settings=settings,
+            i18n=i18n,
+            user=user,
+            user_id=user_id,
+            language=language,
+            sale_mode=sale_mode,
+            text=text,
+            payment_db_id=payment_db_id,
+            log_prefix=log_prefix,
         )
-    try:
-        await bot.send_message(
-            chat_id,
-            text,
-            reply_markup=markup,
-            parse_mode="HTML",
-            disable_web_page_preview=True,
-        )
-    except Exception:
-        logger.exception("%s: failed to notify user %s.", log_prefix, user_id)
 
 
 @dataclass
@@ -300,6 +307,62 @@ async def _persist_fulfillment_audit(
         )
 
 
+async def _retry_success_push_for_finalized(
+    req: PaymentSuccessRequest,
+    payment: Payment,
+    payment_id: int,
+) -> None:
+    """Best-effort push retry for a repeated succeeded callback.
+
+    Notification work persists independently of fulfillment: the success push
+    uses the stable ``payment-succeeded:{payment_db_id}`` occurrence, so a
+    repeated callback after a crash before fan-out (or after a failed device
+    delivery, whose fanout claim was released) redelivers only to the
+    destinations that never confirmed, via fanout dedup. Already delivered
+    destinations stay suppressed. The generic body carries no secrets.
+    """
+
+    if req.skip_user_notification:
+        return
+    try:
+        user_id = int(getattr(payment, "user_id", 0) or 0)
+        if user_id <= 0:
+            return
+        sale_mode = str(getattr(payment, "sale_mode", "") or req.sale_mode or "subscription")
+        db_user = await user_dal.get_user_by_id(req.session, user_id)
+        if db_user is None:
+            return
+        language = str(getattr(db_user, "language_code", "") or "").strip() or str(
+            getattr(req.settings, "DEFAULT_LANGUAGE", "") or "ru"
+        )
+        translator = make_translator(req.i18n, language)
+        try:
+            push_title = str(translator("email_payment_success_subject"))
+        except Exception:
+            push_title = "Payment received"
+        dashboard_url = (
+            str(getattr(req.settings, "SUBSCRIPTION_MINI_APP_URL", "") or "").strip() or None
+        )
+        await fanout_push_occurrence(
+            settings=req.settings,
+            user=db_user,
+            occurrence=NotificationOccurrence(
+                occurrence_id=occurrence_id_for("payment-succeeded", payment_id),
+                category=_success_notification_category(sale_mode),
+                user_id=int(getattr(db_user, "user_id", 0) or user_id),
+                push_title=push_title,
+                push_body=push_title,
+                push_url=dashboard_url,
+            ),
+        )
+    except Exception:
+        logger.exception(
+            "%s: failed to retry success push for payment %s.",
+            req.log_prefix,
+            payment_id,
+        )
+
+
 async def finalize_successful_payment(
     req: PaymentSuccessRequest,
 ) -> PaymentSuccessOutcome | None:
@@ -322,7 +385,8 @@ async def finalize_successful_payment(
         )
         return None
     payment_id = int(locked_payment.payment_id)
-    if str(locked_payment.status or "").strip().lower() in {
+    normalized_status = str(locked_payment.status or "").strip().lower()
+    if normalized_status in {
         "succeeded",
         "refunded",
         "reversed",
@@ -332,6 +396,11 @@ async def finalize_successful_payment(
             req.log_prefix,
             payment_id,
         )
+        if normalized_status == "succeeded":
+            # Fulfillment is done, but the customer push may have been lost
+            # (crash before fan-out) or partially failed. Retry it via the
+            # independent fanout dedup: delivered stays suppressed.
+            await _retry_success_push_for_finalized(req, locked_payment, payment_id)
         return None
     req.payment = locked_payment
 
@@ -466,6 +535,7 @@ async def finalize_successful_payment(
             log_prefix=req.log_prefix,
             user=db_user,
             sale_mode=req.sale_mode,
+            payment_db_id=payment_id,
         )
         return PaymentSuccessOutcome(
             activation=None,
@@ -880,6 +950,7 @@ async def finalize_successful_payment(
             log_prefix=req.log_prefix,
             user=db_user,
             sale_mode=req.sale_mode,
+            payment_db_id=payment_id,
         )
 
     return PaymentSuccessOutcome(

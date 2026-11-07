@@ -5,6 +5,7 @@ import {
 } from "../authHelpers.js";
 import type { LoadDataOptions } from "../dataClient";
 import type { ApiClient, PostPayload } from "../publicApi";
+import { revokeCurrentPushSubscription } from "../webPush.js";
 import {
   buildAccountEmailVerifyPath,
   buildAccountEmailRequestPath,
@@ -52,6 +53,7 @@ type AccountStoreDeps = {
   updateLocalData: (updatedLanguage: string) => void;
   activateTrial: () => Promise<unknown>;
   claimReferralWelcomeBonus: () => Promise<unknown>;
+  revokePushSubscription?: () => Promise<void>;
 };
 export type AccountState = {
   linkEmailOpen: boolean;
@@ -144,7 +146,10 @@ export function createAccountStore({
   updateLocalData,
   activateTrial,
   claimReferralWelcomeBonus,
+  revokePushSubscription,
 }: AccountStoreDeps) {
+  const revokePush = revokePushSubscription ?? (() => revokeCurrentPushSubscription(api));
+
   const state = $state<AccountStore>({
     linkEmailOpen: false,
     linkEmailBusy: false,
@@ -804,6 +809,18 @@ export function createAccountStore({
     if (telegramSdk.hasLaunchParams()) return;
     markManualLogout();
     clearAdvertisingContext();
+    try {
+      const timeout = new Promise<void>((resolve) => {
+        if (typeof window === "undefined") {
+          resolve();
+          return;
+        }
+        window.setTimeout(resolve, 2000);
+      });
+      await Promise.race([revokePush(), timeout]);
+    } catch {
+      // Push cleanup is best-effort and must never block logout.
+    }
     clearToken();
     try {
       await publicApi(buildAuthLogoutPath(), {

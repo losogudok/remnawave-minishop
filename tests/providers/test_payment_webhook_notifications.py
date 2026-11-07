@@ -786,6 +786,14 @@ class PaymentWebhookNotificationTests(IsolatedAsyncioTestCase):
                 "bot.payment_providers.shared.success.send_success_message_to_user",
                 AsyncMock(),
             ) as send_success,
+            patch(
+                "bot.payment_providers.shared.success.user_dal.get_user_by_id",
+                AsyncMock(return_value=SimpleNamespace(user_id=42, language_code="en")),
+            ),
+            patch(
+                "bot.payment_providers.shared.success.fanout_push_occurrence",
+                AsyncMock(return_value=[]),
+            ) as fanout_push,
         ):
             first = await finalize_successful_payment(request(pending_payment))
             second = await finalize_successful_payment(request(pending_payment))
@@ -798,4 +806,10 @@ class PaymentWebhookNotificationTests(IsolatedAsyncioTestCase):
                 "allow_subscription_end_change"
             ]
         )
+        # The duplicate callback skips fulfillment but still retries the
+        # customer push through the independent fanout dedup.
+        fanout_push.assert_awaited_once()
+        retry_occurrence = fanout_push.await_args.kwargs["occurrence"]
+        self.assertEqual(retry_occurrence.occurrence_id, "payment-succeeded:12")
+        self.assertEqual(retry_occurrence.user_id, 42)
         send_success.assert_awaited_once()

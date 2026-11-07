@@ -3,6 +3,7 @@ import contextlib
 import logging
 import time
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from aiogram import Bot
 from aiogram.utils.text_decorations import html_decoration as hd
@@ -16,6 +17,13 @@ from bot.infra.redis import redis_lock
 from bot.keyboards.inline.user_keyboards import get_subscribe_only_markup
 from bot.middlewares.i18n import JsonI18n
 from bot.services.message_audit import log_user_message_delivery
+from bot.services.notification_channels import (
+    ChannelOutcomeStatus,
+    NotificationOccurrence,
+    fanout_push_occurrence,
+    occurrence_id_for,
+    plaintext_for_push,
+)
 from bot.services.panel_activity import record_subscription_panel_activity
 from bot.services.panel_api_service import PanelApiService
 from bot.services.panel_user_snapshot import load_panel_users_by_reference
@@ -119,6 +127,7 @@ class SubscriptionNotificationWorker:
         delivery_enabled = bool(
             getattr(self.settings, "SUBSCRIPTION_NOTIFICATIONS_ENABLED", True)
             or getattr(self.settings, "SUBSCRIPTION_EMAIL_NOTIFICATIONS_ENABLED", True)
+            or getattr(self.settings, "USER_NOTIFICATION_PUSH_ENABLED", True)
         )
         now = datetime.now(UTC)
         lower = now - EXPIRED_AFTER_NOTIFICATION_WINDOW
@@ -345,6 +354,7 @@ class SubscriptionNotificationWorker:
         if not (
             getattr(self.settings, "USER_NOTIFICATION_TRAFFIC_TELEGRAM_ENABLED", True)
             or getattr(self.settings, "USER_NOTIFICATION_TRAFFIC_EMAIL_ENABLED", True)
+            or getattr(self.settings, "USER_NOTIFICATION_PUSH_ENABLED", True)
         ):
             return
         now = datetime.now(UTC)
@@ -392,7 +402,12 @@ class SubscriptionNotificationWorker:
                 sub.subscription_id,
                 "trial_traffic_depleted:email",
             )
-            if telegram_done and email_done:
+            push_done = await subscription_dal.has_subscription_notification(
+                session,
+                sub.subscription_id,
+                "trial_traffic_depleted:push",
+            )
+            if telegram_done and email_done and push_done:
                 continue
 
             used = int(getattr(sub, "traffic_used_bytes", 0) or 0)
@@ -423,8 +438,9 @@ class SubscriptionNotificationWorker:
                 limit=limit,
                 send_telegram=not telegram_done,
                 send_email=not email_done,
+                send_push=not push_done,
             )
-            if not delivery["telegram"] and not delivery["email"]:
+            if not delivery["telegram"] and not delivery["email"] and not delivery["push"]:
                 continue
             if delivery["telegram"]:
                 await subscription_dal.record_subscription_notification(
@@ -440,6 +456,13 @@ class SubscriptionNotificationWorker:
                     "trial_traffic_depleted:email",
                     sent_at=now,
                 )
+            if delivery["push"]:
+                await subscription_dal.record_subscription_notification(
+                    session,
+                    sub.subscription_id,
+                    "trial_traffic_depleted:push",
+                    sent_at=now,
+                )
 
     async def _send_trial_traffic_depleted(
         self,
@@ -450,6 +473,7 @@ class SubscriptionNotificationWorker:
         limit: int,
         send_telegram: bool = True,
         send_email: bool = True,
+        send_push: bool = True,
     ) -> dict[str, bool]:
         user_id = int(getattr(sub, "user_id", 0) or 0)
         user = getattr(sub, "user", None)
@@ -464,6 +488,7 @@ class SubscriptionNotificationWorker:
         )
         telegram_sent = False
         email_sent = False
+        push_sent = False
         telegram_chat_id = int(getattr(user, "telegram_id", 0) or 0)
         telegram_status = normalize_telegram_notification_status(
             getattr(user, "telegram_notifications_status", None)
@@ -537,7 +562,67 @@ class SubscriptionNotificationWorker:
                     f"used_bytes={used} limit_bytes={limit}"
                 ),
             )
-        return {"telegram": telegram_sent, "email": email_sent}
+        if send_push and plan.push and user:
+            push_sent = await self._send_trial_traffic_push(
+                session,
+                sub,
+                user=user,
+                lang=lang,
+                message_text=message_text,
+                used=used,
+                limit=limit,
+                sent_at=delivery_observed_at,
+            )
+        return {"telegram": telegram_sent, "email": email_sent, "push": push_sent}
+
+    async def _send_trial_traffic_push(
+        self,
+        session: AsyncSession,
+        sub: Subscription,
+        *,
+        user: Any,
+        lang: str,
+        message_text: str,
+        used: int,
+        limit: int,
+        sent_at: datetime,
+    ) -> bool:
+        occurrence = NotificationOccurrence(
+            occurrence_id=occurrence_id_for(
+                "trial-traffic-depleted", getattr(sub, "subscription_id", None)
+            ),
+            category=UserNotificationCategory.TRAFFIC,
+            user_id=int(getattr(sub, "user_id", 0) or 0),
+            push_title=str(self.i18n.gettext(lang, "email_trial_traffic_depleted_subject")),
+            push_body=plaintext_for_push(message_text),
+            push_url=(getattr(self.settings, "SUBSCRIPTION_MINI_APP_URL", "") or None),
+        )
+        outcomes = await fanout_push_occurrence(
+            settings=self.settings,
+            user=user,
+            occurrence=occurrence,
+        )
+        sent_destinations = [outcome.destination for outcome in outcomes if outcome.delivered]
+        if not sent_destinations:
+            return False
+        for destination in sent_destinations:
+            await log_user_message_delivery(
+                session,
+                target_user_id=int(getattr(sub, "user_id", 0) or 0),
+                event_type="push_traffic_warning_sent",
+                channel="push",
+                recipient=destination,
+                content=(
+                    "kind=trial warning_key=trial_traffic_depleted "
+                    f"used_bytes={used} limit_bytes={limit}"
+                ),
+                timestamp=sent_at,
+            )
+        # Partial device success must not mark the coarse trial marker complete:
+        # delivered destinations stay suppressed by per-destination fanout dedup
+        # while failed ones remain retryable. Only report complete when every
+        # destination delivered.
+        return not any(outcome.status == ChannelOutcomeStatus.FAILED for outcome in outcomes)
 
     def _max_before_window(self) -> timedelta:
         days_before = max(0, int(getattr(self.settings, "SUBSCRIPTION_NOTIFY_DAYS_BEFORE", 0) or 0))

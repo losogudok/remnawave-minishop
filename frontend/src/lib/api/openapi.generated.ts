@@ -4386,6 +4386,58 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/plugins/web_push/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Web Push Status */
+    post: operations["post_web_push_status_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/plugins/web_push/subscription": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Web Push Subscribe */
+    post: operations["post_web_push_subscribe_route"];
+    /** Web Push Unsubscribe */
+    delete: operations["delete_web_push_unsubscribe_route"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/plugins/web_push/subscription/sync": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Web Push Sync */
+    post: operations["post_web_push_sync_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/promo/apply": {
     parameters: {
       query?: never;
@@ -9973,6 +10025,16 @@ export interface components {
       marketing_email: boolean;
       /** Marketing Telegram */
       marketing_telegram: boolean;
+      /**
+       * Push
+       * @default true
+       */
+      push: boolean;
+      /**
+       * Push Notifications Enabled
+       * @default true
+       */
+      push_notifications_enabled: boolean;
       /** System Email */
       system_email: boolean;
       /** System Telegram */
@@ -9980,14 +10042,36 @@ export interface components {
     };
     /** NotificationPreferencesPatchBody */
     NotificationPreferencesPatchBody: {
-      /** Marketing Email */
-      marketing_email: boolean;
-      /** Marketing Telegram */
-      marketing_telegram: boolean;
-      /** System Email */
-      system_email: boolean;
-      /** System Telegram */
-      system_telegram: boolean;
+      /**
+       * Marketing Email
+       * @default null
+       */
+      marketing_email: boolean | null;
+      /**
+       * Marketing Telegram
+       * @default null
+       */
+      marketing_telegram: boolean | null;
+      /**
+       * Push
+       * @default null
+       */
+      push: boolean | null;
+      /**
+       * Push Notifications Enabled
+       * @default null
+       */
+      push_notifications_enabled: boolean | null;
+      /**
+       * System Email
+       * @default null
+       */
+      system_email: boolean | null;
+      /**
+       * System Telegram
+       * @default null
+       */
+      system_telegram: boolean | null;
     };
     /**
      * OnboardingSignalDescriptorOut
@@ -11617,6 +11701,73 @@ export interface components {
       source: string | null;
       /** @default null */
       subscription: components["schemas"]["PublicSubscriptionContextOut"] | null;
+    };
+    /** PushDeviceOut */
+    PushDeviceOut: {
+      /**
+       * Created At
+       * @default null
+       */
+      created_at: string | null;
+      /** Current */
+      current: boolean;
+      /** Id */
+      id: string;
+      /** Label */
+      label: string;
+      /**
+       * Last Seen At
+       * @default null
+       */
+      last_seen_at: string | null;
+    };
+    /** PushStatusBody */
+    PushStatusBody: {
+      /**
+       * Endpoint
+       * @default null
+       */
+      endpoint: string | null;
+    };
+    /** PushSubscribeBody */
+    PushSubscribeBody: {
+      /**
+       * Label
+       * @default
+       */
+      label: string;
+      subscription: components["schemas"]["PushSubscriptionBody"];
+    };
+    /** PushSubscriptionBody */
+    PushSubscriptionBody: {
+      /** Endpoint */
+      endpoint: string;
+      /**
+       * Expirationtime
+       * @default null
+       */
+      expirationTime: number | null;
+      keys: components["schemas"]["PushSubscriptionKeysBody"];
+    };
+    /** PushSubscriptionKeysBody */
+    PushSubscriptionKeysBody: {
+      /** Auth */
+      auth: string;
+      /** P256Dh */
+      p256dh: string;
+    };
+    /** PushUnsubscribeBody */
+    PushUnsubscribeBody: {
+      /**
+       * Device Id
+       * @default null
+       */
+      device_id: string | null;
+      /**
+       * Endpoint
+       * @default null
+       */
+      endpoint: string | null;
     };
     /** RepositoryRequest */
     RepositoryRequest: {
@@ -21840,6 +21991,7 @@ export interface operations {
               notification_preferences?: {
                 marketing_email: boolean;
                 marketing_telegram: boolean;
+                push?: boolean;
                 system_email: boolean;
                 system_telegram: boolean;
               };
@@ -22475,6 +22627,141 @@ export interface operations {
         };
         content: {
           "image/webp": string;
+        };
+      };
+    };
+  };
+  post_web_push_status_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PushStatusBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            configured: boolean;
+            current_device_id: string;
+            devices: components["schemas"]["PushDeviceOut"][];
+            /** @constant */
+            ok: true;
+            preference_enabled: boolean;
+            public_key: string;
+            pwa_enabled: boolean;
+          };
+        };
+      };
+    };
+  };
+  post_web_push_subscribe_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PushSubscribeBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            configured: boolean;
+            current_device_id: string;
+            device_id: string;
+            devices: components["schemas"]["PushDeviceOut"][];
+            /** @constant */
+            ok: true;
+            preference_enabled: boolean;
+            public_key: string;
+            pwa_enabled: boolean;
+          };
+        };
+      };
+    };
+  };
+  delete_web_push_unsubscribe_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PushUnsubscribeBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            configured: boolean;
+            current_device_id: string;
+            devices: components["schemas"]["PushDeviceOut"][];
+            /** @constant */
+            ok: true;
+            preference_enabled: boolean;
+            public_key: string;
+            pwa_enabled: boolean;
+            revoked: boolean;
+          };
+        };
+      };
+    };
+  };
+  post_web_push_sync_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PushSubscribeBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            configured: boolean;
+            current_device_id: string;
+            device_id: string;
+            devices: components["schemas"]["PushDeviceOut"][];
+            /** @constant */
+            ok: true;
+            preference_enabled: boolean;
+            public_key: string;
+            pwa_enabled: boolean;
+          };
         };
       };
     };

@@ -120,6 +120,35 @@ describe("accountStore", () => {
     expect(deps.showLogin).toHaveBeenCalled();
   });
 
+  it("revokes the current push subscription before clearing the session token", async () => {
+    const calls: string[] = [];
+    const { store, deps } = makeAccountStore({
+      revokePushSubscription: vi.fn(async () => {
+        calls.push("revoke");
+      }),
+      clearToken: vi.fn(() => {
+        calls.push("clear");
+      }),
+    });
+
+    await store.logout();
+
+    expect(calls).toEqual(["revoke", "clear"]);
+    expect(deps.publicApi).toHaveBeenCalledWith("/auth/logout", { keepalive: true });
+  });
+
+  it("continues logout when push revocation fails", async () => {
+    const { store, deps } = makeAccountStore({
+      revokePushSubscription: vi.fn(async () => {
+        throw new Error("offline");
+      }),
+    });
+
+    await expect(store.logout()).resolves.toBeUndefined();
+    expect(deps.clearToken).toHaveBeenCalled();
+    expect(deps.showLogin).toHaveBeenCalled();
+  });
+
   it("offers explicit merge after a proven Telegram identity belongs to another account", async () => {
     const { store, deps } = makeAccountStore({
       api: vi.fn().mockRejectedValue({ error: "account_merge_required" }),

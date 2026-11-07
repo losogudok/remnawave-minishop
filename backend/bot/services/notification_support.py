@@ -18,6 +18,12 @@ from bot.services.email_templates_common import EmailContent
 from bot.services.message_composition import telegram_markup_for_buttons
 from bot.services.message_image_service import StoredMessageImage, load_message_image
 from bot.services.message_image_telegram import prepare_telegram_photo
+from bot.services.notification_channels import (
+    NotificationOccurrence,
+    fanout_push_occurrence,
+    occurrence_id_for,
+    plaintext_for_push,
+)
 from bot.services.notification_user_context import NotificationUserContextMixin
 from bot.services.support_message_body import (
     BODY_FORMAT_TEXT,
@@ -599,43 +605,65 @@ class NotificationSupportMixin(NotificationUserContextMixin):
             email_available=bool(self.email_auth_service and recipient_email),
         )
         if plan.telegram and chat_id is not None and self.bot is not None:
-            queue_manager = get_queue_manager()
-            if queue_manager:
-                if image is not None:
-                    await self._send_support_photo(chat_id, image)
-                await send_message_via_queue(
-                    queue_manager,
-                    chat_id,
-                    MessageContent(content_type="text", text=text),
-                    parse_mode="HTML",
-                    disable_web_page_preview=True,
-                    reply_markup=keyboard,
-                )
-            else:
-                if image is not None:
-                    await self._send_support_photo(chat_id, image)
-                await self.bot.send_message(
-                    chat_id=chat_id,
-                    text=text,
-                    parse_mode="HTML",
-                    disable_web_page_preview=True,
-                    reply_markup=keyboard,
-                )
+            try:
+                queue_manager = get_queue_manager()
+                if queue_manager:
+                    if image is not None:
+                        await self._send_support_photo(chat_id, image)
+                    await send_message_via_queue(
+                        queue_manager,
+                        chat_id,
+                        MessageContent(content_type="text", text=text),
+                        parse_mode="HTML",
+                        disable_web_page_preview=True,
+                        reply_markup=keyboard,
+                    )
+                else:
+                    if image is not None:
+                        await self._send_support_photo(chat_id, image)
+                    await self.bot.send_message(
+                        chat_id=chat_id,
+                        text=text,
+                        parse_mode="HTML",
+                        disable_web_page_preview=True,
+                        reply_markup=keyboard,
+                    )
+            except Exception:
+                # An earlier channel must never suppress a later one: a
+                # Telegram failure still delivers email and push below.
+                logger.exception("Failed to send support admin reply to Telegram user %s.", chat_id)
         if plan.email and self.email_auth_service and recipient_email:
-            email_image = await image.email_inline() if image is not None else None
-            content = render_support_admin_reply_user(
-                self.settings,
-                self.i18n,
-                getattr(user, "language_code", None),
-                ticket_id=ticket.ticket_id,
-                subject=ticket.subject,
-                body_preview=preview,
-                body_preview_html=self._support_preview_html(message.body, body_format, limit=500),
-                ticket_url=url,
-                image=email_image,
+            try:
+                email_image = await image.email_inline() if image is not None else None
+                content = render_support_admin_reply_user(
+                    self.settings,
+                    self.i18n,
+                    getattr(user, "language_code", None),
+                    ticket_id=ticket.ticket_id,
+                    subject=ticket.subject,
+                    body_preview=preview,
+                    body_preview_html=self._support_preview_html(
+                        message.body, body_format, limit=500
+                    ),
+                    ticket_url=url,
+                    image=email_image,
+                )
+                await self.email_auth_service.send_rendered_email(
+                    email=recipient_email, content=content
+                )
+            except Exception:
+                logger.exception("Failed to send support admin reply email to %s.", recipient_email)
+        try:
+            await self._fanout_support_reply_push(
+                ticket=ticket,
+                message=message,
+                user=user,
+                preview=preview,
+                url=url,
             )
-            await self.email_auth_service.send_rendered_email(
-                email=recipient_email, content=content
+        except Exception:
+            logger.exception(
+                "Failed to fan out support admin reply push for ticket %s.", ticket.ticket_id
             )
 
     async def notify_support_ticket_closed(
@@ -660,33 +688,119 @@ class NotificationSupportMixin(NotificationUserContextMixin):
             email_available=bool(self.email_auth_service and recipient_email),
         )
         if plan.telegram and chat_id is not None and self.bot is not None:
-            queue_manager = get_queue_manager()
-            if queue_manager:
-                await send_message_via_queue(
-                    queue_manager,
-                    chat_id,
-                    MessageContent(content_type="text", text=text),
-                    parse_mode="HTML",
-                    disable_web_page_preview=True,
-                    reply_markup=keyboard,
-                )
-            else:
-                await self.bot.send_message(
-                    chat_id=chat_id,
-                    text=text,
-                    parse_mode="HTML",
-                    disable_web_page_preview=True,
-                    reply_markup=keyboard,
+            try:
+                queue_manager = get_queue_manager()
+                if queue_manager:
+                    await send_message_via_queue(
+                        queue_manager,
+                        chat_id,
+                        MessageContent(content_type="text", text=text),
+                        parse_mode="HTML",
+                        disable_web_page_preview=True,
+                        reply_markup=keyboard,
+                    )
+                else:
+                    await self.bot.send_message(
+                        chat_id=chat_id,
+                        text=text,
+                        parse_mode="HTML",
+                        disable_web_page_preview=True,
+                        reply_markup=keyboard,
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to send support ticket closed notice to Telegram user %s.", chat_id
                 )
         if plan.email and self.email_auth_service and recipient_email:
-            content = render_support_ticket_closed_user(
-                self.settings,
-                self.i18n,
-                getattr(user, "language_code", None),
+            try:
+                content = render_support_ticket_closed_user(
+                    self.settings,
+                    self.i18n,
+                    getattr(user, "language_code", None),
+                    ticket_id=ticket.ticket_id,
+                    subject=ticket.subject,
+                    ticket_url=url,
+                )
+                await self.email_auth_service.send_rendered_email(
+                    email=recipient_email, content=content
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to send support ticket closed email to %s.", recipient_email
+                )
+        try:
+            await self._fanout_support_reply_push(
+                ticket=ticket,
+                message=None,
+                user=user,
+                preview=plaintext_for_push(text),
+                url=url,
+                closed=True,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to fan out support ticket closed push for ticket %s.", ticket.ticket_id
+            )
+
+    async def _fanout_support_reply_push(
+        self,
+        *,
+        ticket: SupportTicket,
+        message: SupportTicketMessage | None,
+        user: User,
+        preview: str,
+        url: str,
+        closed: bool = False,
+    ) -> None:
+        """Mirror a user-facing support notice to push without touching Telegram/email."""
+
+        language = getattr(user, "language_code", None)
+        if closed:
+            closed_at = getattr(ticket, "closed_at", None)
+            closed_at_part: str | None = None
+            if closed_at is not None:
+                try:
+                    closed_at_part = (
+                        closed_at.isoformat()
+                        if hasattr(closed_at, "isoformat")
+                        else (str(closed_at).strip() or None)
+                    )
+                except Exception:
+                    closed_at_part = None
+            occurrence_id = occurrence_id_for(
+                "support-ticket-closed",
+                ticket.ticket_id,
+                getattr(ticket, "change_cursor", None),
+                getattr(ticket, "revision", None),
+                closed_at_part,
+            )
+            title = self._support_text(
+                language,
+                "email_support_ticket_closed_user_subject",
+                "Ticket #{ticket_id} was closed",
                 ticket_id=ticket.ticket_id,
-                subject=ticket.subject,
-                ticket_url=url,
             )
-            await self.email_auth_service.send_rendered_email(
-                email=recipient_email, content=content
+        else:
+            occurrence_id = occurrence_id_for(
+                "support-admin-reply",
+                getattr(message, "message_id", None) or ticket.ticket_id,
             )
+            title = self._support_text(
+                language,
+                "email_support_admin_reply_user_subject",
+                "New reply for ticket #{ticket_id}",
+                ticket_id=ticket.ticket_id,
+            )
+        occurrence = NotificationOccurrence(
+            occurrence_id=occurrence_id,
+            category=UserNotificationCategory.SUPPORT,
+            user_id=int(getattr(user, "user_id", 0) or 0),
+            push_title=title,
+            push_body=plaintext_for_push(preview),
+            push_url=url or None,
+        )
+        await fanout_push_occurrence(
+            settings=self.settings,
+            user=user,
+            occurrence=occurrence,
+        )
