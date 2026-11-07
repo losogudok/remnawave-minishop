@@ -107,6 +107,21 @@ describe("PushNotificationsCard state rendering", () => {
     expect(notConfigured).not.toContain("wa_push_enable");
   });
 
+  it("shows the configured reward only in push states the current browser can use", () => {
+    expect(renderCard("default", configuredStatus, { rewardDays: 5 })).toContain(
+      "wa_setup_push_offer"
+    );
+    expect(renderCard("enabled", configuredStatus, { rewardDays: 5 })).toContain(
+      "wa_setup_push_offer"
+    );
+    expect(renderCard("ios_install", configuredStatus, { rewardDays: 5 })).not.toContain(
+      "wa_setup_push_offer"
+    );
+    expect(renderCard("unsupported", configuredStatus, { rewardDays: 5 })).not.toContain(
+      "wa_setup_push_offer"
+    );
+  });
+
   it.each(["revoked", "expired", "unknown"])(
     "never labels a locally subscribed but server-unconfirmed %s device Active",
     () => {

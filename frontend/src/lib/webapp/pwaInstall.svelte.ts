@@ -365,6 +365,10 @@ export function getPwaInstallSnapshot(): PwaInstallSnapshot {
   };
 }
 
+export function isPwaStandaloneLaunch(): boolean {
+  return detectStandaloneDisplay();
+}
+
 /** Settings action and install cards share the same platform eligibility. */
 export function isPwaInstallAvailable(state: PwaInstallState = pwaInstallState.state): boolean {
   return state !== "installed" && state !== "embedded" && state !== "pwa-disabled";

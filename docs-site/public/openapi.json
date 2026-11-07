@@ -15771,6 +15771,166 @@
         "title": "ServerStatus",
         "type": "object"
       },
+      "SetupRewardClaimBody": {
+        "properties": {
+          "endpoint": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Endpoint"
+          },
+          "rewardType": {
+            "pattern": "^(install|push)$",
+            "title": "Rewardtype",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rewardType"
+        ],
+        "title": "SetupRewardClaimBody",
+        "type": "object"
+      },
+      "SetupRewardInstallEvidenceBody": {
+        "properties": {
+          "standalone": {
+            "title": "Standalone",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "standalone"
+        ],
+        "title": "SetupRewardInstallEvidenceBody",
+        "type": "object"
+      },
+      "SetupRewardOut": {
+        "properties": {
+          "completed": {
+            "title": "Completed",
+            "type": "boolean"
+          },
+          "days": {
+            "default": 0,
+            "title": "Days",
+            "type": "integer"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End Date"
+          },
+          "reward_type": {
+            "title": "Reward Type",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reward_type",
+          "completed",
+          "state"
+        ],
+        "title": "SetupRewardOut",
+        "type": "object"
+      },
+      "SetupRewardsStatusOut": {
+        "properties": {
+          "install_completed": {
+            "title": "Install Completed",
+            "type": "boolean"
+          },
+          "install_days": {
+            "title": "Install Days",
+            "type": "integer"
+          },
+          "install_end_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Install End Date"
+          },
+          "install_reward_days": {
+            "title": "Install Reward Days",
+            "type": "integer"
+          },
+          "install_state": {
+            "title": "Install State",
+            "type": "string"
+          },
+          "push_available": {
+            "title": "Push Available",
+            "type": "boolean"
+          },
+          "push_completed": {
+            "title": "Push Completed",
+            "type": "boolean"
+          },
+          "push_days": {
+            "title": "Push Days",
+            "type": "integer"
+          },
+          "push_end_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Push End Date"
+          },
+          "push_reward_days": {
+            "title": "Push Reward Days",
+            "type": "integer"
+          },
+          "push_state": {
+            "title": "Push State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "install_days",
+          "push_days",
+          "push_available",
+          "install_completed",
+          "push_completed",
+          "install_state",
+          "push_state",
+          "install_reward_days",
+          "push_reward_days"
+        ],
+        "title": "SetupRewardsStatusOut",
+        "type": "object"
+      },
       "StatusGroup": {
         "properties": {
           "id": {
@@ -40663,6 +40823,223 @@
         "summary": "Referral Welcome Bonus Claim",
         "tags": [
           "referral"
+        ]
+      }
+    },
+    "/api/setup-rewards/claim": {
+      "post": {
+        "operationId": "post_setup_reward_claim_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupRewardClaimBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "completed": {
+                      "type": "boolean"
+                    },
+                    "days": {
+                      "type": "integer"
+                    },
+                    "end_date": {
+                      "format": "date-time",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "reward_type": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "reward_type",
+                    "completed",
+                    "state",
+                    "days",
+                    "end_date"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "UserSession": []
+          },
+          {
+            "UserBearer": []
+          }
+        ],
+        "summary": "Setup Reward Claim",
+        "tags": [
+          "setup-rewards"
+        ]
+      }
+    },
+    "/api/setup-rewards/install-evidence": {
+      "post": {
+        "operationId": "post_setup_reward_install_evidence_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupRewardInstallEvidenceBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "completed": {
+                      "type": "boolean"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "completed"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "UserSession": []
+          },
+          {
+            "UserBearer": []
+          }
+        ],
+        "summary": "Setup Reward Install Evidence",
+        "tags": [
+          "setup-rewards"
+        ]
+      }
+    },
+    "/api/setup-rewards/status": {
+      "get": {
+        "operationId": "get_setup_rewards_status_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "install_completed": {
+                      "type": "boolean"
+                    },
+                    "install_days": {
+                      "type": "integer"
+                    },
+                    "install_end_date": {
+                      "format": "date-time",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "install_reward_days": {
+                      "type": "integer"
+                    },
+                    "install_state": {
+                      "type": "string"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "push_available": {
+                      "type": "boolean"
+                    },
+                    "push_completed": {
+                      "type": "boolean"
+                    },
+                    "push_days": {
+                      "type": "integer"
+                    },
+                    "push_end_date": {
+                      "format": "date-time",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "push_reward_days": {
+                      "type": "integer"
+                    },
+                    "push_state": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "install_days",
+                    "push_days",
+                    "push_available",
+                    "install_completed",
+                    "push_completed",
+                    "install_state",
+                    "push_state",
+                    "install_reward_days",
+                    "push_reward_days",
+                    "install_end_date",
+                    "push_end_date"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "UserSession": []
+          },
+          {
+            "UserBearer": []
+          }
+        ],
+        "summary": "Setup Rewards Status",
+        "tags": [
+          "setup-rewards"
         ]
       }
     },

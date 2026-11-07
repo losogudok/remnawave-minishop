@@ -23,7 +23,7 @@ def paid_subscription_period_start(
     strategy: TrialDaysStrategy,
     reserved_until: object = None,
 ) -> datetime:
-    active_end_at = getattr(active_subscription, "end_date", None)
+    active_end_at = utc_date(getattr(active_subscription, "end_date", None))
     if (
         active_subscription is not None
         and active_billing_model != "traffic"

@@ -11,7 +11,6 @@
     Send,
     Server,
     Shield,
-    Smartphone,
     UserRound,
     WalletCards,
   } from "$components/ui/icons.js";
@@ -21,17 +20,12 @@
   import { AttentionDot } from "$components/ui/index.js";
   import { LanguageSelect, ThemeSelect } from "$components/patterns/webapp/index.js";
   import PromoActivationCard from "../PromoActivationCard.svelte";
+  import AccountSetupCard from "../AccountSetupCard.svelte";
   import TelegramNotificationsBanner from "../TelegramNotificationsBanner.svelte";
   import MenuButtonIcon from "../MenuButtonIcon.svelte";
-  import PwaInstallDialog from "../pwa/PwaInstallDialog.svelte";
   import QrLoginApprover from "../security/QrLoginApprover.svelte";
   import { formatMoney } from "$lib/webapp/formatters.js";
   import { shouldShowUserBalance } from "$lib/webapp/balanceUiPolicy.js";
-  import {
-    getPwaInstallSnapshot,
-    isPwaInstallAvailable,
-    reportPwaInstallClicked,
-  } from "$lib/webapp/pwaInstall.svelte.js";
   import {
     documentHref,
     hasInformationDocumentRole,
@@ -39,6 +33,8 @@
   } from "$lib/webapp/informationPages.js";
   import { getPublicDocumentsStore } from "$lib/webapp/context.js";
   import type { ApiClient } from "$lib/webapp/publicApi.js";
+  import type { NotificationPreferences } from "$lib/webapp/notificationPreferences.js";
+  import { normalizeNotificationPreferences } from "$lib/webapp/notificationPreferences.js";
   import { withRoutePrefix } from "$lib/webapp/routes.js";
   import { THEME_PREFERENCE_DEFAULT, type ThemeOption } from "$lib/webapp/themePreference.js";
   import type {
@@ -105,6 +101,9 @@
     openServerStatus?: VoidAction;
     applyPromo?: VoidAction;
     api?: ApiClient["api"];
+    preferences?: NotificationPreferences;
+    onPreferencesSaved?: (preferences: NotificationPreferences) => void;
+    activeAccess?: boolean;
     clearPromoFieldError?: VoidAction;
     setLanguageMenuOpen?: (open: boolean) => void;
     setPromoCode?: StringAction;
@@ -167,6 +166,9 @@
     openServerStatus = () => {},
     applyPromo = () => {},
     api = undefined,
+    preferences = normalizeNotificationPreferences(null),
+    onPreferencesSaved = () => {},
+    activeAccess = false,
     clearPromoFieldError = () => {},
     setLanguageMenuOpen = () => {},
     setPromoCode = () => {},
@@ -187,21 +189,22 @@
   const hasNativeUserAgreement = $derived(
     hasInformationDocumentRole(publicDocuments ?? [], "user_agreement")
   );
-  const pwaInstallSnapshot = $derived(getPwaInstallSnapshot());
-  const pwaInstallVisible = $derived(isPwaInstallAvailable(pwaInstallSnapshot.state));
-  let pwaInstallOpen = $state(false);
-
-  function openPwaInstall(): void {
-    reportPwaInstallClicked("settings");
-    pwaInstallOpen = true;
-  }
-
   onMount(() => {
     void publicDocumentsStore.load();
   });
 </script>
 
 <main class="content with-nav">
+  {#if api}
+    <AccountSetupCard
+      {api}
+      {preferences}
+      {t}
+      {activeAccess}
+      {onPreferencesSaved}
+      signalScreen="settings"
+    />
+  {/if}
   <UserExtensionPoint target="user.settings.profile">
     <Card class="settings-profile">
       <div class="settings-avatar">
@@ -304,7 +307,6 @@
         </span>
         <ArrowRight size={17} />
       </button>
-      <QrLoginApprover bind:this={qrApprover} {api} {t} site={qrLoginSite} />
     {/if}
     {#if notificationPreferencesEnabled}
       <button
@@ -321,27 +323,6 @@
               "wa_notification_preferences_hint",
               {},
               "Choose separately what may be sent to your email and Telegram."
-            )}</small
-          >
-        </span>
-        <ArrowRight size={17} />
-      </button>
-    {/if}
-    {#if pwaInstallVisible}
-      <button
-        data-webapp-action="open-pwa-install"
-        class="settings-row settings-row-pwa-install"
-        type="button"
-        onclick={openPwaInstall}
-      >
-        <Smartphone size={21} />
-        <span>
-          <strong>{t("wa_pwa_install_settings_title", {}, "Install app")}</strong>
-          <small
-            >{t(
-              "wa_pwa_install_settings_hint",
-              {},
-              "Add Minishop to your home screen and open it in one tap."
             )}</small
           >
         </span>
@@ -508,7 +489,9 @@
   {/if}
 </main>
 
-<PwaInstallDialog bind:open={pwaInstallOpen} signalScreen="settings" {t} />
+{#if qrLoginEnabled && api}
+  <QrLoginApprover bind:this={qrApprover} {api} {t} site={qrLoginSite} />
+{/if}
 
 <style>
   .settings-profile-balance {

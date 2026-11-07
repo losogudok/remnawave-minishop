@@ -62,10 +62,14 @@ def _with_tariff_binding_metadata(
 async def get_active_subscription_by_user_id(
     session: AsyncSession, user_id: int, panel_user_uuid: str | None = None
 ) -> Subscription | None:
-    stmt = select(Subscription).where(
-        Subscription.user_id == user_id,
-        Subscription.is_active == True,
-        Subscription.end_date > datetime.now(UTC),
+    stmt = (
+        select(Subscription)
+        .where(
+            Subscription.user_id == user_id,
+            Subscription.is_active == True,
+            Subscription.end_date > datetime.now(UTC),
+        )
+        .execution_options(populate_existing=True)
     )
     if panel_user_uuid:
         stmt = stmt.where(Subscription.panel_user_uuid == panel_user_uuid)
@@ -102,6 +106,7 @@ async def get_active_subscription_by_user_id_for_update(
         )
         .order_by(Subscription.end_date.desc())
         .limit(1)
+        .execution_options(populate_existing=True)
         .with_for_update()
     )
     result = await session.execute(stmt)
@@ -118,6 +123,7 @@ async def get_subscription_by_id_for_update(
         select(Subscription)
         .where(Subscription.subscription_id == int(subscription_id))
         .limit(1)
+        .execution_options(populate_existing=True)
         .with_for_update()
     )
     result = await session.execute(stmt)

@@ -1247,7 +1247,10 @@ test("home actions stay at the viewport bottom when the logo changes size", asyn
     const logoSlot = page.locator(".home-logo-slot");
     const title = page.locator(".home-brand h1");
     const actions = page.locator(".home-bottom");
+    const homeLayout = page.locator("main.home-layout");
+    const setupCard = page.locator(".home-setup-card-wrap .account-setup-card");
     await expect(actions).toBeVisible();
+    await expect(setupCard).toBeVisible();
 
     const bottomEdges: number[] = [];
     for (const scale of [0.75, 1.25, 3]) {
@@ -1259,12 +1262,12 @@ test("home actions stay at the viewport bottom when the logo changes size", asyn
       const slotBox = (await logoSlot.boundingBox())!;
       const titleBox = (await title.boundingBox())!;
       const actionsBox = (await actions.boundingBox())!;
+      const homeLayoutBox = (await homeLayout.boundingBox())!;
+      const setupBox = (await setupCard.boundingBox())!;
       expect(logoBox.y).toBeGreaterThanOrEqual(slotBox.y - 1);
       expect(logoBox.y + logoBox.height).toBeLessThanOrEqual(slotBox.y + slotBox.height + 1);
       expect(titleBox.y + titleBox.height).toBeLessThan(actionsBox.y);
-      expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(
-        viewport.height + 1
-      );
+      expect(homeLayoutBox.y + homeLayoutBox.height).toBeLessThanOrEqual(setupBox.y);
       bottomEdges.push(actionsBox.y + actionsBox.height);
     }
 

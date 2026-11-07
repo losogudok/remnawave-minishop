@@ -7,6 +7,7 @@ import {
   getPwaInstallSnapshot,
   hasPwaOfferBeenShown,
   initPwaInstall,
+  isPwaStandaloneLaunch,
   isPwaInstallAvailable,
   markPwaOfferDismissed,
   markPwaOfferShown,
@@ -214,12 +215,22 @@ describe("pwa install state", () => {
     setup({ ua: DESKTOP_UA, standalone: true });
     initPwaInstall();
     expect(getPwaInstallSnapshot().state).toBe("installed");
+    expect(isPwaStandaloneLaunch()).toBe(true);
     expect(isPwaInstallAvailable()).toBe(false);
 
     resetPwaInstall();
     setup({ ua: IOS_UA, standalone: true });
     initPwaInstall();
     expect(getPwaInstallSnapshot()).toMatchObject({ state: "installed", platform: "ios" });
+    expect(isPwaStandaloneLaunch()).toBe(true);
+  });
+
+  it("does not confuse an installed-app hint with a standalone launch", () => {
+    const { win } = setup({ ua: IOS_UA });
+    initPwaInstall();
+    win.emit("appinstalled", new Event("appinstalled"));
+    expect(getPwaInstallSnapshot()).toMatchObject({ state: "installed", platform: "ios" });
+    expect(isPwaStandaloneLaunch()).toBe(false);
   });
 
   it("uses getInstalledRelatedApps as a best-effort installed hint", async () => {

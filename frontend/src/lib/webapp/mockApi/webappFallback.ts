@@ -112,6 +112,23 @@ export function webappFallbackResponse(
     };
   }
 
+  if (cleanPath === "/setup-rewards/status") {
+    return {
+      ok: true,
+      install_days: 5,
+      push_days: 0,
+      push_available: false,
+      install_completed: false,
+      push_completed: false,
+      install_state: "not_started",
+      push_state: "not_started",
+      install_reward_days: 0,
+      push_reward_days: 0,
+      install_end_date: null,
+      push_end_date: null,
+    };
+  }
+
   if (cleanPath === "/support/tickets" && method === "POST") {
     let payload: DemoRecord = {};
     try {

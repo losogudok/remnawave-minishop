@@ -20,10 +20,10 @@
   import Button from "$components/ui/button.svelte";
   import Card from "$components/ui/card.svelte";
   import TelegramNotificationsBanner from "../TelegramNotificationsBanner.svelte";
-  import PwaInstallOffer from "../pwa/PwaInstallOffer.svelte";
   import ServerStatusCard from "../ServerStatusCard.svelte";
   import HomeCompactSummaryCard from "../HomeCompactSummaryCard.svelte";
   import HomeBalanceCard from "../HomeBalanceCard.svelte";
+  import AccountSetupCard from "../AccountSetupCard.svelte";
   import { LinearProgress } from "$components/patterns/webapp/index.js";
   import { formatTrafficGb } from "../../lib/webapp/formatters.js";
   import { shouldShowUserBalance } from "$lib/webapp/balanceUiPolicy.js";
@@ -61,6 +61,9 @@
     VoidAction,
   } from "$lib/webapp/types.js";
   import type { ServerStatusStore } from "$lib/webapp/stores/serverStatusStore.svelte";
+  import type { ApiClient } from "$lib/webapp/publicApi.js";
+  import type { NotificationPreferences } from "$lib/webapp/notificationPreferences.js";
+  import { normalizeNotificationPreferences } from "$lib/webapp/notificationPreferences.js";
 
   const SUBSCRIPTION_EXPIRY_WARNING_MS = 72 * 60 * 60 * 1000;
   const SUBSCRIPTION_EXPIRING_SOON_MS = 24 * 60 * 60 * 1000;
@@ -71,6 +74,9 @@
 
   let {
     appSettings = {},
+    api = undefined,
+    notificationPreferences = normalizeNotificationPreferences(null),
+    onPreferencesSaved = () => {},
     balance = {} as BalanceView,
     brand = {},
     brandTitle = "",
@@ -114,6 +120,9 @@
     t = (key) => key,
   }: {
     appSettings?: AppSettings;
+    api?: ApiClient["api"];
+    notificationPreferences?: NotificationPreferences;
+    onPreferencesSaved?: (preferences: NotificationPreferences) => void;
     balance?: BalanceView;
     brand?: BrandConfig;
     brandTitle?: string;
@@ -461,7 +470,6 @@
   {/if}
 
   <div class="home-bottom">
-    <PwaInstallOffer signalScreen="home" persistent {t} />
     {#if compactHomeEnabled}
       <UserExtensionPoint target="user.home.summary">
         <HomeCompactSummaryCard
@@ -529,7 +537,9 @@
                     {#if showSubscriptionEnd}
                       <p class="subscription-end-line">
                         {subscriptionEndDisplayText
-                          ? t("wa_until_date", { date: subscriptionEndDisplayText })
+                          ? t("wa_until_date", {
+                              date: subscriptionEndDisplayText,
+                            })
                           : subscription.remaining_text}
                       </p>
                     {/if}
@@ -674,7 +684,9 @@
                   class="card-click-target"
                   type="button"
                   onclick={openPremiumTopupModal}
-                  aria-label={t("wa_add_traffic_premium", { target: premiumTitle(subscription) })}
+                  aria-label={t("wa_add_traffic_premium", {
+                    target: premiumTitle(subscription),
+                  })}
                 ></button>
               {/if}
               <div
@@ -784,12 +796,18 @@
             {trialPaymentEnabled
               ? t(
                   "wa_trial_offer_paid_description",
-                  { duration: trialDurationLabel(), traffic: trialTrafficLabel() },
+                  {
+                    duration: trialDurationLabel(),
+                    traffic: trialTrafficLabel(),
+                  },
                   "Pay once to activate {duration} of trial access with {traffic}."
                 )
               : t(
                   "wa_trial_offer_description",
-                  { duration: trialDurationLabel(), traffic: trialTrafficLabel() },
+                  {
+                    duration: trialDurationLabel(),
+                    traffic: trialTrafficLabel(),
+                  },
                   "Activate a trial: {duration} of access and {traffic} available to download for free."
                 )}
           </p>
@@ -827,12 +845,18 @@
             {trialRequiresTelegram
               ? t(
                   "wa_trial_telegram_required_description",
-                  { duration: trialDurationLabel(), traffic: trialTrafficLabel() },
+                  {
+                    duration: trialDurationLabel(),
+                    traffic: trialTrafficLabel(),
+                  },
                   "To activate a {duration} trial with {traffic}, link Telegram first."
                 )
               : t(
                   "wa_trial_oauth_required_description",
-                  { duration: trialDurationLabel(), traffic: trialTrafficLabel() },
+                  {
+                    duration: trialDurationLabel(),
+                    traffic: trialTrafficLabel(),
+                  },
                   "To activate a {duration} trial with {traffic}, link Telegram or another available login provider first."
                 )}
           </p>
@@ -918,9 +942,26 @@
     </div>
   </div>
 </main>
+{#if subscription.active && api}
+  <div class="home-setup-card-wrap">
+    <AccountSetupCard
+      {api}
+      preferences={notificationPreferences}
+      {onPreferencesSaved}
+      activeAccess={subscription.active}
+      dismissible
+      {t}
+    />
+  </div>
+{/if}
 
 <style>
   :global(.home-bottom > section.status-card) {
     padding-left: 11px;
+  }
+  .home-setup-card-wrap {
+    display: grid;
+    width: min(100%, 560px);
+    margin: 10px auto 34px;
   }
 </style>

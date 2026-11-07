@@ -128,6 +128,7 @@ EXPECTED_CORE_MIGRATION_IDS = [
     "0109_subscription_days_payments",
     "0110_push_notification_preference",
     "0111_broadcast_channel_destinations",
+    "0112_setup_rewards",
 ]
 
 

@@ -31,6 +31,8 @@ class WebPushSettings:
         le=86400,
         description="Push service retention time for queued messages, in seconds.",
     )
+    SETUP_INSTALL_REWARD_DAYS: int = Field(default=0, ge=0, le=3650)
+    SETUP_PUSH_REWARD_DAYS: int = Field(default=0, ge=0, le=3650)
 
     @property
     def web_push_configured(self) -> bool:

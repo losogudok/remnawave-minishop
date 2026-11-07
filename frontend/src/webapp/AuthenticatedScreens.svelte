@@ -20,13 +20,13 @@
   } from "../lib/webapp/themeStyle.js";
 
   import UserExtensions from "./extensions/UserExtensions.svelte";
-  import PwaInstallOffer from "./pwa/PwaInstallOffer.svelte";
   import type { UserNavigationItem } from "$lib/webapp/extensionHost";
   import WebAppShell from "./WebAppShell.svelte";
   import HomeScreen from "./screens/HomeScreen.svelte";
   import ScreenLoading from "./screens/ScreenLoading.svelte";
   import SettingsScreen from "./screens/SettingsScreen.svelte";
   import NotificationSettingsScreen from "./screens/NotificationSettingsScreen.svelte";
+  import { normalizeNotificationPreferences } from "$lib/webapp/notificationPreferences.js";
   import PaymentHistoryScreen from "./screens/PaymentHistoryScreen.svelte";
   import SecurityScreen from "./screens/SecurityScreen.svelte";
   import BalanceTopupDialog from "./payment-dialogs/BalanceTopupDialog.svelte";
@@ -456,16 +456,20 @@
     language={currentLang}
     {t}
     {routePrefix}
-    context={{ screen, subscription, ticketId: supportStore.openedTicketId || null }}
+    context={{
+      screen,
+      subscription,
+      ticketId: supportStore.openedTicketId || null,
+    }}
     bind:navigation={extensionNavigation}
     bind:parentSection={extensionParent}
     bind:sections={extensionSections}
   >
-    {#if screen !== "home"}
-      <PwaInstallOffer signalScreen={screen === "settings" ? "settings" : "home"} {t} />
-    {/if}
     {#if screen === "home"}
       <HomeScreen
+        {api}
+        notificationPreferences={normalizeNotificationPreferences(user.notification_preferences)}
+        onPreferencesSaved={(next) => (user.notification_preferences = next)}
         {appSettings}
         {balance}
         {brand}
@@ -631,6 +635,9 @@
     {:else if screen === "settings"}
       <SettingsScreen
         {api}
+        preferences={normalizeNotificationPreferences(user.notification_preferences)}
+        onPreferencesSaved={(next) => (user.notification_preferences = next)}
+        activeAccess={Boolean(subscription?.active)}
         qrLoginEnabled={(
           (appSettings.auth_providers || appSettings.authProviders || []) as string[]
         ).includes("qr")}

@@ -4489,6 +4489,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/setup-rewards/claim": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Setup Reward Claim */
+    post: operations["post_setup_reward_claim_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/setup-rewards/install-evidence": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Setup Reward Install Evidence */
+    post: operations["post_setup_reward_install_evidence_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/setup-rewards/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Setup Rewards Status */
+    get: operations["get_setup_rewards_status_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/status": {
     parameters: {
       query?: never;
@@ -11902,6 +11953,71 @@ export interface components {
        * @default null
        */
       updatedAt: string | null;
+    };
+    /** SetupRewardClaimBody */
+    SetupRewardClaimBody: {
+      /**
+       * Endpoint
+       * @default null
+       */
+      endpoint: string | null;
+      /** Rewardtype */
+      rewardType: string;
+    };
+    /** SetupRewardInstallEvidenceBody */
+    SetupRewardInstallEvidenceBody: {
+      /** Standalone */
+      standalone: boolean;
+    };
+    /** SetupRewardOut */
+    SetupRewardOut: {
+      /** Completed */
+      completed: boolean;
+      /**
+       * Days
+       * @default 0
+       */
+      days: number;
+      /**
+       * End Date
+       * @default null
+       */
+      end_date: string | null;
+      /** Reward Type */
+      reward_type: string;
+      /** State */
+      state: string;
+    };
+    /** SetupRewardsStatusOut */
+    SetupRewardsStatusOut: {
+      /** Install Completed */
+      install_completed: boolean;
+      /** Install Days */
+      install_days: number;
+      /**
+       * Install End Date
+       * @default null
+       */
+      install_end_date: string | null;
+      /** Install Reward Days */
+      install_reward_days: number;
+      /** Install State */
+      install_state: string;
+      /** Push Available */
+      push_available: boolean;
+      /** Push Completed */
+      push_completed: boolean;
+      /** Push Days */
+      push_days: number;
+      /**
+       * Push End Date
+       * @default null
+       */
+      push_end_date: string | null;
+      /** Push Reward Days */
+      push_reward_days: number;
+      /** Push State */
+      push_state: string;
     };
     /** StatusGroup */
     StatusGroup: {
@@ -22939,6 +23055,103 @@ export interface operations {
             end_date_text: string | null;
             /** @constant */
             ok: true;
+          };
+        };
+      };
+    };
+  };
+  post_setup_reward_claim_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetupRewardClaimBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            completed: boolean;
+            days: number;
+            /** Format: date-time */
+            end_date: string | null;
+            /** @constant */
+            ok: true;
+            reward_type: string;
+            state: string;
+          };
+        };
+      };
+    };
+  };
+  post_setup_reward_install_evidence_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetupRewardInstallEvidenceBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            completed: boolean;
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  get_setup_rewards_status_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            install_completed: boolean;
+            install_days: number;
+            /** Format: date-time */
+            install_end_date: string | null;
+            install_reward_days: number;
+            install_state: string;
+            /** @constant */
+            ok: true;
+            push_available: boolean;
+            push_completed: boolean;
+            push_days: number;
+            /** Format: date-time */
+            push_end_date: string | null;
+            push_reward_days: number;
+            push_state: string;
           };
         };
       };

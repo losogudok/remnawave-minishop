@@ -26,7 +26,7 @@
     type WebPushStatus,
     type WebPushUiState,
   } from "$lib/webapp/webPush.js";
-  import { getPwaInstallSnapshot } from "$lib/webapp/pwaInstall.svelte.js";
+  import { getPwaInstallSnapshot, isPwaStandaloneLaunch } from "$lib/webapp/pwaInstall.svelte.js";
   import type { NotificationPreferences } from "$lib/webapp/notificationPreferences.js";
   import type { ApiClient } from "$lib/webapp/publicApi.js";
   import type { Translate } from "$lib/webapp/types.js";
@@ -41,6 +41,8 @@
     ) => Promise<boolean | void> | boolean | void;
     initialStatus?: WebPushStatus | null;
     initialState?: WebPushUiState;
+    onEnabled?: () => void | Promise<void>;
+    rewardDays?: number;
   };
 
   let {
@@ -51,6 +53,8 @@
     onPreferencesChange = undefined,
     initialStatus = null,
     initialState = undefined,
+    onEnabled = undefined,
+    rewardDays = 0,
   }: Props = $props();
 
   let loadedStatus = $state<WebPushStatus | null>(null);
@@ -79,7 +83,7 @@
       permission: pushPermissionState(),
       pwaEnabled: snapshot.state !== "pwa-disabled",
       embedded: snapshot.state === "embedded",
-      iosNotInstalled: snapshot.platform === "ios" && snapshot.state !== "installed",
+      iosNotInstalled: snapshot.platform === "ios" && !isPwaStandaloneLaunch(),
     };
   }
 
@@ -181,6 +185,7 @@
       }
       serviceWorkerRegistered = true;
       applyUiState();
+      await onEnabled?.();
     } catch {
       message = t("wa_push_enable_failed", {}, "Could not enable notifications.");
       messageIsError = true;
@@ -335,6 +340,12 @@
     {/if}
   </div>
 
+  {#if rewardDays > 0 && ["default", "disabled", "enabled"].includes(uiState)}
+    <p class="push-notifications-card__reward">
+      {t("wa_setup_push_offer", { days: rewardDays })}
+    </p>
+  {/if}
+
   {#if uiState === "enabled"}
     <p class="push-notifications-card__status">
       {t("wa_push_enabled_status", {}, "Active — this device receives notifications.")}
@@ -427,7 +438,9 @@
   {/if}
 
   {#if message}
-    <p class="push-notifications-card__message" class:is-error={messageIsError}>{message}</p>
+    <p class="push-notifications-card__message" class:is-error={messageIsError}>
+      {message}
+    </p>
   {/if}
 
   {#if initialized && status?.configured}
@@ -476,6 +489,13 @@
     color: var(--muted);
     font-size: 12px;
     line-height: 1.45;
+  }
+
+  .push-notifications-card__reward {
+    margin: 0;
+    color: var(--accent);
+    font-size: 12px;
+    line-height: 1.4;
   }
 
   .push-notifications-card__icon {

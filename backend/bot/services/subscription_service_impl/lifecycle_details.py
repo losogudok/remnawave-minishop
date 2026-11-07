@@ -1,7 +1,9 @@
+import inspect
 import logging
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.services.panel_activity import (
@@ -18,6 +20,7 @@ from bot.utils.traffic_reset import (
     traffic_accounting_period_start,
 )
 from db.dal import subscription_dal, tariff_dal, user_dal
+from db.setup_reward_models import SetupReward
 
 from ._typing import SubscriptionServiceMixinContract
 from .entitlement_helpers import subscription_is_trial
@@ -41,6 +44,7 @@ class SubscriptionLifecycleDetailsMixin(SubscriptionServiceMixinContract):
         local_active_sub = await subscription_dal.get_active_subscription_by_user_id(
             session, user_id, panel_user_uuid
         )
+        local_end_date_at_lookup = local_active_sub.end_date if local_active_sub else None
         if prefer_local:
             if local_active_sub is None:
                 return None
@@ -111,6 +115,27 @@ class SubscriptionLifecycleDetailsMixin(SubscriptionServiceMixinContract):
                 {"lifetime_used_traffic_bytes": panel_lifetime_used},
             )
 
+        pending_reward_end_date: datetime | None = None
+        fresh_entitlement_end_date: datetime | None = None
+        panel_refresh_stale = False
+        if local_active_sub:
+            await user_dal.lock_user_entitlement(session, user_id)
+            fresh_active_sub = await subscription_dal.get_subscription_by_id_for_update(
+                session, int(local_active_sub.subscription_id)
+            )
+            if fresh_active_sub is None:
+                local_active_sub = None
+            else:
+                local_active_sub = fresh_active_sub
+                fresh_entitlement_end_date = local_active_sub.end_date
+                old_end = local_end_date_at_lookup
+                if old_end is not None:
+                    if old_end.tzinfo is None:
+                        old_end = old_end.replace(tzinfo=UTC)
+                    new_end = local_active_sub.end_date
+                    if new_end.tzinfo is None:
+                        new_end = new_end.replace(tzinfo=UTC)
+                    panel_refresh_stale = new_end > old_end
         if local_active_sub:
             await record_subscription_panel_activity(session, local_active_sub, panel_user_data)
             update_payload_local = {}
@@ -122,11 +147,36 @@ class SubscriptionLifecycleDetailsMixin(SubscriptionServiceMixinContract):
             panel_sub_uuid_from_panel = panel_user_data.get(
                 "subscriptionUuid"
             ) or panel_user_data.get("shortUuid")
+            pending_result = await session.scalars(
+                select(SetupReward.target_end_date).where(
+                    SetupReward.user_id == user_id,
+                    SetupReward.subscription_id == local_active_sub.subscription_id,
+                    SetupReward.state == "pending",
+                    SetupReward.target_end_date.is_not(None),
+                )
+            )
+            pending_values = pending_result.all()
+            if inspect.isawaitable(pending_values):
+                pending_values = await pending_values
+            normalized_targets = [
+                target.replace(tzinfo=UTC) if target.tzinfo is None else target
+                for target in pending_values
+                if target is not None
+            ]
+            if normalized_targets:
+                pending_reward_end_date = max(normalized_targets)
 
-            if local_active_sub.status_from_panel != panel_status:
+            if not panel_refresh_stale and local_active_sub.status_from_panel != panel_status:
                 update_payload_local["status_from_panel"] = panel_status
+            panel_expire_dt: datetime | None = None
             if panel_expire_at_str:
                 panel_expire_dt = datetime.fromisoformat(panel_expire_at_str.replace("Z", "+00:00"))
+                panel_expire_dt = max(
+                    panel_expire_dt,
+                    local_active_sub.end_date,
+                )
+                if pending_reward_end_date is not None:
+                    panel_expire_dt = max(panel_expire_dt, pending_reward_end_date)
                 if local_active_sub.end_date.replace(microsecond=0) != panel_expire_dt.replace(
                     microsecond=0
                 ):
@@ -148,10 +198,14 @@ class SubscriptionLifecycleDetailsMixin(SubscriptionServiceMixinContract):
             ):
                 update_payload_local["panel_subscription_uuid"] = panel_sub_uuid_from_panel
 
-            is_active_based_on_panel = panel_status_means_active(panel_status) and (
-                panel_expire_dt > now if panel_expire_dt else False
+            active_until = panel_expire_dt or datetime.min.replace(tzinfo=UTC)
+            pending_reward_keeps_access = bool(
+                pending_reward_end_date and pending_reward_end_date > now
             )
-            if local_active_sub.is_active != is_active_based_on_panel:
+            is_active_based_on_panel = (
+                panel_status_means_active(panel_status) and active_until > now
+            ) or pending_reward_keeps_access
+            if not panel_refresh_stale and local_active_sub.is_active != is_active_based_on_panel:
                 update_payload_local["is_active"] = is_active_based_on_panel
 
             if update_payload_local:
@@ -164,6 +218,13 @@ class SubscriptionLifecycleDetailsMixin(SubscriptionServiceMixinContract):
             if panel_user_data.get("expireAt")
             else None
         )
+        if pending_reward_end_date is not None:
+            panel_end_date = max(panel_end_date or pending_reward_end_date, pending_reward_end_date)
+        if panel_refresh_stale and fresh_entitlement_end_date is not None:
+            panel_end_date = max(
+                panel_end_date or fresh_entitlement_end_date,
+                fresh_entitlement_end_date,
+            )
         panel_traffic_used, panel_traffic_limit, panel_traffic_strategy = (
             self._extract_panel_traffic_details(panel_user_data)
         )

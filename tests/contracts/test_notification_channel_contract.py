@@ -75,7 +75,7 @@ def test_unknown_channels_never_resolve_or_enable_email():
 
 def test_push_preference_model_and_migration_present():
     assert hasattr(UserNotificationPreferenceColumns, "push_notifications_enabled")
-    assert MIGRATIONS[-1].id == "0111_broadcast_channel_destinations"
+    assert MIGRATIONS[-1].id == "0112_setup_rewards"
     assert "0110_push_notification_preference" in [migration.id for migration in MIGRATIONS]
 
 

@@ -7,6 +7,8 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import ANY, AsyncMock, patch
 
+import pytest
+
 from bot.app.web.webapp import billing_payments
 from bot.payment_providers.shared.callbacks import (
     PaymentCallbackParts,
@@ -16,6 +18,7 @@ from bot.payment_providers.shared.entitlement_context import (
     EntitlementPreflightStatus,
     build_entitlement_context_snapshot,
     parse_entitlement_context_snapshot,
+    pending_setup_reward_explains_end_change,
     preflight_payment_entitlement,
 )
 from bot.payment_providers.shared.success import (
@@ -100,6 +103,33 @@ def test_subscription_checkout_context_rejects_a_changed_end_date() -> None:
     assert preflight_payment_entitlement(
         payment, subscription, allow_subscription_end_change=True
     ).allowed
+
+
+def test_pending_setup_reward_is_the_only_allowed_checkout_expiry_change() -> None:
+    quoted_end = datetime(2026, 9, 29, 8, 10, tzinfo=UTC)
+    reward_end = quoted_end + timedelta(days=5)
+    payment = _payment(sale_mode="subscription@pro")
+    payment.checkout_bundle_snapshot = json.dumps(
+        {
+            "version": 2,
+            "items": [],
+            "active_context": {"subscription_id": 11, "end_at": quoted_end.isoformat()},
+        }
+    )
+    subscription = _subscription(11, "pro")
+    subscription.end_date = reward_end
+    reward = SimpleNamespace(accepted_days=5, target_end_date=reward_end)
+
+    rejected = preflight_payment_entitlement(payment, subscription)
+    assert not rejected.allowed
+    assert rejected.reason == "active_subscription_end_changed"
+    assert pending_setup_reward_explains_end_change(payment, subscription, [reward])
+
+    subscription.end_date = reward_end + timedelta(days=30)
+    assert not pending_setup_reward_explains_end_change(payment, subscription, [reward])
+    subscription.end_date = reward_end
+    subscription.subscription_id = 12
+    assert not pending_setup_reward_explains_end_change(payment, subscription, [reward])
     subscription.tariff_key = "other"
     assert not preflight_payment_entitlement(
         payment, subscription, allow_subscription_end_change=True
@@ -113,6 +143,33 @@ def test_subscription_checkout_context_rejects_a_changed_end_date() -> None:
     subscription.end_date = None
     assert not preflight_payment_entitlement(
         payment, subscription, allow_subscription_end_change=True
+    ).allowed
+
+
+def test_bound_trial_checkout_can_switch_to_paid_tariff_after_reward_expiry_change() -> None:
+    quoted_end = datetime(2026, 9, 29, 8, 10, tzinfo=UTC)
+    payment = _payment(sale_mode="subscription@pro")
+    payment.checkout_bundle_snapshot = json.dumps(
+        {
+            "version": 2,
+            "items": [],
+            "active_context": {"subscription_id": 11, "end_at": quoted_end.isoformat()},
+        }
+    )
+    trial_subscription = SimpleNamespace(
+        subscription_id=11,
+        tariff_key=None,
+        provider="trial",
+        end_date=quoted_end + timedelta(days=5),
+    )
+
+    stale = preflight_payment_entitlement(payment, trial_subscription)
+    assert not stale.allowed
+    assert stale.reason == "active_subscription_end_changed"
+    assert preflight_payment_entitlement(
+        payment,
+        trial_subscription,
+        allow_subscription_end_change=True,
     ).allowed
 
 
@@ -615,3 +672,120 @@ def test_generic_finalizer_lets_the_tribute_subscription_webhook_through() -> No
     subscription_service.activate_subscription.assert_awaited_once()
     # The exempted path does not even take the entitlement lock.
     lock_subscription.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("secondary_snapshot_kind", "expected_to_activate"),
+    [
+        ("valid", True),
+        ("trial_to_paid", True),
+        ("malformed", False),
+        ("other_subscription", False),
+        ("other_tariff", False),
+    ],
+)
+def test_finalizer_only_allows_pending_reward_with_valid_entitlement_context(
+    secondary_snapshot_kind: str,
+    expected_to_activate: bool,
+) -> None:
+    quoted_end = datetime(2026, 9, 29, 8, 10, tzinfo=UTC)
+    reward_end = quoted_end + timedelta(days=5)
+    payment = _payment(sale_mode="subscription@pro")
+    payment.subscription_duration_months = 1
+    payment.provider = "stripe"
+    payment.checkout_bundle_snapshot = json.dumps(
+        {
+            "version": 2,
+            "items": [],
+            "active_context": {"subscription_id": 11, "end_at": quoted_end.isoformat()},
+        }
+    )
+    active_subscription = SimpleNamespace(
+        subscription_id=11,
+        tariff_key="pro",
+        end_date=reward_end,
+        provider="stripe",
+        auto_renew_enabled=False,
+    )
+    if secondary_snapshot_kind == "trial_to_paid":
+        active_subscription.tariff_key = None
+        active_subscription.provider = "trial"
+        payment.entitlement_context_snapshot = None
+    elif secondary_snapshot_kind == "malformed":
+        payment.entitlement_context_snapshot = "{malformed-json"
+    else:
+        snapshot_subscription = active_subscription
+        if secondary_snapshot_kind == "other_subscription":
+            snapshot_subscription = SimpleNamespace(subscription_id=12, tariff_key="pro")
+        elif secondary_snapshot_kind == "other_tariff":
+            payment.entitlement_context_snapshot = json.dumps(
+                {
+                    "active_subscription_id": 11,
+                    "active_tariff_key": "other",
+                    "target_tariff_key": "pro",
+                    "version": 1,
+                }
+            )
+        if secondary_snapshot_kind != "other_tariff":
+            payment.entitlement_context_snapshot = build_entitlement_context_snapshot(
+                sale_mode="subscription@pro",
+                active_subscription=snapshot_subscription,
+                bind_to_active_subscription=True,
+            )
+    pending_reward = SimpleNamespace(accepted_days=5, target_end_date=reward_end)
+    session = AsyncMock()
+    session.scalars.return_value = SimpleNamespace(all=lambda: [pending_reward])
+    subscription_service = SimpleNamespace(
+        activate_subscription=AsyncMock(side_effect=_ReachedActivation())
+    )
+    update_status = AsyncMock(return_value=payment)
+
+    with (
+        patch("db.dal.gift_dal.activating_for_user", AsyncMock(return_value=None)),
+        patch(
+            "bot.payment_providers.shared.success.payment_dal.get_payment_by_db_id_for_update",
+            AsyncMock(return_value=payment),
+        ),
+        patch(
+            "bot.payment_providers.shared.success.user_dal.lock_user_by_id",
+            AsyncMock(return_value=SimpleNamespace(user_id=42)),
+        ),
+        patch(
+            "bot.payment_providers.shared.success."
+            "subscription_dal.get_active_subscription_by_user_id_for_update",
+            AsyncMock(return_value=active_subscription),
+        ),
+        patch(
+            "bot.payment_providers.shared.success.payment_dal.update_payment_status_by_db_id",
+            update_status,
+        ),
+    ):
+        outcome = asyncio.run(
+            finalize_successful_payment(
+                PaymentSuccessRequest(
+                    bot=SimpleNamespace(),
+                    settings=SimpleNamespace(DEFAULT_LANGUAGE="en"),
+                    i18n=SimpleNamespace(),
+                    session=session,
+                    subscription_service=subscription_service,
+                    referral_service=SimpleNamespace(),
+                    payment=payment,
+                    user_id=42,
+                    amount=100,
+                    currency="RUB",
+                    sale_mode="subscription@pro",
+                    months=1,
+                    traffic_amount=None,
+                    provider_subscription="stripe",
+                    provider_notification="stripe",
+                )
+            )
+        )
+
+    assert outcome is None
+    session.scalars.assert_awaited_once()
+    if expected_to_activate:
+        subscription_service.activate_subscription.assert_awaited_once()
+    else:
+        subscription_service.activate_subscription.assert_not_awaited()
+        update_status.assert_awaited_once_with(session, 12, "activation_failed")

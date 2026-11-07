@@ -71,12 +71,18 @@ def test_plugin_web_routes_and_contracts_registered():
     assert ("POST", "/api/plugins/web_push/subscription") in routes
     assert ("POST", "/api/plugins/web_push/subscription/sync") in routes
     assert ("DELETE", "/api/plugins/web_push/subscription") in routes
+    assert ("GET", "/api/setup-rewards/status") in routes
+    assert ("POST", "/api/setup-rewards/install-evidence") in routes
+    assert ("POST", "/api/setup-rewards/claim") in routes
     contracts = get_contracts()
     for handler in (
         "web_push_status_route",
         "web_push_subscribe_route",
         "web_push_sync_route",
         "web_push_unsubscribe_route",
+        "setup_rewards_status_route",
+        "setup_reward_install_evidence_route",
+        "setup_reward_claim_route",
     ):
         assert handler in contracts
         assert contracts[handler].security == USER_SECURITY

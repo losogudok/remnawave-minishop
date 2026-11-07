@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import inspect
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.services.referral_accruals import utc_date
 from bot.services.subscription_order_terms import gift_tariff
 from config.tariffs_config import default_currency_key_for_settings
 from db.dal import subscription_dal, tariff_dal, user_dal
+from db.setup_reward_models import SetupReward
 
 from . import entitlement_helpers
 from ._typing import SubscriptionServiceMixinContract
@@ -18,6 +21,72 @@ logger = logging.getLogger(__name__)
 
 
 class SubscriptionLifecycleExtensionMixin(SubscriptionServiceMixinContract):
+    async def extend_subscription_reward_expiration(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        subscription_id: int,
+        target_end_date: datetime,
+    ) -> datetime | None:
+        """Extend only an existing entitlement's expiry for a setup reward.
+
+        This deliberately avoids the general bonus path: no tariff tags,
+        provider/reason changes, traffic or device limits, or subscription
+        creation. The absolute expiry makes retries idempotent after an
+        ambiguous panel response.
+        """
+
+        await user_dal.lock_user_entitlement(session, user_id)
+        user = await user_dal.get_user_by_id(session, user_id)
+        active_sub = await subscription_dal.get_active_subscription_by_user_id(session, user_id)
+        if (
+            user is None
+            or active_sub is None
+            or int(active_sub.subscription_id) != int(subscription_id)
+        ):
+            return None
+        panel_uuid = str(getattr(user, "panel_user_uuid", "") or "").strip()
+        if not panel_uuid or str(active_sub.panel_user_uuid or "") != panel_uuid:
+            return None
+
+        now = datetime.now(UTC)
+        current_end = utc_date(active_sub.end_date)
+        reserved_until = utc_date(getattr(user, "period_accrual_reserved_until", None))
+        target = max(
+            utc_date(target_end_date) or now,
+            current_end or now,
+            reserved_until or now,
+        )
+        updated_sub = await subscription_dal.update_subscription_end_date(
+            session, int(active_sub.subscription_id), target
+        )
+        if updated_sub is None:
+            return None
+
+        expected_payload = self._build_panel_update_payload(
+            expire_at=target,
+            include_uuid=False,
+            include_default_squads=False,
+        )
+        try:
+            panel_result = await self.panel_service.update_user_details_on_panel(
+                panel_uuid,
+                expected_payload,
+            )
+        except Exception:
+            logger.exception(
+                "Panel expiry update failed for setup reward of user %s.",
+                user_id,
+            )
+            return None
+        confirmed_user = await self._confirmed_panel_entitlement(
+            panel_uuid,
+            panel_result,
+            expected_payload,
+            source="setup_reward",
+        )
+        return target if confirmed_user is not None else None
+
     async def extend_active_subscription_days(
         self,
         session: AsyncSession,
@@ -28,6 +97,8 @@ class SubscriptionLifecycleExtensionMixin(SubscriptionServiceMixinContract):
         tariff_key: str | None = None,
         apply_tariff_hwid_limit: bool = False,
         target_end_date: datetime | None = None,
+        require_active_subscription: bool = False,
+        expected_subscription_id: int | None = None,
     ) -> datetime | None:
         reason_lower = (reason or "").lower()
         apply_main_traffic_limit = any(
@@ -42,6 +113,34 @@ class SubscriptionLifecycleExtensionMixin(SubscriptionServiceMixinContract):
 
         previous_panel_user_uuid = getattr(user, "panel_user_uuid", None)
         active_sub = await subscription_dal.get_active_subscription_by_user_id(session, user_id)
+        if require_active_subscription and (
+            active_sub is None
+            or (
+                expected_subscription_id is not None
+                and int(active_sub.subscription_id) != expected_subscription_id
+            )
+        ):
+            return None
+        pending_reward_until = None
+        if active_sub is not None:
+            pending_result = await session.scalars(
+                select(SetupReward.target_end_date).where(
+                    SetupReward.user_id == user_id,
+                    SetupReward.subscription_id == active_sub.subscription_id,
+                    SetupReward.accepted_days.is_not(None),
+                    SetupReward.target_end_date.is_not(None),
+                    SetupReward.state == "pending",
+                )
+            )
+            pending_values = pending_result.all()
+            if inspect.isawaitable(pending_values):
+                pending_values = await pending_values
+            pending_reward_dates = [
+                utc_date(value) for value in pending_values if value is not None
+            ]
+            pending_reward_until = max(
+                (value for value in pending_reward_dates if value is not None), default=None
+            )
         active_is_trial = entitlement_helpers.subscription_is_trial(active_sub)
         rollback_payload: dict[str, Any] | None = None
         hwid_extension_context: tuple[int, datetime, datetime] | None = None
@@ -92,7 +191,10 @@ class SubscriptionLifecycleExtensionMixin(SubscriptionServiceMixinContract):
             )
             initial_tariff = bonus_tariff
         else:
-            current_end_date = active_sub.end_date
+            current_end_date = max(
+                active_sub.end_date,
+                pending_reward_until or active_sub.end_date,
+            )
             start_point_for_bonus = current_end_date if current_end_date > now_utc else now_utc
             new_end_date_obj = start_point_for_bonus + timedelta(days=bonus_days)
             initial_traffic_limit = int(active_sub.traffic_limit_bytes or 0)
@@ -120,10 +222,19 @@ class SubscriptionLifecycleExtensionMixin(SubscriptionServiceMixinContract):
             new_end_date_obj = max(
                 utc_date(target_end_date) or now_utc,
                 utc_date(getattr(active_sub, "end_date", None)) or now_utc,
+                pending_reward_until or now_utc,
                 reserved_until or now_utc,
             )
         elif reserved_until is not None:
-            new_end_date_obj = max(new_end_date_obj, reserved_until + timedelta(days=bonus_days))
+            new_end_date_obj = max(
+                new_end_date_obj,
+                reserved_until + timedelta(days=bonus_days),
+                (pending_reward_until + timedelta(days=bonus_days))
+                if pending_reward_until is not None
+                else now_utc,
+            )
+        elif pending_reward_until is not None and active_sub is None:
+            new_end_date_obj = max(new_end_date_obj, pending_reward_until)
         initial_premium_limit = self._premium_effective_limit_bytes(
             initial_premium_baseline,
             int(getattr(active_sub, "premium_topup_balance_bytes", 0) or 0),

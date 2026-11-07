@@ -42,6 +42,7 @@ from .chain_0110_push_notification_preference import CHAIN_0110_PUSH_NOTIFICATIO
 from .chain_0111_broadcast_channel_destinations import (
     CHAIN_0111_BROADCAST_CHANNEL_DESTINATIONS,
 )
+from .chain_0112_setup_rewards import CHAIN_0112_SETUP_REWARDS
 from .engine import Migration
 
 MIGRATIONS: list[Migration] = [
@@ -83,4 +84,5 @@ MIGRATIONS: list[Migration] = [
     *CHAIN_0109_SUBSCRIPTION_DAYS_PAYMENTS,
     *CHAIN_0110_PUSH_NOTIFICATION_PREFERENCE,
     *CHAIN_0111_BROADCAST_CHANNEL_DESTINATIONS,
+    *CHAIN_0112_SETUP_REWARDS,
 ]

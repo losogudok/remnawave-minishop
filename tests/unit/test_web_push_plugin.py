@@ -68,6 +68,8 @@ def make_settings(**overrides: Any) -> Any:
         "USER_NOTIFICATION_PUSH_ENABLED": True,
         "USER_NOTIFICATION_PREFERENCES_ENABLED": True,
         "web_push_configured": True,
+        "SETUP_INSTALL_REWARD_DAYS": 0,
+        "SETUP_PUSH_REWARD_DAYS": 0,
     }
     values.update(overrides)
     return SimpleNamespace(**values)

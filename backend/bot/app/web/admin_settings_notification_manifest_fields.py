@@ -71,6 +71,32 @@ NOTIFICATION_SETTINGS_FIELDS: list[SettingField] = [
         max=86400,
     ),
     SettingField(
+        "SETUP_INSTALL_REWARD_DAYS",
+        "int",
+        "notifications",
+        "Install setup reward (days)",
+        (
+            "Subscription days granted after the Web App is launched in standalone mode. "
+            "Zero disables this reward."
+        ),
+        subsection="web_push",
+        min=0,
+        max=3650,
+    ),
+    SettingField(
+        "SETUP_PUSH_REWARD_DAYS",
+        "int",
+        "notifications",
+        "Web Push setup reward (days)",
+        (
+            "Subscription days granted after this device is enrolled and the account push "
+            "preference is enabled. Zero disables this reward."
+        ),
+        subsection="web_push",
+        min=0,
+        max=3650,
+    ),
+    SettingField(
         "SUBSCRIPTION_NOTIFICATIONS_ENABLED",
         "bool",
         "notifications",

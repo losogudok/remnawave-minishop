@@ -85,6 +85,10 @@ def test_trial_device_payload_uses_trial_limit(
                 AsyncMock(return_value=sub),
             ),
             patch(
+                "bot.services.subscription_service_impl.lifecycle_details.subscription_dal.get_subscription_by_id_for_update",
+                AsyncMock(return_value=sub),
+            ) as refresh_active,
+            patch(
                 "bot.services.subscription_service_impl.lifecycle_details.subscription_dal.update_subscription",
                 AsyncMock(),
             ),
@@ -114,5 +118,9 @@ def test_trial_device_payload_uses_trial_limit(
                 panel.get_user_by_uuid_lookup.assert_awaited_once_with(
                     "panel-user", log_response=False
                 )
+            if mode == "panel":
+                refresh_active.assert_awaited_once_with(session, 7)
+            else:
+                refresh_active.assert_not_awaited()
 
     asyncio.run(scenario())

@@ -34,8 +34,13 @@ from db.dal import (
 
 from . import entitlement_helpers
 from ._typing import SubscriptionServiceMixinContract
+from .activation_dispatch import activate_non_period_purchase
+from .activation_rewards import (
+    activation_checkout_matches,
+    activation_reserved_until,
+    pending_activation_rewards,
+)
 from .activation_topups import record_activation_topups
-from .entitlement_helpers import active_subscription_tariff_key as active_tariff_key
 from .sale_mode import parse_sale_mode_context
 from .traffic import resolve_main_traffic_baseline
 from .trial_traffic_reset import reset_trial_traffic_for_paid_activation
@@ -102,106 +107,26 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
                 user_id,
             )
             return None
-        if sale_mode_base in {"traffic", "traffic_package"} or (
-            getattr(self.settings, "traffic_sale_mode", False)
-            and not tariffs_config
-            and frozen_terms is None
-        ):
-            target_gb = traffic_gb if traffic_gb is not None else float(months)
-            result = await self._activate_traffic_package(
-                session=session,
-                user_id=user_id,
-                traffic_gb=target_gb,
-                payment_amount=payment_amount,
-                payment_db_id=payment_db_id,
-                provider=provider,
-                tariff_key=tariff_key,
-                sale_mode="traffic_package" if self._tariffs_config() else "traffic",
-                promo_code_id_from_payment=promo_code_id_from_payment,
-            )
-            return result if isinstance(result, dict) else None
-        if sale_mode_base == "topup":
-            if not tariff_key:
-                tariff_key = await active_tariff_key(session, user_id)
-            if not tariff_key:
-                logger.error("Top-up activation requires tariff_key for user %s", user_id)
-                return None
-            result = await self.activate_topup(
-                session=session,
-                user_id=user_id,
-                tariff_key=tariff_key,
-                traffic_gb=traffic_gb if traffic_gb is not None else float(months),
-                payment_amount=payment_amount,
-                payment_db_id=payment_db_id,
-                provider=provider,
-                promo_code_id_from_payment=promo_code_id_from_payment,
-            )
-            return result if isinstance(result, dict) else None
-        if sale_mode_base == "premium_topup":
-            if not tariff_key:
-                tariff_key = await active_tariff_key(session, user_id)
-            if not tariff_key:
-                logger.error("Premium top-up activation requires tariff_key for user %s", user_id)
-                return None
-            result = await self.activate_premium_topup(
-                session=session,
-                user_id=user_id,
-                tariff_key=tariff_key,
-                traffic_gb=traffic_gb if traffic_gb is not None else float(months),
-                payment_amount=payment_amount,
-                payment_db_id=payment_db_id,
-                provider=provider,
-                promo_code_id_from_payment=promo_code_id_from_payment,
-            )
-            return result if isinstance(result, dict) else None
-        if sale_mode_base in {"hwid_device", "hwid_devices", "hwid_devices_renewal"}:
-            target_devices = int(traffic_gb if traffic_gb is not None else months)
-            result = await self.activate_hwid_device_topup(
-                session=session,
-                user_id=user_id,
-                device_count=target_devices,
-                payment_amount=payment_amount,
-                payment_db_id=payment_db_id,
-                provider=provider,
-                tariff_key=tariff_key,
-                renewal=sale_mode_base == "hwid_devices_renewal",
-            )
-            return result if isinstance(result, dict) else None
-        if sale_mode_base == "tariff_upgrade":
-            if not tariff_key:
-                logger.error("Tariff upgrade activation requires tariff_key for user %s", user_id)
-                return None
-            await self._record_payment_context(
-                session,
-                payment_db_id,
-                sale_mode="tariff_upgrade",
-                tariff_key=tariff_key,
-                purchased_gb=None,
-            )
-            result = await self.switch_tariff_without_payment(
-                session,
-                user_id,
-                tariff_key,
-                "paid_diff",
-                payment_id=payment_db_id,
-            )
-            if result:
-                sub = await subscription_dal.get_active_subscription_by_user_id(session, user_id)
-                if sub:
-                    result["end_date"] = sub.end_date
-                    result["is_active"] = sub.is_active
-                    db_user = await user_dal.get_user_by_id(session, user_id)
-                    if db_user:
-                        await self._send_payment_success_email(
-                            db_user=db_user,
-                            sale_mode="tariff_upgrade",
-                            months=0,
-                            traffic_gb=None,
-                            payment_amount=payment_amount,
-                            end_date=sub.end_date,
-                            provider=provider,
-                        )
-            return result if isinstance(result, dict) else None
+        handled, addon_result = await activate_non_period_purchase(
+            self,
+            session,
+            user_id=user_id,
+            months=months,
+            payment_amount=payment_amount,
+            payment_db_id=payment_db_id,
+            provider=provider,
+            sale_mode_base=sale_mode_base,
+            traffic_gb=traffic_gb,
+            tariff_key=tariff_key,
+            promo_code_id_from_payment=promo_code_id_from_payment,
+            use_traffic_sale_mode=bool(
+                getattr(self.settings, "traffic_sale_mode", False)
+                and not tariffs_config
+                and frozen_terms is None
+            ),
+        )
+        if handled:
+            return addon_result
 
         tariff = (
             frozen_terms.tariff
@@ -243,6 +168,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             getattr(payment, "hwid_valid_until", None) if payment else None
         )
 
+        await user_dal.lock_user_entitlement(session, user_id)
         db_user = await user_dal.get_user_by_id(session, user_id)
         if not db_user:
             logger.error("User %s not found in DB for paid subscription activation.", user_id)
@@ -289,36 +215,20 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             current_active_sub = await subscription_dal.get_active_subscription_by_user_id(
                 session, user_id
             )
+        pending_values, pending_reward_until = await pending_activation_rewards(
+            session, user_id, current_active_sub
+        )
         current_active_is_trial = entitlement_helpers.subscription_is_trial(current_active_sub)
-        if checkout_grants.active_context_present:
-            from bot.payment_providers.shared.entitlement_context import (
-                preflight_payment_entitlement,
-            )
-
-            current_subscription_id = (
-                int(current_active_sub.subscription_id) if current_active_sub is not None else None
-            )
-            current_end_at = self._as_aware_utc(
-                getattr(current_active_sub, "end_date", None) if current_active_sub else None
-            )
-            if current_subscription_id != checkout_grants.active_subscription_id or (
-                current_end_at != checkout_grants.active_end_at
-                and not (
-                    allow_subscription_end_change
-                    and preflight_payment_entitlement(
-                        payment, current_active_sub, allow_subscription_end_change=True
-                    ).allowed
-                )
-            ):
-                logger.error(
-                    "Checkout quote became stale for payment %s: subscription=%s/%s end=%s/%s",
-                    payment_db_id,
-                    checkout_grants.active_subscription_id,
-                    current_subscription_id,
-                    checkout_grants.active_end_at,
-                    current_end_at,
-                )
-                return None
+        if not activation_checkout_matches(
+            self,
+            payment,
+            current_active_sub,
+            checkout_grants,
+            pending_values,
+            payment_db_id=payment_db_id,
+            allow_subscription_end_change=allow_subscription_end_change,
+        ):
+            return None
         if (
             checkout_grants.has_addons
             and current_active_sub
@@ -372,6 +282,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             if current_panel_limit is None:
                 current_panel_limit = getattr(current_active_sub, "traffic_limit_bytes", None)
         activation_at = datetime.now(UTC)
+        reserved_until = activation_reserved_until(db_user, pending_reward_until)
         # Keep the paid period boundary separate from immutable entitlement history.
         period_start_date = paid_subscription_period_start(
             activation_at,
@@ -379,7 +290,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             current_billing_model,
             current_active_is_trial,
             checkout_grants.trial_days_strategy,
-            getattr(db_user, "period_accrual_reserved_until", None),
+            reserved_until,
         )
         if fixed_duration_days is not None:
             period_start_date = period_start_date.astimezone(UTC)

@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from aiogram import Bot
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.infra import events
@@ -45,6 +46,7 @@ from db.dal import (
     user_dal,
 )
 from db.models import Payment, User
+from db.setup_reward_models import SetupReward
 
 from .common import (
     Translator,
@@ -56,6 +58,7 @@ from .common import (
 )
 from .entitlement_context import (
     payment_uses_entitlement_context,
+    pending_setup_reward_explains_end_change,
     preflight_payment_entitlement,
 )
 from .independent_success import resolve_independent_payment
@@ -595,7 +598,33 @@ async def finalize_successful_payment(
             active_subscription,
             allow_subscription_end_change=req.allow_subscription_end_change,
         )
-        if not entitlement_preflight.allowed:
+        pending_reward_change_allowed = False
+        if (
+            not entitlement_preflight.allowed
+            and entitlement_preflight.reason == "active_subscription_end_changed"
+            and active_subscription is not None
+        ):
+            pending_result = await req.session.scalars(
+                select(SetupReward).where(
+                    SetupReward.user_id == req.user_id,
+                    SetupReward.subscription_id == active_subscription.subscription_id,
+                    SetupReward.accepted_days.is_not(None),
+                    SetupReward.target_end_date.is_not(None),
+                    SetupReward.state == "pending",
+                )
+            )
+            pending_reward_matches_change = pending_setup_reward_explains_end_change(
+                locked_payment,
+                active_subscription,
+                list(pending_result.all()),
+            )
+            if pending_reward_matches_change:
+                pending_reward_change_allowed = preflight_payment_entitlement(
+                    locked_payment,
+                    active_subscription,
+                    allow_subscription_end_change=True,
+                ).allowed
+        if not entitlement_preflight.allowed and not pending_reward_change_allowed:
             logger.error(
                 "%s: rejecting payment %s before entitlement mutation: %s (%s).",
                 req.log_prefix,

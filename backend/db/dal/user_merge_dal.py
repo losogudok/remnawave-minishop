@@ -52,6 +52,7 @@ from .user_merge_entitlements import (
 )
 from .user_merge_invites import preserve_native_invitation, reassign_invitation_relations
 from .user_merge_promos import merge_promo_activation_history
+from .user_merge_setup_rewards import merge_setup_rewards
 from .user_reads_dal import get_user_by_id
 
 logger = logging.getLogger(__name__)
@@ -591,6 +592,17 @@ async def merge_users(
 
     await merge_extension_accounts(session, source_user_id, target_user_id)
     await merge_promo_activation_history(session, source, target)
+    await merge_setup_rewards(
+        session,
+        source_user_id,
+        target_user_id,
+        source_subscription_id=(
+            int(source_active_sub.subscription_id) if source_active_sub is not None else None
+        ),
+        surviving_subscription_id=(
+            int(target_anchor_sub.subscription_id) if target_anchor_sub is not None else None
+        ),
+    )
     await reassign_invitation_relations(session, source_user_id, target_user_id)
     await session.execute(
         update(LegacyImportMapping)

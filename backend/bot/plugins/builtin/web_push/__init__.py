@@ -67,6 +67,9 @@ class WebPushPlugin(Plugin):
             return
         from .routes import (
             register_web_push_contracts,
+            setup_reward_claim_route,
+            setup_reward_install_evidence_route,
+            setup_rewards_status_route,
             web_push_status_route,
             web_push_subscribe_route,
             web_push_sync_route,
@@ -77,6 +80,11 @@ class WebPushPlugin(Plugin):
         app.router.add_post("/api/plugins/web_push/subscription", web_push_subscribe_route)
         app.router.add_post("/api/plugins/web_push/subscription/sync", web_push_sync_route)
         app.router.add_delete("/api/plugins/web_push/subscription", web_push_unsubscribe_route)
+        app.router.add_get("/api/setup-rewards/status", setup_rewards_status_route)
+        app.router.add_post(
+            "/api/setup-rewards/install-evidence", setup_reward_install_evidence_route
+        )
+        app.router.add_post("/api/setup-rewards/claim", setup_reward_claim_route)
         register_web_push_contracts()
 
     def worker_tasks(self, ctx: PluginContext) -> list[WorkerTaskSpec]:

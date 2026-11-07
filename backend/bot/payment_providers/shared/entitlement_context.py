@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
@@ -387,11 +387,14 @@ def preflight_payment_entitlement(
             EntitlementPreflightStatus.DETERMINISTIC_STALE,
             "active_subscription_required",
         )
+    trial_checkout_compatible = subscription_is_trial(active_subscription) and (
+        base == "traffic_package" or (base == "subscription" and checkout_preflight is not None)
+    )
     if (
         payment_tariff_key
         and current_subscription_id is not None
         and current_tariff_key != payment_tariff_key
-        and not (base == "traffic_package" and subscription_is_trial(active_subscription))
+        and not trial_checkout_compatible
     ):
         return EntitlementPreflightResult(
             EntitlementPreflightStatus.DETERMINISTIC_STALE,
@@ -399,3 +402,45 @@ def preflight_payment_entitlement(
         )
 
     return EntitlementPreflightResult(EntitlementPreflightStatus.OK)
+
+
+def pending_setup_reward_explains_end_change(
+    payment: Any,
+    active_subscription: Any | None,
+    pending_rewards: list[Any],
+) -> bool:
+    """Allow only an expiry change fully explained by an accepted setup reward."""
+
+    if active_subscription is None:
+        return False
+    grants = checkout_addon_grants(getattr(payment, "checkout_bundle_snapshot", None))
+    if not grants.active_context_present:
+        return False
+    try:
+        subscription_id = int(active_subscription.subscription_id)
+    except (AttributeError, TypeError, ValueError):
+        return False
+    if subscription_id != grants.active_subscription_id:
+        return False
+    current_end = getattr(active_subscription, "end_date", None)
+    if not isinstance(current_end, datetime):
+        return False
+    current_end = (
+        current_end.replace(tzinfo=UTC)
+        if current_end.tzinfo is None
+        else current_end.astimezone(UTC)
+    )
+    if grants.active_end_at is None:
+        return False
+    return any(
+        getattr(reward, "accepted_days", None) is not None
+        and isinstance(getattr(reward, "target_end_date", None), datetime)
+        and _aware_utc(reward.target_end_date) == current_end
+        and _aware_utc(reward.target_end_date) - timedelta(days=int(reward.accepted_days))
+        == grants.active_end_at
+        for reward in pending_rewards
+    )
+
+
+def _aware_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
