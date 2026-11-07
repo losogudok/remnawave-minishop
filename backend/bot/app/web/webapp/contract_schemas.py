@@ -103,6 +103,7 @@ class SubscriptionGuidesOut(HttpResponseModel):
     config: dict[str, Any] | None = None
     guide_document: dict[str, Any] | None = None
     source: str | None = None
+    config_id: str | None = None
     error: str | None = None
 
 

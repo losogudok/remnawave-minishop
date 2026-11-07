@@ -3441,6 +3441,276 @@
         "title": "AdminGiftsList",
         "type": "object"
       },
+      "AdminGuideCatalogAppOut": {
+        "properties": {
+          "ambiguous": {
+            "default": false,
+            "title": "Ambiguous",
+            "type": "boolean"
+          },
+          "explicit_id": {
+            "default": false,
+            "title": "Explicit Id",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "AdminGuideCatalogAppOut",
+        "type": "object"
+      },
+      "AdminGuideCatalogConfigOut": {
+        "properties": {
+          "config_id": {
+            "title": "Config Id",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error"
+          },
+          "missing": {
+            "default": false,
+            "title": "Missing",
+            "type": "boolean"
+          },
+          "platforms": {
+            "items": {
+              "$ref": "#/components/schemas/AdminGuideCatalogPlatformOut"
+            },
+            "title": "Platforms",
+            "type": "array"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "config_id",
+          "source"
+        ],
+        "title": "AdminGuideCatalogConfigOut",
+        "type": "object"
+      },
+      "AdminGuideCatalogPlatformOut": {
+        "properties": {
+          "apps": {
+            "items": {
+              "$ref": "#/components/schemas/AdminGuideCatalogAppOut"
+            },
+            "title": "Apps",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "AdminGuideCatalogPlatformOut",
+        "type": "object"
+      },
+      "AdminGuideMediaGalleriesOut": {
+        "properties": {
+          "catalog": {
+            "items": {
+              "$ref": "#/components/schemas/GuideMediaCatalogConfigOut"
+            },
+            "title": "Catalog",
+            "type": "array"
+          },
+          "catalog_available": {
+            "default": false,
+            "title": "Catalog Available",
+            "type": "boolean"
+          },
+          "catalog_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Catalog Error"
+          },
+          "galleries": {
+            "items": {
+              "$ref": "#/components/schemas/GuideMediaGalleryOut"
+            },
+            "title": "Galleries",
+            "type": "array"
+          },
+          "orphaned": {
+            "items": {
+              "$ref": "#/components/schemas/GuideMediaGalleryKeyOut"
+            },
+            "title": "Orphaned",
+            "type": "array"
+          },
+          "orphaned_known": {
+            "default": false,
+            "title": "Orphaned Known",
+            "type": "boolean"
+          }
+        },
+        "title": "AdminGuideMediaGalleriesOut",
+        "type": "object"
+      },
+      "AdminGuideMediaReorderBody": {
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Client Id",
+            "type": "string"
+          },
+          "config_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Config Id",
+            "type": "string"
+          },
+          "image_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Image Ids",
+            "type": "array"
+          },
+          "platform": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Platform",
+            "type": "string"
+          }
+        },
+        "required": [
+          "config_id",
+          "platform",
+          "client_id",
+          "image_ids"
+        ],
+        "title": "AdminGuideMediaReorderBody",
+        "type": "object"
+      },
+      "AdminGuideMediaUpdateBody": {
+        "additionalProperties": false,
+        "properties": {
+          "captions": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Captions"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "maximum": 10000,
+                "minimum": -10000,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Order"
+          }
+        },
+        "title": "AdminGuideMediaUpdateBody",
+        "type": "object"
+      },
+      "AdminGuideMediaUploadBody": {
+        "additionalProperties": false,
+        "properties": {
+          "captions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Captions",
+            "type": "object"
+          },
+          "client_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Client Id",
+            "type": "string"
+          },
+          "config_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Config Id",
+            "type": "string"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "maximum": 10000,
+                "minimum": -10000,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Order"
+          },
+          "platform": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Platform",
+            "type": "string"
+          }
+        },
+        "required": [
+          "config_id",
+          "platform",
+          "client_id"
+        ],
+        "title": "AdminGuideMediaUploadBody",
+        "type": "object"
+      },
       "AdminHealthOut": {
         "properties": {
           "alerts": {
@@ -3718,6 +3988,13 @@
       },
       "AdminMessageTargetsOut": {
         "properties": {
+          "guide_catalog": {
+            "items": {
+              "$ref": "#/components/schemas/AdminGuideCatalogConfigOut"
+            },
+            "title": "Guide Catalog",
+            "type": "array"
+          },
           "install_platforms": {
             "items": {
               "$ref": "#/components/schemas/AdminInstallPlatformOut"
@@ -10215,6 +10492,269 @@
         "title": "GiftView",
         "type": "object"
       },
+      "GuideMediaCatalogAppOut": {
+        "properties": {
+          "ambiguous": {
+            "default": false,
+            "title": "Ambiguous",
+            "type": "boolean"
+          },
+          "explicit_id": {
+            "default": false,
+            "title": "Explicit Id",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "GuideMediaCatalogAppOut",
+        "type": "object"
+      },
+      "GuideMediaCatalogConfigOut": {
+        "properties": {
+          "config_id": {
+            "title": "Config Id",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error"
+          },
+          "missing": {
+            "default": false,
+            "title": "Missing",
+            "type": "boolean"
+          },
+          "platforms": {
+            "items": {
+              "$ref": "#/components/schemas/GuideMediaCatalogPlatformOut"
+            },
+            "title": "Platforms",
+            "type": "array"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "config_id",
+          "source"
+        ],
+        "title": "GuideMediaCatalogConfigOut",
+        "type": "object"
+      },
+      "GuideMediaCatalogPlatformOut": {
+        "properties": {
+          "apps": {
+            "items": {
+              "$ref": "#/components/schemas/GuideMediaCatalogAppOut"
+            },
+            "title": "Apps",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "GuideMediaCatalogPlatformOut",
+        "type": "object"
+      },
+      "GuideMediaGalleryKeyOut": {
+        "properties": {
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "config_id": {
+            "title": "Config Id",
+            "type": "string"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          }
+        },
+        "required": [
+          "config_id",
+          "platform",
+          "client_id"
+        ],
+        "title": "GuideMediaGalleryKeyOut",
+        "type": "object"
+      },
+      "GuideMediaGalleryOut": {
+        "properties": {
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "config_id": {
+            "title": "Config Id",
+            "type": "string"
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/GuideMediaImageOut"
+            },
+            "title": "Images",
+            "type": "array"
+          },
+          "orphaned": {
+            "default": false,
+            "title": "Orphaned",
+            "type": "boolean"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          }
+        },
+        "required": [
+          "config_id",
+          "platform",
+          "client_id"
+        ],
+        "title": "GuideMediaGalleryOut",
+        "type": "object"
+      },
+      "GuideMediaImageOut": {
+        "properties": {
+          "captions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Captions",
+            "type": "object"
+          },
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "config_id": {
+            "title": "Config Id",
+            "type": "string"
+          },
+          "content_type": {
+            "default": "image/webp",
+            "title": "Content Type",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Created At"
+          },
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Height"
+          },
+          "image_id": {
+            "title": "Image Id",
+            "type": "string"
+          },
+          "order": {
+            "default": 0,
+            "title": "Order",
+            "type": "integer"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "size_bytes": {
+            "default": 0,
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "src": {
+            "title": "Src",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Updated At"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Width"
+          }
+        },
+        "required": [
+          "image_id",
+          "digest",
+          "config_id",
+          "platform",
+          "client_id",
+          "src"
+        ],
+        "title": "GuideMediaImageOut",
+        "type": "object"
+      },
       "HiddenMenuButton": {
         "properties": {
           "id": {
@@ -14612,6 +15152,18 @@
             "default": null,
             "title": "Config"
           },
+          "config_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Config Id"
+          },
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
@@ -14994,6 +15546,18 @@
             ],
             "default": null,
             "title": "Config"
+          },
+          "config_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Config Id"
           },
           "enabled": {
             "title": "Enabled",
@@ -24458,6 +25022,283 @@
           }
         ],
         "summary": "Admin Gift Revoke",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/guide-media/galleries": {
+      "get": {
+        "operationId": "get_admin_guide_media_galleries_route",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ok": {
+                          "const": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AdminGuideMediaGalleriesOut"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Guide Media Galleries",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/guide-media/images": {
+      "post": {
+        "operationId": "post_admin_guide_media_upload_route",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AdminGuideMediaUploadBody"
+                  },
+                  {
+                    "properties": {
+                      "image": {
+                        "format": "binary",
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "image": {
+                      "$ref": "#/components/schemas/GuideMediaImageOut"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "image"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Guide Media Upload",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/guide-media/images/reorder": {
+      "post": {
+        "operationId": "post_admin_guide_media_reorder_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminGuideMediaReorderBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "gallery": {
+                      "$ref": "#/components/schemas/GuideMediaGalleryOut"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "gallery"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Guide Media Reorder",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/guide-media/images/{image_id}": {
+      "delete": {
+        "operationId": "delete_admin_guide_media_delete_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "pattern": "[^{}/]+",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Guide Media Delete",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_admin_guide_media_update_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "pattern": "[^{}/]+",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminGuideMediaUpdateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "image": {
+                      "$ref": "#/components/schemas/GuideMediaImageOut"
+                    },
+                    "ok": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "image"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin Guide Media Update",
         "tags": [
           "admin"
         ]
@@ -38610,6 +39451,40 @@
         "summary": "Plans Viewed",
         "tags": [
           "plans"
+        ]
+      }
+    },
+    "/api/plugins/guide_media/media/{digest}.webp": {
+      "get": {
+        "operationId": "get_guide_media_public_media_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "digest",
+            "required": true,
+            "schema": {
+              "pattern": "[0-9a-f]{64}",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/webp": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Response"
+          }
+        },
+        "security": [],
+        "summary": "Guide Media Public Media",
+        "tags": [
+          "plugins"
         ]
       }
     },

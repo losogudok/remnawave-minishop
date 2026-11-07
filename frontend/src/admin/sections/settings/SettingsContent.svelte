@@ -18,6 +18,8 @@
     AdminEmptyState,
     AdminSelect,
   } from "$components/patterns/admin/index.js";
+  import LoginProviderHelp from "./LoginProviderHelp.svelte";
+  import GuideMediaSubsection from "./GuideMediaSubsection.svelte";
   import SettingsDisclosureTrigger from "./SettingsDisclosureTrigger.svelte";
   import RequiredChannelDiagnostic from "./RequiredChannelDiagnostic.svelte";
   import AdministratorsSubsection from "./AdministratorsSubsection.svelte";
@@ -37,13 +39,6 @@
     settingsSectionAnchorKey,
     settingsSubsectionAnchorKey,
   } from "$lib/admin/settingsSections";
-  import {
-    loginProviderCallbackUrl,
-    loginProviderGuideUrl,
-    loginProviderHelpHint,
-    loginProviderHelpTitle,
-    loginProviderOfficialUrl,
-  } from "$lib/admin/loginProviderSetup.js";
   import {
     settingsDirtyCountLabel,
     settingsFieldsCountLabel,
@@ -181,7 +176,6 @@
   } = $props();
 
   let settingsSearchOpen = $state(false);
-  let copiedLoginProviderKey = $state("");
   const settingsSearchHasQuery = $derived(settingsSearchQuery.trim().length > 0);
   const settingsSearchVisible = $derived(settingsSearchOpen && settingsSearchHasQuery);
   function openSettingsSearch(): void {
@@ -253,21 +247,6 @@
     if (!field) return "";
     return String(settingsDirty[key]?.value ?? valueFor(field) ?? "").trim();
   }
-
-  function loginProviderCallback(provider: "discord" | "google" | "yandex"): string {
-    const base = configuredText("SUBSCRIPTION_MINI_APP_URL");
-    const fallbackOrigin = typeof window === "undefined" ? "" : window.location.origin;
-    return loginProviderCallbackUrl(provider, base, fallbackOrigin);
-  }
-
-  async function copyLoginProviderValue(key: string, value: string): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(value);
-      copiedLoginProviderKey = key;
-    } catch {
-      copiedLoginProviderKey = "";
-    }
-  }
 </script>
 
 {#snippet renderLoginMethodHints()}
@@ -326,115 +305,6 @@
         </AdminButton>
       </div>
     {/if}
-  </div>
-{/snippet}
-
-{#snippet renderLoginProviderHelp(provider: string)}
-  {#if provider === "discord" || provider === "google" || provider === "yandex" || provider === "passkey"}
-    <div class="admin-login-provider-help">
-      <div class="admin-login-provider-help-copy">
-        <strong>{loginProviderHelpTitle(provider, at)}</strong>
-        <p>{loginProviderHelpHint(provider, at)}</p>
-        {#if provider === "google"}
-          <div class="admin-login-provider-setup-values">
-            <div class="admin-login-provider-setup-row">
-              <span>
-                {at("settings_login_google_js_origins_label", {}, "Authorized JavaScript origins")}
-              </span>
-              <p>
-                {at(
-                  "settings_login_google_js_origins_not_required",
-                  {},
-                  "Leave empty — Minishop uses the server-side authorization code flow and does not load the Google JavaScript SDK."
-                )}
-              </p>
-            </div>
-            <div class="admin-login-provider-setup-row">
-              <span>
-                {at("settings_login_google_redirect_uris_label", {}, "Authorized redirect URIs")}
-              </span>
-              {@render renderLoginProviderValue("google-redirect", loginProviderCallback("google"))}
-            </div>
-          </div>
-        {:else if provider === "yandex"}
-          <div class="admin-login-provider-setup-values">
-            <div class="admin-login-provider-setup-row">
-              <span>{at("settings_login_yandex_platform_label", {}, "Platform")}</span>
-              <p>{at("settings_login_yandex_platform_value", {}, "Web services")}</p>
-            </div>
-            <div class="admin-login-provider-setup-row">
-              <span>
-                {at("settings_login_yandex_redirect_uri_label", {}, "Redirect URI")}
-              </span>
-              {@render renderLoginProviderValue("yandex-redirect", loginProviderCallback("yandex"))}
-            </div>
-            <div class="admin-login-provider-setup-row">
-              <span>{at("settings_login_yandex_permissions_label", {}, "Permissions")}</span>
-              <code>login:email · login:info · login:avatar</code>
-            </div>
-          </div>
-        {:else if provider === "discord"}
-          <div class="admin-login-provider-setup-values">
-            <div class="admin-login-provider-setup-row">
-              <span>{at("settings_login_discord_redirect_uri_label", {}, "Redirect URL")}</span>
-              {@render renderLoginProviderValue(
-                "discord-redirect",
-                loginProviderCallback("discord")
-              )}
-            </div>
-            <div class="admin-login-provider-setup-row">
-              <span>{at("settings_login_discord_scopes_label", {}, "OAuth2 scopes")}</span>
-              <code>identify · email</code>
-            </div>
-          </div>
-        {/if}
-        <p class="admin-login-provider-runtime-hint">
-          {at(
-            "settings_login_runtime_hint",
-            {},
-            "Saved provider settings apply immediately; a backend restart is not required."
-          )}
-        </p>
-      </div>
-      <div class="admin-login-provider-help-actions">
-        <a
-          class="admin-btn admin-btn-sm admin-btn-ghost"
-          href={loginProviderGuideUrl(provider, appRepositoryUrl)}
-          target="_blank"
-          rel="noreferrer noopener"
-        >
-          <FileText size={13} />
-          <span>{at("settings_login_open_guide", {}, "Setup guide")}</span>
-        </a>
-        <a
-          class="admin-btn admin-btn-sm admin-btn-ghost"
-          href={loginProviderOfficialUrl(provider)}
-          target="_blank"
-          rel="noreferrer noopener"
-        >
-          <ExternalLink size={13} />
-          <span>{at("settings_login_open_official", {}, "Official docs")}</span>
-        </a>
-      </div>
-    </div>
-  {/if}
-{/snippet}
-
-{#snippet renderLoginProviderValue(key: string, value: string)}
-  <div class="admin-login-provider-value">
-    <code>{value}</code>
-    <AdminButton
-      size="sm"
-      variant="ghost"
-      aria-label={at("copy", {}, "Copy")}
-      onclick={() => copyLoginProviderValue(key, value)}
-    >
-      {#if copiedLoginProviderKey === key}
-        <Check size={13} />{at("copied", {}, "Copied")}
-      {:else}
-        <Copy size={13} />{at("copy", {}, "Copy")}
-      {/if}
-    </AdminButton>
   </div>
 {/snippet}
 
@@ -919,6 +789,18 @@
                   open={(settingsOpenSubsections.general || []).includes("administrators")}
                 />
               {/if}
+              {#if section.id === "subscription_guides"}
+                <GuideMediaSubsection
+                  {at}
+                  contentId={settingsDisclosureId(
+                    "subsection",
+                    "subscription_guides",
+                    "screenshots"
+                  )}
+                  open={(settingsOpenSubsections.subscription_guides || []).includes("screenshots")}
+                  onToggle={() => toggleSettingsSubsection("subscription_guides", "screenshots")}
+                />
+              {/if}
               {#if labelGroups.length}
                 <div class="admin-subsection-accordion">
                   {#each labelGroups as group (group.id)}
@@ -958,7 +840,12 @@
                         >
                           <div class="admin-settings-subsection-body">
                             {#if section.id === "login_methods"}
-                              {@render renderLoginProviderHelp(group.id)}
+                              <LoginProviderHelp
+                                {at}
+                                provider={group.id}
+                                {appRepositoryUrl}
+                                callbackBase={configuredText("SUBSCRIPTION_MINI_APP_URL")}
+                              />
                             {/if}
                             {#if section.id === "payments" && group.id === "balance"}
                               <BalanceSettingsLink {at} {onOpenSettingsPath} />

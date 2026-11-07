@@ -227,4 +227,5 @@ def test_admin_catalog_exposes_localized_ids_without_guide_content_or_subscripti
                 "apps": [{"id": "preferred-client", "name": "Preferred client"}],
             }
         ],
+        "guide_catalog": [],
     }

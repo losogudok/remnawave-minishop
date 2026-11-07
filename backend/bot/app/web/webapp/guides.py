@@ -79,6 +79,7 @@ async def subscription_guides_route(request: web.Request) -> web.Response:
         if status.get("enabled")
         else None,
         "source": status.get("source"),
+        "config_id": status.get("config_id"),
         "guide_document": guide_document,
     }
     if status.get("error"):
@@ -125,13 +126,21 @@ async def public_subscription_guides_route(request: web.Request) -> web.Response
         request,
         panel_short_uuid=subscription.get("panel_short_uuid"),
         panel_user_uuid=panel_user_uuid,
+        share_token=share_token,
+    )
+    raw_config = (
+        _subscription_guides_response_config(status.get("config"))
+        if status.get("enabled")
+        else None
     )
     payload = {
         "enabled": bool(status.get("enabled")),
-        "config": _subscription_guides_response_config(status.get("config"))
-        if status.get("enabled")
-        else None,
+        # The raw config is a second public payload representation alongside
+        # the converted document; sanitize auth-only screenshots here too.
+        # load_guide_content already sanitizes the document for public.
+        "config": _public_subscription_guides_config(raw_config),
         "source": status.get("source"),
+        "config_id": status.get("config_id"),
         "guide_document": guide_document,
         "subscription": subscription,
     }
@@ -164,6 +173,21 @@ def _subscription_guides_response_config(config: Any) -> Any:
     compact_config = dict(config)
     compact_config["svgLibrary"] = compact_svg_library
     return compact_config
+
+
+def _public_subscription_guides_config(config: Any) -> Any:
+    """Sanitize the raw config representation for public responses."""
+
+    if not isinstance(config, dict):
+        return config
+    try:
+        from bot.services.guide_media import sanitize_config_screenshots_for_public
+    except Exception:
+        return config
+    try:
+        return sanitize_config_screenshots_for_public(config)
+    except Exception:
+        return config
 
 
 def _subscription_guides_referenced_svg_keys(config: dict[str, Any]) -> set[str]:

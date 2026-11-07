@@ -157,6 +157,11 @@ export type InstallGuideButton = InstallGuideRecord & {
   text?: InstallLocalizedValue;
   type?: string;
 };
+export type InstallGuideScreenshot = InstallGuideRecord & {
+  src?: unknown;
+  captions?: InstallLocalizedValue;
+  order?: unknown;
+};
 export type InstallGuideBlock = InstallGuideRecord & {
   buttons?: InstallGuideButton[];
   description?: InstallLocalizedValue;
@@ -170,6 +175,7 @@ export type InstallGuideApp = InstallGuideRecord & {
   featured?: boolean;
   name?: string;
   svgIconKey?: unknown;
+  screenshots?: InstallGuideScreenshot[];
 };
 export type InstallGuidePlatform = InstallGuideRecord & {
   apps?: InstallGuideApp[];

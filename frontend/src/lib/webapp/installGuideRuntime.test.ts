@@ -4,6 +4,8 @@ import { decryptLink } from "@incy/link-encoder/sync";
 import {
   detectInstallPlatformKey,
   installIconColorStyle,
+  installScreenshotsForApp,
+  isUnsafeGuideScreenshotSrc,
   isUnsafeInstallUrl,
   localizedInstallValue,
   renderInstallQrDataUrl,
@@ -156,5 +158,28 @@ describe("install guide runtime helpers", () => {
       "https://sub.test/s/token"
     );
     expect(resolveInstallQrLink({ config_link: "incy://add/https://sub.test/s/token" })).toBe("");
+  });
+
+  it("orders screenshots by stable key and rejects authenticated runtime in public views", () => {
+    const app = {
+      screenshots: [
+        { src: "https://cdn.example/b.png", captions: { en: "Second", ru: "Вторая" }, order: 1 },
+        { src: "https://cdn.example/a.png", captions: { en: "First" }, order: 0 },
+        {
+          src: "/api/extensions/assets/owner/digest/secret.png",
+          captions: { en: "Auth" },
+          order: -1,
+        },
+      ],
+    };
+    const ordered = installScreenshotsForApp(app, "ru");
+    expect(ordered.map((shot) => shot.src)).toEqual([
+      "https://cdn.example/a.png",
+      "https://cdn.example/b.png",
+    ]);
+    expect(ordered[1].caption).toBe("Вторая");
+    expect(isUnsafeGuideScreenshotSrc("/api/extensions/assets/owner/digest/a.png")).toBe(true);
+    expect(isUnsafeGuideScreenshotSrc("https://cdn.example/a.png")).toBe(false);
+    expect(isUnsafeGuideScreenshotSrc("/api/guide-media/public/a.png")).toBe(false);
   });
 });

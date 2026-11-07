@@ -142,10 +142,8 @@ describe("admin extension section groups", () => {
 });
 
 describe("admin section tabs", () => {
-  it("ships none from core, so every section renders exactly as before", () => {
-    for (const item of ADMIN_SECTIONS) {
-      expect(adminSectionTabsFor(item.id, new Set(["reports"]))).toEqual([]);
-    }
+  it("keeps guide screenshots inside connection settings instead of a top-level tab", () => {
+    expect(adminSectionTabsFor("settings", new Set(["reports"]))).toEqual([]);
   });
 
   it("returns nothing for a section no extension targets", () => {

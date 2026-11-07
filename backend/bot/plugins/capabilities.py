@@ -6,6 +6,7 @@ CORE_PLUGIN_CAPABILITIES: dict[str, int] = {
     "ui_composition": 3,
     "message_composition": 1,
     "install_guides": 1,
+    "guide_media": 1,
     "external_orders": 1,
     "durable_jobs": 1,
     "rewards": 1,

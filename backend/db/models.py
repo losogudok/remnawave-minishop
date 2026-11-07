@@ -959,6 +959,7 @@ from db import broadcast_models as broadcast_models  # noqa: E402
 from db import device_models as device_models  # noqa: E402
 from db import extension_models as extension_models  # noqa: E402
 from db import gift_models as gift_models  # noqa: E402
+from db import guide_media_models as guide_media_models  # noqa: E402
 from db import legacy_import_models as legacy_import_models  # noqa: E402
 from db import message_image_models as message_image_models  # noqa: E402
 from db import partner_models as partner_models  # noqa: E402
@@ -985,6 +986,7 @@ QrLoginRequest = auth_models.QrLoginRequest
 AdminBroadcast = broadcast_models.AdminBroadcast
 AdminBroadcastDelivery = broadcast_models.AdminBroadcastDelivery
 MessageImage = message_image_models.MessageImage
+GuideMediaImage = guide_media_models.GuideMediaImage
 LegacyReferralCode = legacy_import_models.LegacyReferralCode
 LegacyImportMapping = legacy_import_models.LegacyImportMapping
 SubscriptionAccessRotation = access_rotation_models.SubscriptionAccessRotation

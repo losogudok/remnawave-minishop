@@ -1285,6 +1285,75 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/admin/guide-media/galleries": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Admin Guide Media Galleries */
+    get: operations["get_admin_guide_media_galleries_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/guide-media/images": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Guide Media Upload */
+    post: operations["post_admin_guide_media_upload_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/guide-media/images/reorder": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin Guide Media Reorder */
+    post: operations["post_admin_guide_media_reorder_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/admin/guide-media/images/{image_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Admin Guide Media Delete */
+    delete: operations["delete_admin_guide_media_delete_route"];
+    options?: never;
+    head?: never;
+    /** Admin Guide Media Update */
+    patch: operations["patch_admin_guide_media_update_route"];
+    trace?: never;
+  };
   "/api/admin/health": {
     parameters: {
       query?: never;
@@ -4215,6 +4284,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/plugins/guide_media/media/{digest}.webp": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Guide Media Public Media */
+    get: operations["get_guide_media_public_media_route"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/promo/apply": {
     parameters: {
       query?: never;
@@ -6357,6 +6443,119 @@ export interface components {
       /** Total */
       total: number;
     };
+    /** AdminGuideCatalogAppOut */
+    AdminGuideCatalogAppOut: {
+      /**
+       * Ambiguous
+       * @default false
+       */
+      ambiguous: boolean;
+      /**
+       * Explicit Id
+       * @default false
+       */
+      explicit_id: boolean;
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+    };
+    /** AdminGuideCatalogConfigOut */
+    AdminGuideCatalogConfigOut: {
+      /** Config Id */
+      config_id: string;
+      /**
+       * Error
+       * @default null
+       */
+      error: string | null;
+      /**
+       * Missing
+       * @default false
+       */
+      missing: boolean;
+      /** Platforms */
+      platforms?: components["schemas"]["AdminGuideCatalogPlatformOut"][];
+      /** Source */
+      source: string;
+    };
+    /** AdminGuideCatalogPlatformOut */
+    AdminGuideCatalogPlatformOut: {
+      /** Apps */
+      apps?: components["schemas"]["AdminGuideCatalogAppOut"][];
+      /** Id */
+      id: string;
+      /** Label */
+      label: string;
+    };
+    /** AdminGuideMediaGalleriesOut */
+    AdminGuideMediaGalleriesOut: {
+      /** Catalog */
+      catalog?: components["schemas"]["GuideMediaCatalogConfigOut"][];
+      /**
+       * Catalog Available
+       * @default false
+       */
+      catalog_available: boolean;
+      /**
+       * Catalog Error
+       * @default null
+       */
+      catalog_error: string | null;
+      /** Galleries */
+      galleries?: components["schemas"]["GuideMediaGalleryOut"][];
+      /** Orphaned */
+      orphaned?: components["schemas"]["GuideMediaGalleryKeyOut"][];
+      /**
+       * Orphaned Known
+       * @default false
+       */
+      orphaned_known: boolean;
+    };
+    /** AdminGuideMediaReorderBody */
+    AdminGuideMediaReorderBody: {
+      /** Client Id */
+      client_id: string;
+      /** Config Id */
+      config_id: string;
+      /** Image Ids */
+      image_ids: string[];
+      /** Platform */
+      platform: string;
+    };
+    /** AdminGuideMediaUpdateBody */
+    AdminGuideMediaUpdateBody: {
+      /**
+       * Captions
+       * @default null
+       */
+      captions: {
+        [key: string]: string;
+      } | null;
+      /**
+       * Order
+       * @default null
+       */
+      order: number | null;
+    };
+    /** AdminGuideMediaUploadBody */
+    AdminGuideMediaUploadBody: {
+      /** Captions */
+      captions?: {
+        [key: string]: string;
+      };
+      /** Client Id */
+      client_id: string;
+      /** Config Id */
+      config_id: string;
+      /**
+       * Order
+       * @default null
+       */
+      order: number | null;
+      /** Platform */
+      platform: string;
+    };
     /** AdminHealthOut */
     AdminHealthOut: {
       /** Alerts */
@@ -6467,6 +6666,8 @@ export interface components {
     };
     /** AdminMessageTargetsOut */
     AdminMessageTargetsOut: {
+      /** Guide Catalog */
+      guide_catalog?: components["schemas"]["AdminGuideCatalogConfigOut"][];
       /** Install Platforms */
       install_platforms?: components["schemas"]["AdminInstallPlatformOut"][];
       /** Sections */
@@ -9253,6 +9454,130 @@ export interface components {
        */
       telegram_link: string | null;
     };
+    /** GuideMediaCatalogAppOut */
+    GuideMediaCatalogAppOut: {
+      /**
+       * Ambiguous
+       * @default false
+       */
+      ambiguous: boolean;
+      /**
+       * Explicit Id
+       * @default false
+       */
+      explicit_id: boolean;
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+    };
+    /** GuideMediaCatalogConfigOut */
+    GuideMediaCatalogConfigOut: {
+      /** Config Id */
+      config_id: string;
+      /**
+       * Error
+       * @default null
+       */
+      error: string | null;
+      /**
+       * Missing
+       * @default false
+       */
+      missing: boolean;
+      /** Platforms */
+      platforms?: components["schemas"]["GuideMediaCatalogPlatformOut"][];
+      /** Source */
+      source: string;
+    };
+    /** GuideMediaCatalogPlatformOut */
+    GuideMediaCatalogPlatformOut: {
+      /** Apps */
+      apps?: components["schemas"]["GuideMediaCatalogAppOut"][];
+      /** Id */
+      id: string;
+      /** Label */
+      label: string;
+    };
+    /** GuideMediaGalleryKeyOut */
+    GuideMediaGalleryKeyOut: {
+      /** Client Id */
+      client_id: string;
+      /** Config Id */
+      config_id: string;
+      /** Platform */
+      platform: string;
+    };
+    /** GuideMediaGalleryOut */
+    GuideMediaGalleryOut: {
+      /** Client Id */
+      client_id: string;
+      /** Config Id */
+      config_id: string;
+      /** Images */
+      images?: components["schemas"]["GuideMediaImageOut"][];
+      /**
+       * Orphaned
+       * @default false
+       */
+      orphaned: boolean;
+      /** Platform */
+      platform: string;
+    };
+    /** GuideMediaImageOut */
+    GuideMediaImageOut: {
+      /** Captions */
+      captions?: {
+        [key: string]: string;
+      };
+      /** Client Id */
+      client_id: string;
+      /** Config Id */
+      config_id: string;
+      /**
+       * Content Type
+       * @default image/webp
+       */
+      content_type: string;
+      /**
+       * Created At
+       * @default null
+       */
+      created_at: string | null;
+      /** Digest */
+      digest: string;
+      /**
+       * Height
+       * @default null
+       */
+      height: number | null;
+      /** Image Id */
+      image_id: string;
+      /**
+       * Order
+       * @default 0
+       */
+      order: number;
+      /** Platform */
+      platform: string;
+      /**
+       * Size Bytes
+       * @default 0
+       */
+      size_bytes: number;
+      /** Src */
+      src: string;
+      /**
+       * Updated At
+       * @default null
+       */
+      updated_at: string | null;
+      /**
+       * Width
+       * @default null
+       */
+      width: number | null;
+    };
     /** HiddenMenuButton */
     HiddenMenuButton: {
       /** Id */
@@ -11144,6 +11469,11 @@ export interface components {
       config: {
         [key: string]: unknown;
       } | null;
+      /**
+       * Config Id
+       * @default null
+       */
+      config_id: string | null;
       /** Enabled */
       enabled: boolean;
       /**
@@ -11300,6 +11630,11 @@ export interface components {
       config: {
         [key: string]: unknown;
       } | null;
+      /**
+       * Config Id
+       * @default null
+       */
+      config_id: string | null;
       /** Enabled */
       enabled: boolean;
       /**
@@ -15606,6 +15941,143 @@ export interface operations {
         content: {
           "application/json": {
             gift: components["schemas"]["AdminGiftView"];
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  get_admin_guide_media_galleries_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          } & components["schemas"]["AdminGuideMediaGalleriesOut"];
+        };
+      };
+    };
+  };
+  post_admin_guide_media_upload_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "multipart/form-data": components["schemas"]["AdminGuideMediaUploadBody"] & {
+          /** Format: binary */
+          image?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            image: components["schemas"]["GuideMediaImageOut"];
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  post_admin_guide_media_reorder_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminGuideMediaReorderBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            gallery: components["schemas"]["GuideMediaGalleryOut"];
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  delete_admin_guide_media_delete_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        image_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          };
+        };
+      };
+    };
+  };
+  patch_admin_guide_media_update_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        image_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AdminGuideMediaUpdateBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            image: components["schemas"]["GuideMediaImageOut"];
             /** @constant */
             ok: true;
           };
@@ -21744,6 +22216,28 @@ export interface operations {
             /** @constant */
             ok: true;
           };
+        };
+      };
+    };
+  };
+  get_guide_media_public_media_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        digest: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "image/webp": string;
         };
       };
     };

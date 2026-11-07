@@ -285,6 +285,71 @@
   gap: 10px;
 }
 
+.install-gallery {
+  display: grid;
+  gap: 9px;
+}
+
+.install-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.install-gallery-item {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  padding: 8px;
+  font: inherit;
+  color: var(--text);
+  cursor: zoom-in;
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.install-gallery-item:hover {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  transform: translateY(-1px);
+}
+
+.install-gallery-item:focus-visible {
+  outline: 0;
+  border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.install-gallery-item img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  border-radius: var(--radius-inner);
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+}
+
+.install-gallery-caption {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+@media (min-width: 520px) {
+  .install-gallery-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 .install-step-motion {
   min-width: 0;
 }

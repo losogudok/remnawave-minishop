@@ -83,6 +83,47 @@ class GuideContribution:
 
 
 @dataclass(frozen=True)
+class GuideMediaContext:
+    """Share-safe context for per-client screenshot galleries."""
+
+    user_id: int | None
+    language: str
+    is_public: bool = False
+    share_token: str | None = None
+    panel_short_uuid: str | None = None
+    panel_user_uuid: str | None = None
+
+
+@dataclass(frozen=True)
+class GuideMediaImage:
+    """One ordered screenshot with localized captions."""
+
+    src: str
+    captions: dict[str, str]
+    order: int = 0
+    public_src: str | None = None
+
+
+@dataclass(frozen=True)
+class GuideMediaGallery:
+    """Ordered gallery keyed by configuration, OS, and stable client identity."""
+
+    config_id: str
+    platform: str
+    client_id: str
+    images: tuple[GuideMediaImage, ...] = ()
+
+
+GuideMediaResolver = Callable[[GuideMediaContext], Awaitable[tuple[GuideMediaGallery, ...]]]
+
+
+@dataclass(frozen=True)
+class GuideMediaProvider:
+    id: str
+    resolve: GuideMediaResolver
+
+
+@dataclass(frozen=True)
 class ResourceResult:
     body: bytes
     content_type: str = "application/octet-stream"
@@ -193,3 +234,4 @@ class ExtensionContributions:
     view_policy: ViewPolicy | None = None
     # Supported core commands, explicitly requested by the trusted plugin.
     permissions: frozenset[str] = field(default_factory=frozenset)
+    guide_media: tuple[GuideMediaProvider, ...] = field(default=(), kw_only=True)

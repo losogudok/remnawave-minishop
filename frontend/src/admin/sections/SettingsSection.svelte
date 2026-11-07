@@ -14,6 +14,7 @@
     resolveSettingsPath,
     settingsPathAnchorKey,
     settingsPathKey,
+    settingsPathMatches,
     settingsSectionAnchorKey,
     settingsSectionRoute,
     settingsSubsectionAnchorKey,
@@ -137,6 +138,18 @@
       fieldDescriptionText,
     }),
     ...programSearchEntries(),
+    {
+      key: "GUIDE_SCREENSHOTS",
+      sectionId: "subscription_guides",
+      subsectionId: "screenshots",
+      label: at("guide_media_tab", {}, "Screenshots"),
+      description: at("guide_media_hint"),
+      pathLabel: sectionTitle("subscription_guides"),
+      anchorKey: settingsSubsectionAnchorKey("subscription_guides", "screenshots"),
+      searchText: normalizeSettingsSearchText(
+        [at("guide_media_tab", {}, "Screenshots"), at("guide_media_hint")].join(" ")
+      ),
+    },
     {
       key: "ADMINISTRATORS",
       sectionId: "general",
@@ -492,17 +505,21 @@
 
   async function applySettingsPath(path: unknown): Promise<void> {
     const resolvedPath = effectiveSettingsPath(path);
+    const sectionId = ["general", "subscription_guides"].find((id) =>
+      settingsPathMatches(resolvedPath[0], id)
+    );
+    const subsectionId = resolvedPath[1]?.toLowerCase();
     if (
-      resolvedPath[0]?.toLowerCase() === "general" &&
-      resolvedPath[1]?.toLowerCase() === "administrators"
+      (sectionId === "general" && subsectionId === "administrators") ||
+      (sectionId === "subscription_guides" && subsectionId === "screenshots")
     ) {
-      settingsOpenSections = [...new Set([...settingsOpenSections, "general"])];
+      settingsOpenSections = [...new Set([...settingsOpenSections, sectionId])];
       settingsOpenSubsections = {
         ...settingsOpenSubsections,
-        general: [...new Set([...(settingsOpenSubsections.general || []), "administrators"])],
+        [sectionId]: [...new Set([...(settingsOpenSubsections[sectionId] || []), subsectionId])],
       };
       await tick();
-      scrollToSettingsAnchor(settingsSubsectionAnchorKey("general", "administrators"));
+      scrollToSettingsAnchor(settingsSubsectionAnchorKey(sectionId, subsectionId));
       return;
     }
     const firstSegment = resolvedPath[0]?.toLowerCase();

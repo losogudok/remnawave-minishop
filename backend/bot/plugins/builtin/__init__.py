@@ -5,10 +5,11 @@ serve as reference implementations. They are always active regardless of
 ``PLUGINS_ENABLED``, which only gates entry-point discovery.
 """
 
+from .guide_media import GuideMediaPlugin
 from .lknpd import LknpdPlugin
 from .telemetry import TelemetryPlugin
 
 #: Plugin classes instantiated by the loader, in activation order.
-BUILTIN_PLUGINS = (TelemetryPlugin, LknpdPlugin)
+BUILTIN_PLUGINS = (TelemetryPlugin, LknpdPlugin, GuideMediaPlugin)
 
-__all__ = ["BUILTIN_PLUGINS", "LknpdPlugin", "TelemetryPlugin"]
+__all__ = ["BUILTIN_PLUGINS", "GuideMediaPlugin", "LknpdPlugin", "TelemetryPlugin"]

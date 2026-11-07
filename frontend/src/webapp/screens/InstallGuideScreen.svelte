@@ -14,7 +14,7 @@
     Share2,
     Smartphone,
   } from "$components/ui/icons.js";
-  import { AttentionDot, Spinner } from "$components/ui/index.js";
+  import { AttentionDot, ImageViewer, Spinner } from "$components/ui/index.js";
   import { Select } from "$components/ui/primitives.js";
   import Button from "$components/ui/button.svelte";
   import Card from "$components/ui/card.svelte";
@@ -29,6 +29,7 @@
   import {
     detectInstallPlatformKey,
     installIconColorStyle,
+    installScreenshotsForApp,
     isUnsafeInstallUrl,
     localizedInstallValue,
     renderInstallQrDataUrl,
@@ -172,9 +173,25 @@
   });
   const selectedApp = $derived(apps[selectedAppIndex] || apps[0] || null);
   const selectedBlocks = $derived(Array.isArray(selectedApp?.blocks) ? selectedApp.blocks : []);
+  const selectedScreenshots = $derived(
+    installScreenshotsForApp(selectedApp ?? {}, currentLang, "", publicMode)
+  );
+  const hasScreenshots = $derived(selectedScreenshots.length > 0);
   const hasAppCard = $derived(apps.length > 0);
   const stepsDelayOffset = $derived(hasAppCard ? apps.length + 1 : 0);
-  const qrDelayIndex = $derived(stepsDelayOffset + selectedBlocks.length + 1);
+  const galleryDelayOffset = $derived(stepsDelayOffset + selectedBlocks.length + 1);
+  const qrDelayIndex = $derived(galleryDelayOffset + (hasScreenshots ? 1 : 0));
+  let viewerOpen = $state(false);
+  let viewerSrc = $state("");
+  let viewerTitle = $state("");
+  const viewerLabels = $derived({
+    open: t("wa_image_viewer_open", {}, "Open image"),
+    title: t("wa_image_viewer_title", {}, "Image"),
+    close: t("wa_image_viewer_close", {}, "Close image"),
+    zoomIn: t("wa_image_viewer_zoom_in", {}, "Zoom in"),
+    zoomOut: t("wa_image_viewer_zoom_out", {}, "Zoom out"),
+    reset: t("wa_image_viewer_reset", {}, "Reset zoom"),
+  });
   const installStageStyle = $derived(
     `${stageHeightStyle} --motion-stage-duration:${STAGE_HEIGHT_ANIMATION_MS}ms;`
   );
@@ -230,6 +247,18 @@
     installStageAnimator.animate(() => {
       selectedAppIndex = index;
     });
+  }
+
+  function openScreenshot(src: string, caption: string): void {
+    viewerSrc = src;
+    viewerTitle = caption;
+    viewerOpen = true;
+  }
+
+  function closeScreenshot(): void {
+    viewerOpen = false;
+    viewerSrc = "";
+    viewerTitle = "";
   }
 
   function installMotionStyle(index: number, extraDelay = 0) {
@@ -509,6 +538,66 @@
             {/each}
           </section>
         {/key}
+        {#if hasScreenshots}
+          <section
+            class="install-gallery motion-enter-card"
+            style={installMotionStyle(galleryDelayOffset)}
+            aria-label={t("wa_install_screenshots", {}, "Screenshots")}
+          >
+            <div class="install-section-title">
+              <span>{t("wa_install_screenshots", {}, "Screenshots")}</span>
+            </div>
+            <div class="install-gallery-grid">
+              {#each selectedScreenshots as shot, shotIndex (`${selectedPlatformKey}:${selectedApp?.name}:${shotIndex}:${shot.src}`)}
+                <button
+                  class="install-gallery-item"
+                  type="button"
+                  onclick={() =>
+                    openScreenshot(
+                      shot.src,
+                      shot.caption ||
+                        t(
+                          "wa_install_screenshot_alt",
+                          { index: shotIndex + 1 },
+                          `Screenshot ${shotIndex + 1}`
+                        )
+                    )}
+                  aria-label={t(
+                    "wa_install_screenshot_open",
+                    { index: shotIndex + 1 },
+                    `Open screenshot ${shotIndex + 1}`
+                  )}
+                >
+                  <img
+                    src={shot.src}
+                    alt={shot.caption ||
+                      t(
+                        "wa_install_screenshot_alt",
+                        { index: shotIndex + 1 },
+                        `Screenshot ${shotIndex + 1}`
+                      )}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  {#if shot.caption}
+                    <span class="install-gallery-caption">{shot.caption}</span>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          </section>
+          <ImageViewer
+            open={viewerOpen}
+            src={viewerSrc}
+            alt={viewerTitle}
+            title={viewerTitle}
+            closeLabel={viewerLabels.close}
+            zoomInLabel={viewerLabels.zoomIn}
+            zoomOutLabel={viewerLabels.zoomOut}
+            resetLabel={viewerLabels.reset}
+            onclose={closeScreenshot}
+          />
+        {/if}
         {#if selectedConnectionLink && !publicMode}
           <div
             class="install-qr-divider motion-enter-card"

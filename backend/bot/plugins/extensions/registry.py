@@ -44,6 +44,7 @@ class ExtensionRegistry:
             raise ExtensionError("unknown_extension_permission")
         for collection in (
             value.guides,
+            value.guide_media,
             value.resources,
             value.products,
             value.jobs,

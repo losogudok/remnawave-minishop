@@ -33,9 +33,31 @@ class AdminInstallPlatformOut(HttpResponseModel):
     apps: list[AdminInstallAppOut] = Field(default_factory=list)
 
 
+class AdminGuideCatalogAppOut(HttpResponseModel):
+    id: str
+    name: str
+    explicit_id: bool = False
+    ambiguous: bool = False
+
+
+class AdminGuideCatalogPlatformOut(HttpResponseModel):
+    id: str
+    label: str
+    apps: list[AdminGuideCatalogAppOut] = Field(default_factory=list)
+
+
+class AdminGuideCatalogConfigOut(HttpResponseModel):
+    config_id: str
+    source: str
+    platforms: list[AdminGuideCatalogPlatformOut] = Field(default_factory=list)
+    error: str | None = None
+    missing: bool = False
+
+
 class AdminMessageTargetsOut(HttpResponseModel):
     sections: list[AdminMessageTargetOut] = Field(default_factory=list)
     install_platforms: list[AdminInstallPlatformOut] = Field(default_factory=list)
+    guide_catalog: list[AdminGuideCatalogConfigOut] = Field(default_factory=list)
 
 
 register_contract(
@@ -47,12 +69,18 @@ register_contract(
             AdminMessageTargetOut,
             AdminInstallPlatformOut,
             AdminInstallAppOut,
+            AdminGuideCatalogConfigOut,
+            AdminGuideCatalogPlatformOut,
+            AdminGuideCatalogAppOut,
         ),
     ),
 )
 
 
 async def admin_message_targets_route(request: web.Request) -> web.Response:
+    from bot.app.web.context import get_settings
+    from bot.services.guide_catalog import build_guide_catalog_entries, project_install_platforms
+
     actor_id = _require_admin_user_id(request)
     language = await _admin_language(request, actor_id)
     i18n = get_i18n(request)
@@ -71,25 +99,70 @@ async def admin_message_targets_route(request: web.Request) -> web.Response:
                     label = translated
             sections.append(AdminMessageTargetOut(id=path, label=label, owner=owner))
     _status, document = await load_guide_content(request, user_id=actor_id)
-    install_platforms: list[AdminInstallPlatformOut] = []
-    for platform in (document or {}).get("platforms", []):
-        title = platform.get("displayName")
-        label = (
-            resolve_localized_text(title, language=language, default_language="en")
-            if isinstance(title, dict)
-            else str(title or platform["id"])
+    projected = project_install_platforms(
+        document,
+        resolve_label=resolve_localized_text,
+        language=language,
+    )
+    install_platforms = [
+        AdminInstallPlatformOut(
+            id=platform["id"],
+            label=platform["label"],
+            apps=[
+                AdminInstallAppOut(id=app["id"], name=app["name"])
+                for app in platform.get("apps", [])
+            ],
         )
-        install_platforms.append(
-            AdminInstallPlatformOut(
-                id=platform["id"],
-                label=label,
-                apps=[
-                    AdminInstallAppOut(id=app["id"], name=app["name"])
-                    for app in platform.get("apps", [])
-                ],
+        for platform in projected
+    ]
+    guide_catalog: list[AdminGuideCatalogConfigOut] = []
+    try:
+        from bot.app.web.webapp.guides_panel_config import _panel_service_from_app
+
+        settings = get_settings(request)
+        panel_service = _panel_service_from_app(request.app)
+        entries = await build_guide_catalog_entries(settings, panel_service)
+    except Exception:
+        entries = []
+    for entry in entries:
+        platforms: list[AdminGuideCatalogPlatformOut] = []
+        for platform in entry.get("platforms", []):
+            title = platform.get("display_name", platform.get("id"))
+            if isinstance(title, dict):
+                label = (
+                    resolve_localized_text(title, language=language, default_language="en")
+                    if isinstance(title, dict)
+                    else str(platform.get("id"))
+                )
+            else:
+                label = str(title or platform.get("id"))
+            platforms.append(
+                AdminGuideCatalogPlatformOut(
+                    id=str(platform.get("id")),
+                    label=label,
+                    apps=[
+                        AdminGuideCatalogAppOut(
+                            id=str(app.get("id")),
+                            name=str(app.get("name") or app.get("id")),
+                            explicit_id=bool(app.get("explicit_id")),
+                            ambiguous=bool(app.get("ambiguous")),
+                        )
+                        for app in platform.get("apps", [])
+                    ],
+                )
+            )
+        guide_catalog.append(
+            AdminGuideCatalogConfigOut(
+                config_id=str(entry.get("config_id")),
+                source=str(entry.get("source")),
+                platforms=platforms,
+                error=entry.get("error"),
+                missing=bool(entry.get("missing")),
             )
         )
-    payload = AdminMessageTargetsOut(sections=sections, install_platforms=install_platforms)
+    payload = AdminMessageTargetsOut(
+        sections=sections, install_platforms=install_platforms, guide_catalog=guide_catalog
+    )
     response = _ok(payload.model_dump(mode="json"))
     response.headers["Cache-Control"] = "private, no-store"
     return response

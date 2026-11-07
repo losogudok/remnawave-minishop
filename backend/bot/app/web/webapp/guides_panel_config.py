@@ -157,7 +157,7 @@ async def _load_subscription_guides_status(
     settings: Settings,
 ) -> dict[str, Any]:
     if not bool(settings.SUBSCRIPTION_GUIDES_ENABLED):
-        return {"enabled": False, "config": None, "source": None, "error": None}
+        return {"enabled": False, "config": None, "source": None, "config_id": None, "error": None}
 
     if _subscription_guides_admin_json_override_enabled(settings):
         return subscription_guides_status(settings)
@@ -180,6 +180,7 @@ async def _subscription_guides_status_from_panel_config(
             "enabled": False,
             "config": None,
             "source": "panel",
+            "config_id": None,
             "error": "Panel service is unavailable",
         }
 
@@ -188,6 +189,7 @@ async def _subscription_guides_status_from_panel_config(
         if not config_uuid:
             config_uuid = await _default_panel_subscription_page_config_uuid(panel_service)
         config_uuid = config_uuid or PANEL_DEFAULT_SUBPAGE_CONFIG_UUID
+        effective_uuid = config_uuid
         try:
             config = await _panel_subscription_page_config_by_uuid_cached(
                 app,
@@ -197,6 +199,7 @@ async def _subscription_guides_status_from_panel_config(
         except _PanelSubscriptionPageConfigUnavailable:
             if config_uuid == PANEL_DEFAULT_SUBPAGE_CONFIG_UUID:
                 raise
+            effective_uuid = PANEL_DEFAULT_SUBPAGE_CONFIG_UUID
             config = await _panel_subscription_page_config_by_uuid_cached(
                 app,
                 settings,
@@ -204,9 +207,21 @@ async def _subscription_guides_status_from_panel_config(
             )
     except (SubscriptionGuidesConfigError, Exception) as exc:
         logger.warning("Failed to load subscription guides config from Remnawave Panel: %s", exc)
-        return {"enabled": False, "config": None, "source": "panel", "error": str(exc)}
+        return {
+            "enabled": False,
+            "config": None,
+            "source": "panel",
+            "config_id": None,
+            "error": str(exc),
+        }
 
-    return {"enabled": True, "config": config, "source": "panel", "error": None}
+    return {
+        "enabled": True,
+        "config": config,
+        "source": "panel",
+        "config_id": f"panel:{effective_uuid}",
+        "error": None,
+    }
 
 
 async def _subscription_guides_status_from_panel_short_uuid_cached(
@@ -278,6 +293,7 @@ async def _subscription_guides_status_from_panel_short_uuid(
             "enabled": False,
             "config": None,
             "source": "panel",
+            "config_id": None,
             "error": "Panel service cannot resolve subscription page config by short UUID",
         }
 
@@ -288,12 +304,16 @@ async def _subscription_guides_status_from_panel_short_uuid(
                 f"Panel subscription page config for subscription {short_uuid} is unavailable"
             )
 
+        used_uuids: list[str] = []
+        default_config_ids: list[str] = []
+
         async def owner_configuration() -> str:
             return await _external_squad_subpage_config_uuid_for_panel_user(
                 panel_service, panel_user_uuid
             )
 
         async def configuration_by_uuid(config_uuid: str) -> dict[str, Any]:
+            used_uuids.append(str(config_uuid or "").strip())
             return await _panel_subscription_page_config_by_uuid_cached(app, settings, config_uuid)
 
         async def default_configuration() -> dict[str, Any]:
@@ -302,6 +322,9 @@ async def _subscription_guides_status_from_panel_short_uuid(
                 raise SubscriptionGuidesConfigError(
                     str(status.get("error") or "Panel default config is unavailable")
                 )
+            default_id = str(status.get("config_id") or "").strip()
+            if default_id:
+                default_config_ids.append(default_id)
             return cast(dict[str, Any], status["config"])
 
         config = await resolve_panel_subscription_guides_config(
@@ -310,14 +333,35 @@ async def _subscription_guides_status_from_panel_short_uuid(
             configuration_by_uuid=configuration_by_uuid,
             default_configuration=default_configuration,
         )
+        if default_config_ids:
+            config_id: str | None = default_config_ids[-1]
+        elif used_uuids and used_uuids[-1]:
+            config_id = f"panel:{used_uuids[-1]}"
+        else:
+            # Embedded Panel configs have no canonical panel:<uuid> identity shared
+            # with the catalog. Reject media association rather than colliding on
+            # a single shared identity.
+            config_id = None
     except Exception as exc:
         logger.warning(
             "Failed to load resolved subscription guides config from Remnawave Panel: %s",
             exc,
         )
-        return {"enabled": False, "config": None, "source": "panel", "error": str(exc)}
+        return {
+            "enabled": False,
+            "config": None,
+            "source": "panel",
+            "config_id": None,
+            "error": str(exc),
+        }
 
-    return {"enabled": True, "config": config, "source": "panel", "error": None}
+    return {
+        "enabled": True,
+        "config": config,
+        "source": "panel",
+        "config_id": config_id,
+        "error": None,
+    }
 
 
 async def _panel_subscription_page_config_by_uuid_cached(

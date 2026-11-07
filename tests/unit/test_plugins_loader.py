@@ -104,7 +104,7 @@ def test_builtin_plugins_active_by_default(caplog):
     settings = make_settings()
     with caplog.at_level("INFO"):
         names = [plugin.name for plugin in get_plugins(settings)]
-    assert names == ["telemetry", "lknpd"]
+    assert names == ["telemetry", "lknpd", "guide_media"]
     assert "Plugins active: telemetry==" in caplog.text
 
 
@@ -113,7 +113,7 @@ def test_plugins_disabled_setting_keeps_builtins_only():
     settings = make_settings(PLUGINS_ENABLED=False)
     names = [plugin.name for plugin in get_plugins(settings)]
     assert "recording" not in names
-    assert names == ["telemetry", "lknpd"]
+    assert names == ["telemetry", "lknpd", "guide_media"]
 
 
 def test_setup_hook_runs_for_registered_plugins():
@@ -217,7 +217,7 @@ def test_entry_point_discovery_rejects_non_plugin(monkeypatch, caplog):
     )
     with caplog.at_level("ERROR"):
         names = [plugin.name for plugin in get_plugins(make_settings())]
-    assert names == ["telemetry", "lknpd"]
+    assert names == ["telemetry", "lknpd", "guide_media"]
     assert "Failed to load plugin from entry point" in caplog.text
 
 
@@ -347,8 +347,10 @@ def test_collect_migrations_groups_by_plugin_name():
 
     register(MigratingPlugin())
     chains = plugins_loader.collect_migrations(make_settings())
-    assert list(chains) == ["migrating"]
+    assert "migrating" in chains
     assert chains["migrating"][0].id == "migrating.0001_initial"
+    assert "guide_media" in chains
+    assert chains["guide_media"][0].id == "guide_media.0001_initial"
 
 
 # --- Plugin locales -----------------------------------------------------------

@@ -22,6 +22,18 @@ from .contracts import (
     GuideContribution as GuideContribution,
 )
 from .contracts import (
+    GuideMediaContext as GuideMediaContext,
+)
+from .contracts import (
+    GuideMediaGallery as GuideMediaGallery,
+)
+from .contracts import (
+    GuideMediaImage as GuideMediaImage,
+)
+from .contracts import (
+    GuideMediaProvider as GuideMediaProvider,
+)
+from .contracts import (
     GuideProvider as GuideProvider,
 )
 from .contracts import (

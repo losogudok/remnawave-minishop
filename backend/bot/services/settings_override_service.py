@@ -23,6 +23,7 @@ from bot.app.web.admin_settings_manifest import (
     get_field_by_key,
     manifest_keys,
 )
+from bot.services.guide_catalog_lock import serialize_catalog_changes
 from config.settings import Settings
 from db.dal import app_settings_dal, partner_dal
 
@@ -346,6 +347,7 @@ def write_appearance_backup(settings: Settings) -> None:
         logger.warning("Failed to write appearance settings backup: %s", exc)
 
 
+@serialize_catalog_changes
 async def load_overrides_from_db(settings: Settings, async_session_factory: sessionmaker) -> int:
     """Fetch overrides from the DB and apply them to the in-memory settings.
 
@@ -388,6 +390,7 @@ async def load_overrides_from_db(settings: Settings, async_session_factory: sess
     return applied
 
 
+@serialize_catalog_changes
 async def refresh_overrides_from_db(
     settings: Settings,
     async_session_factory: sessionmaker,
@@ -480,6 +483,7 @@ def _provider_api_origin_errors(updates: dict[str, Any]) -> dict[str, str]:
     return errors
 
 
+@serialize_catalog_changes
 async def update_overrides(
     settings: Settings,
     async_session_factory: sessionmaker,

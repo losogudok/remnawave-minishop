@@ -199,12 +199,31 @@ def subscription_guides_status(settings: Any) -> dict[str, Any]:
     """Return a safe status payload for user-facing guide availability checks."""
 
     if not bool(settings.SUBSCRIPTION_GUIDES_ENABLED):
-        return {"enabled": False, "config": None, "source": None, "error": None}
+        return {
+            "enabled": False,
+            "config": None,
+            "source": None,
+            "config_id": None,
+            "error": None,
+        }
     try:
         config, source = load_subscription_guides_config(settings)
     except SubscriptionGuidesConfigError as exc:
-        return {"enabled": False, "config": None, "source": None, "error": str(exc)}
-    return {"enabled": True, "config": config, "source": source, "error": None}
+        return {
+            "enabled": False,
+            "config": None,
+            "source": None,
+            "config_id": None,
+            "error": str(exc),
+        }
+    config_id = "local:admin_json" if source == "admin_json" else "local:file"
+    return {
+        "enabled": True,
+        "config": config,
+        "source": source,
+        "config_id": config_id,
+        "error": None,
+    }
 
 
 def subscription_guides_available(settings: Any) -> bool:
@@ -508,21 +527,84 @@ def _validate_apps(
             svg_library,
             f"{app_path}.svgIconKey",
         )
-        apps.append(
-            {
-                **({"id": explicit_id} if explicit_id else {}),
-                "name": name,
-                "svgIconKey": icon_key,
-                "featured": bool(app.get("featured", False)),
-                "blocks": _validate_blocks(
-                    app.get("blocks"),
-                    locales,
-                    svg_library,
-                    f"{app_path}.blocks",
-                ),
-            }
-        )
+        screenshots = _validate_screenshots(app.get("screenshots"), f"{app_path}.screenshots")
+        entry: dict[str, Any] = {
+            **({"id": explicit_id} if explicit_id else {}),
+            "name": name,
+            "svgIconKey": icon_key,
+            "featured": bool(app.get("featured", False)),
+            "blocks": _validate_blocks(
+                app.get("blocks"),
+                locales,
+                svg_library,
+                f"{app_path}.blocks",
+            ),
+        }
+        if screenshots is not None:
+            entry["screenshots"] = screenshots
+        apps.append(entry)
     return apps
+
+
+def _validate_screenshots(value: Any, path: str) -> list[dict[str, Any]] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise SubscriptionGuidesConfigError(f"{path} must be an array")
+    if len(value) > 8:
+        raise SubscriptionGuidesConfigError(f"{path} must contain at most 8 screenshots")
+    normalized: list[dict[str, Any]] = []
+    for index, raw in enumerate(value):
+        item_path = f"{path}[{index}]"
+        if not isinstance(raw, Mapping):
+            raise SubscriptionGuidesConfigError(f"{item_path} must be an object")
+        order_raw = raw.get("order", 0)
+        if isinstance(order_raw, bool):
+            raise SubscriptionGuidesConfigError(f"{item_path}.order is invalid")
+        if isinstance(order_raw, int):
+            order = order_raw
+        elif isinstance(order_raw, float):
+            order = int(order_raw)
+        elif isinstance(order_raw, str):
+            stripped = order_raw.strip()
+            if not stripped:
+                raise SubscriptionGuidesConfigError(f"{item_path}.order is invalid")
+            try:
+                order = int(stripped, 10)
+            except ValueError:
+                raise SubscriptionGuidesConfigError(f"{item_path}.order is invalid") from None
+        else:
+            raise SubscriptionGuidesConfigError(f"{item_path}.order is invalid")
+        if not -10000 <= order <= 10000:
+            raise SubscriptionGuidesConfigError(f"{item_path}.order is out of range")
+        src = str(raw.get("src") or "").strip()
+        if not src or len(src) > 2048 or CONTROL_CHARS_RE.search(src):
+            raise SubscriptionGuidesConfigError(f"{item_path}.src is invalid")
+        lowered = src.lower()
+        if lowered.startswith(("javascript:", "vbscript:")):
+            raise SubscriptionGuidesConfigError(f"{item_path}.src uses an unsafe URL scheme")
+        if lowered.startswith("data:") and not lowered.startswith("data:image/"):
+            raise SubscriptionGuidesConfigError(f"{item_path}.src uses an unsafe URL scheme")
+        if not (src.startswith("/") or lowered.startswith(("http://", "https://", "data:image/"))):
+            raise SubscriptionGuidesConfigError(f"{item_path}.src is invalid")
+        captions_raw = raw.get("captions", raw.get("caption"))
+        captions: dict[str, str] = {}
+        if captions_raw is not None:
+            if not isinstance(captions_raw, Mapping):
+                raise SubscriptionGuidesConfigError(f"{item_path}.captions must be an object")
+            for locale, text in captions_raw.items():
+                key = str(locale or "").strip().lower()
+                if not key or key not in ALLOWED_LOCALES:
+                    continue
+                caption = str(text or "").strip()
+                if not caption:
+                    continue
+                if len(caption) > 300:
+                    raise SubscriptionGuidesConfigError(f"{item_path}.captions.{key} is too long")
+                captions[key] = caption
+        normalized.append({"src": src, "captions": captions, "order": order})
+    normalized.sort(key=lambda item: (int(item["order"]), str(item["src"])))
+    return normalized
 
 
 def _validate_blocks(

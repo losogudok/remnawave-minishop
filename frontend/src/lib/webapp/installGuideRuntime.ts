@@ -220,6 +220,64 @@ export function isUnsafeInstallUrl(value: unknown): boolean {
   return !url || hasControlChars(url) || /^(javascript|data|vbscript):/.test(url);
 }
 
+export type InstallGuideScreenshotView = {
+  src: string;
+  caption: string;
+  order: number;
+};
+
+export function installScreenshotsForApp(
+  app: { screenshots?: unknown },
+  currentLang: string,
+  fallback = "",
+  isPublic = true
+): InstallGuideScreenshotView[] {
+  const raw = Array.isArray(app?.screenshots) ? (app.screenshots as unknown[]) : [];
+  const views: InstallGuideScreenshotView[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const src = typeof record.src === "string" ? record.src.trim() : "";
+    if (!src || isUnsafeGuideScreenshotSrc(src, isPublic)) continue;
+    const caption = localizedInstallValue(record.captions ?? record.caption, currentLang, fallback);
+    let order = 0;
+    if (typeof record.order === "number" && Number.isFinite(record.order)) order = record.order;
+    else if (typeof record.order === "string" && record.order.trim()) {
+      const parsed = Number(record.order.trim());
+      if (Number.isFinite(parsed)) order = parsed;
+    }
+    views.push({ src, caption, order });
+  }
+  return views.sort((a, b) => a.order - b.order || (a.src < b.src ? -1 : a.src > b.src ? 1 : 0));
+}
+
+export function isUnsafeGuideScreenshotSrc(value: unknown, isPublic = true): boolean {
+  const src = String(value || "").trim();
+  if (!src || src.length > 2048 || hasControlChars(src)) return true;
+  const lowered = src.toLowerCase();
+  if (lowered.startsWith("javascript:") || lowered.startsWith("vbscript:")) return true;
+  if (lowered.startsWith("data:") && !lowered.startsWith("data:image/")) return true;
+  const path = guideScreenshotPath(src);
+  if (path.startsWith("/api/extensions/assets/") || path.startsWith("/api/extensions/resource")) {
+    return isPublic;
+  }
+  if (src.startsWith("/") && !src.startsWith("//")) return false;
+  if (lowered.startsWith("http://") || lowered.startsWith("https://")) return false;
+  if (lowered.startsWith("data:image/")) return false;
+  return true;
+}
+
+function guideScreenshotPath(src: string): string {
+  try {
+    const url = new URL(src);
+    if (url.protocol === "http:" || url.protocol === "https:") return url.pathname || "";
+  } catch (_error) {
+    void _error;
+  }
+  const query = src.search(/[?#]/);
+  return query >= 0 ? src.slice(0, query) : src;
+}
+
 function hasControlChars(value: unknown): boolean {
   return Array.from(String(value || "")).some((char) => {
     const code = char.charCodeAt(0);
