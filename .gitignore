@@ -25,6 +25,19 @@ node_modules/
 /graphify-out/.graphify_python
 /src/
 
+# Private staging runtime files when the checkout is the deployment root.
+/.docker/
+/.staging-deploy.lock
+/.images.*
+/stage.env
+/images.env
+/deployed-commit
+/mailpit-access.json
+/mailpit.htpasswd
+/panel-admin.json
+/staging-acceptance.json
+/staging-backups/
+
 # Documentation site build artifacts
 docs-site/.astro/
 docs-site/dist/

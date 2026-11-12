@@ -29,7 +29,13 @@ main() {
   grep -qx 'QA_AUTH_ENABLED=False' "$STAGING_ENV_FILE"
   grep -qx 'QA_PAYMENT_ENABLED=False' "$STAGING_ENV_FILE"
 
-  cd source
+  # New deployments keep the checkout in the deployment root; accept the
+  # previous nested layout while existing hosts migrate.
+  source_dir="$stage_dir"
+  if [[ ! -d "$source_dir/.git" ]]; then
+    source_dir="$stage_dir/source"
+  fi
+  cd "$source_dir"
   [[ $(git remote get-url origin) == https://github.com/losogudok/remnawave-minishop.git ]] || {
     echo 'Unexpected staging origin' >&2; exit 1;
   }
@@ -50,7 +56,7 @@ main() {
   printf 'STAGING_BACKEND_IMAGE=%s\nSTAGING_WORKER_IMAGE=%s\nSTAGING_FRONTEND_IMAGE=%s\n' \
     "$backend_image" "$worker_image" "$frontend_image" > "$candidate"
   compose=(docker compose --project-name minishop-staging --project-directory "$stage_dir"
-    --env-file "$STAGING_ENV_FILE" --env-file "$candidate" -f "$stage_dir/source/deploy/staging/compose.yml")
+    --env-file "$STAGING_ENV_FILE" --env-file "$candidate" -f "$source_dir/deploy/staging/compose.yml")
   "${compose[@]}" config --quiet
   # Download everything before interrupting the running application. The host
   # never builds or resolves a mutable dev/latest tag for application images.

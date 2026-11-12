@@ -10,6 +10,7 @@ SCRIPT = Path(__file__).resolve().parents[2] / "scripts/deploy-staging.sh"
 COMMIT = "a" * 40
 
 
+@pytest.mark.parametrize("layout", ["root", "source"])
 @pytest.mark.parametrize(
     ("scenario", "returncode", "stops", "starts"),
     [
@@ -23,10 +24,11 @@ COMMIT = "a" * 40
     ],
 )
 def test_staging_deployment_boundaries(
-    tmp_path: Path, scenario: str, returncode: int, *, stops: bool, starts: bool
+    tmp_path: Path, layout: str, scenario: str, returncode: int, *, stops: bool, starts: bool
 ) -> None:
     stage = tmp_path / "stage"
-    (stage / "source/.git").mkdir(parents=True)
+    source = stage if layout == "root" else stage / "source"
+    (source / ".git").mkdir(parents=True)
     (stage / "stage.env").write_text(
         "APP_RUNTIME_MODE=staging\nQA_AUTH_ENABLED=False\nQA_PAYMENT_ENABLED=False\n"
     )
@@ -86,6 +88,8 @@ exit 0
     )
     assert result.returncode == returncode, result.stdout + result.stderr
     calls = log.read_text() if log.exists() else ""
+    if calls:
+        assert f"-f {source}/deploy/staging/compose.yml" in calls
     assert ("stop stage-backend stage-worker" in calls) == stops
     assert ("180 stage-backend stage-worker stage-frontend" in calls) == starts
     assert " build" not in calls

@@ -10,6 +10,21 @@ README.md
 scratch_*.py
 scratch/
 .claude/
+
+# Private runtime files when staging shares the checkout root.
+/.docker/
+/.staging-deploy.lock
+/.images.*
+/stage.env
+/images.env
+/deployed-commit
+/mailpit-access.json
+/mailpit.htpasswd
+/panel-admin.json
+/staging-acceptance.json
+/staging-backups/
+/backups/
+
 *.local.*
 node_modules/
 frontend/node_modules/

@@ -33,16 +33,18 @@ deployment key; the personal GitHub SSH key is used for operator access.
 
 ## Where staging runs
 
-The deployment root is **`/opt/remnawave-dev`**. Its active Git checkout is
-**`/opt/remnawave-dev/source`**, on branch **`dev`** of
+The deployment root and active Git checkout are both **`/opt/remnawave-dev`**,
+on branch **`dev`** of
 `https://github.com/losogudok/remnawave-minishop.git`.
 
 | Path on remna | Purpose |
 | --- | --- |
-| `/opt/remnawave-dev/source/` | Clean source checkout updated by CI/CD |
-| `/opt/remnawave-dev/source/deploy/staging/compose.yml` | Active Compose definition |
-| `/opt/remnawave-dev/source/deploy/staging/Caddyfile` | Source definition of staging edge routes |
-| `/opt/remnawave-dev/source/scripts/deploy-staging.sh` | Deployment script invoked by Actions |
+| `/opt/remnawave-dev/` | Source checkout and private staging runtime files |
+| `/opt/remnawave-dev/.env` | Selects the staging Compose project for plain `docker compose` commands |
+| `/opt/remnawave-dev/compose.local.yml` | Includes the staging definition with `stage.env` and `images.env` |
+| `/opt/remnawave-dev/deploy/staging/compose.yml` | Active Compose definition |
+| `/opt/remnawave-dev/deploy/staging/Caddyfile` | Source definition of staging edge routes |
+| `/opt/remnawave-dev/scripts/deploy-staging.sh` | Deployment script invoked by Actions |
 | `/opt/remnawave-dev/stage.env` | Private runtime settings and independent secrets |
 | `/opt/remnawave-dev/images.env` | Three deployed application image digest references |
 | `/opt/remnawave-dev/deployed-commit` | Last successfully deployed Git SHA |
@@ -52,9 +54,13 @@ The deployment root is **`/opt/remnawave-dev`**. Its active Git checkout is
 | `/opt/remnawave-dev/staging-acceptance.json` | Recorded deployment and smoke-test evidence |
 | `/opt/remnawave-dev/staging-backups/` | Private pre-migration shop database dumps |
 
-The previously copied **`/opt/remnawave-dev/remnawave-minishop` is unused**.
-The copied top-level production Compose and backup scripts are also not the
-staging entry point. Always select the active Compose file explicitly.
+Private runtime files and backups are excluded by `.gitignore` and `.dockerignore`;
+`.env` and `compose.local.yml` are also ignored. The local Compose wrapper reads `stage.env` and `images.env`
+on every invocation, so image references follow the last successful deployment.
+Previously copied production configuration and scripts are preserved under
+`backups/layout-before-root-*/` and are not used by staging. The tracked root
+`docker-compose.yml` remains the standard production definition; the local `.env`
+selects staging instead.
 
 The active staging routes were added to `/opt/remnawave/caddy/Caddyfile`, which
 is mounted by the existing `caddy-remnawave` container. Production routes were
@@ -185,36 +191,47 @@ gh run list --repo losogudok/remnawave-minishop \
 
 ## Operating commands
 
-After connecting to remna, define a helper that always selects staging explicitly:
+After connecting to remna, ordinary Compose commands select staging automatically:
 
 ```bash
 cd /opt/remnawave-dev
-export STAGING_ENV_FILE="$PWD/stage.env"
-
-stage() {
-  docker compose --project-name minishop-staging \
-    --project-directory /opt/remnawave-dev \
-    --env-file /opt/remnawave-dev/stage.env \
-    --env-file /opt/remnawave-dev/images.env \
-    -f /opt/remnawave-dev/source/deploy/staging/compose.yml "$@"
-}
-
-stage ps -a
-stage logs --tail=100 stage-backend stage-worker stage-frontend
-cat /opt/remnawave-dev/deployed-commit
+docker compose ps -a
+docker compose logs
+docker compose logs --tail=100 stage-backend stage-worker stage-frontend
+cat deployed-commit
+docker compose config --quiet
 ```
 
-Validate configuration without printing its secrets:
+The private `.env` contains only the operator defaults:
 
-```bash
-stage config --quiet
+```dotenv
+COMPOSE_PROJECT_NAME=minishop-staging
+COMPOSE_FILE=/opt/remnawave-dev/compose.local.yml
+STAGING_ENV_FILE=/opt/remnawave-dev/stage.env
 ```
+
+The ignored `compose.local.yml` includes the tracked staging definition and reads
+the current runtime settings and image references without duplicating secrets:
+
+```yaml
+include:
+  - path: /opt/remnawave-dev/deploy/staging/compose.yml
+    project_directory: /opt/remnawave-dev
+    env_file:
+      - /opt/remnawave-dev/stage.env
+      - /opt/remnawave-dev/images.env
+```
+
+CI uses explicit Compose arguments and accepts both a checkout at the deployment
+root and the previous nested `source/` layout. Commit and publish the repository
+changes before the next automatic deployment: its clean-worktree guard rejects
+uncommitted edits on the host.
 
 After changing `stage.env`, recreate the affected services to load new values.
 For application and SMTP setting changes:
 
 ```bash
-stage up -d --no-build --pull never --force-recreate \
+docker compose up -d --no-build --pull never --force-recreate \
   --wait --wait-timeout 180 \
   stage-mailpit stage-backend stage-worker stage-frontend
 ```
