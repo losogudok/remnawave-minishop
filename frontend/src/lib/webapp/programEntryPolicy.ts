@@ -2,7 +2,6 @@ export type ProgramEntryPlacement = {
   bonusesNavigationVisible: boolean;
   partnerNavigationVisible: boolean;
   partnerSettingsVisible: boolean;
-  promoSettingsVisible: boolean;
 };
 
 export function resolveProgramEntryPlacement({
@@ -18,6 +17,5 @@ export function resolveProgramEntryPlacement({
     bonusesNavigationVisible: referralProgramEnabled || giftsAvailable,
     partnerNavigationVisible: partnerProgramEnabled && !referralProgramEnabled,
     partnerSettingsVisible: partnerProgramEnabled && referralProgramEnabled,
-    promoSettingsVisible: !referralProgramEnabled,
   };
 }

@@ -457,19 +457,21 @@
 <style>
   :global(.push-notifications-card) {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 14px;
     padding: 18px;
   }
 
   .push-notifications-card__heading {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
     gap: 12px;
   }
 
   .push-notifications-card__heading > div {
     display: grid;
-    flex: 1;
+    flex: 1 1 160px;
     gap: 4px;
     min-width: 0;
   }
@@ -519,11 +521,13 @@
 
   .push-notifications-card__devices {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
   }
 
   .push-notifications-card__devices ul {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     margin: 0;
     padding: 0;
     gap: 8px;
@@ -543,16 +547,27 @@
 
   .push-notifications-card__device-copy {
     display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    max-width: 100%;
     align-items: center;
     min-width: 0;
     gap: 7px;
   }
 
   .push-notifications-card__device-copy strong {
+    min-width: 0;
     overflow: hidden;
     font-size: 13px;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  :global(.push-notifications-card .btn) {
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   @media (max-width: 640px) {

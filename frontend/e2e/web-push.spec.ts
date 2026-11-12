@@ -2,11 +2,17 @@ import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 
 const en = JSON.parse(readFileSync("../locales/en.json", "utf8"));
+const ru = JSON.parse(readFileSync("../locales/ru.json", "utf8"));
 const endpoint = "https://fcm.googleapis.com/fcm/send/local-device";
 
-async function configure(page: Page, failPreference = false) {
-  let active = false;
-  let preference = false;
+async function configure(
+  page: Page,
+  failPreference = false,
+  initiallyEnabled = false,
+  language = "en"
+) {
+  let active = initiallyEnabled;
+  let preference = initiallyEnabled;
   const calls: string[] = [];
   await page.addInitScript((endpoint) => {
     const subscription = {
@@ -34,7 +40,7 @@ async function configure(page: Page, failPreference = false) {
   await page.route("**/demo/runtime/**", async (route) => {
     if (route.request().resourceType() !== "document") return route.continue();
     const response = await route.fetch();
-    const config = { authProviders: ["email"], defaultLanguage: "en" };
+    const config = { authProviders: ["email"], defaultLanguage: language };
     const body = (await response.text()).replace(
       "</head>",
       `<link rel="manifest" href="/manifest.webmanifest"><script id="webapp-config" type="application/json">${JSON.stringify(config)}</script></head>`
@@ -47,16 +53,16 @@ async function configure(page: Page, failPreference = false) {
     let response: Record<string, unknown> = { ok: true };
     if (path === "/api/auth/session")
       response = { ok: true, authenticated: true, csrf_token: "test" };
-    if (path.startsWith("/api/i18n")) response = { ok: true, i18n: { en } };
+    if (path.startsWith("/api/i18n")) response = { ok: true, i18n: { en, ru } };
     if (path === "/api/me")
       response = {
         ok: true,
         user: {
           id: 42,
-          language_code: "en",
+          language_code: language,
           notification_preferences: { push_notifications_enabled: preference },
         },
-        settings: {},
+        settings: { referral_program_enabled: false },
         subscription: { active: false },
         plans: [],
         payment_methods: [],
@@ -73,7 +79,17 @@ async function configure(page: Page, failPreference = false) {
         public_key: "AQID",
         preference_enabled: preference,
         current_device_id: active ? "local-device" : "",
-        devices: active ? [{ id: "local-device", current: true, label: "Local browser" }] : [],
+        devices: active
+          ? [
+              {
+                id: "local-device",
+                current: true,
+                label: initiallyEnabled
+                  ? "Mozilla/5.0 (Linux; Android 16; Pixel 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36"
+                  : "Local browser",
+              },
+            ]
+          : [],
       };
     }
     if (path === "/api/account/notification-preferences") {
@@ -121,4 +137,40 @@ for (const width of [1440, 390]) {
     expect(calls).toContain("DELETE /api/plugins/web_push/subscription");
     await expect(card).not.toContainText(en.wa_push_enabled_status);
   });
+}
+
+for (const width of [320, 390, 532, 1440]) {
+  for (const path of ["settings", "settings/notifications"]) {
+    test(`enabled device controls fit ${path} at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 950 });
+      await configure(page, false, true, "ru");
+      await page.goto(`/demo/runtime/${path}?theme_preview=dark`);
+      const card = page.locator(".push-notifications-card");
+      await expect(card).toContainText(ru.wa_push_enabled_status);
+      const overflow = await card.evaluate((node) => {
+        const bounds = node.getBoundingClientRect();
+        return Math.max(
+          ...[node, ...node.querySelectorAll("*")].map((child) => {
+            const rect = child.getBoundingClientRect();
+            return Math.max(rect.right - bounds.right, bounds.left - rect.left);
+          })
+        );
+      });
+      expect(overflow).toBeLessThanOrEqual(1);
+      expect(
+        await card.evaluate((node) => node.scrollWidth - node.clientWidth)
+      ).toBeLessThanOrEqual(1);
+      for (const button of await card.getByRole("button").all()) {
+        expect(
+          await button.evaluate((node) => node.scrollWidth - node.clientWidth)
+        ).toBeLessThanOrEqual(1);
+      }
+      if (path === "settings") {
+        await expect(page.locator('[data-webapp-action="setup-install"]')).toHaveClass(
+          /btn-primary/
+        );
+        await expect(page.locator(".promo-heading")).toHaveCount(0);
+      }
+    });
+  }
 }

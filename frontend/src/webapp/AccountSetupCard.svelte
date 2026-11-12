@@ -336,7 +336,7 @@
       {/if}
     </div>
     <div class="setup-actions">
-      <Button data-webapp-action="setup-install" variant="secondary" onclick={openInstall}>
+      <Button class="wide" data-webapp-action="setup-install" onclick={openInstall}>
         <Download size={16} />{t("wa_setup_install_action")}
       </Button>
     </div>
@@ -375,6 +375,7 @@
 <style>
   :global(.account-setup-card) {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 10px;
   }
   .setup-heading {

@@ -1580,7 +1580,7 @@ test("program entries follow the enabled feature combination", async ({ page }) 
   await expect(page.locator(".partner-back")).toHaveCount(0);
 
   await bottomNav.getByRole("button", { name: "Настройки", exact: true }).click();
-  await expect(page.locator(".promo-code-input")).toBeEditable();
+  await expect(page.locator(".promo-code-input")).toHaveCount(0);
   await expect(page.locator('[data-webapp-action="open-partner-program"]')).toHaveCount(0);
 
   await page.goto("/demo/runtime/settings?mock=partner-referral-enabled&theme_preview=dark");

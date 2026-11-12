@@ -34,6 +34,7 @@ for (const width of [1440, 390]) {
     await expect(card).toBeVisible();
     await expect(card.locator(".setup-offer")).toHaveCount(0);
     await expect(card.locator(".push-notifications-card")).toBeVisible();
+    await expect(card.locator('[data-webapp-action="setup-install"]')).toHaveClass(/btn-primary/);
     await expect(page.locator(".pwa-install-dialog")).toHaveCount(0);
 
     await page.locator('[data-webapp-action="setup-install"]').click();

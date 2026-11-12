@@ -660,12 +660,6 @@
         {profileTelegramId}
         {balance}
         partnerSettingsVisible={programEntryPlacement.partnerSettingsVisible}
-        promoActivationVisible={programEntryPlacement.promoSettingsVisible}
-        {promoBusy}
-        {promoCode}
-        {promoFieldError}
-        {promoIsError}
-        {promoStatus}
         {serverStatusUrl}
         {serverStatusInternal}
         {supportUrl}
@@ -692,10 +686,7 @@
         openPaymentHistory={goPaymentHistory}
         openSecurity={goSecurity}
         openServerStatus={() => goStatus("settings")}
-        {applyPromo}
-        {clearPromoFieldError}
         {setLanguageMenuOpen}
-        {setPromoCode}
         {t}
         updateAccountLanguage={accountStore.updateAccountLanguage}
       />

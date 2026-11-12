@@ -19,7 +19,6 @@
   import Spinner from "$components/ui/spinner.svelte";
   import { AttentionDot } from "$components/ui/index.js";
   import { LanguageSelect, ThemeSelect } from "$components/patterns/webapp/index.js";
-  import PromoActivationCard from "../PromoActivationCard.svelte";
   import AccountSetupCard from "../AccountSetupCard.svelte";
   import TelegramNotificationsBanner from "../TelegramNotificationsBanner.svelte";
   import MenuButtonIcon from "../MenuButtonIcon.svelte";
@@ -66,12 +65,6 @@
     profileAvatarUrl?: string;
     profileEmail?: string;
     profileTelegramId?: string;
-    promoActivationVisible?: boolean;
-    promoBusy?: boolean;
-    promoCode?: string;
-    promoFieldError?: string;
-    promoIsError?: boolean;
-    promoStatus?: string;
     qrLoginEnabled?: boolean;
     qrLoginSite?: string;
     serverStatusUrl?: string;
@@ -99,14 +92,11 @@
     openPaymentHistory?: VoidAction;
     openSecurity?: VoidAction;
     openServerStatus?: VoidAction;
-    applyPromo?: VoidAction;
     api?: ApiClient["api"];
     preferences?: NotificationPreferences;
     onPreferencesSaved?: (preferences: NotificationPreferences) => void;
     activeAccess?: boolean;
-    clearPromoFieldError?: VoidAction;
     setLanguageMenuOpen?: (open: boolean) => void;
-    setPromoCode?: StringAction;
     setThemePreference?: StringAction;
     t?: Translate;
     updateAccountLanguage?: StringAction;
@@ -131,12 +121,6 @@
     profileAvatarUrl = "",
     profileEmail = "",
     profileTelegramId = "",
-    promoActivationVisible = false,
-    promoBusy = false,
-    promoCode = "",
-    promoFieldError = "",
-    promoIsError = false,
-    promoStatus = "",
     qrLoginEnabled = false,
     qrLoginSite = "",
     serverStatusUrl = "",
@@ -164,14 +148,11 @@
     openPaymentHistory = () => {},
     openSecurity = () => {},
     openServerStatus = () => {},
-    applyPromo = () => {},
     api = undefined,
     preferences = normalizeNotificationPreferences(null),
     onPreferencesSaved = () => {},
     activeAccess = false,
-    clearPromoFieldError = () => {},
     setLanguageMenuOpen = () => {},
-    setPromoCode = () => {},
     setThemePreference = () => {},
     t = (key) => key,
     updateAccountLanguage = () => {},
@@ -344,21 +325,7 @@
       <ArrowRight size={17} />
     </button>
   </div>
-  <UserExtensionPoint target="user.settings.codes">
-    {#if promoActivationVisible}
-      <PromoActivationCard
-        {promoCode}
-        {promoFieldError}
-        {promoBusy}
-        {promoIsError}
-        {promoStatus}
-        {applyPromo}
-        {setPromoCode}
-        {clearPromoFieldError}
-        {t}
-      />
-    {/if}
-  </UserExtensionPoint>
+  <UserExtensionPoint target="user.settings.codes" />
   <div class="settings-list" class:settings-list--language-open={languageMenuOpen}>
     {#if partnerSettingsVisible}
       <button
