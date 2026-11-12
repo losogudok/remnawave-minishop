@@ -19,6 +19,9 @@ jobs:
 
   fullstack:
     uses: ./.github/workflows/fullstack-qa.yml
+    with:
+      # Keep aligned with stage-panel in deploy/staging/compose.yml.
+      remnawave_versions: '["3.4.7"]'
 
   security:
     permissions:
@@ -27,16 +30,70 @@ jobs:
     uses: ./.github/workflows/security.yml
 
   publish:
-    needs: [checks, fullstack, security]
     uses: ./.github/workflows/_docker-publish-ghcr.yml
     with:
       source_ref: ${{ github.sha }}
       source_commit: ${{ github.sha }}
       channel: dev
+      promote_channel: false
     secrets: inherit
 
+  promote:
+    name: Promote verified dev images
+    needs: [checks, fullstack, security, publish]
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download scanned image references from this run
+        uses: actions/download-artifact@v8
+        with:
+          pattern: deployment-image-*
+          path: deployment-images
+          merge-multiple: true
+
+      - name: Validate source and image references
+        env:
+          DEPLOY_COMMIT: ${{ github.sha }}
+          IMAGE_OWNER: ${{ github.repository_owner }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          for target in ("backend", "worker", "frontend"):
+              commit, image = Path(f"deployment-images/{target}.txt").read_text().splitlines()
+              if commit != os.environ["DEPLOY_COMMIT"]:
+                  raise SystemExit("Image belongs to a different commit")
+              owner = re.escape(os.environ["IMAGE_OWNER"])
+              pattern = rf"ghcr\.io/{owner}/remnawave-minishop-{target}@sha256:[0-9a-f]{{64}}"
+              if not re.fullmatch(pattern, image):
+                  raise SystemExit("Expected a scanned immutable image reference")
+          PY
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promote scanned digests to dev
+        env:
+          IMAGE_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          for target in backend worker frontend; do
+            image=$(sed -n '2p' "deployment-images/$target.txt")
+            docker buildx imagetools create --prefer-index=false \
+              --tag "ghcr.io/$IMAGE_OWNER/remnawave-minishop-$target:dev" "$image"
+          done
+
   deploy:
-    needs: publish
+    needs: promote
     if: github.repository == 'losogudok/remnawave-minishop' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     timeout-minutes: 30

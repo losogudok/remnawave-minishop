@@ -154,11 +154,18 @@ and a real VPN connection remain separate acceptance checks.
 
 Every push to `dev` starts `.github/workflows/docker-dev.yml` (**Dev CI/CD**):
 
-1. Run the reusable PR checks, Full-stack QA matrix, and Security workflows for
-   the same commit SHA.
-2. Build and publish backend, worker, and frontend images to GHCR, scan the
-   published candidates with Trivy, and record their immutable digest references.
-3. Download those references from the same workflow run and verify their source SHA.
+1. Run the reusable PR checks, Full-stack QA against staging's pinned Remnawave
+   `3.4.7`, and Security workflows for the same commit SHA. Weekly, manual, and
+   production compatibility runs retain the full Remnawave matrix. Keep the
+   `remnawave_versions` input aligned with `stage-panel` in `deploy/staging/compose.yml`.
+2. In parallel with those checks, build and publish backend, worker, and frontend
+   candidate images to GHCR, scan them with Trivy, and record their immutable
+   digest references. Failed checks can leave candidate tags but cannot promote
+   the `dev` tags or deploy to staging.
+3. After all checks and candidate scans pass, download those references from the
+   same workflow run, verify their source SHA and digest format, and promote the
+   scanned digests to `dev` without rebuilding. Release publication keeps its
+   existing tag promotion behavior.
 4. Connect to remna through SSH with pinned host keys.
 5. Check the source checkout, fetch `dev`, and reject a superseded commit before
    stopping application services.

@@ -18,6 +18,10 @@ on:
         description: "Publishing channel: dev or release"
         type: string
         required: true
+      promote_channel:
+        description: "Promote scanned candidates to channel tags in this workflow"
+        type: boolean
+        default: true
       version:
         description: "Release version without the leading v"
         type: string
@@ -156,6 +160,7 @@ jobs:
           ignore-unfixed: false
 
       - name: Publish verified channel tags
+        if: ${{ inputs.promote_channel }}
         env:
           IMAGE_REFERENCE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
           CHANNEL_TAGS: ${{ steps.meta.outputs.tags }}
