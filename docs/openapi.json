@@ -8224,6 +8224,24 @@
         "title": "AdminUserHwidDevicesOut",
         "type": "object"
       },
+      "AdminUserLoginScriptOut": {
+        "properties": {
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "script": {
+            "title": "Script",
+            "type": "string"
+          }
+        },
+        "required": [
+          "script",
+          "expires_in"
+        ],
+        "title": "AdminUserLoginScriptOut",
+        "type": "object"
+      },
       "AdminUserMergeBody": {
         "properties": {
           "confirmation_user_id": {
@@ -33023,6 +33041,62 @@
           }
         ],
         "summary": "Admin User Hwid Device Limit",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/admin/users/{user_id}/login-script": {
+      "post": {
+        "operationId": "post_admin_user_login_script_route",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "ok": {
+                          "const": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "ok"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AdminUserLoginScriptOut"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "security": [
+          {
+            "AdminSession": []
+          },
+          {
+            "AdminBearer": []
+          }
+        ],
+        "summary": "Admin User Login Script",
         "tags": [
           "admin"
         ]

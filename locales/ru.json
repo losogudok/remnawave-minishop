@@ -6582,5 +6582,11 @@
   "admin_settings_field_setup_install_reward_days_label": "Награда за установку, дней",
   "admin_settings_field_setup_install_reward_days_description": "Количество дней подписки за запуск кабинета как отдельного приложения. 0 отключает только награду.",
   "admin_settings_field_setup_push_reward_days_label": "Награда за Web Push, дней",
-  "admin_settings_field_setup_push_reward_days_description": "Количество дней подписки после подтверждённой регистрации устройства и включённого предпочтения уведомлений. 0 отключает только награду."
+  "admin_settings_field_setup_push_reward_days_description": "Количество дней подписки после подтверждённой регистрации устройства и включённого предпочтения уведомлений. 0 отключает только награду.",
+  "admin_user_login_script": "Войти под пользователем",
+  "admin_user_login_script_hint": "Скопировать скрипт для DevTools. Сессия на 24 часа. Используйте окно инкогнито.",
+  "admin_user_login_script_copied": "Скрипт скопирован. Откройте кабинет в режиме инкогнито и вставьте его в консоль DevTools. Сессия: 24 часа.",
+  "admin_user_login_script_copy_failed": "Не удалось скопировать скрипт. Разрешите доступ к буферу обмена и повторите попытку.",
+  "admin_user_login_script_failed": "Не удалось создать скрипт входа.",
+  "admin_error_login_script_url_unavailable": "Для входа под пользователем настройте HTTPS-адрес Mini App."
 }

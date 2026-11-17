@@ -13,6 +13,8 @@ export type ActiveSubscription = NonNullable<AdminUserDetail["active_subscriptio
 
 export type UsersStoreBridge = {
   userDetailTab: string;
+  userActionBusy?: boolean;
+  copyUserLoginScript?: () => void | Promise<void>;
   copyToClipboard: (value: string | null | undefined, message?: string) => void;
   openUserReferrals: (page?: number) => void | Promise<void>;
   addUserInternalSquadOverride: () => void | Promise<void>;

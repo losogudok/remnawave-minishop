@@ -3040,6 +3040,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/admin/users/{user_id}/login-script": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Admin User Login Script */
+    post: operations["post_admin_user_login_script_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/admin/users/{user_id}/merge": {
     parameters: {
       query?: never;
@@ -8642,6 +8659,13 @@ export interface components {
        * @default null
        */
       max_devices: number | null;
+    };
+    /** AdminUserLoginScriptOut */
+    AdminUserLoginScriptOut: {
+      /** Expires In */
+      expires_in: number;
+      /** Script */
+      script: string;
     };
     /** AdminUserMergeBody */
     AdminUserMergeBody: {
@@ -19874,6 +19898,31 @@ export interface operations {
             ok: true;
             subscription?: components["schemas"]["AdminSubscriptionOut"];
           };
+        };
+      };
+    };
+  };
+  post_admin_user_login_script_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        user_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @constant */
+            ok: true;
+          } & components["schemas"]["AdminUserLoginScriptOut"];
         };
       };
     };

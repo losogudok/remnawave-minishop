@@ -173,12 +173,15 @@ def _session_secret(settings: Settings) -> bytes:
     ).digest()
 
 
-def create_webapp_session_token(settings: Settings, user_id: int) -> str:
+def create_webapp_session_token(
+    settings: Settings, user_id: int, *, ttl_seconds: int | None = None
+) -> str:
     now = int(time.time())
     payload = {
         "sub": int(user_id),
         "iat": now,
-        "exp": now + max(60, _webapp_session_ttl_seconds(settings)),
+        "exp": now
+        + max(60, _webapp_session_ttl_seconds(settings) if ttl_seconds is None else ttl_seconds),
     }
     payload_part = _urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
     signature = hmac.new(

@@ -153,6 +153,21 @@
     {/if}
   </div>
   <div class="admin-user-hero-actions">
+    {#if usersStore.copyUserLoginScript}
+      <AdminButton
+        size="sm"
+        variant="ghost"
+        disabled={!openedUserDetail || openedUser.is_banned || usersStore.userActionBusy}
+        onclick={() => void usersStore.copyUserLoginScript?.()}
+        title={at(
+          "user_login_script_hint",
+          {},
+          "Copy a DevTools login script for a 24-hour session. Use an incognito window."
+        )}
+      >
+        <Copy size={14} />{at("user_login_script", {}, "Log in as user")}
+      </AdminButton>
+    {/if}
     {#if openedUserDetail?.panel_user_url}
       <a
         class="admin-btn admin-btn-sm admin-btn-ghost"

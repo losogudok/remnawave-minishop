@@ -6582,5 +6582,11 @@
   "admin_settings_field_setup_install_reward_days_label": "Install reward, days",
   "admin_settings_field_setup_install_reward_days_description": "Subscription days for launching the account app in standalone mode. 0 disables only this reward.",
   "admin_settings_field_setup_push_reward_days_label": "Web Push reward, days",
-  "admin_settings_field_setup_push_reward_days_description": "Subscription days after confirmed device enrollment and enabled account notification preference. 0 disables only this reward."
+  "admin_settings_field_setup_push_reward_days_description": "Subscription days after confirmed device enrollment and enabled account notification preference. 0 disables only this reward.",
+  "admin_user_login_script": "Log in as user",
+  "admin_user_login_script_hint": "Copy a DevTools login script for a 24-hour session. Use an incognito window.",
+  "admin_user_login_script_copied": "Script copied. Open the cabinet in incognito mode and paste it into the DevTools console. Session: 24 hours.",
+  "admin_user_login_script_copy_failed": "Could not copy the script. Allow clipboard access and try again.",
+  "admin_user_login_script_failed": "Could not create a login script.",
+  "admin_error_login_script_url_unavailable": "Configure an HTTPS Mini App URL to log in as a user."
 }

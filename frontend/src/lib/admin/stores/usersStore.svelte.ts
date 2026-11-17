@@ -1,3 +1,5 @@
+import { createUsersStoreTelegramProfileAction } from "./usersStoreTelegramProfile";
+import { createUsersStoreLoginScriptAction } from "./usersStoreLoginScript";
 import { adminErrorMessage } from "../errors.js";
 import { createAdminPerfSpan } from "../adminPerfMarks";
 import { userDisplayName } from "../users.js";
@@ -503,32 +505,6 @@ export function createUsersStore({
     }
   }
 
-  async function sendTelegramProfileLink() {
-    const s = readStateSnapshot();
-    if (!s.openedUser) return;
-    applyState((st) => ({ ...st, userActionBusy: true }));
-    try {
-      const res = await api(
-        buildAdminUserActionPath(s.openedUser.user_id, "telegram-profile-link"),
-        {
-          method: "POST",
-        }
-      );
-      if (res?.ok) {
-        invalidateUsersQueries(s.openedUser.user_id);
-        onToast(at("user_tg_profile_link_sent", {}, "Link sent to Telegram"));
-      } else {
-        onToast(
-          adminErrorMessage(res, at, at("user_tg_profile_link_failed", {}, "Failed to send link"))
-        );
-      }
-    } catch (error) {
-      reportUserActionError(error);
-    } finally {
-      applyState((st) => ({ ...st, userActionBusy: false }));
-    }
-  }
-
   async function extendUser() {
     const s = readStateSnapshot();
     if (!s.openedUser) return;
@@ -950,6 +926,24 @@ export function createUsersStore({
     invalidateUsersQueries,
   });
 
+  const telegramProfileActions = createUsersStoreTelegramProfileAction({
+    api,
+    onToast,
+    at,
+    readStateSnapshot,
+    applyState,
+    invalidateUsersQueries,
+    reportUserActionError,
+  });
+
+  const loginScriptActions = createUsersStoreLoginScriptAction({
+    api,
+    onToast,
+    at,
+    readStateSnapshot,
+    applyState,
+  });
+
   const balanceActions = createUsersStoreBalanceActions({
     api,
     onToast,
@@ -971,7 +965,8 @@ export function createUsersStore({
     copyToClipboard,
     requestBanToggle,
     applyBanToggle,
-    sendTelegramProfileLink,
+    ...telegramProfileActions,
+    ...loginScriptActions,
     extendUser,
     changeUserTariff,
     resetTrialUser,

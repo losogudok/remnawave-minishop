@@ -326,6 +326,9 @@ export function demoApiResponse(
           page_size: page.pageSize,
         };
       }
+      if (parts[4] === "login-script" && method === "POST") {
+        return { ok: true, script: "void 0;", expires_in: 86400 };
+      }
       if (parts[4] === "telegram-profile-link") {
         return { ok: true, url: `https://t.me/${detail.user?.username || "demo_user"}` };
       }

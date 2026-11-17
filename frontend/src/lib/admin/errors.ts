@@ -92,6 +92,7 @@ const ADMIN_ERROR_KEYS: Record<string, string> = {
   no_previous_version: "error_theme_no_rollback",
   theme_preview_unavailable: "error_theme_preview",
   invalid_theme_selection: "error_theme_preview",
+  login_script_url_unavailable: "error_login_script_url_unavailable",
   admin_telegram_unavailable: "error_admin_telegram_unavailable",
   access_denied: "error_access_denied",
   backup_create_busy: "error_backup_busy",
