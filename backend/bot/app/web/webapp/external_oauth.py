@@ -84,6 +84,7 @@ from .external_oauth_providers import (
 from .external_oauth_providers import (
     yandex_profile as _yandex_profile,
 )
+from .native_auth_contracts import NativeSessionOut
 from .payloads import WebAppEmailChangeCurrentPayload
 from .response_helpers import json_response
 
@@ -379,6 +380,54 @@ async def external_oauth_callback_route(request: web.Request) -> web.Response:
     if not profile:
         return finish("profile_failed")
 
+    return await _complete_external_login(request, key, provider, profile, state)
+
+
+async def complete_native_google_login(
+    request: web.Request, provider: ExternalProvider, profile: dict[str, Any]
+) -> web.Response:
+    return await _complete_external_login(
+        request,
+        "google",
+        provider,
+        profile,
+        {"purpose": "login", "user_id": None, "referral": "", "tariff_access_code": ""},
+        native=True,
+    )
+
+
+async def _complete_external_login(
+    request: web.Request,
+    key: str,
+    provider: ExternalProvider,
+    profile: dict[str, Any],
+    state: dict[str, Any],
+    *,
+    native: bool = False,
+) -> web.Response:
+    # Kept beside the browser flow to preserve existing monkeypatch seams while
+    # sharing all registration/linking policies; split pending routes separately.
+    settings: Settings = get_settings(request)
+    purpose = str(state.get("purpose") or "login")
+    if native and (key != "google" or purpose != "login" or state.get("user_id")):
+        return json_response({"ok": False, "error": "invalid_native_purpose"}, status=400)
+
+    def finish(status: str) -> web.Response:
+        if native:
+            code = (
+                403
+                if status in {"access_denied", "invite_required"}
+                else 500
+                if status == "failed"
+                else 409
+            )
+            return json_response({"ok": False, "error": status}, status=code)
+        response = web.HTTPFound(
+            _redirect(key, purpose, status, str(state.get("tariff_access_code") or ""))
+        )
+        _clear_state_cookie(response)
+        return response
+
     async_session_factory: sessionmaker = get_session_factory(request)
     user_id: int | None = None
     created_user = False
@@ -465,6 +514,8 @@ async def external_oauth_callback_route(request: web.Request) -> web.Response:
                         user_id = int(email_owner.user_id)
                         identity_link_source = "provider_verified_email"
                     else:
+                        if native:
+                            return finish("email_confirmation_required")
                         email_service = get_email_auth_service(request)
                         request_result = await email_service.request_code(
                             session,
@@ -679,6 +730,10 @@ async def external_oauth_callback_route(request: web.Request) -> web.Response:
         )
     await _invalidate_webapp_user_caches(settings, int(user_id), include_devices=True)
     token = create_webapp_session_token(settings, int(user_id))
+    if native:
+        return json_response(
+            NativeSessionOut(ok=True, token=token, user_id=int(user_id)).model_dump(mode="json")
+        )
     response = web.HTTPFound(
         _redirect(key, purpose, "success", str(state.get("tariff_access_code") or ""))
     )

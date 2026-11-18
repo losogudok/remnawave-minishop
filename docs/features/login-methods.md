@@ -572,3 +572,93 @@ docker exec -it mailserver setup email list
 ## Рекламные источники
 
 Кампании, ссылки, предложения и проверка источника покупки описаны в [разделе рекламы](./advertising/index.md).
+
+
+## Нативный OAuth для мобильных приложений
+
+Backend поддерживает вход по ID token Google и Telegram без браузерных cookies:
+
+| Провайдер | Создание challenge | Обмен ID token |
+| --- | --- | --- |
+| Google | `POST /api/auth/google/challenge` | `POST /api/auth/google/token` |
+| Telegram | `POST /api/auth/telegram/native/challenge` | `POST /api/auth/telegram/native/token` |
+
+Оба провайдера используют один контракт. Клиент отправляет JSON `{}` на маршрут challenge
+и получает:
+
+```json
+{"ok": true, "request_id": "<random-request-id>", "nonce": "<random-nonce>", "expires_in": 300}
+```
+
+Клиент передаёт **точный nonce** в запрос авторизации провайдера. Затем отправляет на маршрут
+обмена `{"request_id": "...", "id_token": "..."}`. Успешный ответ:
+
+```json
+{"ok": true, "token": "<minishop-session-token>", "user_id": 123}
+```
+
+Перед сохранением сессии приложение проверяет её запросом `GET /api/me` на том же origin
+с `Authorization: Bearer <minishop-session-token>`. Cookies и redirect при нативном обмене
+не выдаются. Запросы challenge/token должны иметь `Content-Type: application/json` и не содержать
+`Origin`, `Cookie` или старую `Authorization`. Дополнительные поля, включая `purpose`, `user_id`
+и параметры привязки/объединения, отклоняются. Размер тела ограничен 16 KiB; сам ID token —
+12000 символами. Ответы не кешируются.
+
+### Настройка и требования к клиенту
+
+- **Google:** включите `GOOGLE_OIDC_ENABLED`, настройте `GOOGLE_OIDC_CLIENT_ID` и
+  `GOOGLE_OIDC_CLIENT_SECRET`, как для браузерного входа. Credential Manager должен использовать
+  этот Web client ID в качестве server client ID и полученный nonce. Android package и SHA-1
+  регистрируются в Google отдельно; secret остаётся на backend.
+- **Telegram:** включите `TELEGRAM_ENABLED` и `TELEGRAM_LOGIN_ENABLED` и явно укажите
+  `TELEGRAM_NATIVE_OAUTH_CLIENT_ID`, соответствующий регистрации мобильного приложения в BotFather.
+  Нативный маршрут не подставляет ID бота из `BOT_TOKEN` вместо настроенного audience.
+  Если native client ID не указан, используется явно заданный `TELEGRAM_OAUTH_CLIENT_ID`.
+  Отдельная env-настройка позволяет сохранить разные регистрации web и mobile;
+  произвольные client ID от приложения не принимаются.
+- **Redis обязателен:** challenge хранится с TTL 300 секунд. При недоступности Redis обмен
+  закрыт; локального fallback нет. На IP и провайдера действуют отдельные лимиты:
+  10 challenge и 20 обменов за 60 секунд.
+- **Telegram SDK должен поддерживать nonce:** текущая локальная копия SDK в Android-проекте
+  передаёт PKCE, но не передаёт nonce. Для этого контракта необходимо добавить передачу nonce
+  в оба пути авторизации SDK либо использовать OIDC-клиент с такой поддержкой. Старый запрос
+  `{"id_token": "..."}` без `request_id` несовместим и отклоняется. Отключать проверку nonce
+  ради совместимости нельзя.
+
+[Документация Google по серверной проверке ID token](https://developers.google.com/identity/sign-in/android/backend-auth)
+и [Telegram OIDC](https://core.telegram.org/bots/telegram-login) описывают проверяемые claims
+и передачу nonce. Нативный Telegram-маршрут принимает только RS256; существующие браузерные
+алгоритмы и маршруты остаются отдельным контрактом.
+
+### Одноразовость и ошибки
+
+Backend проверяет подпись, audience, issuer, срок действия и совпадение nonce до погашения
+challenge. Затем атомарная Redis-операция сравнивает nonce и удаляет challenge: при двух
+параллельных запросах сессию может получить только один. Challenge одного провайдера не
+принимается другим. Истечение TTL во время проверки JWT также отклоняет обмен.
+
+- `400 invalid_payload` — некорректный JSON или форма запроса; `413 payload_too_large` —
+  превышен размер тела; неподходящий Content-Type возвращает `400 invalid_request`.
+- `401 invalid_google_credential` / `invalid_telegram_credential` — неверный ID token;
+  challenge не погашается.
+- `410 challenge_expired` — challenge отсутствует, истёк или уже использован.
+- `429 rate_limited` с `Retry-After` — превышен лимит запросов.
+- `503 native_auth_unavailable` / `limiter_unavailable` — Redis недоступен;
+  `google_not_configured` / `telegram_not_configured` — провайдер не настроен.
+- `404 google_login_disabled` / `telegram_login_disabled` — вход отключён.
+- `403 native_request_required` — нативный обработчик отклонил Origin, cookies или Authorization.
+  До него CSRF middleware может вернуть `403 csrf_failed`: например, при чужом Origin
+  или сессионной cookie без корректного CSRF-токена. Оба ответа означают отказ в запросе;
+  нативный клиент должен отправлять challenge/token без этих заголовков.
+
+После погашения challenge применяются общие правила регистрации, блокировок и идентичностей.
+Нативный вход не привязывает провайдера к уже открытой браузерной сессии и не объединяет аккаунты.
+Если Google-профиль требует дополнительного подтверждения существующего стороннего email,
+возвращается `409 email_confirmation_required` без письма, pending-cookie и сессии. Подтверждение
+можно пройти через веб-кабинет, затем начать новый нативный вход. Параметры приглашения и
+реферальной атрибуции в текущем нативном контракте отсутствуют, поэтому новая регистрация при
+обязательном приглашении отклоняется существующими правилами.
+
+Погашенный challenge не восстанавливается при отказе регистрации, сбое БД или потере успешного
+ответа: клиент начинает новый challenge и заново получает credential. Не включайте флаги готовности
+нативного обмена в приложении до деплоя маршрутов и проверки реального входа на целевом backend.

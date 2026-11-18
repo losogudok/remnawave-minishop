@@ -69,6 +69,7 @@ from .constants import (
     WEBAPP_CSRF_COOKIE_NAME,
     WEBAPP_SESSION_COOKIE_NAME,
 )
+from .native_auth_contracts import NativeSessionOut
 from .payloads import (
     WebAppTelegramAuthPayload,
 )
@@ -487,10 +488,8 @@ async def _validate_telegram_auth_payload(
 
 
 async def auth_token_route(request: web.Request) -> web.Response:
-    settings: Settings = get_settings(request)
     auth_payload = await _parse_model_payload(request, WebAppTelegramAuthPayload)
     payload = auth_payload.model_dump(mode="json", exclude_none=True)
-    referral_param = str(auth_payload.referral_code or auth_payload.start_param or "")
     telegram_user = await _validate_telegram_auth_payload(request, payload)
 
     if not telegram_user:
@@ -504,6 +503,20 @@ async def auth_token_route(request: web.Request) -> web.Response:
     if rate_limit_response:
         return rate_limit_response
 
+    return await complete_telegram_login(request, telegram_user, auth_payload=auth_payload)
+
+
+async def complete_telegram_login(
+    request: web.Request,
+    telegram_user: dict[str, Any],
+    *,
+    auth_payload: WebAppTelegramAuthPayload,
+    native: bool = False,
+) -> web.Response:
+    """Complete a verified Telegram login using the same account and referral rules."""
+    settings = get_settings(request)
+    payload = auth_payload.model_dump(mode="json", exclude_none=True)
+    referral_param = str(auth_payload.referral_code or auth_payload.start_param or "")
     async_session_factory: sessionmaker = get_session_factory(request)
     authenticated_user_id: int | None = None
     async with async_session_factory() as session:
@@ -554,6 +567,12 @@ async def auth_token_route(request: web.Request) -> web.Response:
     await _invalidate_webapp_user_caches(settings, authenticated_user_id, include_devices=True)
     await _probe_telegram_notifications_for_user_id(request, int(authenticated_user_id))
     token = create_webapp_session_token(settings, int(authenticated_user_id))
+    if native:
+        return json_response(
+            NativeSessionOut(ok=True, token=token, user_id=int(authenticated_user_id)).model_dump(
+                mode="json"
+            )
+        )
     return _build_webapp_auth_response(settings, {"ok": True}, token=token)
 
 

@@ -40,6 +40,14 @@ class AuthenticationSettings(BaseSettings):
         default=None,
         description="Telegram Web Login Client ID from BotFather. Defaults to the numeric bot ID from BOT_TOKEN.",  # noqa: E501
     )
+    TELEGRAM_NATIVE_OAUTH_CLIENT_ID: int | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Registered native Telegram client ID. Falls back to an explicitly configured "
+            "TELEGRAM_OAUTH_CLIENT_ID, never to BOT_TOKEN."
+        ),
+    )
     TELEGRAM_OAUTH_CLIENT_SECRET: str | None = Field(
         default=None,
         description="Telegram Web Login Client Secret from BotFather. Reserved for full OIDC authorization code integrations.",  # noqa: E501

@@ -429,6 +429,7 @@ Xray-Core 26.3.27+, `NET_ADMIN`, nftables, корректный sniffing и вк
 | `WEBAPP_LOGIN_TOKEN_TTL_SECONDS` | `.env` | TTL ссылки внешнего логина. |
 | `WEBAPP_COMPACT_LOGIN_ENABLED` | `.env` / админка → Внешний вид | Показывать способы входа компактными значками, если доступно более одного способа. По умолчанию `True`. |
 | `TELEGRAM_OAUTH_CLIENT_ID` | `.env` | Идентификатор клиента Telegram OAuth / OpenID Connect. Если пусто, берется bot ID из `BOT_TOKEN`. |
+| `TELEGRAM_NATIVE_OAUTH_CLIENT_ID` | `.env` | Client ID нативного приложения Telegram из BotFather. Если пусто, используется явно заданный `TELEGRAM_OAUTH_CLIENT_ID`; ID из `BOT_TOKEN` не подставляется. |
 | `TELEGRAM_OAUTH_CLIENT_SECRET` | `.env` | Секрет клиента Telegram OAuth / OpenID Connect. |
 | `TELEGRAM_OAUTH_REQUEST_ACCESS` | `.env` | Дополнительные разрешения, например `write`. |
 | `TELEGRAM_OAUTH_USE_BOT_PROXY` | `.env` | Разрешить server-side OAuth token/JWKS запросам автоматически использовать настроенный `TELEGRAM_BOT_PROXY_URL`. По умолчанию `True`; браузерный redirect не проксируется. |

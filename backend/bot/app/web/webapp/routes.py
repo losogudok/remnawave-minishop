@@ -131,6 +131,12 @@ from .guides import (
     public_subscription_guides_route,
     subscription_guides_route,
 )
+from .native_auth import (
+    native_google_challenge_route,
+    native_google_token_route,
+    native_telegram_challenge_route,
+    native_telegram_token_route,
+)
 from .notification_preferences import (
     account_notification_preferences_route,
     email_notification_preferences_route,
@@ -337,6 +343,10 @@ def setup_subscription_webapp_routes(app: web.Application) -> None:
     )
     app.router.add_post("/api/auth/telegram/nonce", telegram_oauth_nonce_route)
     app.router.add_post("/api/auth/token", auth_token_route)
+    app.router.add_post("/api/auth/google/challenge", native_google_challenge_route)
+    app.router.add_post("/api/auth/google/token", native_google_token_route)
+    app.router.add_post("/api/auth/telegram/native/challenge", native_telegram_challenge_route)
+    app.router.add_post("/api/auth/telegram/native/token", native_telegram_token_route)
     app.router.add_post("/api/auth/email/request", email_auth_request_route)
     app.router.add_post("/api/auth/email/verify", email_auth_verify_route)
     app.router.add_post("/api/auth/email/magic", email_auth_magic_route)

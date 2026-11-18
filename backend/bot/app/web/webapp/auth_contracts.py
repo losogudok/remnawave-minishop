@@ -18,6 +18,12 @@ from .contract_schemas import (
     public_contract,
     user_contract,
 )
+from .native_auth_contracts import (
+    NativeChallengeBody,
+    NativeChallengeOut,
+    NativeSessionOut,
+    NativeTokenBody,
+)
 from .payloads import (
     WebAppEmailChangeCurrentPayload,
     WebAppEmailCodeAuthPayload,
@@ -34,6 +40,26 @@ from .payloads import (
 from .trial_captcha import TrialCaptchaBody, TrialCaptchaResponse
 
 AUTH_ROUTE_CONTRACTS: dict[str, RouteContract] = {
+    "native_google_challenge_route": public_contract(
+        request_model=NativeChallengeBody,
+        response_schema=NativeChallengeOut.model_json_schema(),
+        models=(NativeChallengeOut,),
+    ),
+    "native_telegram_challenge_route": public_contract(
+        request_model=NativeChallengeBody,
+        response_schema=NativeChallengeOut.model_json_schema(),
+        models=(NativeChallengeOut,),
+    ),
+    "native_google_token_route": public_contract(
+        request_model=NativeTokenBody,
+        response_schema=NativeSessionOut.model_json_schema(),
+        models=(NativeSessionOut,),
+    ),
+    "native_telegram_token_route": public_contract(
+        request_model=NativeTokenBody,
+        response_schema=NativeSessionOut.model_json_schema(),
+        models=(NativeSessionOut,),
+    ),
     "trial_captcha_route": user_contract(
         response_schema=TrialCaptchaResponse.model_json_schema(),
         models=(TrialCaptchaResponse,),

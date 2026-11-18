@@ -6,6 +6,7 @@ import json
 import logging
 import secrets
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qsl
@@ -319,6 +320,8 @@ async def validate_telegram_oauth_id_token(
     client_id: int,
     expected_nonce: str,
     max_age_seconds: int,
+    algorithms: Sequence[str] | None = None,
+    leeway_seconds: int = TELEGRAM_CLOCK_SKEW_SECONDS,
 ) -> dict[str, Any] | None:
     """Validate Telegram OIDC ID token and return a Telegram-like user payload."""
 
@@ -343,10 +346,10 @@ async def validate_telegram_oauth_id_token(
             jwt.decode,
             id_token,
             signing_key.key,
-            algorithms=TELEGRAM_OAUTH_ALGORITHMS,
+            algorithms=list(algorithms) if algorithms is not None else TELEGRAM_OAUTH_ALGORITHMS,
             audience=str(client_id),
             issuer=TELEGRAM_OAUTH_ISSUER,
-            leeway=TELEGRAM_CLOCK_SKEW_SECONDS,
+            leeway=leeway_seconds,
             options={"require": ["exp", "iat", "iss", "aud"]},
         )
 
@@ -357,7 +360,7 @@ async def validate_telegram_oauth_id_token(
         now = int(time.time())
         issued_at = int(claims.get("iat") or 0)
         max_age = max(60, int(max_age_seconds))
-        if issued_at > now + TELEGRAM_CLOCK_SKEW_SECONDS or now - issued_at > max_age:
+        if issued_at > now + leeway_seconds or now - issued_at > max_age:
             logger.warning("Telegram OAuth ID token is stale.")
             return None
 
@@ -365,6 +368,8 @@ async def validate_telegram_oauth_id_token(
         if not telegram_id_raw:
             return None
         telegram_id = int(telegram_id_raw)
+        if telegram_id <= 0:
+            return None
 
         full_name = str(claims.get("name") or "").strip()
         first_name = str(claims.get("given_name") or "").strip()

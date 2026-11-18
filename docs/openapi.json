@@ -11566,12 +11566,94 @@
         "title": "MutationRequest",
         "type": "object"
       },
+      "NativeChallengeBody": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "NativeChallengeBody",
+        "type": "object"
+      },
+      "NativeChallengeOut": {
+        "properties": {
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "nonce": {
+            "title": "Nonce",
+            "type": "string"
+          },
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "request_id",
+          "nonce",
+          "expires_in"
+        ],
+        "title": "NativeChallengeOut",
+        "type": "object"
+      },
+      "NativeSessionOut": {
+        "properties": {
+          "ok": {
+            "const": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "token",
+          "user_id"
+        ],
+        "title": "NativeSessionOut",
+        "type": "object"
+      },
       "NativeStatusProvider": {
         "enum": [
           "uptime-kuma",
           "xray-checker"
         ],
         "type": "string"
+      },
+      "NativeTokenBody": {
+        "additionalProperties": false,
+        "properties": {
+          "id_token": {
+            "maxLength": 12000,
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "title": "Id Token",
+            "type": "string"
+          },
+          "request_id": {
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "id_token"
+        ],
+        "title": "NativeTokenBody",
+        "type": "object"
       },
       "NotificationPreferencesOut": {
         "properties": {
@@ -34810,6 +34892,115 @@
         ]
       }
     },
+    "/api/auth/google/challenge": {
+      "post": {
+        "operationId": "post_native_google_challenge_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NativeChallengeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "expires_in": {
+                      "title": "Expires In",
+                      "type": "integer"
+                    },
+                    "nonce": {
+                      "title": "Nonce",
+                      "type": "string"
+                    },
+                    "ok": {
+                      "const": true,
+                      "title": "Ok",
+                      "type": "boolean"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "request_id",
+                    "nonce",
+                    "expires_in"
+                  ],
+                  "title": "NativeChallengeOut",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "summary": "Native Google Challenge",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/google/token": {
+      "post": {
+        "operationId": "post_native_google_token_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NativeTokenBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "title": "Ok",
+                      "type": "boolean"
+                    },
+                    "token": {
+                      "title": "Token",
+                      "type": "string"
+                    },
+                    "user_id": {
+                      "title": "User Id",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "token",
+                    "user_id"
+                  ],
+                  "title": "NativeSessionOut",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "summary": "Native Google Token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/auth/logout": {
       "post": {
         "operationId": "post_logout_route",
@@ -35180,6 +35371,115 @@
           }
         },
         "summary": "Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/telegram/native/challenge": {
+      "post": {
+        "operationId": "post_native_telegram_challenge_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NativeChallengeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "expires_in": {
+                      "title": "Expires In",
+                      "type": "integer"
+                    },
+                    "nonce": {
+                      "title": "Nonce",
+                      "type": "string"
+                    },
+                    "ok": {
+                      "const": true,
+                      "title": "Ok",
+                      "type": "boolean"
+                    },
+                    "request_id": {
+                      "title": "Request Id",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "request_id",
+                    "nonce",
+                    "expires_in"
+                  ],
+                  "title": "NativeChallengeOut",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "summary": "Native Telegram Challenge",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/telegram/native/token": {
+      "post": {
+        "operationId": "post_native_telegram_token_route",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NativeTokenBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "ok": {
+                      "const": true,
+                      "title": "Ok",
+                      "type": "boolean"
+                    },
+                    "token": {
+                      "title": "Token",
+                      "type": "string"
+                    },
+                    "user_id": {
+                      "title": "User Id",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "token",
+                    "user_id"
+                  ],
+                  "title": "NativeSessionOut",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON response"
+          }
+        },
+        "summary": "Native Telegram Token",
         "tags": [
           "auth"
         ]

@@ -3499,6 +3499,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/auth/google/challenge": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Native Google Challenge */
+    post: operations["post_native_google_challenge_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/auth/google/token": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Native Google Token */
+    post: operations["post_native_google_token_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/auth/logout": {
     parameters: {
       query?: never;
@@ -3612,6 +3646,40 @@ export interface paths {
     get: operations["get_session_route"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/auth/telegram/native/challenge": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Native Telegram Challenge */
+    post: operations["post_native_telegram_challenge_route"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/auth/telegram/native/token": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Native Telegram Token */
+    post: operations["post_native_telegram_token_route"];
     delete?: never;
     options?: never;
     head?: never;
@@ -10160,8 +10228,43 @@ export interface components {
       /** Expected Generation */
       expected_generation: number;
     };
+    /** NativeChallengeBody */
+    NativeChallengeBody: Record<string, never>;
+    /** NativeChallengeOut */
+    NativeChallengeOut: {
+      /** Expires In */
+      expires_in: number;
+      /** Nonce */
+      nonce: string;
+      /**
+       * Ok
+       * @constant
+       */
+      ok: true;
+      /** Request Id */
+      request_id: string;
+    };
+    /** NativeSessionOut */
+    NativeSessionOut: {
+      /**
+       * Ok
+       * @constant
+       */
+      ok: true;
+      /** Token */
+      token: string;
+      /** User Id */
+      user_id: number;
+    };
     /** @enum {string} */
     NativeStatusProvider: "uptime-kuma" | "xray-checker";
+    /** NativeTokenBody */
+    NativeTokenBody: {
+      /** Id Token */
+      id_token: string;
+      /** Request Id */
+      request_id: string;
+    };
     /** NotificationPreferencesOut */
     NotificationPreferencesOut: {
       /** Marketing Email */
@@ -20708,6 +20811,76 @@ export interface operations {
       };
     };
   };
+  post_native_google_challenge_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["NativeChallengeBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** Expires In */
+            expires_in: number;
+            /** Nonce */
+            nonce: string;
+            /**
+             * Ok
+             * @constant
+             */
+            ok: true;
+            /** Request Id */
+            request_id: string;
+          };
+        };
+      };
+    };
+  };
+  post_native_google_token_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["NativeTokenBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /**
+             * Ok
+             * @constant
+             */
+            ok: true;
+            /** Token */
+            token: string;
+            /** User Id */
+            user_id: number;
+          };
+        };
+      };
+    };
+  };
   post_logout_route: {
     parameters: {
       query?: never;
@@ -20906,6 +21079,76 @@ export interface operations {
             csrf_token?: string;
             /** @constant */
             ok: true;
+          };
+        };
+      };
+    };
+  };
+  post_native_telegram_challenge_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["NativeChallengeBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** Expires In */
+            expires_in: number;
+            /** Nonce */
+            nonce: string;
+            /**
+             * Ok
+             * @constant
+             */
+            ok: true;
+            /** Request Id */
+            request_id: string;
+          };
+        };
+      };
+    };
+  };
+  post_native_telegram_token_route: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["NativeTokenBody"];
+      };
+    };
+    responses: {
+      /** @description JSON response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /**
+             * Ok
+             * @constant
+             */
+            ok: true;
+            /** Token */
+            token: string;
+            /** User Id */
+            user_id: number;
           };
         };
       };
