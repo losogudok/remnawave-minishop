@@ -232,7 +232,7 @@ LABEL org.opencontainers.image.source="https://gitlab.com/3252a8/remnawave-minis
 CMD ["python", "backend/plugin_launcher.py", "worker"]
 
 
-FROM nginx:1.30.6-alpine@sha256:0e52bd054126cdc040b1276c0af347aeb02a41b9cfe305d6094767ac30e97949 AS nginx-brotli-builder
+FROM nginx:1.30.7-alpine@sha256:caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3 AS nginx-brotli-builder
 
 # Refresh Alpine packages for every published source revision.
 ARG REMNAWAVE_MINISHOP_APK_REFRESH=""
@@ -264,7 +264,7 @@ RUN set -eu; \
     cp objs/ngx_http_brotli_static_module.so /brotli-modules/
 
 
-FROM nginx:1.30.6-alpine@sha256:0e52bd054126cdc040b1276c0af347aeb02a41b9cfe305d6094767ac30e97949 AS frontend
+FROM nginx:1.30.7-alpine@sha256:caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3 AS frontend
 
 ARG REMNAWAVE_MINISHOP_APK_REFRESH=""
 COPY deploy/docker/retry_apk.sh /tmp/retry_apk.sh
