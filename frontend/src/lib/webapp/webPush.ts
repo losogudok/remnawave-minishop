@@ -20,6 +20,11 @@ export type WebPushStatus = {
   current_device_id: string;
 };
 
+export type BrowserPushStatus = {
+  status: WebPushStatus | null;
+  serviceWorkerRegistered: boolean;
+};
+
 export type WebPushUiState =
   | "unsupported"
   | "insecure"
@@ -172,6 +177,14 @@ export async function fetchCurrentPushStatus(
   const subscription = await getCurrentPushSubscription();
   const status = await fetchWebPushStatus(api, subscription?.endpoint || "");
   return { subscription, status };
+}
+
+export async function loadBrowserPushStatus(api?: ApiClient["api"]): Promise<BrowserPushStatus> {
+  const [serviceWorkerRegistered, current] = await Promise.all([
+    !pushSupported() || !pushSecureContext() || hasPushServiceWorkerRegistration(),
+    api ? fetchCurrentPushStatus(api).catch(() => null) : null,
+  ]);
+  return { serviceWorkerRegistered, status: current?.status ?? null };
 }
 
 export async function syncCurrentPushSubscription(

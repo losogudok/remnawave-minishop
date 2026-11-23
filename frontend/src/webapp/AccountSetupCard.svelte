@@ -11,12 +11,17 @@
     isPwaStandaloneLaunch,
     reportPwaInstallClicked,
   } from "$lib/webapp/pwaInstall.svelte.js";
-  import { getCurrentPushSubscription } from "$lib/webapp/webPush.js";
+  import {
+    getCurrentPushSubscription,
+    loadBrowserPushStatus,
+    type BrowserPushStatus,
+  } from "$lib/webapp/webPush.js";
   import { unwrap, type ApiClient } from "$lib/webapp/publicApi.js";
   import type { NotificationPreferences } from "$lib/webapp/notificationPreferences.js";
   import type { Translate } from "$lib/webapp/types.js";
 
-  const DISMISSED_KEY = "minishop.account-setup.dismissed.v1";
+  // The old below-the-fold card and the Home shortcut have separate dismissals.
+  const DISMISSED_KEY = "minishop.account-setup-shortcut.dismissed.v1";
   let dismissedInSession = false;
   type SetupRewardsStatus = {
     install_days: number;
@@ -57,6 +62,7 @@
   let installRewardMessage = $state("");
   let pushRewardMessage = $state("");
   let pushPreference = $state(false);
+  let browserPushStatus = $state<BrowserPushStatus | null>(null);
   let rewardStatus = $state<SetupRewardsStatus | null>(null);
   let setupRewardsInitialized = $state(false);
   let installClaimAttempted = false;
@@ -89,6 +95,7 @@
 
   onMount(() => {
     dismissed = surface === "home" && (dismissedInSession || safeStorageRead() === "1");
+    if (!dismissed) void refreshBrowserPushStatus();
     void initializeSetupRewards();
   });
 
@@ -128,6 +135,15 @@
       return window.sessionStorage.getItem(DISMISSED_KEY);
     } catch {
       return null;
+    }
+  }
+
+  async function refreshBrowserPushStatus(): Promise<void> {
+    const previous = browserPushStatus;
+    const next = await loadBrowserPushStatus(api);
+    // A passive check can finish after a newer opt-in or device change.
+    if (browserPushStatus === previous && (next.status || !previous?.status)) {
+      browserPushStatus = next;
     }
   }
 
@@ -303,6 +319,7 @@
 
   function openSetup(event: MouseEvent): void {
     if (event.currentTarget instanceof HTMLElement) setupTrigger = event.currentTarget;
+    if (browserPushStatus) void refreshBrowserPushStatus();
     setupOpen = true;
   }
 
@@ -353,6 +370,8 @@
     <PushNotificationsCard
       {api}
       {t}
+      bind:browserStatus={browserPushStatus}
+      loadOnMount={false}
       preferences={{
         ...preferences,
         push_notifications_enabled: pushPreference,

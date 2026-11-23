@@ -4,6 +4,7 @@
   import Badge from "$components/ui/badge.svelte";
   import Button from "$components/ui/button.svelte";
   import Card from "$components/ui/card.svelte";
+  import Skeleton from "$components/ui/skeleton.svelte";
   import {
     currentDeviceLabel,
     currentPushDeviceConfirmed,
@@ -11,7 +12,7 @@
     fetchCurrentPushStatus,
     fetchWebPushStatus,
     getCurrentPushSubscription,
-    hasPushServiceWorkerRegistration,
+    loadBrowserPushStatus,
     pushPermissionState,
     pushSecureContext,
     pushSupported,
@@ -22,7 +23,7 @@
     setPushPreference,
     subscribeCurrentDevice,
     syncPushSubscription,
-    type PushPermissionState,
+    type BrowserPushStatus,
     type WebPushStatus,
     type WebPushUiState,
   } from "$lib/webapp/webPush.js";
@@ -41,6 +42,8 @@
     ) => Promise<boolean | void> | boolean | void;
     initialStatus?: WebPushStatus | null;
     initialState?: WebPushUiState;
+    browserStatus?: BrowserPushStatus | null;
+    loadOnMount?: boolean;
     onEnabled?: () => void | Promise<void>;
     rewardDays?: number;
   };
@@ -53,86 +56,56 @@
     onPreferencesChange = undefined,
     initialStatus = null,
     initialState = undefined,
+    browserStatus = $bindable(null),
+    loadOnMount = true,
     onEnabled = undefined,
     rewardDays = 0,
   }: Props = $props();
 
-  let loadedStatus = $state<WebPushStatus | null>(null);
-  let loadedUiState = $state<WebPushUiState | null>(null);
-  const status = $derived(loadedStatus ?? initialStatus);
+  const status = $derived(browserStatus?.status ?? initialStatus);
   const uiState = $derived.by(() => {
-    const state = loadedUiState ?? initialState ?? "unsupported";
+    if (browserStatus) {
+      const snapshot = getPwaInstallSnapshot();
+      return resolveWebPushUiState({
+        supported: pushSupported(),
+        secureContext: pushSecureContext(),
+        permission: pushPermissionState(),
+        configured: status?.configured === true,
+        pwaEnabled: snapshot.state !== "pwa-disabled",
+        embedded: snapshot.state === "embedded",
+        iosNotInstalled: snapshot.platform === "ios" && !isPwaStandaloneLaunch(),
+        serviceWorkerRegistered: browserStatus.serviceWorkerRegistered,
+        preferenceEnabled:
+          preferences.push_notifications_enabled && status?.preference_enabled === true,
+        hasCurrentSubscription: currentPushDeviceConfirmed(status),
+      });
+    }
+    const state = initialState;
     if (state === "enabled") {
       if (!preferences.push_notifications_enabled || !status?.preference_enabled) return "disabled";
       if (!currentPushDeviceConfirmed(status)) return "default";
     }
     return state;
   });
-  let permission = $state<PushPermissionState>("unsupported");
-  let serviceWorkerRegistered = $state(true);
+  const loading = $derived(uiState === undefined);
   let busy = $state(false);
   let message = $state("");
   let messageIsError = $state(false);
-  let initialized = $state(false);
-
-  function environment() {
-    const snapshot = getPwaInstallSnapshot();
-    return {
-      supported: pushSupported(),
-      secureContext: pushSecureContext(),
-      permission: pushPermissionState(),
-      pwaEnabled: snapshot.state !== "pwa-disabled",
-      embedded: snapshot.state === "embedded",
-      iosNotInstalled: snapshot.platform === "ios" && !isPwaStandaloneLaunch(),
-    };
-  }
-
-  function applyUiState(overrides: Partial<Parameters<typeof resolveWebPushUiState>[0]> = {}) {
-    const env = environment();
-    permission = env.permission;
-    const configured = status?.configured === true;
-    loadedUiState = resolveWebPushUiState({
-      supported: env.supported,
-      secureContext: env.secureContext,
-      permission: env.permission,
-      configured,
-      pwaEnabled: env.pwaEnabled,
-      embedded: env.embedded,
-      iosNotInstalled: env.iosNotInstalled,
-      serviceWorkerRegistered,
-      preferenceEnabled:
-        preferences.push_notifications_enabled && status?.preference_enabled === true,
-      hasCurrentSubscription: currentPushDeviceConfirmed(status),
-      ...overrides,
-    });
-  }
-
-  async function refresh(): Promise<void> {
-    try {
-      const env = environment();
-      permission = env.permission;
-      if (!env.supported || !env.secureContext) {
-        serviceWorkerRegistered = true;
-      } else {
-        serviceWorkerRegistered = await hasPushServiceWorkerRegistration();
-      }
-      if (api) {
-        // Passive status only: never re-POST an existing subscription here.
-        // Only the explicit enable action may clear a server-side revocation.
-        const passive = await fetchCurrentPushStatus(api);
-        loadedStatus = passive.status;
-      }
-      applyUiState();
-      initialized = true;
-    } catch {
-      // The card is advisory: a network/API failure must not break the page.
-      applyUiState();
-    }
-  }
 
   onMount(() => {
-    void refresh();
+    if (loadOnMount && !browserStatus) {
+      void loadBrowserPushStatus(api).then((value) => {
+        browserStatus = value;
+      });
+    }
   });
+
+  function updateStatus(
+    status: WebPushStatus | null,
+    serviceWorkerRegistered = browserStatus?.serviceWorkerRegistered ?? true
+  ): void {
+    browserStatus = { status, serviceWorkerRegistered };
+  }
 
   function enrollmentLabel(): string {
     return typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 120) : "";
@@ -145,12 +118,9 @@
     messageIsError = false;
     try {
       if (!status) {
-        loadedStatus = api ? await fetchWebPushStatus(api) : null;
+        updateStatus(api ? await fetchWebPushStatus(api) : null);
       }
-      if (!api || !status?.configured || !status.public_key) {
-        applyUiState();
-        return;
-      }
+      if (!api || !status?.configured || !status.public_key) return;
       const result = await enrollPushDevice(status.public_key, {
         previousPreference: preferences.push_notifications_enabled,
         subscribe: (key) => subscribeCurrentDevice(key),
@@ -159,15 +129,15 @@
         confirm: async () => (await fetchCurrentPushStatus(api)).status,
         revoke: (subscription) => revokePushSubscription(api, subscription),
       });
-      if (result.status) loadedStatus = result.status;
       if (!result.ok) {
-        if (status)
-          loadedStatus = {
-            ...status,
+        const previousStatus = result.status ?? status;
+        if (previousStatus) {
+          updateStatus({
+            ...previousStatus,
             current_device_id: "",
-            devices: status.devices.filter((device) => !device.current),
-          };
-        applyUiState();
+            devices: previousStatus.devices.filter((device) => !device.current),
+          });
+        }
         message =
           result.error === "compensation_failed"
             ? t(
@@ -183,8 +153,7 @@
         messageIsError = true;
         return;
       }
-      serviceWorkerRegistered = true;
-      applyUiState();
+      updateStatus(result.status ?? status, true);
       await onEnabled?.();
     } catch {
       message = t("wa_push_enable_failed", {}, "Could not enable notifications.");
@@ -204,8 +173,9 @@
       if (!saved) {
         message = t("wa_push_save_failed", {}, "Could not save the notification preference.");
         messageIsError = true;
+      } else if (status) {
+        updateStatus({ ...status, preference_enabled: false });
       }
-      applyUiState();
     } catch {
       message = t("wa_push_save_failed", {}, "Could not save the notification preference.");
       messageIsError = true;
@@ -242,10 +212,9 @@
         messageIsError = true;
         return;
       }
-      if (result.status) loadedStatus = result.status;
+      if (result.status) updateStatus(result.status);
       message = t("wa_push_device_removed", {}, "Device disabled.");
       messageIsError = false;
-      applyUiState();
     } finally {
       busy = false;
     }
@@ -322,7 +291,7 @@
   );
 </script>
 
-<Card class="push-notifications-card">
+<Card class="push-notifications-card" aria-busy={loading}>
   <div class="push-notifications-card__heading">
     <span class="push-notifications-card__icon"><Megaphone size={26} /></span>
     <div>
@@ -340,13 +309,19 @@
     {/if}
   </div>
 
-  {#if rewardDays > 0 && ["default", "disabled", "enabled"].includes(uiState)}
+  {#if rewardDays > 0 && uiState && ["default", "disabled", "enabled"].includes(uiState)}
     <p class="push-notifications-card__reward">
       {t("wa_setup_push_offer", { days: rewardDays })}
     </p>
   {/if}
 
-  {#if uiState === "enabled"}
+  {#if loading}
+    <div class="push-notifications-card__loading" role="status" aria-label={t("wa_loading")}>
+      <Skeleton variant="line" width="85%" />
+      <Skeleton height="46px" />
+      <Skeleton variant="line" width="65%" />
+    </div>
+  {:else if uiState === "enabled"}
     <p class="push-notifications-card__status">
       {t("wa_push_enabled_status", {}, "Active — this device receives notifications.")}
     </p>
@@ -427,23 +402,13 @@
     </p>
   {/if}
 
-  {#if permission === "denied" && uiState === "enabled"}
-    <p class="push-notifications-card__guidance">
-      {t(
-        "wa_push_denied",
-        {},
-        "Notifications are blocked for this site. Allow them in the browser's site settings, then reload this page."
-      )}
-    </p>
-  {/if}
-
   {#if message}
     <p class="push-notifications-card__message" class:is-error={messageIsError}>
       {message}
     </p>
   {/if}
 
-  {#if initialized && status?.configured}
+  {#if browserStatus?.status?.configured}
     <p class="push-notifications-card__hint">
       {t(
         "wa_push_sync_note",
@@ -467,6 +432,11 @@
     flex-wrap: wrap;
     align-items: flex-start;
     gap: 12px;
+  }
+
+  .push-notifications-card__loading {
+    display: grid;
+    gap: 14px;
   }
 
   .push-notifications-card__heading > div {

@@ -6,6 +6,7 @@ for (const width of [1440, 390]) {
   }) => {
     await page.setViewportSize({ width, height: width === 390 ? 720 : 950 });
     await page.addInitScript(() => {
+      localStorage.setItem("minishop.account-setup.dismissed.v1", "1");
       if (localStorage.getItem("test:pwa-enabled") !== "1") return;
       const addManifest = () => {
         const root = document.documentElement;

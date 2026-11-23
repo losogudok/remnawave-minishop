@@ -9,7 +9,8 @@ async function configure(
   page: Page,
   failPreference = false,
   initiallyEnabled = false,
-  language = "en"
+  language = "en",
+  home?: { pushStatusReady: () => Promise<void> }
 ) {
   let active = initiallyEnabled;
   let preference = initiallyEnabled;
@@ -63,14 +64,16 @@ async function configure(
           notification_preferences: { push_notifications_enabled: preference },
         },
         settings: { referral_program_enabled: false },
-        subscription: { active: false },
+        subscription: { active: Boolean(home) },
         plans: [],
         payment_methods: [],
         referral: {},
       };
     if (path === "/api/extensions/runtime") response = { ok: true, generation: 1, plugins: [] };
+    if (path === "/api/gifts") response = { ok: true, gifts: [], enabled: false };
     if (path.startsWith("/api/plugins/web_push/")) {
       calls.push(`${method} ${path}`);
+      if (path === "/api/plugins/web_push/status") await home?.pushStatusReady();
       if (path === "/api/plugins/web_push/subscription") active = method === "POST";
       response = {
         ok: true,
@@ -106,6 +109,57 @@ async function configure(
   });
   return calls;
 }
+
+test("Home setup preloads browser notifications and opens without flashing unsupported guidance", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const browserErrors: string[] = [];
+  page.on("pageerror", (error) => browserErrors.push(error.stack ?? error.message));
+  const { promise, resolve } = Promise.withResolvers<void>();
+  let statusReady = promise;
+  const calls = await configure(page, false, false, "en", { pushStatusReady: () => statusReady });
+  await page.goto("/demo/runtime/home?theme_preview=dark");
+
+  const shortcut = page.locator('[data-webapp-action="open-account-setup"]');
+  const dialog = page.locator(".account-setup-dialog");
+  const card = dialog.locator(".push-notifications-card");
+  const statusRequests = () => calls.filter((call) => call === "POST /api/plugins/web_push/status");
+  try {
+    await expect(shortcut).toBeVisible();
+    await expect.poll(statusRequests).toHaveLength(1);
+    await shortcut.click();
+    expect(browserErrors).toEqual([]);
+    await expect(card).toHaveAttribute("aria-busy", "true");
+    await expect(card).not.toContainText(en.wa_push_unsupported);
+    await expect(dialog.locator('[data-webapp-action="setup-install"]')).toBeEnabled();
+  } finally {
+    resolve();
+  }
+
+  const enable = card.getByRole("button", { name: en.wa_push_enable, exact: true });
+  await expect(enable).toBeVisible();
+  await dialog.locator(".dialog-close-button").click();
+  await expect(dialog).toHaveCount(0);
+  const reopen = Promise.withResolvers<void>();
+  statusReady = reopen.promise;
+  try {
+    await shortcut.click();
+    await expect.poll(statusRequests).toHaveLength(2);
+    await expect(enable).toBeVisible();
+    await expect(card).not.toHaveAttribute("aria-busy", "true");
+  } finally {
+    reopen.resolve();
+  }
+
+  await enable.click();
+  await expect(card).toContainText(en.wa_push_enabled_status);
+  await dialog.locator(".dialog-close-button").click();
+  await expect(dialog).toHaveCount(0);
+  await shortcut.click();
+  await expect(card).toContainText(en.wa_push_enabled_status);
+  expect(browserErrors).toEqual([]);
+});
 
 for (const width of [1440, 390]) {
   test(`unconfirmed browser subscription stays disabled after reload at ${width}px`, async ({
