@@ -106,4 +106,5 @@ export {
   WalletCards,
   X,
   Zap,
+  ZoomIn,
 } from "@lucide/svelte";
