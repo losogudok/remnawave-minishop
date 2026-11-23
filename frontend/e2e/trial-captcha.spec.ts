@@ -130,6 +130,10 @@ for (const width of [320, 390, 768, 1440]) {
         );
         await page.goto(`/demo/runtime/app/?mock=trial-captcha&theme_preview=${mode}`);
         const activate = page.getByRole("button", { name: copy.wa_trial_try_free, exact: true });
+        await expect(activate).toHaveClass(/\bbtn-primary\b/);
+        await expect(page.locator('[data-webapp-action="open-payment"]')).toHaveClass(
+          /\bbtn-secondary\b/
+        );
         await activate.click();
         const dialog = page.getByRole("dialog", { name: copy.wa_trial_captcha_title });
         const card = dialog.locator(".trial-captcha-dialog");

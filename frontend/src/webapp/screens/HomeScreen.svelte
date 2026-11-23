@@ -907,7 +907,9 @@
       <Button
         data-webapp-action="open-payment"
         class={`wide${subscription.active ? " subscription-renew-action" : ""}`}
-        variant={subscription.active ? "secondary" : "default"}
+        variant={subscription.active || trialOfferAvailable || trialRequiresOauth
+          ? "secondary"
+          : "default"}
         onclick={openPaymentModal}
       >
         {#if subscription.active}
