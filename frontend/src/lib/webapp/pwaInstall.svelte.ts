@@ -73,6 +73,7 @@ let embeddedByTelegram = false;
 let manifestAvailable = false;
 let promptCapable = true;
 let deferredPrompt: BeforeInstallPromptEvent | null = null;
+let browserInstallBlocked = false;
 let offerShownThisSession = false;
 let signalScreen: PwaInstallSignalScreen = "home";
 let removeListeners: (() => void) | null = null;
@@ -84,6 +85,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function getNavigator(): Navigator | null {
   return typeof navigator === "undefined" ? null : navigator;
+}
+
+function getBrowserInstall(): (() => Promise<unknown>) | null {
+  if (browserInstallBlocked) return null;
+  const nav = getNavigator() as (Navigator & { install?: () => Promise<unknown> }) | null;
+  return typeof nav?.install === "function" ? nav.install.bind(nav) : null;
 }
 
 function detectPlatform(): PwaInstallPlatform {
@@ -247,7 +254,7 @@ function resolveState(): PwaInstallState {
   if (installed) return "installed";
   if (embeddedByUa || embeddedByTelegram) return "embedded";
   if (!manifestAvailable) return "pwa-disabled";
-  if (deferredPrompt) return "prompt-available";
+  if (deferredPrompt || getBrowserInstall()) return "prompt-available";
   if (pwaInstallState.platform === "ios" || !promptCapable) return "guidance-only";
   return "unknown";
 }
@@ -421,34 +428,46 @@ export function markPwaOfferDismissed(): void {
 }
 
 /**
- * Call `prompt()` only from an explicit user click. The deferred event is
- * single-use, so it is cleared before the browser UI opens.
+ * Open browser-controlled installation only from an explicit user click.
+ * Prefer the single-use deferred event when it is available.
  */
 export async function promptPwaInstall(): Promise<"accepted" | "dismissed" | "unavailable"> {
+  if (pwaInstallState.state !== "prompt-available") return "unavailable";
   const promptEvent = deferredPrompt;
-  if (!promptEvent || pwaInstallState.state !== "prompt-available") return "unavailable";
-  if (typeof promptEvent.prompt !== "function" || !promptEvent.userChoice) return "unavailable";
+  const userChoice = promptEvent?.userChoice;
+  const prompt =
+    typeof promptEvent?.prompt === "function" ? promptEvent.prompt.bind(promptEvent) : null;
+  const install = prompt && userChoice ? null : getBrowserInstall();
+  if (!install && (!prompt || !userChoice)) return "unavailable";
+
   deferredPrompt = null;
   refreshState();
+  let outcome: string | undefined;
   try {
-    await promptEvent.prompt();
-    const choice = await promptEvent.userChoice;
-    if (choice?.outcome === "accepted") {
-      writeOfferOutcome("accepted", true);
-      reportPwaSignal("pwa_install_prompt_accepted");
-      return "accepted";
+    if (install) {
+      await install();
+      outcome = "accepted";
+    } else {
+      await prompt?.();
+      outcome = (await userChoice)?.outcome;
     }
-    if (choice?.outcome === "dismissed") {
-      writeOfferOutcome("dismissed", true);
-      reportPwaSignal("pwa_install_prompt_dismissed");
-      return "dismissed";
+  } catch (error) {
+    if (install && error instanceof DOMException && error.name === "AbortError") {
+      outcome = "dismissed";
+    } else if (install) {
+      browserInstallBlocked = true;
+      refreshState();
     }
-    reportPwaSignal("pwa_install_unconfirmed");
-    return "unavailable";
-  } catch {
-    reportPwaSignal("pwa_install_unconfirmed");
-    return "unavailable";
   }
+  if (outcome === "accepted" || outcome === "dismissed") {
+    if (!installed) writeOfferOutcome(outcome, true);
+    reportPwaSignal(
+      outcome === "accepted" ? "pwa_install_prompt_accepted" : "pwa_install_prompt_dismissed"
+    );
+    return outcome;
+  }
+  reportPwaSignal("pwa_install_unconfirmed");
+  return "unavailable";
 }
 
 /** Reset listeners/state without touching persisted offer data (tests and HMR). */
@@ -463,6 +482,7 @@ export function resetPwaInstall(): void {
   manifestAvailable = false;
   promptCapable = true;
   deferredPrompt = null;
+  browserInstallBlocked = false;
   offerShownThisSession = false;
   signalScreen = "home";
   pwaInstallState.state = "unknown";

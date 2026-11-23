@@ -1,5 +1,38 @@
 import { expect, test } from "@playwright/test";
 
+test("account setup offers native installation without a deferred event", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "install", {
+      value: async () => {
+        sessionStorage.setItem(
+          "test:pwa-native-install",
+          String(navigator.userActivation.isActive)
+        );
+        return { manifestId: location.origin + "/" };
+      },
+    });
+  });
+  await page.route("**/demo/runtime/app/**", async (route) => {
+    if (route.request().resourceType() !== "document") return route.continue();
+    const response = await route.fetch();
+    const body = (await response.text()).replace(
+      "</head>",
+      '<link rel="manifest" href="data:application/manifest+json,%7B%7D"></head>'
+    );
+    await route.fulfill({ response, body });
+  });
+  await page.goto("/demo/runtime/app/?path=/home&mock=balance-recurring-methods");
+
+  await page.locator('[data-webapp-action="open-account-setup"]').click();
+  await page.locator('[data-webapp-action="setup-install"]').click();
+  const dialog = page.locator(".pwa-install-dialog");
+  await expect(dialog.locator(".pwa-install-steps")).toHaveCount(0);
+  await dialog.locator(".pwa-install-action").click();
+  await expect(dialog.locator(".pwa-install-status")).toBeVisible();
+  expect(await page.evaluate(() => sessionStorage.getItem("test:pwa-native-install"))).toBe("true");
+  await expect(dialog.locator(".pwa-install-steps")).toHaveCount(0);
+});
+
 for (const width of [1440, 390]) {
   test(`account setup is discoverable on Home and available in Settings at ${width}px`, async ({
     page,

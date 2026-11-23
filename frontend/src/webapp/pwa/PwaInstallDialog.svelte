@@ -84,14 +84,14 @@
         </div>
       {/if}
 
-      {#if showPromptButton}
+      {#if (showPromptButton || busy) && result !== "accepted"}
         <Button class="wide pwa-install-action" onclick={install} disabled={busy}>
           <Download size={17} />
           {t("wa_pwa_install_cta")}
         </Button>
       {/if}
 
-      {#if !showPromptButton}
+      {#if !busy && result !== "accepted" && (!showPromptButton || result === "dismissed" || result === "unavailable")}
         <div class="pwa-install-steps">
           {#if snapshot.platform === "ios"}
             <Share2 size={20} />

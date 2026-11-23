@@ -125,6 +125,7 @@ function installDocument(manifest: boolean): void {
 
 function installNavigator(options: {
   ua?: string;
+  install?: () => Promise<unknown>;
   installedRelatedApps?: () => Promise<unknown[]>;
 }): void {
   vi.stubGlobal("navigator", {
@@ -132,6 +133,7 @@ function installNavigator(options: {
     platform: "",
     maxTouchPoints: 0,
     standalone: false,
+    install: options.install,
     getInstalledRelatedApps: options.installedRelatedApps,
   });
 }
@@ -144,6 +146,7 @@ function setup(
     storage?: FakeStorage;
     telegram?: boolean;
     search?: string;
+    install?: () => Promise<unknown>;
     installedRelatedApps?: () => Promise<unknown[]>;
   } = {}
 ) {
@@ -442,11 +445,45 @@ describe("explicit install prompt", () => {
     await expect(promptPwaInstall()).resolves.toBe("unavailable");
   });
 
+  it("uses the browser install API when no deferred prompt is available", async () => {
+    const install = vi.fn(async () => ({ manifestId: "https://shop.example/" }));
+    const { win, storage } = setup({ ua: DESKTOP_UA, install });
+    initPwaInstall();
+
+    expect(getPwaInstallSnapshot()).toMatchObject({ state: "prompt-available", canPrompt: true });
+    expect(install).not.toHaveBeenCalled();
+    await expect(promptPwaInstall()).resolves.toBe("accepted");
+    expect(install).toHaveBeenCalledOnce();
+    expect(readOffer(storage)?.outcome).toBe("accepted");
+    expect(isPwaStandaloneLaunch()).toBe(false);
+
+    win.emit("appinstalled", new Event("appinstalled"));
+    expect(getPwaInstallSnapshot().state).toBe("installed");
+  });
+
+  it("falls back to browser instructions when the install API cannot start", async () => {
+    const install = vi.fn(async () => {
+      throw new DOMException("Installation is unavailable", "NotAllowedError");
+    });
+    setup({ ua: DESKTOP_UA, install });
+    initPwaInstall();
+    await expect(promptPwaInstall()).resolves.toBe("unavailable");
+    expect(install).toHaveBeenCalledOnce();
+    expect(getPwaInstallSnapshot().canPrompt).toBe(false);
+  });
+
   it("does not prompt when the app is already installed or embedded", async () => {
-    setup({ ua: DESKTOP_UA, standalone: true });
+    const install = vi.fn(async () => ({}));
+    setup({ ua: DESKTOP_UA, standalone: true, install });
     initPwaInstall();
     await expect(promptPwaInstall()).resolves.toBe("unavailable");
     expect(getPwaInstallSnapshot().canPrompt).toBe(false);
+
+    resetPwaInstall();
+    setup({ ua: EMBEDDED_UA, install });
+    initPwaInstall();
+    await expect(promptPwaInstall()).resolves.toBe("unavailable");
+    expect(install).not.toHaveBeenCalled();
 
     resetPwaInstall();
     setup({ ua: IOS_UA });
