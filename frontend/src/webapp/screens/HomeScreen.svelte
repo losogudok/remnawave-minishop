@@ -276,6 +276,7 @@
     return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
   }
 
+  const renewFirst = $derived(subscription.active && subscription.has_connected_to_vpn === true);
   const trialOfferAvailable = $derived(
     Boolean(!subscription?.active && appSettings?.trial_enabled && appSettings?.trial_available)
   );
@@ -898,16 +899,37 @@
     {/if}
 
     <div class="action-stack">
-      {#if subscription.active}
-        <Button class="wide" onclick={openConnectLink}>
+      {#snippet installAction()}
+        <Button
+          class="wide"
+          variant={renewFirst ? "secondary" : "default"}
+          onclick={openConnectLink}
+        >
           <Download size={18} />
           {t("wa_install_and_configure")}
         </Button>
+      {/snippet}
+      {#snippet premiumTopupAction()}
+        {#if premiumTrafficTopupUnlocked && premiumTrafficAvailable(subscription) && premiumTrafficLimitVisible(subscription)}
+          <Button
+            data-webapp-action="open-premium-topup"
+            class="wide"
+            variant="secondary"
+            onclick={openPremiumTopupModal}
+          >
+            <Database size={18} />
+            {t("wa_add_traffic_premium", { target: premiumTitle(subscription) })}
+          </Button>
+        {/if}
+      {/snippet}
+
+      {#if subscription.active && !renewFirst}
+        {@render installAction()}
       {/if}
       <Button
         data-webapp-action="open-payment"
         class={`wide${subscription.active ? " subscription-renew-action" : ""}`}
-        variant={subscription.active || trialOfferAvailable || trialRequiresOauth
+        variant={(subscription.active && !renewFirst) || trialOfferAvailable || trialRequiresOauth
           ? "secondary"
           : "default"}
         onclick={openPaymentModal}
@@ -919,6 +941,10 @@
         {/if}
         {primaryPayActionLabel()}
       </Button>
+      {#if renewFirst}
+        {@render premiumTopupAction()}
+        {@render installAction()}
+      {/if}
       {#if regularTrafficTopupUnlocked && regularTrafficLimitVisible(subscription)}
         <Button
           data-webapp-action="open-regular-topup"
@@ -930,16 +956,8 @@
           {t("wa_add_traffic")}
         </Button>
       {/if}
-      {#if premiumTrafficTopupUnlocked && premiumTrafficAvailable(subscription) && premiumTrafficLimitVisible(subscription)}
-        <Button
-          data-webapp-action="open-premium-topup"
-          class="wide"
-          variant="secondary"
-          onclick={openPremiumTopupModal}
-        >
-          <Database size={18} />
-          {t("wa_add_traffic_premium", { target: premiumTitle(subscription) })}
-        </Button>
+      {#if !renewFirst}
+        {@render premiumTopupAction()}
       {/if}
     </div>
   </div>

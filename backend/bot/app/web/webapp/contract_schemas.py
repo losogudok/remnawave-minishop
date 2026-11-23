@@ -623,6 +623,7 @@ WEBAPP_SUBSCRIPTION_SCHEMA: dict[str, Any] = {
     "properties": {
         "active": BOOLEAN_SCHEMA,
         "status": STRING_SCHEMA,
+        "has_connected_to_vpn": BOOLEAN_SCHEMA,
         "end_date": NULLABLE_STRING_SCHEMA,
         "end_date_text": NULLABLE_STRING_SCHEMA,
         "days_left": INTEGER_SCHEMA,

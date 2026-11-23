@@ -3564,6 +3564,7 @@ class SubscriptionServiceActiveDetailsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["config_link"], "https://subscribe.example.test/sub/short-uuid")
         self.assertEqual(result["connect_button_url"], result["config_link"])
         self.assertEqual(result["http_url"], result["config_link"])
+        self.assertFalse(result["has_connected_to_vpn"])
         service.panel_service.get_user_by_uuid.assert_awaited_once_with("panel-user")
 
     async def test_trial_details_keeps_panel_usage_while_exposing_premium_usage(self):
@@ -3634,6 +3635,7 @@ class SubscriptionServiceActiveDetailsTests(unittest.IsolatedAsyncioTestCase):
                 result = await service.get_active_subscription_details(session, user_id=42)
 
         self.assertEqual(result["traffic_used_bytes"], 5 * GIB)
+        self.assertTrue(result["has_connected_to_vpn"])
         self.assertEqual(result["premium_used_bytes"], 2 * GIB)
         self.assertEqual(result["premium_limit_bytes"], 3 * GIB)
         self.assertEqual(result["premium_title"], "Trial fast lane")

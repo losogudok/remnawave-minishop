@@ -672,6 +672,9 @@ def _serialize_subscription(
     return {
         "active": seconds_left > 0,
         "status": active.get("status_from_panel") or "UNKNOWN",
+        "has_connected_to_vpn": bool(
+            active.get("has_connected_to_vpn") or getattr(local_sub, "last_connected_at", None)
+        ),
         "end_date": end_date.isoformat() if end_date else None,
         "end_date_text": end_date.strftime("%d.%m.%Y %H:%M") if end_date else "N/A",
         "duration_days": getattr(local_sub, "duration_days", None),

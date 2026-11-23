@@ -4,7 +4,10 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.services.panel_activity import record_subscription_panel_activity
+from bot.services.panel_activity import (
+    _panel_user_connection_activity,
+    record_subscription_panel_activity,
+)
 from bot.services.subscription_order_terms import gift_tariff
 from bot.utils.config_link import prepare_config_links
 from bot.utils.locale_defaults import tariff_premium_title, trial_premium_title
@@ -55,6 +58,7 @@ class SubscriptionLifecycleSwitchMixin(SubscriptionServiceMixinContract):
     ) -> dict[str, Any]:
         panel_sub_id = str(local_active_sub.panel_subscription_uuid or "").strip()
         config_link_raw = None
+        panel_user = None
         if (
             self.settings.SUBSCRIPTION_GATEWAY_ENABLED
             and self.settings.SUBSCRIPTION_LINK_MODE == "minishop"
@@ -166,6 +170,10 @@ class SubscriptionLifecycleSwitchMixin(SubscriptionServiceMixinContract):
             "panel_short_uuid": local_active_sub.panel_subscription_uuid,
             "end_date": local_active_sub.end_date,
             "status_from_panel": local_active_sub.status_from_panel or "LOCAL_CACHE",
+            "has_connected_to_vpn": bool(
+                (getattr(db_user, "lifetime_used_traffic_bytes", None) or 0) > 0
+                or _panel_user_connection_activity(panel_user)["status"] == "connected"
+            ),
             "config_link": display_link,
             "connect_button_url": connect_button_url,
             "http_url": config_link_raw,

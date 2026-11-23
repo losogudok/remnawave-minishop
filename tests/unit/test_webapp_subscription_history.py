@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock
 
+import pytest
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +30,23 @@ def test_inactive_subscription_without_history_stays_neutral() -> None:
     assert payload["status"] == "INACTIVE"
     assert payload["end_date"] is None
     assert payload["end_date_text"] is None
+
+
+@pytest.mark.parametrize(
+    ("panel_connected", "snapshot_connected", "expected"),
+    [(True, False, True), (False, True, True), (False, False, False)],
+)
+def test_active_subscription_exposes_confirmed_vpn_connection(
+    panel_connected: bool, snapshot_connected: bool, expected: bool
+) -> None:
+    now = datetime.now(UTC)
+    active = {"end_date": now + timedelta(days=1), "has_connected_to_vpn": panel_connected}
+    local_sub = SimpleNamespace(last_connected_at=now if snapshot_connected else None)
+
+    payload = _serialize_subscription(_settings(), active, local_sub, "en")
+
+    assert payload["active"] is True
+    assert payload["has_connected_to_vpn"] is expected
 
 
 def test_inactive_subscription_with_past_end_date_is_expired() -> None:

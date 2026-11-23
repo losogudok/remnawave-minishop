@@ -39021,6 +39021,9 @@
                             "null"
                           ]
                         },
+                        "has_connected_to_vpn": {
+                          "type": "boolean"
+                        },
                         "http_url": {
                           "type": [
                             "string",

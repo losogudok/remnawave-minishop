@@ -22382,6 +22382,7 @@ export interface operations {
               extra_hwid_devices_next_valid_from?: string | null;
               extra_hwid_devices_valid_until?: string | null;
               extra_hwid_devices_valid_until_text?: string | null;
+              has_connected_to_vpn?: boolean;
               http_url?: string | null;
               install_share_token?: string | null;
               install_share_url?: string | null;

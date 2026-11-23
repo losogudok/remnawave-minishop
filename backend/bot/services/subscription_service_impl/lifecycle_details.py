@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.services.panel_activity import (
+    _panel_user_connection_activity,
     panel_status_means_active,
     record_subscription_panel_activity,
 )
@@ -426,6 +427,8 @@ class SubscriptionLifecycleDetailsMixin(SubscriptionServiceMixinContract):
             "panel_short_uuid": panel_user_data.get("shortUuid"),
             "end_date": panel_end_date,
             "status_from_panel": panel_user_data.get("status", "UNKNOWN").upper(),
+            "has_connected_to_vpn": _panel_user_connection_activity(panel_user_data)["status"]
+            == "connected",
             "config_link": display_link,
             "connect_button_url": connect_button_url,
             "http_url": config_link_raw,

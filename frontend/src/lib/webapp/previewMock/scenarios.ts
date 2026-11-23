@@ -600,6 +600,16 @@ export function applyPreviewMock(kind: unknown): void {
     return;
   }
 
+  if (mode === "connected-subscription") {
+    DEV_MOCK.data.settings.traffic_mode = false;
+    applyDemoTariffScenario({
+      has_connected_to_vpn: true,
+      premium_topup_always_available: true,
+      topup_always_available: true,
+    });
+    return;
+  }
+
   if (mode === "tariffs") {
     DEV_MOCK.data.settings.traffic_mode = false;
     if (DATASET.plans?.length) {
