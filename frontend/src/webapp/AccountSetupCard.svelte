@@ -56,6 +56,8 @@
   let dismissed = $state(false);
   let setupOpen = $state(false);
   let dialogOpen = $state(false);
+  let installPromptAccepted = $state(false);
+  let installStatus = $state<HTMLParagraphElement | null>(null);
   let setupTrigger: HTMLElement | null = null;
   let installTrigger: HTMLElement | null = null;
   let message = $state("");
@@ -68,6 +70,8 @@
   let installClaimAttempted = false;
   let pushClaimAttempted = false;
   const snapshot = $derived(getPwaInstallSnapshot());
+  const appInstalled = $derived(snapshot.state === "installed");
+  const setupDescription = $derived(appInstalled ? "" : t("wa_setup_description"));
   const installOfferDays = $derived(
     activeAccess &&
       rewardStatus &&
@@ -100,7 +104,10 @@
   });
 
   $effect(() => {
-    if (!dialogOpen) installTrigger?.focus({ preventScroll: true });
+    if (dialogOpen || !installTrigger) return;
+    const target = installTrigger.isConnected ? installTrigger : installStatus;
+    target?.focus({ preventScroll: true });
+    installTrigger = null;
   });
 
   $effect(() => {
@@ -357,16 +364,27 @@
 
 {#snippet setupControls()}
   <div class="setup-controls">
-    <Button class="wide" data-webapp-action="setup-install" onclick={openInstall}>
-      <Download size={16} />{t("wa_setup_install_action")}
-    </Button>
+    {#if appInstalled}
+      <p bind:this={installStatus} class="setup-note setup-install-status" tabindex="-1">
+        {t("wa_pwa_install_installed")}
+      </p>
+    {:else}
+      <Button class="wide" data-webapp-action="setup-install" onclick={openInstall}>
+        <Download size={16} />{t("wa_setup_install_action")}
+      </Button>
+    {/if}
     {#if installOfferDays > 0}
       <p class="setup-offer">{t("wa_setup_install_offer", { days: installOfferDays })}</p>
     {/if}
     {#if showAfterActivation}
       <p class="setup-note">{t("wa_setup_reward_after_activation")}</p>
     {/if}
-    <p class="setup-note">{t("wa_setup_install_note")}</p>
+    {#if !appInstalled}
+      <p class="setup-note">{t("wa_setup_install_note")}</p>
+      {#if installPromptAccepted}
+        <p class="setup-note" role="status">{t("wa_setup_install_wait")}</p>
+      {/if}
+    {/if}
     <PushNotificationsCard
       {api}
       {t}
@@ -398,14 +416,17 @@
       <span class="setup-icon" aria-hidden="true"><Smartphone size={19} /></span>
       <span class="setup-shortcut-copy">
         <strong>{t("wa_setup_short_title")}</strong>
-        <small>{t("wa_setup_install_action")} · {t("wa_push_title")}</small>
+        <small>
+          {#if !appInstalled}{t("wa_setup_install_action")} ·
+          {/if}{t("wa_push_title")}
+        </small>
       </span>
       <span class="setup-shortcut-arrow" aria-hidden="true"><ChevronRight size={18} /></span>
     </Button>
     <Dialog
       open={setupOpen}
       title={t("wa_setup_short_title")}
-      description={t("wa_setup_description")}
+      description={setupDescription}
       closeLabel={t("wa_close")}
       onclose={closeSetup}
       class="account-setup-dialog"
@@ -424,7 +445,7 @@
         <span class="setup-icon" aria-hidden="true"><Gift size={19} /></span>
         <div>
           <h2>{t("wa_setup_title")}</h2>
-          <p>{t("wa_setup_description")}</p>
+          {#if setupDescription}<p>{setupDescription}</p>{/if}
         </div>
       </div>
       {@render setupControls()}
@@ -435,7 +456,7 @@
     signalScreen={surface}
     {t}
     onPromptResult={(result) => {
-      if (result === "accepted") message = t("wa_setup_install_wait");
+      installPromptAccepted = result === "accepted";
     }}
   />
 {/if}
