@@ -1247,10 +1247,10 @@ test("home actions stay at the viewport bottom when the logo changes size", asyn
     const logoSlot = page.locator(".home-logo-slot");
     const title = page.locator(".home-brand h1");
     const actions = page.locator(".home-bottom");
-    const homeLayout = page.locator("main.home-layout");
-    const setupCard = page.locator(".home-setup-card-wrap .account-setup-card");
+    const setupShortcut = actions.locator('[data-webapp-action="open-account-setup"]');
+    const nav = page.locator(".bottom-nav");
     await expect(actions).toBeVisible();
-    await expect(setupCard).toBeVisible();
+    await expect(setupShortcut).toBeInViewport({ ratio: 1 });
 
     const bottomEdges: number[] = [];
     for (const scale of [0.75, 1.25, 3]) {
@@ -1262,12 +1262,14 @@ test("home actions stay at the viewport bottom when the logo changes size", asyn
       const slotBox = (await logoSlot.boundingBox())!;
       const titleBox = (await title.boundingBox())!;
       const actionsBox = (await actions.boundingBox())!;
-      const homeLayoutBox = (await homeLayout.boundingBox())!;
-      const setupBox = (await setupCard.boundingBox())!;
+      const setupBox = (await setupShortcut.boundingBox())!;
       expect(logoBox.y).toBeGreaterThanOrEqual(slotBox.y - 1);
       expect(logoBox.y + logoBox.height).toBeLessThanOrEqual(slotBox.y + slotBox.height + 1);
       expect(titleBox.y + titleBox.height).toBeLessThan(actionsBox.y);
-      expect(homeLayoutBox.y + homeLayoutBox.height).toBeLessThanOrEqual(setupBox.y);
+      if (viewport.width < 768) {
+        const navBox = (await nav.boundingBox())!;
+        expect(setupBox.y + setupBox.height).toBeLessThanOrEqual(navBox.y);
+      }
       bottomEdges.push(actionsBox.y + actionsBox.height);
     }
 
@@ -1275,6 +1277,30 @@ test("home actions stay at the viewport bottom when the logo changes size", asyn
     expect(bottomEdges[0]).toBeGreaterThan(viewport.height * 0.75);
     expect(bottomEdges[0]).toBeLessThan(viewport.height);
   }
+});
+
+test("account setup stays above the navigation on a short Home screen with top-ups", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(`${APP_URL}?path=/home&mock=connected-subscription`);
+
+  const shortcut = webappAction(page, "open-account-setup");
+  const nav = page.locator(".bottom-nav");
+  const lastAction = page
+    .locator(".action-stack")
+    .locator('[data-webapp-action="open-regular-topup"]');
+  await expect(shortcut).toBeInViewport({ ratio: 1 });
+  const shortcutBox = (await shortcut.boundingBox())!;
+  expect(shortcutBox.y + shortcutBox.height).toBeLessThan((await nav.boundingBox())!.y);
+  await shortcut.click();
+  await expect(page.locator(".account-setup-dialog")).toBeVisible();
+  await page.locator(".account-setup-dialog .dialog-close-button").click();
+
+  await lastAction.evaluate((element) => element.scrollIntoView({ block: "center" }));
+  const actionBox = (await lastAction.boundingBox())!;
+  expect(actionBox.y + actionBox.height).toBeLessThan((await nav.boundingBox())!.y);
 });
 
 test("device traffic bonuses stay legible on mobile", async ({ page }) => {

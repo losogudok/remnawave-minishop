@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Download, Gift, X } from "$components/ui/icons.js";
+  import { ChevronRight, Download, Gift, Smartphone } from "$components/ui/icons.js";
   import Button from "$components/ui/button.svelte";
   import Card from "$components/ui/card.svelte";
+  import Dialog from "$components/ui/dialog.svelte";
   import PushNotificationsCard from "./push/PushNotificationsCard.svelte";
   import PwaInstallDialog from "./pwa/PwaInstallDialog.svelte";
   import {
@@ -34,23 +35,24 @@
     api: ApiClient["api"];
     preferences: NotificationPreferences;
     t: Translate;
-    dismissible?: boolean;
     activeAccess?: boolean;
     onPreferencesSaved?: (preferences: NotificationPreferences) => void;
-    signalScreen?: "home" | "settings";
+    surface?: "home" | "settings";
   };
 
   let {
     api,
     preferences,
     t,
-    dismissible = false,
     activeAccess = false,
     onPreferencesSaved = () => {},
-    signalScreen = "home",
+    surface = "settings",
   }: Props = $props();
   let dismissed = $state(false);
+  let setupOpen = $state(false);
   let dialogOpen = $state(false);
+  let setupTrigger: HTMLElement | null = null;
+  let installTrigger: HTMLElement | null = null;
   let message = $state("");
   let installRewardMessage = $state("");
   let pushRewardMessage = $state("");
@@ -86,8 +88,12 @@
   );
 
   onMount(() => {
-    dismissed = dismissible && (dismissedInSession || safeStorageRead() === "1");
+    dismissed = surface === "home" && (dismissedInSession || safeStorageRead() === "1");
     void initializeSetupRewards();
+  });
+
+  $effect(() => {
+    if (!dialogOpen) installTrigger?.focus({ preventScroll: true });
   });
 
   $effect(() => {
@@ -295,12 +301,29 @@
     }
   }
 
-  function openInstall(): void {
-    reportPwaInstallClicked(signalScreen);
+  function openSetup(event: MouseEvent): void {
+    if (event.currentTarget instanceof HTMLElement) setupTrigger = event.currentTarget;
+    setupOpen = true;
+  }
+
+  function closeSetup(): void {
+    if (dialogOpen) {
+      // Escape can reach the setup dialog before the install dialog takes focus.
+      dialogOpen = false;
+      return;
+    }
+    setupOpen = false;
+    setupTrigger?.focus({ preventScroll: true });
+  }
+
+  function openInstall(event: MouseEvent): void {
+    if (event.currentTarget instanceof HTMLElement) installTrigger = event.currentTarget;
+    reportPwaInstallClicked(surface);
     dialogOpen = true;
   }
 
   function dismiss(): void {
+    setupOpen = false;
     dismissed = true;
     dismissedInSession = true;
     try {
@@ -315,31 +338,11 @@
   }
 </script>
 
-{#if !dismissed}
-  <Card class="account-setup-card">
-    <div class="setup-heading">
-      <span class="setup-icon"><Gift size={19} /></span>
-      <div>
-        <h2>{t("wa_setup_title")}</h2>
-        <p>{t("wa_setup_description")}</p>
-      </div>
-      {#if dismissible}
-        <Button
-          data-webapp-action="setup-dismiss"
-          variant="icon"
-          size="icon-sm"
-          aria-label={t("wa_setup_dismiss")}
-          onclick={dismiss}
-        >
-          <X size={16} />
-        </Button>
-      {/if}
-    </div>
-    <div class="setup-actions">
-      <Button class="wide" data-webapp-action="setup-install" onclick={openInstall}>
-        <Download size={16} />{t("wa_setup_install_action")}
-      </Button>
-    </div>
+{#snippet setupControls()}
+  <div class="setup-controls">
+    <Button class="wide" data-webapp-action="setup-install" onclick={openInstall}>
+      <Download size={16} />{t("wa_setup_install_action")}
+    </Button>
     {#if installOfferDays > 0}
       <p class="setup-offer">{t("wa_setup_install_offer", { days: installOfferDays })}</p>
     {/if}
@@ -361,10 +364,56 @@
     {#if installRewardMessage}<p class="setup-reward" role="status">{installRewardMessage}</p>{/if}
     {#if pushRewardMessage}<p class="setup-reward" role="status">{pushRewardMessage}</p>{/if}
     {#if message}<p class="setup-error" role="status">{message}</p>{/if}
-  </Card>
+  </div>
+{/snippet}
+
+{#if !dismissed}
+  {#if surface === "home"}
+    <Button
+      class="setup-shortcut"
+      variant="outline"
+      data-webapp-action="open-account-setup"
+      aria-haspopup="dialog"
+      onclick={openSetup}
+    >
+      <span class="setup-icon" aria-hidden="true"><Smartphone size={19} /></span>
+      <span class="setup-shortcut-copy">
+        <strong>{t("wa_setup_short_title")}</strong>
+        <small>{t("wa_setup_install_action")} · {t("wa_push_title")}</small>
+      </span>
+      <span class="setup-shortcut-arrow" aria-hidden="true"><ChevronRight size={18} /></span>
+    </Button>
+    <Dialog
+      open={setupOpen}
+      title={t("wa_setup_short_title")}
+      description={t("wa_setup_description")}
+      closeLabel={t("wa_close")}
+      onclose={closeSetup}
+      class="account-setup-dialog"
+      portal
+    >
+      {@render setupControls()}
+      {#snippet footer()}
+        <Button variant="ghost" size="sm" data-webapp-action="setup-dismiss" onclick={dismiss}>
+          {t("wa_setup_dismiss")}
+        </Button>
+      {/snippet}
+    </Dialog>
+  {:else}
+    <Card class="account-setup-card">
+      <div class="setup-heading">
+        <span class="setup-icon" aria-hidden="true"><Gift size={19} /></span>
+        <div>
+          <h2>{t("wa_setup_title")}</h2>
+          <p>{t("wa_setup_description")}</p>
+        </div>
+      </div>
+      {@render setupControls()}
+    </Card>
+  {/if}
   <PwaInstallDialog
     bind:open={dialogOpen}
-    {signalScreen}
+    signalScreen={surface}
     {t}
     onPromptResult={(result) => {
       if (result === "accepted") message = t("wa_setup_install_wait");
@@ -373,14 +422,15 @@
 {/if}
 
 <style>
-  :global(.account-setup-card) {
+  :global(.account-setup-card),
+  .setup-controls {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
   }
   .setup-heading {
     display: grid;
-    grid-template-columns: 38px minmax(0, 1fr) auto;
+    grid-template-columns: 38px minmax(0, 1fr);
     gap: 10px;
     align-items: center;
   }
@@ -392,6 +442,28 @@
     border-radius: var(--radius-inner);
     background: color-mix(in srgb, var(--accent) 15%, var(--panel-2));
     color: var(--accent);
+  }
+  :global(.btn.setup-shortcut) {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 8px 12px;
+    text-align: start;
+  }
+  .setup-shortcut-copy {
+    display: grid;
+    gap: 4px;
+    overflow-wrap: anywhere;
+  }
+  .setup-shortcut-copy small {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.3;
+  }
+  .setup-shortcut-arrow {
+    display: flex;
+    color: var(--muted);
   }
   .setup-heading h2 {
     margin: 0;
@@ -407,11 +479,6 @@
     color: var(--muted);
     font-size: 12px;
     line-height: 1.4;
-  }
-  .setup-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
   }
   .setup-reward {
     color: var(--success, var(--accent));

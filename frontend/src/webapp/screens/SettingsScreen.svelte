@@ -177,14 +177,7 @@
 
 <main class="content with-nav">
   {#if api}
-    <AccountSetupCard
-      {api}
-      {preferences}
-      {t}
-      {activeAccess}
-      {onPreferencesSaved}
-      signalScreen="settings"
-    />
+    <AccountSetupCard {api} {preferences} {t} {activeAccess} {onPreferencesSaved} />
   {/if}
   <UserExtensionPoint target="user.settings.profile">
     <Card class="settings-profile">

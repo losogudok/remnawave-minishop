@@ -1,8 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 for (const width of [1440, 390]) {
-  test(`account setup stays optional and available in Settings at ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 950 });
+  test(`account setup is discoverable on Home and available in Settings at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: width === 390 ? 720 : 950 });
     await page.addInitScript(() => {
       if (localStorage.getItem("test:pwa-enabled") !== "1") return;
       const addManifest = () => {
@@ -30,19 +32,39 @@ for (const width of [1440, 390]) {
     await page.goto(
       "/demo/runtime/app/?path=/home&mock=balance-recurring-methods&theme_preview=dark"
     );
-    const card = page.locator(".account-setup-card");
-    await expect(card).toBeVisible();
+    const shortcut = page.locator('[data-webapp-action="open-account-setup"]');
+    const card = page.locator(".account-setup-dialog");
+    const install = card.locator('[data-webapp-action="setup-install"]');
+    const dialog = page.locator(".pwa-install-dialog");
+    await expect(shortcut).toBeInViewport({ ratio: 1 });
+    await expect(shortcut).toContainText("Установить кабинет");
+    await expect(shortcut).toContainText("Уведомления в браузере");
+    await expect(card).toHaveCount(0);
+
+    await shortcut.click();
     await expect(card.locator(".setup-offer")).toHaveCount(0);
     await expect(card.locator(".push-notifications-card")).toBeVisible();
-    await expect(card.locator('[data-webapp-action="setup-install"]')).toHaveClass(/btn-primary/);
-    await expect(page.locator(".pwa-install-dialog")).toHaveCount(0);
+    await expect(install).toHaveClass(/btn-primary/);
+    await expect(dialog).toHaveCount(0);
 
-    await page.locator('[data-webapp-action="setup-install"]').click();
-    const dialog = page.locator(".pwa-install-dialog");
+    await install.click();
     await expect(dialog).toBeVisible();
     await expect(dialog.locator(".pwa-install-state")).toContainText("не поддерживает");
-    await dialog.locator(".dialog-close-button").click();
+    await dialog.locator(".dialog-close-button").press("Escape");
     await expect(dialog).toHaveCount(0);
+    await expect(install).toBeFocused();
+    await install.evaluate((button: HTMLButtonElement) => {
+      button.click();
+      queueMicrotask(() => {
+        button.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      });
+    });
+    await expect(dialog).toHaveCount(0);
+    await expect(card).toBeVisible();
+    await expect(install).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(card).toHaveCount(0);
+    await expect(shortcut).toBeFocused();
 
     await page.evaluate(() => localStorage.setItem("test:pwa-enabled", "1"));
     await page.reload();
@@ -55,9 +77,11 @@ for (const width of [1440, 390]) {
       });
       window.dispatchEvent(event);
     });
+    await expect(card).toHaveCount(0);
+    await shortcut.click();
     await expect(card.locator(".setup-offer")).toContainText("5");
-    await expect(page.locator(".pwa-install-dialog")).toHaveCount(0);
-    await page.locator('[data-webapp-action="setup-install"]').click();
+    await expect(dialog).toHaveCount(0);
+    await install.click();
     await expect(dialog.locator(".pwa-install-action")).toBeVisible();
     await dialog.locator(".pwa-install-action").click();
     await expect(dialog.locator(".pwa-install-status")).toBeVisible();
@@ -66,8 +90,10 @@ for (const width of [1440, 390]) {
 
     await page.locator('[data-webapp-action="setup-dismiss"]').click();
     await expect(card).toHaveCount(0);
+    await expect(shortcut).toHaveCount(0);
     await page.reload();
-    await expect(card).toHaveCount(0);
+    await expect(page.locator('[data-webapp-action="open-payment"]')).toBeVisible();
+    await expect(shortcut).toHaveCount(0);
 
     await page.goto(
       "/demo/runtime/app/?path=/settings&mock=balance-recurring-methods&theme_preview=dark"
@@ -77,7 +103,13 @@ for (const width of [1440, 390]) {
     await expect(settingsCard.locator(".setup-offer")).toContainText("5");
     await expect(settingsCard.locator(".push-notifications-card")).toBeVisible();
     await expect(settingsCard.locator('[data-webapp-action="setup-dismiss"]')).toHaveCount(0);
-    await expect(page.locator(".pwa-install-dialog")).toHaveCount(0);
+    await expect(dialog).toHaveCount(0);
+    const settingsInstall = settingsCard.locator('[data-webapp-action="setup-install"]');
+    await settingsInstall.click();
+    await expect(dialog).toBeVisible();
+    await dialog.locator(".dialog-close-button").click();
+    await expect(dialog).toHaveCount(0);
+    await expect(settingsInstall).toBeFocused();
   });
 
   test(`user Web Push and connection screenshots at ${width}px`, async ({ page }) => {

@@ -898,6 +898,17 @@
       </UserExtensionPoint>
     {/if}
 
+    {#if subscription.active && api}
+      <AccountSetupCard
+        surface="home"
+        {api}
+        preferences={notificationPreferences}
+        {onPreferencesSaved}
+        activeAccess={subscription.active}
+        {t}
+      />
+    {/if}
+
     <div class="action-stack">
       {#snippet installAction()}
         <Button
@@ -962,26 +973,9 @@
     </div>
   </div>
 </main>
-{#if subscription.active && api}
-  <div class="home-setup-card-wrap">
-    <AccountSetupCard
-      {api}
-      preferences={notificationPreferences}
-      {onPreferencesSaved}
-      activeAccess={subscription.active}
-      dismissible
-      {t}
-    />
-  </div>
-{/if}
 
 <style>
   :global(.home-bottom > section.status-card) {
     padding-left: 11px;
-  }
-  .home-setup-card-wrap {
-    display: grid;
-    width: min(100%, 560px);
-    margin: 10px auto 34px;
   }
 </style>

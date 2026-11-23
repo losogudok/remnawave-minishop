@@ -17,23 +17,27 @@ const preferences: NotificationPreferences = {
 const api = (async () => ({ ok: true })) as ApiClient["api"];
 const t = (key: string) => key;
 
-function renderCard(dismissible: boolean): string {
+function renderCard(surface: "home" | "settings"): string {
   return render(AccountSetupCard, {
-    props: { api, preferences, t, dismissible },
+    props: { api, preferences, t, surface },
   }).body;
 }
 
 describe("account setup card", () => {
   it("keeps web app installation and the existing combined Web Push opt-in together", () => {
-    const html = renderCard(false);
+    const html = renderCard("settings");
     expect(html).toContain("wa_setup_install_action");
     expect(html).toContain("wa_push_title");
     expect(html).toContain("wa_push_description");
     expect(html).toContain("wa_setup_install_note");
   });
 
-  it("offers dismissal on Home and leaves the persistent Settings card available", () => {
-    expect(renderCard(true)).toContain("wa_setup_dismiss");
-    expect(renderCard(false)).not.toContain("wa_setup_dismiss");
+  it("names both features in the Home shortcut while keeping the controls closed", () => {
+    const html = renderCard("home");
+    expect(html).toContain("wa_setup_short_title");
+    expect(html).toContain("wa_setup_install_action");
+    expect(html).toContain("wa_push_title");
+    expect(html).not.toContain("wa_setup_install_note");
+    expect(html).not.toContain("wa_push_description");
   });
 });

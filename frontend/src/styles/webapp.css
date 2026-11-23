@@ -3484,7 +3484,7 @@ a {
 
 .home-layout {
   display: grid;
-  height: calc(100dvh - 34px);
+  min-height: calc(100dvh - 34px);
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 18px;
   padding-bottom: var(--bottom-nav-clearance);
@@ -3503,11 +3503,11 @@ a {
 
 .home-logo-slot {
   display: grid;
-  flex: 0 1 auto;
+  flex: 1 1 0;
   place-items: center;
   width: 100%;
-  height: calc(6rem * var(--home-logo-scale-effective, 1));
   min-height: 0;
+  max-height: calc(6rem * var(--home-logo-scale-effective, 1));
   container-type: size;
 }
 
@@ -4414,7 +4414,7 @@ a {
      right-hand desktop area and let the action block sit on the bottom. */
   .home-layout {
     width: min(100%, 680px);
-    height: calc(100dvh - 74px);
+    min-height: calc(100dvh - 74px);
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
     justify-self: center;
@@ -4434,7 +4434,7 @@ a {
   }
 
   .home-logo-slot {
-    height: calc(clamp(180px, 18vw, 260px) * var(--home-logo-scale-effective, 1));
+    max-height: calc(clamp(180px, 18vw, 260px) * var(--home-logo-scale-effective, 1));
   }
 
   .home-brand h1 {
