@@ -95,7 +95,8 @@ jobs:
   deploy:
     needs: promote
     if: github.repository == 'losogudok/remnawave-minishop' && github.ref == 'refs/heads/dev'
-    runs-on: ubuntu-latest
+    # Ubuntu 26.04 runners have hit TLS handshake EOFs on the public staging check.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment:
       name: staging
@@ -142,7 +143,6 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STAGING_APP_URL: ${{ vars.STAGING_APP_URL }}
         run: |
           set -euo pipefail
           umask 077
@@ -169,4 +169,10 @@ jobs:
             "bash -s -- $DEPLOY_COMMIT $STAGING_BACKEND_IMAGE $STAGING_WORKER_IMAGE $STAGING_FRONTEND_IMAGE" \
             < scripts/deploy-staging.sh
           "${ssh_command[@]}" "grep -qx $DEPLOY_COMMIT /opt/remnawave-dev/deployed-commit"
-          curl --fail --silent --show-error "${STAGING_APP_URL%/}/manifest.webmanifest" > /dev/null
+
+      - name: Verify public staging manifest over HTTPS
+        env:
+          STAGING_APP_URL: ${{ vars.STAGING_APP_URL }}
+        run: |
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+            --output /dev/null "${STAGING_APP_URL%/}/manifest.webmanifest"
