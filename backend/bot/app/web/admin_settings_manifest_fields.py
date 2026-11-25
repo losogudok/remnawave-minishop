@@ -10,7 +10,9 @@ from bot.app.web.admin_settings_notification_manifest_fields import (
     NOTIFICATION_SETTINGS_FIELDS,
 )
 from bot.app.web.admin_settings_partner_manifest_fields import PARTNER_SETTINGS_FIELDS
+from bot.app.web.admin_settings_pwa_manifest_fields import PWA_SETTINGS_FIELDS
 from bot.app.web.admin_settings_subscription_days_fields import SUBSCRIPTION_DAYS_SETTINGS_FIELDS
+from bot.app.web.admin_settings_telegram_chat_menu_fields import TELEGRAM_CHAT_MENU_FIELDS
 from bot.app.web.admin_settings_trial_manifest_fields import TRIAL_SETTINGS_FIELDS
 
 SETTINGS_MANIFEST: list[SettingField] = [
@@ -106,6 +108,15 @@ SETTINGS_MANIFEST: list[SettingField] = [
         "Disable bot menu",
         ("Hide the in-bot user interface and /tg command. Renewal prompts open the Mini App."),
     ),
+    SettingField(
+        "TELEGRAM_SUBSCRIPTION_WIDGET_ENABLED",
+        "bool",
+        "general",
+        "Subscription widget in Telegram",
+        "Allow users to open the subscription card with /widget in a private chat.",
+        optional=False,
+    ),
+    *TELEGRAM_CHAT_MENU_FIELDS,
     SettingField(
         "MENU_BUTTONS_JSON",
         "menu_buttons",
@@ -343,15 +354,7 @@ SETTINGS_MANIFEST: list[SettingField] = [
     SettingField("WEBAPP_FAVICON_URL", "url", "appearance", "Separate favicon URL"),
     SettingField("WEBAPP_LOGO_FAVICON_URL", "url", "appearance", "Favicon from logo"),
     SettingField("WEBAPP_ENABLED", "bool", "appearance", "WebApp Enabled"),
-    SettingField(
-        "PWA_ENABLED",
-        "bool",
-        "appearance",
-        "Installable Web App (PWA)",
-        "Serve the Web App manifest and service worker so the Mini App can be "
-        "installed as a standalone app. Disable to keep it browser/Telegram-only.",
-        optional=False,
-    ),
+    *PWA_SETTINGS_FIELDS,
     SettingField(
         "SUBSCRIPTION_GUIDES_ENABLED",
         "bool",
@@ -603,6 +606,15 @@ SETTINGS_MANIFEST: list[SettingField] = [
         subsection="Telegram Stars",
         i18n_label_key="admin_settings_provider_admin_only_label",
         i18n_description_key="admin_settings_provider_admin_only_description",
+    ),
+    SettingField(
+        "STARS_RUB_PER_STAR",
+        "float",
+        "payments",
+        "Rubles per Telegram Star",
+        "Convert ruble prices to whole Stars, rounded up. Set to 0 to use manual Stars prices.",
+        min=0,
+        subsection="Telegram Stars",
     ),
     SettingField(
         "PAYMENT_METHODS_DISPLAY_MODE",

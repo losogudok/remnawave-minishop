@@ -1,7 +1,8 @@
 ﻿<script lang="ts">
-  import { getPromosStore } from "$lib/admin/context";
-  import { FileText, RefreshCw, Sliders, Trash2, User } from "$components/ui/icons.js";
+  import { getPromosStore, getTariffsStore } from "$lib/admin/context";
+  import { Plus, RefreshCw, Sliders, Tag, Trash2, User } from "$components/ui/icons.js";
   import { onMount } from "svelte";
+  import { tariffDisplayName } from "$lib/admin/tariffDisplay";
   import {
     AdminBadge,
     AdminButton,
@@ -19,6 +20,7 @@
   import { Tabs } from "$components/ui/primitives.js";
   import { TableHandler } from "@vincjo/datatables";
   import PromoCreateDialog from "./promos/PromoCreateDialog.svelte";
+  import BirthdayActivationSettings from "./promos/BirthdayActivationSettings.svelte";
   import PromoEditDialog from "./promos/PromoEditDialog.svelte";
   import type { components } from "../../lib/api/openapi.generated";
   import type {
@@ -73,6 +75,8 @@
     | "duration_multiplier"
     | "traffic_multiplier"
     | "min_subscription_days"
+    | "subscription_tariff_key"
+    | "exact_subscription_days"
     | "min_traffic_gb";
   const BASIC_EDIT_FIELDS: readonly PromoEditField[] = [
     "is_active",
@@ -91,6 +95,8 @@
   ];
   const ELIGIBILITY_EDIT_FIELDS: readonly PromoEditField[] = [
     "min_subscription_days",
+    "subscription_tariff_key",
+    "exact_subscription_days",
     "min_traffic_gb",
   ];
 
@@ -111,6 +117,12 @@
   } = $props();
 
   const promosStore = getPromosStore();
+  const tariffsStore = getTariffsStore();
+  const subscriptionTariffs = $derived(
+    tariffsStore.tariffsCatalog.tariffs
+      .filter((tariff) => tariff.billing_model !== "traffic")
+      .map((tariff) => ({ value: tariff.key, label: tariffDisplayName(tariff) }))
+  );
   const promosTable = new TableHandler<Promo>();
 
   const promos = $derived(promosStore.promos as Promo[]);
@@ -123,7 +135,7 @@
   const promoKind = $derived(String(promosStore.promoKind || "shared"));
   // The split only means something once some code carries an owner, so an
   // install that never issues one keeps the plain single list.
-  const promoKindTabsVisible = $derived(Number(promosStore.promoOwnedTotal || 0) > 0);
+  let openBirthdaySettings = $state(false);
   const promoCreateOpen = $derived(Boolean(promosStore.promoCreateOpen));
   const promoEditOpen = $derived(Boolean(promosStore.promoEditOpen));
   const promoEditing = $derived(promosStore.promoEditing as Promo | null);
@@ -193,6 +205,10 @@
   const activationsPageCount = $derived(
     Math.max(1, Math.ceil(Number(activationsTotal || 0) / promosStore.ACTIVATIONS_PAGE_SIZE))
   );
+  const promoTableLayout = {
+    columnWidths: ["184px", "10%", "auto", "9%", "9%", "9%", "9%", "10%", "190px"],
+    minWidth: "1040px",
+  };
   const promoHeaders = $derived([
     at("promo_csv_code", {}, "Code"),
     at("promo_col_type", {}, "Type"),
@@ -201,7 +217,7 @@
     at("promo_col_eligibility", {}, "Eligibility"),
     at("promo_col_activations", {}, "Uses"),
     at("promo_col_status", {}, "Status"),
-    at("promo_col_valid_until", {}, "Valid until"),
+    at("promo_col_expires", {}, "Expires"),
     at("actions", {}, "Actions"),
   ]);
   const promoSortColumns = [
@@ -238,6 +254,15 @@
     ...scopeItems,
   ]);
   onMount(() => {
+    void tariffsStore.loadTariffs();
+    if (window.location.hash === "#birthday-activation-settings") {
+      openBirthdaySettings = true;
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      if (promoKind !== "personal") {
+        promosStore.setPromoKind("personal");
+        return;
+      }
+    }
     promosStore.loadPromos();
   });
 
@@ -340,6 +365,8 @@
     if (hasFixedGrant(next)) patch.min_traffic_gb = null;
     if (!effectUsesCheckout(next)) {
       patch.min_subscription_days = null;
+      patch.subscription_tariff_key = null;
+      patch.exact_subscription_days = null;
       patch.min_traffic_gb = null;
     }
     promosStore.updateDraft(patch);
@@ -352,6 +379,8 @@
     if (hasFixedGrant(next)) patch.min_traffic_gb = null;
     if (!effectUsesCheckout(next)) {
       patch.min_subscription_days = null;
+      patch.subscription_tariff_key = null;
+      patch.exact_subscription_days = null;
       patch.min_traffic_gb = null;
     }
     promosStore.updateEditDraft(patch as Partial<PromoPatch>);
@@ -409,7 +438,8 @@
   }
 
   function thresholdText(promo: Promo | PromoPatch): string {
-    return formatAdminPromoEligibility(promo, at);
+    const tariff = subscriptionTariffs.find((item) => item.value === promo.subscription_tariff_key);
+    return formatAdminPromoEligibility(promo, at, tariff?.label);
   }
 
   /** Who a personal code was issued for, in whatever form the profile has. */
@@ -483,6 +513,16 @@
     return (event.currentTarget as HTMLInputElement).value;
   }
 
+  function promoScopePatch(applies_to: string): Partial<PromoPatch> {
+    if (applies_to === "all" || applies_to === "subscription") return { applies_to };
+    return {
+      applies_to,
+      min_subscription_days: null,
+      subscription_tariff_key: null,
+      exact_subscription_days: null,
+    };
+  }
+
   function updateCreateNumber(field: CreateNumberField, value: string): void {
     const parsed = nullableNumber(value);
     if (field === "bonus_days") {
@@ -519,18 +559,22 @@
   }
 </script>
 
-{#if promoKindTabsVisible}
-  <Tabs.Root
-    value={promoKind}
-    onValueChange={(value) => promosStore.setPromoKind(value as PromoKind)}
-    class="admin-tabs-root admin-promo-kind-tabs"
-  >
-    <Tabs.List class="admin-tabs-list">
-      {#each promoKindTabs as tab (tab.value)}
-        <Tabs.Trigger value={tab.value} class="admin-tabs-trigger">{tab.label}</Tabs.Trigger>
-      {/each}
-    </Tabs.List>
-  </Tabs.Root>
+<Tabs.Root
+  value={promoKind}
+  onValueChange={(value) => {
+    openBirthdaySettings = false;
+    promosStore.setPromoKind(value as PromoKind);
+  }}
+  class="admin-tabs-root admin-promo-kind-tabs"
+>
+  <Tabs.List class="admin-tabs-list">
+    {#each promoKindTabs as tab (tab.value)}
+      <Tabs.Trigger value={tab.value} class="admin-tabs-trigger">{tab.label}</Tabs.Trigger>
+    {/each}
+  </Tabs.List>
+</Tabs.Root>
+{#if promoKind === "personal"}
+  <BirthdayActivationSettings {at} {scopeItems} initiallyOpen={openBirthdaySettings} />
 {/if}
 
 <AdminListToolbar
@@ -550,7 +594,7 @@
     />
   {/snippet}
   {#snippet searchActions()}
-    <AdminButton type="submit" variant="primary" disabled={promosLoading}>
+    <AdminButton type="submit" variant="default" disabled={promosLoading}>
       {at("find", {}, "Find")}
     </AdminButton>
   {/snippet}
@@ -595,14 +639,44 @@
       rowHeight={70}
       actionColumn
       class="admin-promos-table"
-      widths={["92px", "86px", "132px", "96px", "104px", "78px", "78px", "96px", "132px"]}
+      {...promoTableLayout}
     />
   {:else if !promos.length}
-    <AdminEmptyState tone="card">
-      <span class="admin-muted">{at("promos_empty", {}, "No codes")}</span>
+    {@const filtered = Boolean(
+      String(promosStore.promosSearch || "").trim() ||
+      promosStatus ||
+      (promosScope && promosScope !== "all")
+    )}
+    <AdminEmptyState
+      tone="card"
+      title={filtered
+        ? at("promos_empty_filtered", {}, "Nothing matches the filters")
+        : promoKind === "personal"
+          ? at("promos_empty_personal", {}, "No personal codes yet")
+          : promoKind === "all"
+            ? at("promos_empty_all", {}, "No codes yet")
+            : at("promos_empty", {}, "No shared codes yet")}
+      description={filtered
+        ? at("promos_empty_filtered_hint", {}, "Change the search or reset the filters.")
+        : promoKind === "personal"
+          ? at(
+              "promos_empty_personal_hint",
+              {},
+              "They are issued automatically for referrals, gifts and refunds, or from a user card."
+            )
+          : at("promos_empty_hint", {}, "Create a code that any user can enter at checkout.")}
+    >
+      {#snippet icon()}<Tag size={22} />{/snippet}
+      {#snippet actions()}
+        {#if !filtered && promoKind !== "personal"}
+          <AdminButton variant="primary" onclick={() => promosStore.setCreateOpen(true)}
+            ><Plus size={14} />{at("promo_create_button", {}, "Create code")}</AdminButton
+          >
+        {/if}
+      {/snippet}
     </AdminEmptyState>
   {:else}
-    <AdminTable class="admin-promos-table">
+    <AdminTable class="admin-promos-table" {...promoTableLayout}>
       <thead>
         <tr>
           <AdminSortableHeader
@@ -655,7 +729,7 @@
             onSort={promosStore.setSort}
           />
           <AdminSortableHeader
-            label={at("promo_col_valid_until", {}, "Valid until")}
+            label={at("promo_col_expires", {}, "Expires")}
             column={promoSortColumns[7]}
             currentSort={promosSort}
             {at}
@@ -709,7 +783,10 @@
               {effectText(p)}
             </td>
             <td data-label={at("promo_col_scope", {}, "Scope")}>{scopeLabel(p.applies_to)}</td>
-            <td data-label={at("promo_col_eligibility", {}, "Eligibility")}>
+            <td
+              class:admin-cell-optional={thresholdText(p) === "—"}
+              data-label={at("promo_col_eligibility", {}, "Eligibility")}
+            >
               {thresholdText(p)}
             </td>
             <td data-label={at("promo_col_activations", {}, "Uses")}>
@@ -728,8 +805,8 @@
             <td data-label={at("promo_col_status", {}, "Status")}>
               <AdminBadge variant={status.variant}>{status.label}</AdminBadge>
             </td>
-            <td data-label={at("promo_col_valid_until", {}, "Valid until")}>
-              {p.valid_until ? fmtDateShort(p.valid_until) : at("unlimited", {}, "Unlimited")}
+            <td data-label={at("promo_col_expires", {}, "Expires")}>
+              {p.valid_until ? fmtDateShort(p.valid_until) : at("promo_no_expiry", {}, "No expiry")}
             </td>
             <td class="admin-cell-actions" data-label={at("actions", {}, "Actions")}>
               <div class="admin-promo-actions">
@@ -744,16 +821,6 @@
                   <Sliders size={14} />
                 </AdminButton>
                 <AdminButton
-                  data-admin-action="open-code-activations"
-                  size="icon"
-                  variant="ghost"
-                  title={at("promo_activations_open", {}, "Open activations")}
-                  aria-label={at("promo_activations_open", {}, "Open activations")}
-                  onclick={() => openPromoActivations(p)}
-                >
-                  <FileText size={14} />
-                </AdminButton>
-                <AdminButton
                   class="admin-promo-toggle-btn"
                   data-admin-action="toggle-code"
                   size="sm"
@@ -764,7 +831,7 @@
                 <AdminButton
                   data-admin-action="delete-code"
                   size="icon"
-                  variant="danger"
+                  variant="dangerSoft"
                   title={at("btn_delete", {}, "Delete")}
                   aria-label={at("btn_delete", {}, "Delete")}
                   onclick={() => promosStore.deletePromo(p)}
@@ -801,10 +868,12 @@
   draft={promoDraft}
   usesCheckout={promoCreateUsesCheckout}
   {scopeItems}
+  tariffItems={subscriptionTariffs}
   onClose={() => promosStore.setCreateOpen(false)}
   onCreate={promosStore.createPromo}
   onCodeInput={(code) => promosStore.updateDraft({ code })}
-  onScopeChange={(applies_to) => promosStore.updateDraft({ applies_to })}
+  onScopeChange={(scope) => promosStore.updateDraft(promoScopePatch(scope) as Partial<PromoDraft>)}
+  onRestrictionsChange={(patch) => promosStore.updateDraft(patch)}
   onEffectEnabledChange={toggleCreateEffect}
   onNumberInput={updateCreateNumber}
   onBonusRequiresPaymentChange={setCreateBonusRequiresPayment}
@@ -837,7 +906,9 @@
   {promoSettingsDirtyCount}
   {promoStatus}
   {promosStore}
+  onScopeChange={(scope) => promosStore.updateEditDraft(promoScopePatch(scope))}
   {scopeItems}
+  tariffItems={subscriptionTariffs}
   onEffectEnabledChange={toggleEditEffect}
   {selectPromoEditTab}
   {setEditBonusRequiresPayment}

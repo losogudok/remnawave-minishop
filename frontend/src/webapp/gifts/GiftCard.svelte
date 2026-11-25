@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CheckCircle2, Gift } from "$components/ui/icons.js";
+  import { CheckCircle2, Clock, Gift } from "$components/ui/icons.js";
   import CopyLinkField from "$components/patterns/CopyLinkField.svelte";
   import LinkQrDialog from "$components/patterns/webapp/LinkQrDialog.svelte";
   import type { GiftView } from "$lib/webapp/gifts.svelte.js";
@@ -9,9 +9,9 @@
     t,
     oncopy = () => {},
   }: { gift: GiftView; t: Translate; oncopy?: (link: string) => void } = $props();
-  let qrOpen = $state(false);
+  let qrLink = $state("");
   $effect(() => {
-    if (!gift.link) qrOpen = false;
+    if (qrLink && qrLink !== gift.link && qrLink !== gift.telegram_link) qrLink = "";
   });
 </script>
 
@@ -23,7 +23,7 @@
       <p>{t("wa_gift_days", { days: gift.duration_days })}</p>
     </div>
     <span class:activated={gift.status === "activated"} class="gift-status"
-      >{#if gift.status === "activated"}<CheckCircle2 size={13} />{/if}{t(
+      >{#if gift.status === "activated"}<CheckCircle2 size={13} />{:else}<Clock size={13} />{/if}{t(
         `wa_gift_status_${gift.status}`
       )}</span
     >
@@ -52,7 +52,7 @@
       >{/if}
   </div>
   {#if gift.link || gift.telegram_link}
-    {#each [{ value: gift.link, label: "wa_gift_link_webapp", qr: true }, { value: gift.telegram_link, label: "wa_gift_link_telegram", qr: false }] as link (link.label)}
+    {#each [{ value: gift.link, label: "wa_gift_link_webapp" }, { value: gift.telegram_link, label: "wa_gift_link_telegram" }] as link (link.label)}
       {#if link.value}
         <div class="gift-copy">
           <p class="gift-link-label">{t(link.label)}</p>
@@ -60,8 +60,8 @@
             value={link.value}
             inputLabel={t(link.label)}
             copyLabel={t("wa_copy")}
-            qrLabel={link.qr ? t("wa_gift_qr_show") : ""}
-            onqr={() => (qrOpen = true)}
+            qrLabel={t("wa_gift_qr_show")}
+            onqr={(value) => (qrLink = value)}
             {oncopy}
           />
         </div>
@@ -70,7 +70,11 @@
     <p class="gift-hint">{t("wa_gift_link_private")}</p>
   {/if}
   {#if gift.activated_at}<p class="gift-hint">
-      {t("wa_gift_activated_on", { date: new Date(gift.activated_at).toLocaleDateString() })}
+      {t("wa_gift_activated_on", {
+        date: new Intl.DateTimeFormat(t("wa_date_locale", {}, "en"), {
+          dateStyle: "medium",
+        }).format(new Date(gift.activated_at)),
+      })}
     </p>{/if}
   {#if gift.recipient_email}<p class="gift-hint">
       {gift.recipient_email} <span class="meta-separator" aria-hidden="true"></span>
@@ -79,14 +83,14 @@
 </article>
 
 <LinkQrDialog
-  open={qrOpen && Boolean(gift.link)}
-  link={gift.link || ""}
+  open={Boolean(qrLink)}
+  link={qrLink}
   title={t("wa_gift_qr_title")}
   description={t("wa_gift_qr_description")}
   caption={gift.tariff_title || t("wa_subscription_title")}
   alt={t("wa_gift_qr_alt")}
   closeLabel={t("wa_close")}
-  onclose={() => (qrOpen = false)}
+  onclose={() => (qrLink = "")}
   {t}
 />
 
@@ -131,8 +135,10 @@
     font-weight: 600;
     border-radius: var(--radius-card);
     padding: 6px 9px;
-    background: color-mix(in srgb, var(--accent) 12%, transparent);
-    color: var(--accent);
+    /* Waiting for the recipient: amber like other pending states, not the
+       accent green that reads as success. */
+    background: var(--warning-soft, color-mix(in srgb, var(--warning) 12%, transparent));
+    color: var(--warning-text, var(--warning));
     white-space: nowrap;
   }
   .gift-status.activated {

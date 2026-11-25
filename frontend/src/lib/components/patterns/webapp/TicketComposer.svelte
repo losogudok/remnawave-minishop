@@ -8,7 +8,7 @@
 
   let {
     value = $bindable(""),
-    image = $bindable(null),
+    images = $bindable([]),
     labels,
     imageLabels,
     maxLength = 4000,
@@ -23,7 +23,7 @@
     onTyping = () => {},
   }: {
     value?: string;
-    image?: File | null;
+    images?: File[];
     labels: RichTextLabels;
     imageLabels: ImageAttachmentLabels;
     maxLength?: number;
@@ -34,7 +34,7 @@
     sendLabel?: string;
     showSendLabel?: boolean;
     fillAvailable?: boolean;
-    onSend?: (value: string, image: File | null) => void | Promise<void>;
+    onSend?: (value: string, images: File[]) => void | Promise<void>;
     onTyping?: (typing: boolean) => void;
   } = $props();
 
@@ -43,12 +43,12 @@
   const overLimit = $derived(length > maxLength);
   const nearLimit = $derived(length >= maxLength * 0.9);
   const canSend = $derived(
-    !disabled && !sending && !sendDisabled && (length > 0 || image !== null) && !overLimit
+    !disabled && !sending && !sendDisabled && (length > 0 || images.length > 0) && !overLimit
   );
 
   function submit() {
     if (!canSend) return;
-    onSend(value, image);
+    onSend(value, images);
   }
 </script>
 
@@ -59,7 +59,8 @@
 >
   <div class="ticket-composer-row">
     <ImageAttachment
-      bind:file={image}
+      bind:files={images}
+      multiple
       labels={imageLabels}
       disabled={disabled || sending}
       iconOnly
@@ -130,16 +131,15 @@
     border-radius: 12px;
   }
 
-  .ticket-composer-row :global(.message-image-preview),
+  .ticket-composer-row :global(.message-image-previews),
   .ticket-composer-row :global(.message-image-error) {
     grid-column: 1 / -1;
     width: 100%;
     min-width: 0;
   }
 
-  .ticket-composer-row :global(.message-image-preview) {
+  .ticket-composer-row :global(.message-image-previews) {
     grid-row: 2;
-    border-style: solid;
   }
 
   .ticket-composer-row :global(.ticket-composer-send) {
@@ -231,6 +231,27 @@
   }
 
   @media (max-width: 1023px) {
+    .ticket-composer:not(.fills-available-space) .ticket-composer-editor :global(.rt-surface) {
+      max-height: clamp(48px, calc(var(--support-content-height, 100dvh) * 0.25), 160px);
+      border: 1px solid var(--control-border, var(--border));
+      border-radius: var(--radius-card);
+      background: var(--panel-2);
+      padding-inline: 12px;
+      overscroll-behavior: contain;
+    }
+
+    .ticket-composer:not(.fills-available-space)
+      .ticket-composer-editor
+      :global(.rt-surface:focus-within) {
+      border-color: var(--accent);
+    }
+
+    .ticket-composer:not(.fills-available-space) :global(.message-image-previews) {
+      max-height: min(96px, calc(var(--support-content-height, 100dvh) * 0.18));
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
     .ticket-composer-editor :global(.ProseMirror) {
       font-size: 16px;
     }
@@ -272,7 +293,7 @@
     min-height: 100%;
   }
 
-  .fills-available-space .ticket-composer-row :global(.message-image-preview) {
+  .fills-available-space .ticket-composer-row :global(.message-image-previews) {
     grid-row: 2;
     margin-top: 8px;
   }
@@ -295,5 +316,13 @@
 
   .fills-available-space .ticket-composer-row :global(.ticket-composer-send) {
     grid-column: 2;
+  }
+
+  @media (min-width: 1024px) {
+    .fills-available-space .ticket-composer-row :global(.ticket-composer-send) {
+      justify-self: end;
+      width: auto;
+      padding-inline: 18px;
+    }
   }
 </style>

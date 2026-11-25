@@ -40,7 +40,7 @@ MAX_PROMO_CODE_INPUT_LENGTH = 100
 
 
 async def prompt_promo_code_input(
-    callback: types.CallbackQuery,
+    event: types.Message | types.CallbackQuery,
     state: FSMContext,
     i18n_data: dict,
     settings: Settings,
@@ -50,49 +50,48 @@ async def prompt_promo_code_input(
     current_lang = i18n_data.get("current_language", settings.DEFAULT_LANGUAGE)
     i18n: JsonI18n | None = i18n_data.get("i18n_instance")
     if not i18n:
-        await safe_answer_callback(callback, "Language service error.", show_alert=True)
+        if isinstance(event, types.CallbackQuery):
+            await safe_answer_callback(event, "Language service error.", show_alert=True)
         return
     _ = lambda key, **kwargs: i18n.gettext(current_lang, key, **kwargs)
 
-    if not callback.message:
+    if isinstance(event, types.CallbackQuery) and not event.message:
         logger.error("CallbackQuery has no message in prompt_promo_code_input")
         await safe_answer_callback(
-            callback,
+            event,
             _("error_occurred_processing_request"),
             show_alert=True,
         )
         return
 
-    try:
-        await callback_message(callback).edit_text(
-            text=_(key="promo_code_prompt"),
-            reply_markup=get_back_to_main_menu_markup(
-                current_lang,
-                i18n,
-                callback_data=back_callback,
-            ),
-        )
-    except Exception as e_edit:
-        logger.warning("Failed to edit message for promo prompt: %s. Sending new one.", e_edit)
-        await callback_message(callback).answer(
-            text=_(key="promo_code_prompt"),
-            reply_markup=get_back_to_main_menu_markup(
-                current_lang,
-                i18n,
-                callback_data=back_callback,
-            ),
-        )
-
-    await safe_answer_callback(callback)
+    text = _("promo_code_prompt")
+    markup = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text=_("cancel_button"), callback_data=back_callback)]
+        ]
+    )
+    if isinstance(event, types.CallbackQuery):
+        message = callback_message(event)
+        try:
+            await message.edit_text(text=text, reply_markup=markup)
+        except Exception as error:
+            logger.warning("Failed to edit message for promo prompt: %s. Sending new one.", error)
+            await message.answer(text=text, reply_markup=markup)
+        await safe_answer_callback(event)
+        user_id = event.from_user.id
+    else:
+        await event.answer(text=text, reply_markup=markup)
+        user_id = message_from_user(event).id
+    await state.update_data(promo_return_callback=back_callback)
     await state.set_state(UserPromoStates.waiting_for_promo_code)
     logger.info(
         "User %s entered state UserPromoStates.waiting_for_promo_code. FSM state: %s",
-        callback.from_user.id,
+        user_id,
         await state.get_state(),
     )
 
 
-@router.message(UserPromoStates.waiting_for_promo_code, F.text)
+@router.message(UserPromoStates.waiting_for_promo_code, F.text, ~F.text.startswith("/"))
 async def process_promo_code_input(
     message: types.Message,
     state: FSMContext,
@@ -141,6 +140,10 @@ async def process_promo_code_input(
             code_input,
         )
 
+    back_callback = (await state.get_data()).get(
+        "promo_return_callback", "main_action:back_to_main"
+    )
+    back_markup = get_back_to_main_menu_markup(current_lang, i18n, callback_data=back_callback)
     response_to_user_text = ""
     if is_suspicious and settings.LOG_SUSPICIOUS_ACTIVITY:
         # Send notification through NotificationService if enabled
@@ -171,7 +174,7 @@ async def process_promo_code_input(
             account_user_id,
         )
         checkout_url = subscription_mini_app_checkout_code_url(settings, result.code or code_input)
-        reply_markup = None
+        reply_markup = back_markup
         if checkout_url:
             reply_markup = types.InlineKeyboardMarkup(
                 inline_keyboard=[
@@ -180,7 +183,8 @@ async def process_promo_code_input(
                             text=_("open_mini_app"),
                             web_app=types.WebAppInfo(url=checkout_url),
                         )
-                    ]
+                    ],
+                    *back_markup.inline_keyboard,
                 ]
             )
 
@@ -240,6 +244,7 @@ async def process_promo_code_input(
             config_link_display,
             connect_button_url=connect_button_url,
             install_share_url=install_share_url,
+            back_callback=back_callback,
         )
     else:
         await session.commit()
@@ -250,7 +255,7 @@ async def process_promo_code_input(
             result,
         )
         response_to_user_text = result
-        reply_markup = get_back_to_main_menu_markup(current_lang, i18n)
+        reply_markup = back_markup
 
     await message.answer(
         response_to_user_text,

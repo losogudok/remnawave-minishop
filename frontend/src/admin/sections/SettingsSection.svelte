@@ -2,7 +2,7 @@
   import { getSettingsStore, getTranslationsStore } from "$lib/admin/context";
   import * as UiIcons from "$components/ui/icons.js";
   import SettingsContent from "./settings/SettingsContent.svelte";
-  import SettingsMaintenanceStatus from "./settings/SettingsMaintenanceStatus.svelte";
+  import MaintenanceStatus from "./MaintenanceStatus.svelte";
   import SettingsIconPicker from "./settings/SettingsIconPicker.svelte";
   import { onDestroy, onMount, tick } from "svelte";
   import { prefersReducedMotion } from "svelte/motion";
@@ -81,6 +81,13 @@
 
   const rawSettingsSections = $derived((settingsStore.settingsSections || []) as SettingsSection[]);
   const settingsSections = $derived(rawSettingsSections as AdminSettingsSection[]);
+  const maintenanceEnabled = $derived(
+    settingsSections.some((section) =>
+      section.fields.some(
+        (field) => field.key === "MAINTENANCE_MODE_ENABLED" && field.value === true
+      )
+    )
+  );
   const settingsLoading = $derived(Boolean(settingsStore.settingsLoading));
   const settingsDirty = $derived((settingsStore.settingsDirty || {}) as SettingsDirtyState);
   const settingsSaving = $derived(Boolean(settingsStore.settingsSaving));
@@ -148,6 +155,25 @@
       anchorKey: settingsSubsectionAnchorKey("subscription_guides", "screenshots"),
       searchText: normalizeSettingsSearchText(
         [at("guide_media_tab", {}, "Screenshots"), at("guide_media_hint")].join(" ")
+      ),
+    },
+    {
+      key: "BIRTHDAY_ACTIVATION_CAMPAIGN",
+      sectionId: "promos",
+      subsectionId: "personal",
+      label: at("promo_birthday_title"),
+      description: at("promo_birthday_hint"),
+      pathLabel: at("promo_birthday_search_path"),
+      anchorKey: "birthday-activation-settings",
+      navigationSection: "promos" as const,
+      searchText: normalizeSettingsSearchText(
+        [
+          at("promo_birthday_title"),
+          at("promo_birthday_hint"),
+          at("promo_birthday_search_keywords"),
+          "BIRTHDAY_ACTIVATION_CODE_DAYS",
+          "BIRTHDAY_ACTIVATION_CAMPAIGN",
+        ].join(" ")
       ),
     },
     {
@@ -775,9 +801,22 @@
 
   function fieldPlaceholderText(field: AdminSettingField): string {
     const fallback = field.placeholder || "";
-    return field.i18n_placeholder_key
+    const text = field.i18n_placeholder_key
       ? adminText(field.i18n_placeholder_key, fieldI18nParams(field), fallback)
       : fallback;
+    return text || fieldDefaultText(field);
+  }
+
+  /** An empty field shows the value it falls back to instead of a blank box. */
+  function fieldDefaultText(field: AdminSettingField): string {
+    const value = field.default;
+    if (field.secret || field.type === "bool") return "";
+    if (value === null || value === undefined || value === "" || typeof value === "object") {
+      return "";
+    }
+    const choice = choiceItems(field).find((item) => String(item.value) === String(value));
+    const label = choice ? choice.label : String(value);
+    return at("settings_default_value", { value: label }, `Default: ${label}`);
   }
 
   function subsectionTitle(group: SettingsSubsection): string {
@@ -834,7 +873,7 @@
   }
 </script>
 
-<SettingsMaintenanceStatus {at} sections={settingsSections} />
+<MaintenanceStatus {at} enabled={maintenanceEnabled} />
 <SettingsContent
   {at}
   {currentLang}

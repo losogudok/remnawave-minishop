@@ -1,7 +1,6 @@
-name: Publish GHCR images (reusable)
+name: Publish Core images (reusable)
 
-# Publishes the three public Core images to GHCR only. GitLab remains the
-# source of the wider release pipeline and all non-GHCR publication work.
+# Push each candidate to both registries from one BuildKit export.
 
 on:
   workflow_call:
@@ -29,6 +28,8 @@ on:
 
 permissions:
   contents: read
+  id-token: write
+  attestations: write
   packages: write
 
 jobs:
@@ -99,6 +100,24 @@ jobs:
           SOURCE_COMMIT: ${{ inputs.source_commit }}
         run: test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
 
+      - name: Resolve application build tag
+        id: build-version
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$CHANNEL" = release ]; then
+            tag="v$VERSION"
+          else
+            tag="$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude '*-*' 2>/dev/null || true)"
+          fi
+          if [ -n "$tag" ] && ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid application build tag: $tag" >&2
+            exit 1
+          fi
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -108,6 +127,13 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: github.repository == '3252a8/remnawave-minishop'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Generate GHCR metadata
         id: meta
@@ -120,7 +146,25 @@ jobs:
             type=raw,value=${{ inputs.version }},enable=${{ inputs.channel == 'release' }}
             type=raw,value=latest,enable=${{ inputs.channel == 'release' }}
           labels: |
+            org.opencontainers.image.ref.name=${{ inputs.channel == 'release' && format('v{0}', inputs.version) || 'dev' }}
             org.opencontainers.image.revision=${{ inputs.source_commit }}
+
+      - name: Compute candidate tags
+        id: candidate-tags
+        env:
+          IMAGE_OWNER: ${{ github.repository_owner }}
+          IMAGE_NAME: ${{ matrix.image }}
+          CANDIDATE_TAG: candidate-${{ inputs.source_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          PUSH_DOCKERHUB: ${{ github.repository == '3252a8/remnawave-minishop' }}
+        run: |
+          {
+            echo "tags<<EOF"
+            echo "ghcr.io/$IMAGE_OWNER/$IMAGE_NAME:$CANDIDATE_TAG"
+            if [ "$PUSH_DOCKERHUB" = "true" ]; then
+              echo "docker.io/$IMAGE_OWNER/$IMAGE_NAME:$CANDIDATE_TAG"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build and push ${{ matrix.image }}
         id: build
@@ -133,11 +177,12 @@ jobs:
           push: true
           pull: true
           no-cache: ${{ inputs.channel == 'release' }}
-          tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}:candidate-${{ inputs.source_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          tags: ${{ steps.candidate-tags.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            GITHUB_REF_NAME=${{ inputs.channel == 'release' && 'main' || 'dev' }}
+            REMNAWAVE_MINISHOP_BRANCH=${{ inputs.channel == 'release' && 'main' || 'dev' }}
             REMNAWAVE_MINISHOP_BUILD_PROVENANCE=official
+            REMNAWAVE_MINISHOP_BUILD_TAG=${{ steps.build-version.outputs.tag }}
             REMNAWAVE_MINISHOP_BUILD_COMMIT=${{ inputs.source_commit }}
             REMNAWAVE_MINISHOP_APK_REFRESH=${{ inputs.source_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           cache-from: type=gha,scope=${{ matrix.target }}-ghcr
@@ -145,19 +190,81 @@ jobs:
           provenance: mode=max
           sbom: true
 
+      - name: Verify application version inside the candidate
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          TARGET: ${{ matrix.target }}
+          CHANNEL: ${{ inputs.channel }}
+          TAG: ${{ steps.build-version.outputs.tag }}
+          COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --entrypoint /bin/sh "$IMAGE" \
+            -ec '
+              target="$1"; tag="$2"; commit="$3"; channel="$4"
+              if [ "$target" = frontend ]; then
+                test "$(cat /build-tag)" = "${tag:-unknown}"
+                test "$(cat /build-commit)" = "$commit"
+              else
+                test "$(cat /app/.build-tag)" = "${tag:-unknown}"
+                test "$(cat /app/.build-commit)" = "$commit"
+                suffix=""
+                if [ "$channel" = dev ]; then suffix="-dev"; fi
+                test "$(cat /app/.build-version)" = "${tag:-dev}${suffix}+g$commit"
+              fi
+            ' sh "$TARGET" "$TAG" "$COMMIT" "$CHANNEL"
+
       - name: Scan the published candidate
         uses: aquasecurity/trivy-action@v0.36.0
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
-          version: v0.75.0
+          version: v0.76.2
           scan-type: image
           image-ref: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
           scanners: vuln
           severity: CRITICAL,HIGH
           exit-code: "1"
           ignore-unfixed: false
+
+      - name: Install Cosign for Docker Hub
+        if: github.repository == '3252a8/remnawave-minishop'
+        uses: sigstore/cosign-installer@v4.1.3
+        with:
+          cosign-release: v3.1.4
+
+      - name: Sign and verify the Docker Hub candidate
+        if: github.repository == '3252a8/remnawave-minishop'
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+          IMAGE: docker.io/${{ github.repository_owner }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          CHANNEL_TAG: ${{ inputs.channel == 'release' && inputs.version || 'dev' }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes --registry-referrers-mode oci-1-1 \
+            --annotations "tag=$CHANNEL_TAG" \
+            --annotations "org.opencontainers.image.revision=$SOURCE_COMMIT" "$IMAGE"
+          for attempt in 1 2 3 4 5; do
+            if cosign verify --experimental-oci11 \
+              --annotations "tag=$CHANNEL_TAG" \
+              --annotations "org.opencontainers.image.revision=$SOURCE_COMMIT" \
+              --certificate-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/_docker-publish-ghcr.yml@$GITHUB_REF" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com "$IMAGE" > /dev/null; then
+              break
+            fi
+            [ "$attempt" != 5 ] || exit 1
+            sleep "$((attempt * 5))"
+          done
+
+      - name: Attest the stable image
+        if: inputs.channel == 'release'
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
 
       - name: Publish verified channel tags
         if: ${{ inputs.promote_channel }}
@@ -170,6 +277,21 @@ jobs:
               docker buildx imagetools create --prefer-index=false --tag "$tag" "$IMAGE_REFERENCE"
             fi
           done <<< "$CHANNEL_TAGS"
+
+      - name: Record verified digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TARGET: ${{ matrix.target }}
+        run: printf '%s\n' "$DIGEST" > "$TARGET.digest"
+
+      - name: Upload verified digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: core-image-digest-${{ matrix.target }}
+          path: ${{ matrix.target }}.digest
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
 
       - name: Record scanned image for deployment
         env:

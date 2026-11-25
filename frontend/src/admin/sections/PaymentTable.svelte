@@ -15,6 +15,7 @@
   import { TableHandler } from "@vincjo/datatables";
   import {
     paymentAmountDisplay,
+    paymentTableLayout,
     paymentDescriptionDisplay,
     paymentDiscountDisplay,
   } from "$lib/admin/paymentTable.js";
@@ -96,25 +97,16 @@
       headers={paymentHeaders}
       rows={skeletonRows}
       rowHeight={76}
-      widths={["11%", "15.5%", "18%", "9%", "7%", "9%", "9.5%", "9%", "12%"]}
+      class="admin-payments-table"
+      preserveRowHeightOnMobile
+      {...paymentTableLayout}
     />
   {:else if !paymentsTable.rows.length}
     <AdminEmptyState tone="card"
       ><span class="admin-muted">{resolvedEmptyLabel}</span></AdminEmptyState
     >
   {:else}
-    <AdminTable class="admin-payments-table">
-      <colgroup>
-        <col class="admin-payments-col-id" />
-        <col class="admin-payments-col-user" />
-        <col class="admin-payments-col-purchases" />
-        <col class="admin-payments-col-amount" />
-        <col class="admin-payments-col-discount" />
-        <col class="admin-payments-col-provider" />
-        <col class="admin-payments-col-description" />
-        <col class="admin-payments-col-status" />
-        <col class="admin-payments-col-date" />
-      </colgroup>
+    <AdminTable class="admin-payments-table" {...paymentTableLayout}>
       <thead>
         <tr>
           <AdminSortableHeader
@@ -344,10 +336,13 @@
               <dt>{at("amount", {}, "Amount")}</dt>
               <dd>{paymentAmountDisplay(p, fmtMoney, at)}</dd>
             </div>
-            <div>
-              <dt>{at("payments_col_discount", {}, "Discount")}</dt>
-              <dd>{paymentDiscountDisplay(p, fmtMoney)}</dd>
-            </div>
+            <!-- A card shows the discount only when there was one. -->
+            {#if paymentDiscountDisplay(p, fmtMoney) !== "—"}
+              <div>
+                <dt>{at("payments_col_discount", {}, "Discount")}</dt>
+                <dd>{paymentDiscountDisplay(p, fmtMoney)}</dd>
+              </div>
+            {/if}
           </dl>
 
           <PaymentPurchasesCell payment={p} {at} mode="mobile" />
@@ -384,42 +379,6 @@
 
   .admin-payments-mobile-list {
     display: none;
-  }
-
-  .admin-payments-table-shell :global(.admin-payments-col-id) {
-    width: 11%;
-  }
-
-  .admin-payments-table-shell :global(.admin-payments-col-user) {
-    width: 15.5%;
-  }
-
-  .admin-payments-table-shell :global(.admin-payments-col-purchases) {
-    width: 18%;
-  }
-
-  .admin-payments-table-shell :global(.admin-payments-col-amount) {
-    width: 9%;
-  }
-
-  .admin-payments-table-shell :global(.admin-payments-col-discount) {
-    width: 7%;
-  }
-
-  .admin-payments-table-shell :global(.admin-payments-col-provider) {
-    width: 9%;
-  }
-
-  .admin-payments-table-shell :global(.admin-payments-col-description) {
-    width: 9.5%;
-  }
-
-  .admin-payments-table-shell :global(.admin-payments-col-status) {
-    width: 9%;
-  }
-
-  .admin-payments-table-shell :global(.admin-payments-col-date) {
-    width: 12%;
   }
 
   .admin-payments-table-shell :global(.admin-payments-purchases-header) {
@@ -542,7 +501,8 @@
       overflow-x: hidden;
     }
 
-    .admin-payments-table-shell :global(.admin-table-wrap:has(.admin-payments-table)) {
+    .admin-payments-table-shell
+      :global(.admin-table-wrap:has(.admin-payments-table:not(.admin-table-skeleton))) {
       display: none;
     }
 
@@ -625,9 +585,9 @@
       font-family: var(--font-mono);
     }
 
+    /* The date keeps its full width; the user ID line is what truncates. */
     .admin-payment-mobile-user time {
-      flex: 0 1 auto;
-      max-width: 42%;
+      flex: 0 0 auto;
       text-align: right;
     }
 
@@ -641,21 +601,16 @@
 
     .admin-payment-mobile-metrics > div {
       display: grid;
-      gap: 3px;
+      gap: 2px;
       min-width: 0;
-      padding: 8px 9px;
-      border-radius: 8px;
-      background: color-mix(in srgb, var(--admin-bg) 58%, transparent);
     }
 
     .admin-payment-mobile-metrics dt {
       overflow: hidden;
       color: var(--admin-muted);
-      font-size: 10px;
-      font-weight: 650;
-      letter-spacing: 0.04em;
+      font-size: 11px;
+      font-weight: 500;
       text-overflow: ellipsis;
-      text-transform: uppercase;
       white-space: nowrap;
     }
 
@@ -664,7 +619,8 @@
       margin: 0;
       overflow-wrap: anywhere;
       color: var(--admin-text);
-      font-size: 12px;
+      font-size: 13px;
+      font-weight: 600;
       font-variant-numeric: tabular-nums;
     }
 

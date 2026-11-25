@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { takeSectionAction } from "$lib/admin/sectionActions.svelte";
   import { onMount } from "svelte";
   import {
     AdminButton,
@@ -76,6 +77,9 @@
   let error = $state("");
   let query = $state("");
   let importOpen = $state(false);
+  $effect(() => {
+    if (takeSectionAction("plugins", "add")) importOpen = true;
+  });
   let selectedId = $state("");
   let activeTab = $state("overview");
   let packageOpen = $state(false);
@@ -339,13 +343,6 @@
         </div>
       {/snippet}
       {#snippet actions()}
-        <AdminButton
-          size="sm"
-          variant="primary"
-          disabled={busy || applyBusy}
-          onclick={() => (importOpen = true)}
-          ><Plus size={15} />{at("plugins_add", {}, "Add plugin")}</AdminButton
-        >
         <AdminButton size="sm" onclick={() => void run(load)} disabled={busy || applyBusy}
           ><RefreshCw size={14} />{at("btn_refresh", {}, "Refresh")}</AdminButton
         >
@@ -752,13 +749,7 @@
     width: 100%;
     height: 100%;
     color: var(--accent);
-    background:
-      radial-gradient(
-        circle at 50% 50%,
-        color-mix(in srgb, var(--accent) 18%, transparent),
-        transparent 65%
-      ),
-      var(--admin-surface-2);
+    background: var(--admin-surface-2);
   }
   .add-symbol {
     display: grid;

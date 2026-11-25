@@ -129,6 +129,13 @@ EXPECTED_CORE_MIGRATION_IDS = [
     "0110_push_notification_preference",
     "0111_broadcast_channel_destinations",
     "0112_setup_rewards",
+    "0110_telegram_birthdays",
+    "0111_payment_provider_method",
+    "0112_payment_provider_fee_amount",
+    "0113_promo_subscription_restrictions",
+    "0114_support_message_images",
+    "0115_broadcast_audiences",
+    "0116_grant_balance_renewal",
 ]
 
 

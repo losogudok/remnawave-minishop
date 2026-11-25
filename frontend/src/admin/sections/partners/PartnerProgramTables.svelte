@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
-  import { FileText, Plus, UsersRound, WalletCards } from "$components/ui/icons.js";
+  import { FileText, UsersRound, WalletCards } from "$components/ui/icons.js";
   import { Input } from "$components/ui/index.js";
   import {
     AdminBadge,
@@ -26,7 +26,8 @@
     PartnerRow,
     WithdrawalRow,
   } from "$lib/admin/previewMock/partnerProgram.js";
-  import { partnerStatusVariant } from "$lib/admin/partnerProgramUi.js";
+  import { partnerStatusVariant, partnerTableLayouts } from "$lib/admin/partnerProgramUi.js";
+  import { fmtDateTime } from "$lib/admin/format.js";
   import type { AdminPartnerListQuery } from "$lib/admin/partnerProgramApi.js";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
@@ -44,7 +45,6 @@
     withdrawals,
     view,
     money,
-    onAddPartner,
     onOpenGraph,
     onOpenPartner,
     onOpenApplication,
@@ -60,7 +60,6 @@
     withdrawals: WithdrawalRow[];
     view: View;
     money: (value: number) => string;
-    onAddPartner: () => void;
     onOpenGraph: () => void;
     onOpenPartner: (partner: Partner) => void;
     onOpenApplication: (application: Application) => void;
@@ -252,7 +251,7 @@
         />
       {/snippet}
       {#snippet searchActions()}
-        <AdminButton type="submit" variant="primary">{at("find", {}, "Find")}</AdminButton>
+        <AdminButton type="submit" variant="default">{at("find", {}, "Find")}</AdminButton>
       {/snippet}
       {#snippet filters()}
         <AdminField label={at("partners_col_status", {}, "Status")}>
@@ -272,12 +271,9 @@
         <AdminButton onclick={onOpenGraph}
           ><UsersRound size={15} />{at("relationships_open", {}, "Referral graph")}</AdminButton
         >
-        <AdminButton variant="primary" onclick={onAddPartner}
-          ><Plus size={15} />{at("partners_add", {}, "Add partner")}</AdminButton
-        >
       {/snippet}
     </AdminListToolbar>
-    <AdminTable>
+    <AdminTable {...partnerTableLayouts[view]}>
       <thead
         ><tr>
           <AdminSortableHeader
@@ -423,7 +419,7 @@
         />
       {/snippet}
       {#snippet searchActions()}
-        <AdminButton type="submit" variant="primary">{at("find", {}, "Find")}</AdminButton>
+        <AdminButton type="submit" variant="default">{at("find", {}, "Find")}</AdminButton>
       {/snippet}
       {#snippet filters()}
         <AdminField label={at("partners_col_status", {}, "Status")}>
@@ -450,7 +446,7 @@
         </AdminField>
       {/snippet}
     </AdminListToolbar>
-    <AdminTable>
+    <AdminTable {...partnerTableLayouts[view]}>
       <thead
         ><tr>
           <AdminSortableHeader
@@ -535,7 +531,9 @@
               data-label={at("partners_application_message", {}, "Application message")}
               >{at(application.messageKey, {}, application.messageKey)}</td
             >
-            <td data-label={at("partners_submitted", {}, "Submitted")}>{application.submitted}</td>
+            <td data-label={at("partners_submitted", {}, "Submitted")}
+              >{fmtDateTime(application.submitted)}</td
+            >
             <td data-label={at("partners_col_status", {}, "Status")}>
               <AdminBadge variant={partnerStatusVariant(application.status)}
                 >{statusLabel(application.status)}</AdminBadge
@@ -606,7 +604,7 @@
         />
       {/snippet}
       {#snippet searchActions()}
-        <AdminButton type="submit" variant="primary">{at("find", {}, "Find")}</AdminButton>
+        <AdminButton type="submit" variant="default">{at("find", {}, "Find")}</AdminButton>
       {/snippet}
       {#snippet filters()}
         <AdminField label={at("partners_col_status", {}, "Status")}>
@@ -625,7 +623,7 @@
         </AdminField>
       {/snippet}
     </AdminListToolbar>
-    <AdminTable>
+    <AdminTable {...partnerTableLayouts[view]}>
       <thead
         ><tr>
           <AdminSortableHeader
@@ -728,7 +726,9 @@
                 >{statusLabel(withdrawal.status)}</AdminBadge
               >
             </td>
-            <td data-label={at("partners_requested", {}, "Requested")}>{withdrawal.requested}</td>
+            <td data-label={at("partners_requested", {}, "Requested")}
+              >{fmtDateTime(withdrawal.requested)}</td
+            >
             <td class="admin-cell-actions" data-label={at("actions", {}, "Actions")}>
               <AdminButton size="sm" onclick={() => onOpenWithdrawal(withdrawal)}
                 >{at("partners_open", {}, "Open")}</AdminButton

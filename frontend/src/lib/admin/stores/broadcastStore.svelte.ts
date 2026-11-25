@@ -48,7 +48,7 @@ export type {
 type AdminApi = ApiClient["api"];
 type ToastFn = (message: string) => void;
 type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
-type BroadcastCounts = Record<string, number>;
+type BroadcastCounts = Record<string, number | null>;
 export type BroadcastTargetOption = {
   value: string;
   label: string;
@@ -82,6 +82,7 @@ export type SingleUserMessage = {
   emailSubject: string;
   buttons: BroadcastButtonDraft[];
   image?: File | null;
+  scheduledAt?: string;
 };
 /** Kept as the broadcast-flavoured name of the shared composer type. */
 export type BroadcastShortcodeInfo = MessageShortcodeInfo;
@@ -158,8 +159,7 @@ function asBroadcastCounts(value: unknown): BroadcastCounts | null {
   if (!value || typeof value !== "object") return null;
   return Object.fromEntries(
     Object.entries(value).map(([key, count]) => {
-      const numericCount = Number(count);
-      return [key, Number.isFinite(numericCount) ? numericCount : 0];
+      return [key, typeof count === "number" && Number.isFinite(count) ? count : null];
     })
   );
 }
@@ -174,12 +174,13 @@ function asBroadcastAudiences(value: unknown): BroadcastAudienceDescriptor[] {
         target: String(raw.target || "")
           .trim()
           .toLowerCase(),
-        labelKey: String(raw.label_key || "").trim(),
-        fallbackLabel: String(raw.fallback_label || "").trim(),
+        labelKey: String(raw.label_key || raw.labelKey || "").trim(),
+        fallbackLabel: String(raw.fallback_label || raw.fallbackLabel || "").trim(),
         order: Number.isFinite(Number(raw.order)) ? Number(raw.order) : 100,
         available: raw.available !== false,
-        groupLabelKey: String(raw.group_label_key || "").trim() || null,
-        groupFallbackLabel: String(raw.group_fallback_label || "").trim() || null,
+        groupLabelKey: String(raw.group_label_key || raw.groupLabelKey || "").trim() || null,
+        groupFallbackLabel:
+          String(raw.group_fallback_label || raw.groupFallbackLabel || "").trim() || null,
         icon: String(raw.icon || "").trim() || null,
       };
     })
@@ -446,49 +447,33 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
           const emailChannel = channels.find((channel) => channel.name === "email");
           const resolvedEmailAvailable = emailChannel ? emailChannel.available : emailAvailable;
           const options = targetOptions(audiences);
-          if (!counts) {
-            updateState((s) =>
-              applyChannelSelection(
-                {
-                  ...s,
-                  broadcastChannels: channels,
-                  broadcastEmailAvailable: resolvedEmailAvailable,
-                  broadcastEmailAvailabilityKnown: true,
-                  broadcastAudiencesLoaded: true,
-                  BROADCAST_TARGET_OPTIONS: options,
-                  broadcastTarget: options.some(
-                    (option) => option.value === s.broadcastTarget && !option.disabled
-                  )
-                    ? s.broadcastTarget
-                    : "all",
-                },
-                s.selectedChannels
-              )
-            );
-            return;
-          }
           const loadedAt = Date.now();
           updateState((s) =>
             applyChannelSelection(
               {
                 ...s,
-                broadcastCounts: counts,
-                broadcastCountsLoadedAt: loadedAt,
+                ...(counts ? { broadcastCounts: counts, broadcastCountsLoadedAt: loadedAt } : {}),
                 broadcastAudiencesLoaded: true,
                 broadcastChannels: channels,
                 broadcastEmailAvailable: resolvedEmailAvailable,
                 broadcastEmailAvailabilityKnown: true,
                 BROADCAST_TARGET_OPTIONS: options,
-                broadcastTarget: options.some(
-                  (option) => option.value === s.broadcastTarget && !option.disabled
-                )
-                  ? s.broadcastTarget
-                  : "all",
+                broadcastTargetError: s.broadcastTarget
+                  .split(",")
+                  .filter(Boolean)
+                  .some(
+                    (target) =>
+                      !options.some((option) => option.value === target && !option.disabled)
+                  )
+                  ? "broadcast_target_unavailable"
+                  : null,
               },
               s.selectedChannels
             )
           );
-          writeStoredCounts(counts, loadedAt, resolvedEmailAvailable, audiences, channels);
+          if (counts) {
+            writeStoredCounts(counts, loadedAt, resolvedEmailAvailable, audiences, channels);
+          }
         }
       } catch {
         // Counts are advisory; ignore failures and keep existing/plain labels.
@@ -506,7 +491,7 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
   }
 
   function canSubmit(): boolean {
-    if (state.broadcastBusy) return false;
+    if (state.broadcastBusy || !state.broadcastTarget || state.broadcastTargetError) return false;
     // One written language is enough to send: requiring all of them would
     // block a shop that serves one.
     if (
@@ -538,6 +523,10 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
    */
   async function sendToUser(input: SingleUserMessage): Promise<string | null> {
     const failure = at("user_message_failed", {}, "Message was not sent");
+    const scheduledAt = input.scheduledAt === undefined ? null : new Date(input.scheduledAt);
+    if (scheduledAt && !(scheduledAt.getTime() > Date.now())) {
+      return at("broadcast_schedule_future", {}, "The send time must be in the future");
+    }
     try {
       const body = {
         target: `user:${Math.trunc(input.userId)}`,
@@ -546,7 +535,7 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
         exclude_blocked_telegram: false,
         email_subject: input.emailSubject.trim(),
         buttons: buttonsForPayload(input.buttons),
-        scheduled_at: null,
+        scheduled_at: scheduledAt?.toISOString() ?? null,
       } satisfies PostPayload<"/api/admin/broadcast">;
       const res = await api(buildAdminBroadcastPath(), {
         method: "POST",
@@ -569,9 +558,9 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
       }
       return;
     }
-    const { target, text, texts, emailSubject, emailSubjects, buttons, channels } =
+    const { targets, text, texts, emailSubject, emailSubjects, buttons, channels } =
       snapshotForPayload({
-        target: state.broadcastTarget,
+        targets: state.broadcastTarget.split(","),
         text: state.broadcastText,
         texts: state.broadcastTexts,
         emailSubject: state.broadcastEmailSubject,
@@ -584,7 +573,8 @@ export function createBroadcastStore({ api, onToast, at }: BroadcastStoreOptions
 
     try {
       const body = {
-        target,
+        target: targets[0],
+        ...(targets.length > 1 ? { targets } : {}),
         text,
         texts: localizedForPayload(texts),
         channels,

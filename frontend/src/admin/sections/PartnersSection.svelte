@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { takeSectionAction } from "$lib/admin/sectionActions.svelte";
   import { onMount } from "svelte";
   import {
     ArrowRight,
@@ -22,6 +23,7 @@
     AdminButton,
     AdminEmptyState,
     AdminSelect,
+    AdminKpiTile,
   } from "$components/patterns/admin/index.js";
   import { partnerSortColumns } from "$lib/admin/partnerProgramSort.js";
   import {
@@ -44,6 +46,7 @@
     type PartnerWithdrawalTransition,
   } from "$lib/admin/partnerProgramUi.js";
   import { sortAdminRows } from "$lib/admin/tableSort.js";
+  import { fmtDateTime } from "$lib/admin/format.js";
   import { withRoutePrefix } from "$lib/webapp/routes.js";
   import { getSettingsStore } from "$lib/admin/context.js";
   import {
@@ -242,6 +245,9 @@
     ).length
   );
   let dialog = $state<DialogKind>("");
+  $effect(() => {
+    if (takeSectionAction("partners", "add")) dialog = "create";
+  });
   let dialogReason = $state("");
   let dialogAmount = $state("");
   const balanceModes = ["add", "subtract", "set"] as const;
@@ -699,6 +705,10 @@
       actionStatus = at("partners_link_copy_failed", {}, "Could not copy the partner link");
     }
   }
+
+  function kpiTone(tone: string): "default" | "success" | "warning" | "info" {
+    return tone === "success" || tone === "warning" || tone === "info" ? tone : "default";
+  }
 </script>
 
 <svelte:window onpopstate={syncRouteView} />
@@ -773,14 +783,13 @@
     >
       {#each dashboardMetrics as metric (metric.key)}
         {@const MetricIcon = metric.icon}
-        <article class="partners-kpi-card partners-tone-{metric.tone}">
-          <span><MetricIcon size={18} /></span>
-          <div>
-            <small>{at(`partners_kpi_${metric.key}`, {}, metric.key)}</small><strong
-              >{metric.value}</strong
-            >
-          </div>
-        </article>
+        <AdminKpiTile
+          label={at(`partners_kpi_${metric.key}`, {}, metric.key)}
+          value={metric.value}
+          tone={metric.tone === "muted" ? "default" : kpiTone(metric.tone)}
+        >
+          {#snippet icon()}<MetricIcon size={14} />{/snippet}
+        </AdminKpiTile>
       {/each}
     </section>
 
@@ -841,9 +850,11 @@
               class="partners-preview-row"
               onclick={() => openApplication(application)}
               ><span
-                ><strong>{application.handle} — {application.user}</strong><small
-                  >{application.submitted}</small
-                ></span
+                ><strong
+                  >{application.user && application.user !== application.handle.replace(/^@/, "")
+                    ? `${application.handle} — ${application.user}`
+                    : application.handle}</strong
+                ><small>{fmtDateTime(application.submitted)}</small></span
               ><AdminBadge variant={partnerStatusVariant(application.status)}
                 >{statusLabel(application.status)}</AdminBadge
               ></button
@@ -861,7 +872,6 @@
       {withdrawals}
       {view}
       {money}
-      onAddPartner={() => (dialog = "create")}
       onOpenGraph={() => openUserRelationshipsGraph(undefined, routePrefix)}
       onOpenPartner={openPartner}
       onOpenApplication={openApplication}

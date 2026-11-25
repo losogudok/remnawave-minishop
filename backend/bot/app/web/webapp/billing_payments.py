@@ -40,6 +40,7 @@ from bot.services.subscription_service_impl.core import SubscriptionService
 from bot.services.trial_days import TRIAL_DAYS_START_FROM_PAYMENT
 from bot.services.user_balance_service import UserBalanceError
 from config.settings import Settings
+from config.stars_pricing import trial_stars_price
 from config.subscription_periods import (
     add_period_days,
     checkout_duration_days,
@@ -184,7 +185,7 @@ async def create_payment_route(request: web.Request) -> web.Response:
         ):
             return _json_error(400, "trial_payment_unavailable", "Paid trial is not available")
         price = max(0.0, float(settings.TRIAL_PAYMENT_PRICE or 0))
-        stars_price = max(0, int(settings.TRIAL_PAYMENT_STARS_PRICE or 0))
+        stars_price = trial_stars_price(settings, default_currency)
         if method == "stars" and stars_price <= 0:
             return _json_error(400, "invalid_plan", "Stars price is not configured")
         if method != "stars" and price <= 0:
@@ -674,6 +675,7 @@ async def _create_subscription_payment(
                 "entitlement_context_changed",
                 "The active subscription no longer matches this purchase",
             )
+    period_start: datetime | None = None
     if _sale_mode_base(sale_mode) in {"subscription", "tariff_upgrade"} and not is_gift_sale(
         sale_mode
     ):
@@ -871,7 +873,8 @@ async def _create_subscription_payment(
                     bonus_days = promo_result.effects.bonus_days + multiplied_bonus_days(
                         fixed_days, promo_result.effects.duration_multiplier
                     )
-                    add_period_days(period_start, fixed_days + bonus_days)
+                    # A gift has no activation date yet, so check its duration from now.
+                    add_period_days(period_start or datetime.now(UTC), fixed_days + bonus_days)
                 except ValueError:
                     return _json_error(400, "invalid_plan", "Subscription end date is out of range")
             promo_code_id = promo_result.promo_code_id

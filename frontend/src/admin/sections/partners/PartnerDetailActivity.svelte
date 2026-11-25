@@ -15,6 +15,7 @@
     WithdrawalRow,
   } from "$lib/admin/previewMock/partnerProgram.js";
   import { partnerStatusVariant } from "$lib/admin/partnerProgramUi.js";
+  import { fmtDateTime } from "$lib/admin/format.js";
   import { sortAdminRows, type AdminSortColumn } from "$lib/admin/tableSort.js";
 
   type TranslateFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
@@ -270,8 +271,8 @@
                 onclick={client.userId ? () => onOpenUserCard(client.userId) : undefined}
               />
             </td>
-            <td class="admin-cell-mono" data-label={at("partners_col_attributed", {}, "Attributed")}
-              >{client.attributed}</td
+            <td data-label={at("partners_col_attributed", {}, "Attributed")}
+              >{fmtDateTime(client.attributed)}</td
             >
             <td data-label={at("partners_col_source", {}, "Source")}
               >{at(`partners_source_${client.source}`, {}, client.source)}</td
@@ -341,8 +342,8 @@
                 onclick={() => onOpenPaymentCard(commission.paymentId)}
               />
             </td>
-            <td class="admin-cell-mono" data-label={at("partners_col_created", {}, "Created")}
-              >{commission.created}</td
+            <td data-label={at("partners_col_created", {}, "Created")}
+              >{fmtDateTime(commission.created)}</td
             >
             <td data-label={at("partners_col_basis", {}, "Basis")}
               >{money(commission.gross)} · {commission.rate}%</td
@@ -440,8 +441,8 @@
               {at(`partners_method_${withdrawal.method}`, {}, withdrawal.method)}
             </td>
             <td data-label={at("partners_col_amount", {}, "Amount")}>{money(withdrawal.amount)}</td>
-            <td class="admin-cell-mono" data-label={at("partners_requested", {}, "Requested")}
-              >{withdrawal.requested}</td
+            <td data-label={at("partners_requested", {}, "Requested")}
+              >{fmtDateTime(withdrawal.requested)}</td
             >
             <td data-label={at("partners_col_status", {}, "Status")}>
               <AdminBadge variant={partnerStatusVariant(withdrawal.status)}
@@ -522,8 +523,8 @@
                 />
               {/if}
             </td>
-            <td class="admin-cell-mono" data-label={at("partners_col_created", {}, "Created")}
-              >{entry.created}</td
+            <td data-label={at("partners_col_created", {}, "Created")}
+              >{fmtDateTime(entry.created)}</td
             >
             <td data-label={at("partners_col_amount", {}, "Amount")}>
               <span class:partners-negative={entry.amount < 0}>{money(entry.amount)}</span>
@@ -574,8 +575,8 @@
             <td class="admin-cell-mono" data-label={at("partners_col_entry", {}, "Entry")}
               >{entry.id}</td
             >
-            <td class="admin-cell-mono" data-label={at("partners_col_created", {}, "Created")}
-              >{entry.created}</td
+            <td data-label={at("partners_col_created", {}, "Created")}
+              >{fmtDateTime(entry.created)}</td
             >
             <td class="admin-cell-primary" data-label={at("partners_col_actor", {}, "Actor")}>
               <AdminEntityLink

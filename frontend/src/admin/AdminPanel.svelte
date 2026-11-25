@@ -167,7 +167,6 @@
     settingsStore,
     statsStore,
     supportStore,
-    tariffsStore,
     translationsStore,
     usersStore,
   } = createAdminStores({
@@ -412,6 +411,7 @@
       usersPanelStatus: usersStore.usersPanelStatus,
       usersPremiumTraffic: usersStore.usersPremiumTraffic,
       usersTariffFilter: usersStore.usersTariffFilter,
+      usersExtensionFilters: usersStore.usersExtensionFilters,
     });
   }
 
@@ -891,7 +891,6 @@
     {statsStore}
     {supportStore}
     {syncBusy}
-    {tariffsStore}
     {translationsDirtyCount}
     {translationsSaving}
     {translationsStore}

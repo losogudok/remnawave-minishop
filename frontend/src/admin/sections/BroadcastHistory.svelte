@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { TableHandler } from "@vincjo/datatables";
   import { getBroadcastStore } from "$lib/admin/context";
+  import { broadcastPlatformLabel } from "$lib/admin/broadcastPlatformLabel";
   import type { BroadcastHistoryItem } from "$lib/admin/stores/broadcastHistory";
   import {
     channelLabel,
@@ -12,6 +13,7 @@
   import { DateInput } from "$components/ui/index.js";
   import { CalendarDays, CircleQuestionMark, Trash2 } from "$components/ui/icons.js";
   import {
+    AdminBadge,
     AdminButton,
     AdminEmptyState,
     AdminPagination,
@@ -19,6 +21,7 @@
     AdminTable,
     AdminTableSkeleton,
   } from "$components/patterns/admin/index.js";
+  import type { AdminBadgeVariant } from "$components/patterns/admin/types";
   import Dialog from "$components/ui/dialog.svelte";
   import { supportMessageImageUrl } from "$lib/messageImage";
   import BroadcastFailuresDialog from "./BroadcastFailuresDialog.svelte";
@@ -37,7 +40,8 @@
   let scheduleNow = $state(Date.now());
   let selectedBroadcastId = $state<number | null>(null);
   let failuresBroadcastId = $state<number | null>(null);
-  let historySort = $state("created_desc");
+  // Newest first by id: ids grow with creation, and the list has no creation column.
+  let historySort = $state("id_desc");
   const history = $derived(broadcastStore.broadcastHistory);
   const loading = $derived(Boolean(broadcastStore.broadcastHistoryLoading));
   const selectedBroadcast = $derived(
@@ -73,7 +77,7 @@
       asc: "audience_asc",
       desc: "audience_desc",
       defaultDirection: "asc",
-      value: (item) => targetLabel(item.target),
+      value: (item) => targetLabel(item),
     },
     {
       asc: "channels_asc",
@@ -93,15 +97,13 @@
       defaultDirection: "desc",
       value: (item) => progress(item),
     },
-    {
-      asc: "created_asc",
-      desc: "created_desc",
-      defaultDirection: "desc",
-      value: (item) => item.createdAt,
-    },
   ] satisfies AdminSortColumn<BroadcastHistoryItem>[];
   const sortedHistory = $derived(sortAdminRows(history, historySort, historySortColumns));
   const historyRows = $derived(historyTable.rows as BroadcastHistoryItem[]);
+  const historyTableLayout = {
+    columnWidths: ["6%", "180px", "auto", "13%", "15%", "17%", "15%"],
+    minWidth: "960px",
+  };
   const historyHeaders = $derived([
     "ID",
     at("status", {}, "Status"),
@@ -110,7 +112,6 @@
     at("broadcast_channels_label", {}, "Delivery channels"),
     at("broadcast_scheduled_at", {}, "Scheduled"),
     at("broadcast_progress", {}, "Delivery progress"),
-    at("broadcast_created_at", {}, "Created"),
   ]);
   const historyMeta = $derived.by(() => {
     const { start, end, total } = historyTable.rowCount;
@@ -129,6 +130,7 @@
   });
 
   onMount(() => {
+    void broadcastStore.loadCounts();
     void broadcastStore.loadHistory();
     const timer = window.setInterval(() => {
       scheduleNow = Date.now();
@@ -139,6 +141,10 @@
     }, 3000);
     return () => window.clearInterval(timer);
   });
+
+  function channelsLabel(channels: string[]): string {
+    return channels.map((channel) => channelLabel(channel, at)).join(" · ") || "—";
+  }
 
   function statusLabel(status: string): string {
     const labels: Record<string, [string, string]> = {
@@ -156,9 +162,19 @@
 
   function statusTone(status: string): string {
     if (status === "completed") return "success";
-    if (status === "failed" || status === "cancelled") return "danger";
+    if (status === "failed") return "danger";
     if (status === "completed_with_errors") return "warning";
     return "active";
+  }
+
+  /** Badge tone by meaning: in progress is amber, waiting and cancelled are neutral. */
+  function statusVariant(status: string): AdminBadgeVariant {
+    if (status === "completed") return "success";
+    if (status === "failed") return "danger";
+    if (status === "completed_with_errors" || status === "running" || status === "queued") {
+      return "warning";
+    }
+    return "muted";
   }
 
   function formatDate(value: string | null): string {
@@ -225,11 +241,16 @@
     }
   }
 
-  function targetLabel(target: string): string {
-    return (
-      broadcastStore.BROADCAST_TARGET_OPTIONS.find((option) => option.value === target)?.label ||
-      target
-    );
+  function targetLabel(item: BroadcastHistoryItem): string {
+    return (item.targets || [item.target])
+      .map(
+        (target) =>
+          broadcastStore.BROADCAST_TARGET_OPTIONS.find((option) => option.value === target)
+            ?.label ||
+          broadcastPlatformLabel(target, at) ||
+          target
+      )
+      .join(", ");
   }
 
   function buttonLabel(button: BroadcastHistoryItem["buttons"][number]): string {
@@ -304,16 +325,8 @@
           headers={historyHeaders}
           rows={5}
           rowHeight={64}
-          widths={[
-            "64px",
-            "130px",
-            "minmax(220px, 1fr)",
-            "150px",
-            "130px",
-            "170px",
-            "130px",
-            "170px",
-          ]}
+          class="broadcast-history-table"
+          {...historyTableLayout}
         />
       </div>
     {:else if !history.length}
@@ -322,7 +335,7 @@
       </AdminEmptyState>
     {:else}
       <div class="admin-table-wrap">
-        <AdminTable class="broadcast-history-table">
+        <AdminTable class="broadcast-history-table" {...historyTableLayout}>
           <thead>
             <tr>
               <AdminSortableHeader
@@ -374,13 +387,6 @@
                 {at}
                 onSort={setHistorySort}
               />
-              <AdminSortableHeader
-                label={at("broadcast_created_at", {}, "Created")}
-                column={historySortColumns[7]}
-                currentSort={historySort}
-                {at}
-                onSort={setHistorySort}
-              />
             </tr>
           </thead>
           <tbody>
@@ -400,30 +406,26 @@
               >
                 <td class="admin-cell-id" data-label="ID">#{item.broadcastId}</td>
                 <td data-label={at("status", {}, "Status")}
-                  ><span class={`broadcast-status broadcast-status-${statusTone(item.status)}`}
-                    >{statusLabel(item.status)}</span
+                  ><AdminBadge variant={statusVariant(item.status)}
+                    >{statusLabel(item.status)}</AdminBadge
                   ></td
                 >
                 <td
-                  class="admin-cell-wrap broadcast-history-message-preview"
+                  class="broadcast-history-message-preview"
                   data-label={at("broadcast_label_text", {}, "Message Text")}
                   title={messagePreview(item)}>{messagePreview(item)}</td
                 >
                 <td data-label={at("broadcast_label_audience", {}, "Audience")}
-                  >{targetLabel(item.target)}</td
+                  >{targetLabel(item)}</td
                 >
                 <td data-label={at("broadcast_channels_label", {}, "Delivery channels")}
-                  >{item.channels.map((channel) => channelLabel(channel, at)).join(" · ") ||
-                    "—"}</td
+                  >{channelsLabel(item.channels)}</td
                 >
                 <td data-label={at("broadcast_scheduled_at", {}, "Scheduled")}
                   >{formatDate(item.scheduledAt)}</td
                 >
                 <td data-label={at("broadcast_progress", {}, "Delivery progress")}
                   >{progressText(item)}</td
-                >
-                <td data-label={at("broadcast_created_at", {}, "Created")}
-                  >{formatDate(item.createdAt)}</td
                 >
               </tr>
             {/each}
@@ -457,7 +459,7 @@
       )
     : ""}
   description={selectedBroadcast
-    ? `${statusLabel(selectedBroadcast.status)} · ${targetLabel(selectedBroadcast.target)}`
+    ? `${statusLabel(selectedBroadcast.status)} · ${targetLabel(selectedBroadcast)}`
     : ""}
   closeLabel={at("close", {}, "Close")}
   onclose={closeDetails}
@@ -480,8 +482,8 @@
             >{statusLabel(selectedBroadcast.status)} <CircleQuestionMark size={14} /></button
           >
         {:else}
-          <span class={`broadcast-status broadcast-status-${statusTone(selectedBroadcast.status)}`}
-            >{statusLabel(selectedBroadcast.status)}</span
+          <AdminBadge variant={statusVariant(selectedBroadcast.status)}
+            >{statusLabel(selectedBroadcast.status)}</AdminBadge
           >
         {/if}
         <span class="broadcast-history-id">#{selectedBroadcast.broadcastId}</span>
@@ -490,14 +492,11 @@
       <dl class="broadcast-detail-meta">
         <div>
           <dt>{at("broadcast_label_audience", {}, "Audience")}</dt>
-          <dd>{targetLabel(selectedBroadcast.target)}</dd>
+          <dd>{targetLabel(selectedBroadcast)}</dd>
         </div>
         <div>
           <dt>{at("broadcast_channels_label", {}, "Delivery channels")}</dt>
-          <dd>
-            {selectedBroadcast.channels.map((channel) => channelLabel(channel, at)).join(" · ") ||
-              "—"}
-          </dd>
+          <dd>{channelsLabel(selectedBroadcast.channels)}</dd>
         </div>
         <div>
           <dt>{at("broadcast_recipients", {}, "Recipients")}</dt>
@@ -677,9 +676,6 @@
     display: grid;
     gap: 12px;
   }
-  :global(.broadcast-history-table) {
-    min-width: 1120px;
-  }
   :global(.broadcast-history-table tbody tr.broadcast-history-row) {
     cursor: pointer;
   }
@@ -692,7 +688,6 @@
     outline-offset: -2px;
   }
   .broadcast-history-message-preview {
-    max-width: 320px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -855,7 +850,7 @@
     transition: width 0.3s ease;
   }
   .broadcast-progress.is-running .broadcast-progress-track span {
-    background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 35%, white));
+    background: var(--accent);
     background-size: 180% 100%;
     animation: broadcast-progress-pulse 1.2s linear infinite;
   }
@@ -893,11 +888,7 @@
   }
 
   @media (max-width: 700px) {
-    :global(.broadcast-history-table) {
-      min-width: 0;
-    }
     .broadcast-history-message-preview {
-      max-width: none;
       white-space: normal;
     }
     .broadcast-detail-card {

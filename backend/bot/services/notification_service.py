@@ -19,6 +19,7 @@ from bot.middlewares.i18n import JsonI18n
 from bot.services.email_auth_service import EmailAuthService
 from bot.services.notification_partner import NotificationPartnerMixin
 from bot.services.notification_support import NotificationSupportMixin
+from bot.services.payment_log_purchases import format_payment_purchase_summary
 from bot.utils.message_queue import get_queue_manager
 from bot.utils.subscription_periods import format_duration_days
 from bot.utils.telegram_markup import (
@@ -55,6 +56,7 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
     @staticmethod
     def _external_auth_provider_label(translate: Callable[..., str], provider: str | None) -> str:
         key = {
+            "discord": "log_auth_provider_discord",
             "google": "log_auth_provider_google",
             "yandex": "log_auth_provider_yandex",
         }.get(str(provider or "").lower())
@@ -243,7 +245,11 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
         )
 
         # Send to log channel
-        await self._send_to_log_channel(message, reply_markup=profile_keyboard)
+        await self._send_to_log_channel(
+            message,
+            thread_id=self.settings.LOG_NEW_USERS_THREAD_ID,
+            reply_markup=profile_keyboard,
+        )
 
     async def notify_new_email_user_registration(
         self,
@@ -280,7 +286,11 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
             timestamp=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
         )
 
-        await self._send_to_log_channel(message, reply_markup=profile_keyboard)
+        await self._send_to_log_channel(
+            message,
+            thread_id=self.settings.LOG_NEW_USERS_THREAD_ID,
+            reply_markup=profile_keyboard,
+        )
 
     async def notify_new_external_user_registration(
         self,
@@ -319,7 +329,11 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
             referral_text=referral_text,
             timestamp=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
         )
-        await self._send_to_log_channel(message, reply_markup=profile_keyboard)
+        await self._send_to_log_channel(
+            message,
+            thread_id=self.settings.LOG_NEW_USERS_THREAD_ID,
+            reply_markup=profile_keyboard,
+        )
 
     async def notify_account_email_linked(
         self,
@@ -356,7 +370,11 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
             timestamp=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
         )
 
-        await self._send_to_log_channel(message, reply_markup=profile_keyboard)
+        await self._send_to_log_channel(
+            message,
+            thread_id=self.settings.LOG_NEW_USERS_THREAD_ID,
+            reply_markup=profile_keyboard,
+        )
 
     async def notify_account_telegram_linked(
         self,
@@ -393,7 +411,11 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
             timestamp=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
         )
 
-        await self._send_to_log_channel(message, reply_markup=profile_keyboard)
+        await self._send_to_log_channel(
+            message,
+            thread_id=self.settings.LOG_NEW_USERS_THREAD_ID,
+            reply_markup=profile_keyboard,
+        )
 
     async def notify_account_external_identity_linked(
         self,
@@ -436,7 +458,11 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
             email=hd.quote(email or ""),
             timestamp=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
         )
-        await self._send_to_log_channel(message, reply_markup=profile_keyboard)
+        await self._send_to_log_channel(
+            message,
+            thread_id=self.settings.LOG_NEW_USERS_THREAD_ID,
+            reply_markup=profile_keyboard,
+        )
 
     async def notify_account_merged(
         self,
@@ -478,7 +504,10 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
             merge_source = self._external_auth_provider_label(_, provider)
         else:
             source_key = {
+                "admin_manual_merge": "log_account_merge_source_admin",
                 "email_link": "log_account_merge_source_email",
+                "explicit_email_merge": "log_account_merge_source_email",
+                "explicit_telegram_merge": "log_account_merge_source_telegram",
                 "telegram_link": "log_account_merge_source_telegram",
                 "login": "log_account_merge_source_login",
             }.get(str(reason or ""))
@@ -519,7 +548,11 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
             timestamp=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
         )
 
-        await self._send_to_log_channel(message, reply_markup=profile_keyboard)
+        await self._send_to_log_channel(
+            message,
+            thread_id=self.settings.LOG_NEW_USERS_THREAD_ID,
+            reply_markup=profile_keyboard,
+        )
 
     def _format_traffic_gb_admin(self, traffic_gb: float) -> str:
         value = float(traffic_gb)
@@ -554,6 +587,7 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
         tariff_key: str | None = None,
         purchased_hwid_devices: int | None = None,
         purchases: tuple[PaymentPurchase, ...] | None = None,
+        checkout_bundle_snapshot: str | None = None,
         sale_mode: str | None = None,
         payment_id: int | None = None,
         duration_days: int | None = None,
@@ -594,10 +628,13 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
                 purchased_hwid_devices=purchased_hwid_devices,
             )
         )
-        purchase_summary_parts = [
-            self._format_payment_purchase_line(_, purchase) for purchase in effective_purchases
-        ]
-        purchase_summary = "\n".join(line for line in purchase_summary_parts if line)
+        purchase_summary = format_payment_purchase_summary(
+            _,
+            effective_purchases,
+            checkout_bundle_snapshot=checkout_bundle_snapshot,
+            currency=currency,
+            format_amount=self._format_traffic_gb_admin,
+        )
         has_traffic_purchase = any(purchase.kind == "traffic" for purchase in effective_purchases)
 
         if sale_mode_base(sale_mode) == "balance_topup":
@@ -631,7 +668,7 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
                 payment_id=payment_id if payment_id is not None else "—",
                 timestamp=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
             )
-        elif has_traffic_purchase:
+        elif has_traffic_purchase and not (months or duration_days):
             traffic_purchase = next(
                 purchase for purchase in effective_purchases if purchase.kind == "traffic"
             )
@@ -661,7 +698,7 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
                 payment_provider=payment_provider,
                 timestamp=datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
             )
-        elif effective_purchases:
+        elif effective_purchases or purchase_summary or tariff_key:
             tariff_name = self._tariff_display_for_log(tariff_key)
             tariff_line = (
                 _("log_payment_tariff_line", name=hd.quote(tariff_name)) if tariff_name else ""
@@ -676,9 +713,13 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
                 if months
                 else ""
             )
-            purchase_summary_line = _(
-                "log_payment_purchase_summary_line",
-                summary=purchase_summary,
+            purchase_summary_line = (
+                _(
+                    "log_payment_purchase_summary_line",
+                    summary=purchase_summary,
+                )
+                if purchase_summary
+                else ""
             )
             message = _(
                 "log_payment_received_with_purchases",
@@ -733,40 +774,11 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
                 + "\n\n"
                 + message
             )
-        await self._send_to_log_channel(message, reply_markup=profile_keyboard)
-
-    def _format_payment_purchase_line(
-        self,
-        translate: Callable[..., str],
-        purchase: PaymentPurchase,
-    ) -> str:
-        if purchase.kind == "traffic":
-            traffic_kind = translate(
-                "log_payment_traffic_kind_premium"
-                if purchase.scope == "premium"
-                else "log_payment_traffic_kind_regular"
-            )
-            return translate(
-                "log_payment_traffic_purchase_line",
-                gb=self._format_traffic_gb_admin(float(purchase.amount)),
-                kind=traffic_kind,
-            )
-        if purchase.kind == "hwid_devices":
-            return translate(
-                "log_payment_hwid_devices_purchase_line",
-                count=int(float(purchase.amount)),
-            )
-        amount_label = self._format_traffic_gb_admin(float(purchase.amount))
-        label_kwargs = {
-            "amount": amount_label,
-            "unit": purchase.unit,
-            "kind": purchase.kind,
-            "scope": purchase.scope or "",
-            **dict(purchase.label_kwargs),
-        }
-        if purchase.label_key:
-            return translate(purchase.label_key, **label_kwargs)
-        return translate("log_payment_generic_purchase_line", **label_kwargs)
+        await self._send_to_log_channel(
+            message,
+            thread_id=self.settings.LOG_PAYMENTS_THREAD_ID,
+            reply_markup=profile_keyboard,
+        )
 
     async def notify_promo_activation(
         self,
@@ -819,7 +831,11 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
         )
 
         # Send to log channel
-        await self._send_to_log_channel(message, reply_markup=profile_keyboard)
+        await self._send_to_log_channel(
+            message,
+            thread_id=self.settings.LOG_PROMO_ACTIVATIONS_THREAD_ID,
+            reply_markup=profile_keyboard,
+        )
 
     async def notify_trial_activation(
         self,
@@ -851,7 +867,11 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
         )
 
         # Send to log channel
-        await self._send_to_log_channel(message, reply_markup=profile_keyboard)
+        await self._send_to_log_channel(
+            message,
+            thread_id=self.settings.LOG_TRIAL_ACTIVATIONS_THREAD_ID,
+            reply_markup=profile_keyboard,
+        )
 
     async def notify_panel_sync(
         self,
@@ -884,7 +904,7 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
         )
 
         # Send to log channel
-        await self._send_to_log_channel(message)
+        await self._send_to_log_channel(message, thread_id=self.settings.LOG_PANEL_SYNC_THREAD_ID)
 
     async def notify_suspicious_promo_attempt(
         self,
@@ -916,7 +936,11 @@ class NotificationService(NotificationPartnerMixin, NotificationSupportMixin):
         )
 
         # Send to log channel
-        await self._send_to_log_channel(message, reply_markup=profile_keyboard)
+        await self._send_to_log_channel(
+            message,
+            thread_id=self.settings.LOG_SUSPICIOUS_ACTIVITY_THREAD_ID,
+            reply_markup=profile_keyboard,
+        )
 
     async def send_custom_notification(
         self,

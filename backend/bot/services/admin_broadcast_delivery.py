@@ -92,10 +92,13 @@ class AdminBroadcastDeliveryService:
         try:
             resolved_user_ids = user_ids
             if resolved_user_ids is None:
+                targets = getattr(broadcast, "targets", None)
                 resolved_user_ids = [
                     int(user_id)
-                    for user_id in await self.audience_service.resolve_user_ids(
-                        str(broadcast.target)
+                    for user_id in (
+                        await self.audience_service.resolve_targets(targets)
+                        if targets
+                        else await self.audience_service.resolve_user_ids(str(broadcast.target))
                     )
                 ]
             # Image loading is the one shared pre-queue step: a missing image is

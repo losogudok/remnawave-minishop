@@ -47,11 +47,13 @@
     onclick={(event) => event.currentTarget.select()}
   />
   {#if variant === "admin"}
-    <AdminButton variant="primary" disabled={!value} onclick={() => oncopy(value)}>
+    <AdminButton disabled={!value} onclick={() => oncopy(value)}>
       {@render content()}
     </AdminButton>
   {:else}
-    <Button disabled={!value} onclick={() => oncopy(value)}>{@render content()}</Button>
+    <Button variant="secondary" disabled={!value} onclick={() => oncopy(value)}
+      >{@render content()}</Button
+    >
     {#if qrLabel}
       <Button
         variant="secondary"
@@ -95,5 +97,18 @@
   }
   .copy-link-field :global(svg) {
     flex-shrink: 0;
+  }
+  /* On a phone the link gets its own row; squeezed next to two buttons it showed
+     only ~100px ("https://t.me/") of what the user is about to share. */
+  @media (max-width: 480px) {
+    .copy-link-field[data-variant="webapp"] {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .copy-link-field[data-variant="webapp"][data-qr="true"] {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .copy-link-field[data-variant="webapp"] :global(.input) {
+      grid-column: 1 / -1;
+    }
   }
 </style>

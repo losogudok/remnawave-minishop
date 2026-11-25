@@ -266,16 +266,9 @@
           <div class="theme-card-content">
             <div class="theme-card-title">
               <h4>{theme.title}</h4>
-              <AdminBadge
-                >{theme.installation?.version ||
-                  at(
-                    theme.installation?.protected
-                      ? "appearance_demo_bundled"
-                      : "appearance_unversioned",
-                    {},
-                    "Unversioned"
-                  )}</AdminBadge
-              >
+              {#if theme.installation?.version}
+                <AdminBadge>{theme.installation.version}</AdminBadge>
+              {/if}
             </div>
             <p class="theme-description">
               {theme.installation?.metadata?.description?.[currentLang] ||
@@ -596,12 +589,14 @@
           }}>{theme.title}</AdminButton
         >{/each}
     </div>
-    <pre>my-theme/
+    <pre
+      >my-theme/
   theme.json
   theme-package.json
   style.css
   assets/
-    preview.webp</pre>
+    preview.webp</pre
+    >
     <ol>
       <li>
         {at(

@@ -92,10 +92,10 @@
     activeText.trim() ? previewHtmlFromWire(activeText, PREVIEW_SAMPLES) : ""
   );
 
-  const broadcastTarget = $derived(broadcastStore.broadcastTarget);
+  const broadcastTargets = $derived(broadcastStore.broadcastTarget.split(",").filter(Boolean));
   const broadcastTargetError = $derived(broadcastStore.broadcastTargetError);
   const broadcastBusy = $derived(broadcastStore.broadcastBusy);
-  const broadcastCounts = $derived(broadcastStore.broadcastCounts as Record<string, number> | null);
+  const broadcastCounts = $derived(broadcastStore.broadcastCounts);
   const broadcastCountsLoading = $derived(Boolean(broadcastStore.broadcastCountsLoading));
   const channels = $derived(broadcastStore.broadcastChannels);
   const selectedChannels = $derived(broadcastStore.selectedChannels);
@@ -148,6 +148,7 @@
   const submitEnabled = $derived(
     !scheduleInvalid && !activeTextTooLong && broadcastStore.canSubmit()
   );
+  let hasChosenTarget = false;
 
   function toggleChannel(name: string, checked: boolean): void {
     const next = checked
@@ -155,10 +156,24 @@
       : selectedChannels.filter((channel) => channel !== name);
     broadcastStore.updateField({ selectedChannels: next });
   }
-  const handleTargetChange = (value: string) => {
-    broadcastStore.updateField({ broadcastTarget: value, broadcastTargetError: null });
-    writeTargetToRoute(value);
-  };
+
+  function handleTargetChange(values: string[]): void {
+    // Selecting a specific group replaces the default "All active" selection.
+    const targets =
+      !hasChosenTarget && broadcastStore.broadcastTarget === "all" && values.length > 1
+        ? values.filter((value) => value !== "all")
+        : values;
+    hasChosenTarget = true;
+    const target = targets.join(",");
+    const unavailable = targets.some(
+      (name) => !targetOptions.some((option) => option.value === name && !option.disabled)
+    );
+    broadcastStore.updateField({
+      broadcastTarget: target,
+      broadcastTargetError: unavailable ? "broadcast_target_unavailable" : null,
+    });
+    writeTargetToRoute(target);
+  }
 
   function routeTarget(): string {
     if (typeof window === "undefined") return "";
@@ -231,18 +246,25 @@
     }, 15_000);
     const requestedTarget = routeTarget();
     if (requestedTarget) {
+      hasChosenTarget = true;
       // Set before discovery completes so a plugin audience is retained when
       // the counts response supplies the dynamic target catalog.
       broadcastStore.updateField({ broadcastTarget: requestedTarget, broadcastTargetError: null });
     }
     void broadcastStore.loadCounts().then(() => {
       if (!requestedTarget) return;
-      const available = broadcastStore.BROADCAST_TARGET_OPTIONS.some(
-        (option) => option.value === requestedTarget && !option.disabled
-      );
-      if (available) return;
+      if (broadcastStore.broadcastTarget !== requestedTarget) return;
+      const unavailable = requestedTarget
+        .split(",")
+        .some(
+          (target) =>
+            !broadcastStore.BROADCAST_TARGET_OPTIONS.some(
+              (option) => option.value === target && !option.disabled
+            )
+        );
+      if (!unavailable) return;
       broadcastStore.updateField({
-        broadcastTarget: "all",
+        broadcastTarget: "",
         broadcastTargetError: "broadcast_target_unavailable",
       });
       writeTargetToRoute(null);
@@ -265,10 +287,11 @@
         <div class="admin-field-label broadcast-control-panel broadcast-audience-control">
           <span>{at("broadcast_label_audience", {}, "Audience")}</span>
           <AdminSelect
-            value={broadcastTarget}
+            multipleValues={broadcastTargets}
             items={targetOptions}
             ariaLabel={at("broadcast_label_audience", {}, "Audience")}
-            onValueChange={handleTargetChange}
+            placeholder={at("broadcast_select_audiences", {}, "Select audiences")}
+            onMultipleValuesChange={handleTargetChange}
           />
           {#if broadcastTargetError}
             <small class="admin-field-error">

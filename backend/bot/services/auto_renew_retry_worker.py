@@ -15,8 +15,10 @@ from bot.payment_providers.shared.recurring import (
     BALANCE_RECURRING_PROVIDERS,
     get_recurring_payment_method,
 )
+from bot.services.grant_wallet_renewal import schedule_funded_grants
 from bot.services.subscription_service_impl.core import SubscriptionService
 from config.settings import Settings
+from db.balance_renewal import renewal_provider
 from db.dal import auto_renew_dal, subscription_dal, user_billing_dal
 
 logger = logging.getLogger(__name__)
@@ -42,23 +44,21 @@ class AutoRenewRetryWorker:
         self._stopped = asyncio.Event()
 
     async def run(self) -> None:
-        if not self._active_provider_keys():
-            logger.info("Auto-renew retry worker disabled: recurring providers are unavailable")
-            return
         while not self._stopped.is_set():
             try:
-                async with redis_lock(
-                    self.settings,
-                    AUTO_RENEW_RETRY_LOCK,
-                    ttl_seconds=max(60, self._tick_seconds() * 2),
-                ) as acquired:
-                    if acquired:
-                        started = time.monotonic()
-                        await self.tick()
-                        logger.info(
-                            "metric worker_tick_duration_seconds=%.3f worker=auto_renew_retry",
-                            time.monotonic() - started,
-                        )
+                if self._active_provider_keys():
+                    async with redis_lock(
+                        self.settings,
+                        AUTO_RENEW_RETRY_LOCK,
+                        ttl_seconds=max(60, self._tick_seconds() * 2),
+                    ) as acquired:
+                        if acquired:
+                            started = time.monotonic()
+                            await self.tick()
+                            logger.info(
+                                "metric worker_tick_duration_seconds=%.3f worker=auto_renew_retry",
+                                time.monotonic() - started,
+                            )
             except Exception:
                 logger.exception("Auto-renew retry worker tick failed")
             with contextlib.suppress(TimeoutError):
@@ -98,8 +98,25 @@ class AutoRenewRetryWorker:
     async def tick(self) -> None:
         if bool(getattr(self.settings, "AUTO_RENEW_RETRY_ENABLED", False)):
             await self._process_due_retries()
-        if bool(getattr(self.settings, "AUTO_RENEW_SCHEDULER_ENABLED", False)):
-            await self._process_due_subscriptions()
+        providers = self._active_provider_keys()
+        balances = tuple(
+            provider for provider in providers if provider in BALANCE_RECURRING_PROVIDERS
+        )
+        if "user_balance" in balances:
+            async with self.session_factory() as session:
+                await schedule_funded_grants(session, self.settings, self._batch_size())
+                await session.commit()
+        if balances:
+            # This is an initial charge, equivalent to the panel's expiry webhook.
+            await self._process_due_subscriptions(balances, dry_run=False, initial_only=True)
+        if self.settings.AUTO_RENEW_SCHEDULER_ENABLED:
+            external = tuple(
+                provider for provider in providers if provider not in BALANCE_RECURRING_PROVIDERS
+            )
+            if external:
+                await self._process_due_subscriptions(
+                    external, dry_run=self.settings.AUTO_RENEW_RETRY_DRY_RUN, initial_only=False
+                )
 
     async def _process_due_retries(self) -> None:
         async with self.session_factory() as session:
@@ -262,10 +279,7 @@ class AutoRenewRetryWorker:
             return "subscription_inactive"
         if not bool(getattr(sub, "auto_renew_enabled", False)):
             return "consent_disabled"
-        if (
-            str(getattr(sub, "provider", "") or "").strip().lower()
-            != str(getattr(cycle, "provider", "") or "").strip().lower()
-        ):
+        if renewal_provider(sub) != str(getattr(cycle, "provider", "") or "").strip().lower():
             return "provider_changed"
         if int(getattr(sub, "auto_renew_consent_version", 0) or 0) != int(
             getattr(cycle, "consent_version", 0) or 0
@@ -304,7 +318,9 @@ class AutoRenewRetryWorker:
             )
             await session.commit()
 
-    async def _process_due_subscriptions(self) -> None:
+    async def _process_due_subscriptions(
+        self, providers: tuple[str, ...], *, dry_run: bool, initial_only: bool
+    ) -> None:
         lead_hours = max(
             1,
             int(
@@ -318,9 +334,10 @@ class AutoRenewRetryWorker:
         async with self.session_factory() as session:
             candidates = await auto_renew_dal.list_due_subscriptions(
                 session,
-                providers=self._active_provider_keys(),
+                providers=providers,
                 hours_ahead=lead_hours,
                 limit=self._batch_size(),
+                initial_only=initial_only,
             )
         for candidate in candidates:
             async with redis_lock(
@@ -335,9 +352,18 @@ class AutoRenewRetryWorker:
                         session,
                         candidate.subscription_id,
                     )
-                    if sub is None:
+                    if (
+                        sub is None
+                        or not sub.is_active
+                        or not sub.auto_renew_enabled
+                        or renewal_provider(sub) not in providers
+                        or sub.end_date is None
+                    ):
                         continue
-                    if bool(getattr(self.settings, "AUTO_RENEW_RETRY_DRY_RUN", True)):
+                    now = datetime.now(UTC)
+                    if not now < sub.end_date <= now + timedelta(hours=lead_hours):
+                        continue
+                    if dry_run:
                         logger.warning(
                             "Auto-renew scheduler dry-run subscription=%s user=%s",
                             candidate.subscription_id,

@@ -1,3 +1,4 @@
+import type { components } from "../../api/openapi.generated";
 import { withDemoIdentities } from "../demoIdentities.js";
 import { DEMO_DATASET } from "../demoDataset.js";
 import { structuredCloneSafe } from "../../safeClone.js";
@@ -45,6 +46,8 @@ export type DemoTicket = DemoRecord & {
 };
 
 export type DemoUserDetail = DemoRecord & {
+  registered_devices?: DemoRecord[];
+  hwid_devices?: components["schemas"]["AdminUserHwidDevicesOut"];
   user?: DemoAdminUser;
   active_subscription?: DemoRecord;
   referral?: DemoRecord & { inviter?: DemoAdminUser | null };
@@ -55,6 +58,7 @@ export type DemoSettingsField = DemoRecord & { key: string };
 // The generated dataset is consumed as a loose record: the mock probes optional
 // fields that older snapshots may not carry.
 export type DemoDataset = DemoRecord & {
+  devices?: { devices?: DemoRecord[] };
   stats?: DemoRecord;
   promos?: DemoRecord[];
   ads?: DemoRecord[];

@@ -1,6 +1,8 @@
 <script lang="ts">
+  import ScreenHeading from "$components/patterns/webapp/ScreenHeading.svelte";
   import { getSupportStore } from "$lib/webapp/context";
   import { onDestroy, onMount, tick } from "svelte";
+  import { observeVisualViewport } from "$lib/visualViewport";
   import { fade } from "svelte/transition";
   import { ArrowLeft, ChevronRight, LifeBuoy, MessageSquarePlus } from "$components/ui/icons.js";
   import Card from "$components/ui/card.svelte";
@@ -40,12 +42,14 @@
 
   let {
     t = (key) => key,
+    locale = "ru",
     maxSubjectLength = 160,
     maxBodyLength = 4000,
     user = {},
     routePrefix = "",
   }: {
     t?: Translate;
+    locale?: string;
     maxSubjectLength?: number;
     maxBodyLength?: number;
     user?: Record<string, unknown>;
@@ -60,7 +64,7 @@
   let category = $state<DraftPayload["category"]>("other");
   let paymentId = $state("");
   let body = $state("");
-  let image = $state<File | null>(null);
+  let images = $state<File[]>([]);
   let createOpen = $state(false);
   let viewportHeight = $state("100dvh");
   let viewportTop = $state("0px");
@@ -124,6 +128,8 @@
     invalidType: t("wa_message_image_invalid_type"),
     tooLarge: t("wa_message_image_too_large"),
     previewAlt: t("wa_message_image_preview_alt"),
+    tooMany: t("wa_support_images_too_many"),
+    totalTooLarge: t("wa_support_images_too_large"),
   });
   // A stored draft is markup, so it cannot be cut at the message limit without
   // splitting a tag. The message limit is enforced on the visible text below;
@@ -166,27 +172,19 @@
   });
 
   onMount(() => {
-    const viewport = window.visualViewport;
-    const syncViewport = () => {
-      const height = viewport?.height ?? window.innerHeight;
+    const stopViewport = observeVisualViewport(({ height, top }) => {
       viewportHeight = `${height}px`;
-      viewportTop = `${viewport?.offsetTop ?? 0}px`;
+      viewportTop = `${top}px`;
       compactViewport = height <= 600;
-    };
+    });
     const syncCreateRoute = () => {
       createOpen = isSupportCreatePath(window.location.pathname, routePrefix);
     };
-    syncViewport();
     syncCreateRoute();
-    viewport?.addEventListener("resize", syncViewport);
-    viewport?.addEventListener("scroll", syncViewport);
-    window.addEventListener("resize", syncViewport);
     window.addEventListener("popstate", syncCreateRoute);
     supportStore.loadList();
     return () => {
-      viewport?.removeEventListener("resize", syncViewport);
-      viewport?.removeEventListener("scroll", syncViewport);
-      window.removeEventListener("resize", syncViewport);
+      stopViewport();
       window.removeEventListener("popstate", syncCreateRoute);
     };
   });
@@ -236,7 +234,7 @@
         payment_id: category === "billing" && paymentId ? Number(paymentId) : null,
         priority: "normal",
       },
-      image
+      images
     );
     if (ticket) {
       clearSupportDraft("new", currentDraftScope);
@@ -244,7 +242,7 @@
       category = "other";
       paymentId = "";
       body = "";
-      image = null;
+      images = [];
       createOpen = false;
     }
   }
@@ -305,15 +303,9 @@
         <h1 bind:this={createHeading} tabindex="-1">{t("wa_support_new_ticket")}</h1>
       </header>
     {:else}
-      <div class="support-heading-row">
-        <span class="support-heading-icon" aria-hidden="true">
-          <LifeBuoy size={42} />
-        </span>
-        <div class="support-heading-copy">
-          <h1>{t("wa_support_title")}</h1>
-          <p>{t("wa_support_subtitle")}</p>
-        </div>
-      </div>
+      <ScreenHeading title={t("wa_support_title")} subtitle={t("wa_support_subtitle")}>
+        {#snippet icon()}<LifeBuoy />{/snippet}
+      </ScreenHeading>
 
       <button class="support-new-ticket-button" type="button" onclick={openCreatePage}>
         <span class="support-new-ticket-icon">
@@ -353,7 +345,7 @@
             <span>{t("wa_support_message")}</span>
             <TicketComposer
               bind:value={body}
-              bind:image
+              bind:images
               labels={editorLabels}
               {imageLabels}
               placeholder={t("wa_support_message_placeholder")}
@@ -418,6 +410,7 @@
               <div class="ticket-list-item motion-enter-card" style={ticketMotionStyle(index)}>
                 <TicketCard
                   {ticket}
+                  {locale}
                   {t}
                   onOpen={(item: TicketRecord) => supportStore.openTicket(item.ticket_id || 0)}
                 />
@@ -499,7 +492,8 @@
   @media (min-width: 1024px) {
     :global(.phone-screen > main.content.support-screen--create) {
       width: 100%;
-      max-width: none;
+      max-width: 52rem;
+      height: min(40rem, calc(100dvh - 68px));
     }
   }
 
@@ -523,7 +517,10 @@
       inset-inline: 0;
       top: var(--support-create-viewport-top, 0px);
       width: min(100%, 560px);
-      height: var(--support-create-viewport-height, 100dvh);
+      height: min(
+        var(--support-create-viewport-height, 100dvh),
+        calc(var(--tg-viewport-stable-height, 100dvh) - var(--support-create-viewport-top, 0px))
+      );
       margin: 0 auto;
       padding: var(--content-safe-area-top) 0 var(--content-safe-area-bottom);
       animation: none;

@@ -11,12 +11,19 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from bot.app.web.admin_api_impl import broadcast as broadcast_routes
+from bot.app.web.admin_api_impl import user_broadcast_audiences as user_audience_routes
 from bot.services import broadcast_channels_builtin as builtin_module
 from bot.services.admin_broadcast_delivery import AdminBroadcastDeliveryService
+from bot.services.audience_segmentation import (
+    AUDIENCE_WITHOUT_REQUIRED_CHANNEL,
+    AudienceSegmentationService,
+    AudienceUnavailableError,
+)
 from db.base import Base
-from db.broadcast_models import AdminBroadcast, AdminBroadcastDelivery
-from db.dal import broadcast_dal
-from db.models import User
+from db.broadcast_models import AdminBroadcast, AdminBroadcastDelivery, BroadcastAudienceExclusion
+from db.dal import broadcast_dal, telegram_state_dal
+from db.models import AccountRole, Subscription, User
+from tests.support.settings_stub import settings_stub
 
 
 class BroadcastRecipientCountTests(unittest.IsolatedAsyncioTestCase):
@@ -26,7 +33,14 @@ class BroadcastRecipientCountTests(unittest.IsolatedAsyncioTestCase):
         async with self.engine.begin() as connection:
             await connection.run_sync(
                 Base.metadata.create_all,
-                tables=[User.__table__, AdminBroadcast.__table__, AdminBroadcastDelivery.__table__],
+                tables=[
+                    User.__table__,
+                    Subscription.__table__,
+                    AccountRole.__table__,
+                    AdminBroadcast.__table__,
+                    AdminBroadcastDelivery.__table__,
+                    BroadcastAudienceExclusion.__table__,
+                ],
             )
         self.factory = async_sessionmaker(self.engine, expire_on_commit=False)
         async with self.factory() as session:
@@ -53,6 +67,111 @@ class BroadcastRecipientCountTests(unittest.IsolatedAsyncioTestCase):
                 ]
             )
             await session.commit()
+
+    async def test_registered_platforms_count_and_send_unique_eligible_users(self) -> None:
+        panel = SimpleNamespace(get_user_devices=AsyncMock(), get_user_by_uuid_lookup=AsyncMock())
+        panel.get_user_devices.side_effect = lambda ref, **_: {
+            "11": [{"hwid": "phone", "platform": "iOS"}, {"hwid": "tablet", "platform": " IOS "}],
+            "22": [{"hwid": "phone", "platform": "Android"}, {"hwid": "tablet", "platform": "ios"}],
+            "33": [{"hwid": "desktop", "platform": None}],
+        }[ref]
+        async with self.factory.begin() as session:
+            for uid in (1, 2, 3, 5):
+                user = await session.get(User, uid)
+                assert user
+                user.panel_user_uuid = str(uid * 11)
+            session.add(BroadcastAudienceExclusion(user_id=2, target="platform:ios"))
+        service = AudienceSegmentationService(cast(Any, self.factory), panel_service=panel)
+        groups = await service.platform_groups()
+        self.assertEqual({group.label for group in groups.values()}, {"iOS", "Android"})
+        self.assertEqual((await service.counts(groups))["platform:ios"], 1)
+        self.assertEqual(await service.resolve_user_ids("platform:ios"), [1])
+        self.assertEqual(
+            await service.resolve_targets(["platform:ios", "platform:android"]), [1, 2]
+        )
+        self.assertEqual(await service.platform_groups(user_id=5), {})
+        panel.get_user_devices.side_effect = None
+        panel.get_user_devices.return_value = None
+        panel.get_user_by_uuid_lookup.return_value = {"not_found": False}
+        with self.assertRaises(AudienceUnavailableError):
+            await service.resolve_targets(["all", "platform:ios"])
+
+    async def test_platform_inventory_pages_collect_only_local_owners(self) -> None:
+        async with self.factory.begin() as session:
+            session.add_all(User(user_id=i, panel_user_uuid=str(i)) for i in range(50, 82))
+        panel = AsyncMock()
+        panel.get_hwid_devices_page.side_effect = [
+            (3, [{"userId": 65, "platform": "iOS", "hwid": "one"}]),
+            (
+                3,
+                [
+                    {"userId": 99, "platform": "iOS", "hwid": "external"},
+                    {"userId": 61, "platform": "Android", "hwid": "two"},
+                ],
+            ),
+        ]
+        service = AudienceSegmentationService(cast(Any, self.factory), panel_service=panel)
+        self.assertEqual(
+            await service.resolve_targets(["platform:ios", "platform:android"]), [65, 61]
+        )
+        panel.get_hwid_devices_page.assert_awaited_with(start=1, size=500)
+        panel.get_user_devices.assert_not_awaited()
+
+    async def test_required_channel_audience_and_user_settings(self) -> None:
+        channel_id = -1001234567890
+        settings = settings_stub(REQUIRED_CHANNEL_ID=channel_id)
+        service = AudienceSegmentationService(cast(Any, self.factory), settings=settings)
+        target = AUDIENCE_WITHOUT_REQUIRED_CHANNEL
+        request = cast(
+            Any,
+            SimpleNamespace(
+                app={
+                    "async_session_factory": self.factory,
+                    "audience_segmentation_service": service,
+                },
+                match_info={"user_id": "1"},
+            ),
+        )
+        now = datetime.now(UTC)
+        async with self.factory.begin() as session:
+            for user_id, telegram_id, channel, member in (
+                (1, 101, channel_id, False),
+                (2, 202, channel_id - 1, False),
+                (4, 404, channel_id, True),
+                (5, 505, channel_id, False),
+            ):
+                await telegram_state_dal.record_channel_membership(
+                    session, user_id, telegram_id, channel, member, now
+                )
+        self.assertEqual(await service.resolve_user_ids(target), [1])
+        self.assertEqual((await service.counts())[target], 1)
+        with patch.object(user_audience_routes, "_require_admin_user_id", return_value=99):
+            response = await user_audience_routes.admin_user_broadcast_audiences_get_route(request)
+            self.assertIn(target, json.loads(response.text)["targets"])
+            for action in ("exclude", "exclude_all", "reset"):
+                body = user_audience_routes.UserBroadcastExclusionsBody(
+                    action=action, target=target if action == "exclude" else None
+                )
+                with patch.object(
+                    user_audience_routes, "parse_body_or_400", AsyncMock(return_value=body)
+                ):
+                    response = (
+                        await user_audience_routes.admin_user_broadcast_audiences_patch_route(
+                            request
+                        )
+                    )
+                self.assertEqual(response.status, 200)
+                excluded = json.loads(response.text)["excluded"]
+                self.assertEqual(target in excluded, action != "reset")
+                self.assertEqual("all" in excluded, action == "exclude_all")
+                self.assertEqual(
+                    await service.resolve_user_ids(target), [1] if action == "reset" else []
+                )
+                self.assertEqual((await service.counts())[target], int(action == "reset"))
+        settings.REQUIRED_CHANNEL_ID = None
+        self.assertNotIn(target, {audience.target for audience in service.audiences()})
+        with self.assertRaises(AudienceUnavailableError):
+            await service.resolve_user_ids(target)
 
     async def _create(
         self,

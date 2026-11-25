@@ -18,6 +18,10 @@ from .backups import (
     admin_backups_upload_route,
     backup_restore_status_route,
 )
+from .birthday_activation import (
+    admin_birthday_activation_get_route,
+    admin_birthday_activation_put_route,
+)
 from .broadcast import (
     admin_broadcast_audience_counts_route,
     admin_broadcast_delete_route,
@@ -163,6 +167,11 @@ from .translations import (
     admin_translations_get_route,
     admin_translations_patch_route,
 )
+from .user_broadcast_audiences import (
+    admin_user_broadcast_audiences_get_route,
+    admin_user_broadcast_audiences_patch_route,
+)
+from .user_note import admin_user_note_get_route, admin_user_note_put_route
 from .user_relationships import admin_user_relationships_route
 from .users import (
     admin_user_avatar_route,
@@ -173,6 +182,7 @@ from .users import (
     admin_user_detail_route,
     admin_user_extend_route,
     admin_user_hwid_device_limit_route,
+    admin_user_hwid_devices_reset_route,
     admin_user_message_preview_route,
     admin_user_message_route,
     admin_user_notification_preferences_route,
@@ -189,6 +199,7 @@ from .users import (
     admin_user_traffic_strategy_route,
     admin_users_list_route,
 )
+from .users_devices import admin_user_device_disconnect_route, admin_user_devices_route
 from .users_login_script import admin_user_login_script_route
 from .users_merge import admin_user_merge_route
 from .users_merge_context import admin_user_merge_context_route
@@ -320,6 +331,14 @@ def setup_admin_routes(app: web.Application) -> None:
         admin_user_balance_conversion_route,
     )
     router.add_post("/api/admin/users/{user_id:-?\\d+}/message", admin_user_message_route)
+    router.add_get(
+        "/api/admin/users/{user_id:-?\\d+}/broadcast-audiences",
+        admin_user_broadcast_audiences_get_route,
+    )
+    router.add_patch(
+        "/api/admin/users/{user_id:-?\\d+}/broadcast-audiences",
+        admin_user_broadcast_audiences_patch_route,
+    )
     router.add_patch(
         "/api/admin/users/{user_id:-?\\d+}/notification-preferences",
         admin_user_notification_preferences_route,
@@ -336,6 +355,17 @@ def setup_admin_routes(app: web.Application) -> None:
     router.add_post("/api/admin/gifts", admin_gift_create_route)
     router.add_get("/api/admin/gifts/{gift_id}", admin_gift_detail_route)
     router.add_post("/api/admin/users/{user_id:-?\\d+}/reset-trial", admin_user_reset_trial_route)
+    router.add_get("/api/admin/users/{user_id:-?\\d+}/hwid-devices", admin_user_devices_route)
+    router.add_get("/api/admin/users/{user_id:-?\\d+}/note", admin_user_note_get_route)
+    router.add_put("/api/admin/users/{user_id:-?\\d+}/note", admin_user_note_put_route)
+    router.add_post(
+        "/api/admin/users/{user_id:-?\\d+}/hwid-devices/disconnect",
+        admin_user_device_disconnect_route,
+    )
+    router.add_post(
+        "/api/admin/users/{user_id:-?\\d+}/hwid-devices/reset",
+        admin_user_hwid_devices_reset_route,
+    )
     router.add_post(
         "/api/admin/users/{user_id:-?\\d+}/subscription-reissue",
         admin_user_subscription_reissue_route,
@@ -381,6 +411,8 @@ def setup_admin_routes(app: web.Application) -> None:
     router.add_post("/api/admin/gifts/{gift_id:\\d+}/revoke", admin_gift_revoke_route)
 
     router.add_get("/api/admin/promos", admin_promos_list_route)
+    router.add_get("/api/admin/promos/birthday", admin_birthday_activation_get_route)
+    router.add_put("/api/admin/promos/birthday", admin_birthday_activation_put_route)
     router.add_post("/api/admin/promos", admin_promo_create_route)
     router.add_get("/api/admin/promos/options", admin_promo_options_route)
     router.add_get("/api/admin/promos/{promo_id:\\d+}", admin_promo_detail_route)

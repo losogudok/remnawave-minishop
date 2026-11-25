@@ -19,6 +19,7 @@
   import Spinner from "$components/ui/spinner.svelte";
   import { AttentionDot } from "$components/ui/index.js";
   import { LanguageSelect, ThemeSelect } from "$components/patterns/webapp/index.js";
+  import AvatarImage from "$components/patterns/webapp/AvatarImage.svelte";
   import AccountSetupCard from "../AccountSetupCard.svelte";
   import TelegramNotificationsBanner from "../TelegramNotificationsBanner.svelte";
   import MenuButtonIcon from "../MenuButtonIcon.svelte";
@@ -63,6 +64,7 @@
     partnerSettingsVisible?: boolean;
     privacyPolicyUrl?: string;
     profileAvatarUrl?: string;
+    profileAvatarFallbackUrl?: string;
     profileEmail?: string;
     profileTelegramId?: string;
     qrLoginEnabled?: boolean;
@@ -119,6 +121,7 @@
     partnerSettingsVisible = false,
     privacyPolicyUrl = "",
     profileAvatarUrl = "",
+    profileAvatarFallbackUrl = "",
     profileEmail = "",
     profileTelegramId = "",
     qrLoginEnabled = false,
@@ -173,6 +176,12 @@
   onMount(() => {
     void publicDocumentsStore.load();
   });
+
+  // The label is the admin-editable bot menu button ("💬 …"); the row already
+  // has its own icon, so a leading emoji would be a second one.
+  function withoutLeadingEmoji(label: string): string {
+    return label.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, "");
+  }
 </script>
 
 <main class="content with-nav">
@@ -182,16 +191,15 @@
   <UserExtensionPoint target="user.settings.profile">
     <Card class="settings-profile">
       <div class="settings-avatar">
-        {#if profileAvatarUrl}
-          <img
-            src={profileAvatarUrl}
-            alt={t("wa_settings_avatar_alt")}
-            loading="lazy"
-            referrerpolicy="no-referrer"
-          />
-        {:else}
-          <UserRound size={30} />
-        {/if}
+        <AvatarImage
+          src={profileAvatarUrl}
+          fallbackSrc={profileAvatarFallbackUrl}
+          alt={t("wa_settings_avatar_alt")}
+        >
+          {#snippet placeholder()}
+            <UserRound size={30} />
+          {/snippet}
+        </AvatarImage>
       </div>
       <div class="settings-profile-meta">
         <strong>{telegramProfileName}</strong>
@@ -249,7 +257,7 @@
       </button>
     </div>
   {/if}
-  <div class="settings-links-block">
+  <div class="settings-links-block settings-group">
     <button
       data-webapp-action="open-payment-history"
       class="settings-row settings-row-payments"
@@ -319,7 +327,7 @@
     </button>
   </div>
   <UserExtensionPoint target="user.settings.codes" />
-  <div class="settings-list" class:settings-list--language-open={languageMenuOpen}>
+  <div class="settings-list settings-group" class:settings-list--language-open={languageMenuOpen}>
     {#if partnerSettingsVisible}
       <button
         data-webapp-action="open-partner-program"
@@ -419,7 +427,7 @@
         onclick={() => openExternalLink(supportUrl)}
       >
         <Send size={21} />
-        <span><strong>{t("menu_support_button")}</strong></span>
+        <span><strong>{withoutLeadingEmoji(t("menu_support_button"))}</strong></span>
         <ArrowRight size={17} />
       </button>
     {/if}
@@ -432,7 +440,7 @@
     {/if}
   </div>
   {#if menuButtons.length}
-    <div class="settings-list settings-menu-buttons">
+    <div class="settings-list settings-menu-buttons settings-group">
       {#each menuButtons as button (button.id)}
         <button
           data-webapp-action={`menu-button-${button.id}`}

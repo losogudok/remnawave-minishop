@@ -197,6 +197,7 @@ class PlategaSubscriptionRuntime:
         currency: str | None,
         description: str,
         payload: str | None = None,
+        metadata: dict[str, Any] | None = None,
         payment_method: int | None = None,
         interval: int | None = None,
     ) -> tuple[bool, dict[str, Any]]:
@@ -232,6 +233,7 @@ class PlategaSubscriptionMixin(PlategaSubscriptionRuntime):
         description: str,
         months: Any,
         payload: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> tuple[bool, dict[str, Any]]:
         interval = subscription_interval_for_months(months)
         if interval is None:
@@ -242,6 +244,7 @@ class PlategaSubscriptionMixin(PlategaSubscriptionRuntime):
             currency=currency,
             description=description,
             payload=payload,
+            metadata=metadata,
             payment_method=self.subscription_method,
             interval=interval,
         )
@@ -743,6 +746,7 @@ class PlategaSubscriptionMixin(PlategaSubscriptionRuntime):
                 session,
                 int(anchor.payment_id),
                 provider_payment_id=str(record.platega_subscription_id),
+                provider_method="subscription",
             )
         except Exception:
             await session.rollback()
@@ -829,6 +833,7 @@ class PlategaSubscriptionMixin(PlategaSubscriptionRuntime):
                 session,
                 int(payment.payment_id),
                 provider_payment_id=charge_id,
+                provider_method="subscription",
             )
         except Exception:
             await session.rollback()

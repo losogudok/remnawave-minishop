@@ -1,6 +1,7 @@
 import { demoAdminUserById } from "./users.js";
 import { demoUserRelationships } from "./relationships";
 import { adminBroadcastDemoResponse } from "./adminBroadcasts";
+import { adminUserResourceDemoResponse } from "./adminUserResources";
 import { loadDemoDocuments, storeDemoDocuments } from "./documentsState";
 import { DEV_MOCK } from "../previewMock.js";
 import { adminGiftDemoStats } from "./giftsDemo";
@@ -28,6 +29,7 @@ import {
 import { demoTranslationsPayload } from "./translations";
 import { demoTariffOptions, demoActiveTariffs } from "./subscriptionPlans";
 import { sortAdminRows, type AdminSortColumn, type AdminSortValue } from "$lib/admin/tableSort.js";
+import { USERS_EXTENSION_FILTER_QUERY_PARAM } from "$lib/admin/usersRouteFilters";
 import {
   demoInviteesForUser,
   demoSupportCounts,
@@ -42,6 +44,7 @@ import {
 
 const demoInformationPages = new Map<string, string>();
 const demoDocuments = loadDemoDocuments();
+let demoBirthdayCampaign: Record<string, unknown> = { enabled: false, valid_days: 7, effects: {} };
 
 function demoSortValue(value: unknown): AdminSortValue {
   if (value == null || typeof value === "string" || typeof value === "number") return value;
@@ -82,6 +85,9 @@ export function demoApiResponse(
     return {
       ...stats,
       users,
+      subscription_mrr: 42_750,
+      manual_maintenance_enabled:
+        demoSettingsChanges.get("MAINTENANCE_MODE_ENABLED")?.value === true,
       active_tariffs: demoActiveTariffs(),
       financial: { ...(stats.financial as DemoRecord), ...adminGiftDemoStats() },
     };
@@ -117,10 +123,13 @@ export function demoApiResponse(
       ],
       checked_at: new Date().toISOString(),
       panel_compatibility: {
-        version: "3.4.7",
+        version: "3.4.10",
         generation: "rw3-numeric-user-id",
         support_status: "current",
         certified_versions: [
+          "3.4.10",
+          "3.4.9",
+          "3.4.8",
           "3.4.7",
           "3.4.6",
           "3.4.5",
@@ -128,9 +137,12 @@ export function demoApiResponse(
           "3.4.3",
           "3.4.2",
           "3.4.1",
+          "3.4.0",
           "3.3.2",
+          "3.3.1",
           "3.3.0",
           "3.2.3",
+          "3.2.2",
           "3.2.1",
           "3.2.0",
           "3.1.0",
@@ -245,11 +257,29 @@ export function demoApiResponse(
 
   if (cleanPath === "/admin/users/relationships") return demoUserRelationships();
   if (cleanPath === "/admin/users") {
-    const filtered = filterDemoUsers(params);
+    const withExtension = new URLSearchParams(window.location.search).has("users_extensions_demo");
+    const extension = { id: "example:segment", label: "Demo segment" };
+    const staffSelected =
+      withExtension &&
+      params.getAll(USERS_EXTENSION_FILTER_QUERY_PARAM).includes(`${extension.id}=staff`);
+    const users = filterDemoUsers(params);
+    const filtered = staffSelected ? users.filter((user) => user.user_id === 910001) : users;
     const page = paged(filtered, params, 25);
+    const items = withDemoAvatars(page.items);
     return {
       ok: true,
-      users: clone(withDemoAvatars(page.items)),
+      users: clone(
+        withExtension
+          ? items.map((user) => ({
+              ...user,
+              extension_values: { [extension.id]: user.user_id === 910001 ? "Staff" : null },
+            }))
+          : items
+      ),
+      ...(withExtension && {
+        extension_columns: [extension],
+        extension_filters: [{ ...extension, options: [{ value: "staff", label: "Staff" }] }],
+      }),
       tariff_options: demoTariffOptions(),
       total: page.total,
       page: page.page,
@@ -274,6 +304,16 @@ export function demoApiResponse(
       },
     };
     if (parts[4]) {
+      const resource = adminUserResourceDemoResponse(
+        parts[4],
+        parts[5],
+        detail,
+        user,
+        decoratedDetail.hwid_devices?.max_devices ?? null,
+        options,
+        clone
+      );
+      if (resource !== undefined) return resource;
       if (parts[4] === "tariff" && method === "POST") {
         const tariffKey = String(jsonBody(options).tariff_key || "");
         const tariff = ((demoTariffs().tariffs || []) as DemoRecord[]).find(
@@ -398,6 +438,10 @@ export function demoApiResponse(
     };
   }
 
+  if (cleanPath === "/admin/promos/birthday") {
+    if (method === "PUT") demoBirthdayCampaign = jsonBody(options);
+    return { ok: true, campaign: clone(demoBirthdayCampaign) };
+  }
   if (cleanPath === "/admin/promos") {
     if (method === "POST") {
       const body = jsonBody(options);

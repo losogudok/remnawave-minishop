@@ -55,7 +55,7 @@ def test_dev_qa_matches_staging_and_other_callers_keep_full_matrix() -> None:
     fallback = re.search(r"fromJSON\(inputs.remnawave_versions \|\| '(.+)'\)", qa)
     assert fallback is not None
     full_versions = json.loads(fallback.group(1))
-    assert len(full_versions) == 15
+    assert len(full_versions) == 21
     assert versions[0] in full_versions and "2.8.1" in full_versions
     assert "remnawave_versions:" not in (WORKFLOWS / "production.yml").read_text()
 

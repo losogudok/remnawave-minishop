@@ -8,19 +8,29 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
 from bot.services.account_roles import active_admin_user_ids
+from bot.services.device_platform_audiences import (
+    PLATFORM_PREFIX,
+    DeviceInventoryUnavailable,
+    PlatformGroup,
+    is_platform_target,
+    load_platform_groups,
+)
 from bot.services.panel_activity import _panel_user_connection_activity
 from bot.services.panel_user_snapshot import load_panel_users_by_reference
-from db.dal import user_dal
+from bot.utils.channel_subscription import normalize_required_channel_id
+from config.settings import Settings
+from db.dal import broadcast_audience_dal, user_dal
 from db.models import Subscription, User
 
 logger = logging.getLogger(__name__)
 
 AUDIENCE_ACTIVE_NEVER_CONNECTED = "active_never_connected"
 AUDIENCE_ADMINS = "admins"
+AUDIENCE_WITHOUT_REQUIRED_CHANNEL = "without_required_channel"
 AUDIENCE_TARGETS = {
     "all",
     "active",
@@ -29,6 +39,7 @@ AUDIENCE_TARGETS = {
     "never",
     AUDIENCE_ACTIVE_NEVER_CONNECTED,
     AUDIENCE_ADMINS,
+    AUDIENCE_WITHOUT_REQUIRED_CHANNEL,
 }
 PANEL_ACTIVITY_LOOKUP_CONCURRENCY = 10
 _AUDIENCE_TARGET_PATTERN = re.compile(r"^[a-z][a-z0-9_.:-]{0,63}$")
@@ -107,10 +118,12 @@ class AudienceSegmentationService:
         session_factory: sessionmaker,
         *,
         panel_service: Any = None,
+        settings: Settings | None = None,
         tariffs: Sequence[tuple[str, str]] | None = None,
     ) -> None:
         self.session_factory = session_factory
         self.panel_service = panel_service
+        self.settings = settings
         # ``(key, display name)`` of the tariffs offered as audiences.
         self.tariffs = [
             (str(key).strip().lower(), str(name).strip())
@@ -126,7 +139,7 @@ class AudienceSegmentationService:
         if not _AUDIENCE_TARGET_PATTERN.fullmatch(target):
             raise ValueError(f"Invalid audience target: {provider.target!r}")
         if target in AUDIENCE_TARGETS or target.startswith(
-            (AUDIENCE_USER_PREFIX, AUDIENCE_TARIFF_PREFIX)
+            (AUDIENCE_USER_PREFIX, AUDIENCE_TARIFF_PREFIX, PLATFORM_PREFIX)
         ):
             raise ValueError(f"Audience target is reserved by core: {target!r}")
         if target in self._providers:
@@ -166,7 +179,11 @@ class AudienceSegmentationService:
             return True
         if self._tariff_key(normalized) is not None:
             return True
-        return normalized in AUDIENCE_TARGETS or normalized in self._providers
+        return (
+            is_platform_target(normalized)
+            or normalized in AUDIENCE_TARGETS
+            or normalized in self._providers
+        )
 
     def is_target_available(self, target: str) -> bool:
         normalized = self._normalize_target(target)
@@ -174,12 +191,18 @@ class AudienceSegmentationService:
             return True
         if self._tariff_key(normalized) is not None:
             return True
+        if is_platform_target(normalized):
+            return self.panel_service is not None
+        if normalized == AUDIENCE_WITHOUT_REQUIRED_CHANNEL:
+            return self.required_channel_id is not None
         if normalized in AUDIENCE_TARGETS:
             return True
         provider = self._providers.get(normalized)
         return provider is not None and self._provider_is_available(provider)
 
-    def audiences(self) -> list[AudienceDefinition]:
+    def audiences(
+        self, platforms: dict[str, PlatformGroup] | None = None
+    ) -> list[AudienceDefinition]:
         """Return currently available additional audiences for admin discovery."""
 
         definitions: list[AudienceDefinition] = []
@@ -201,8 +224,38 @@ class AudienceSegmentationService:
                     icon=provider.icon,
                 )
             )
+        if self.required_channel_id is not None:
+            definitions.append(
+                AudienceDefinition(
+                    target=AUDIENCE_WITHOUT_REQUIRED_CHANNEL,
+                    label_key="broadcast_target_without_required_channel",
+                    fallback_label="Not subscribed to the required group or channel",
+                    order=70,
+                    group_label_key="broadcast_audience_group_telegram",
+                    group_fallback_label="Telegram",
+                )
+            )
+        definitions.extend(
+            AudienceDefinition(
+                target=target,
+                label_key=f"broadcast_target_platform_{target.removeprefix(PLATFORM_PREFIX)}",
+                fallback_label=group.label,
+                order=600,
+                group_label_key="broadcast_audience_group_platforms",
+                group_fallback_label="Registered device platform",
+            )
+            for target, group in sorted(
+                (platforms or {}).items(), key=lambda item: item[1].label.casefold()
+            )
+        )
         definitions.extend(self._tariff_audiences())
         return definitions
+
+    @property
+    def required_channel_id(self) -> int | None:
+        return normalize_required_channel_id(
+            self.settings.REQUIRED_CHANNEL_ID if self.settings is not None else None
+        )
 
     def _tariff_key(self, target: str) -> str | None:
         """The tariff a target addresses, when that tariff is actually offered."""
@@ -227,62 +280,127 @@ class AudienceSegmentationService:
             for index, (key, name) in enumerate(self.tariffs)
         ]
 
+    async def platform_groups(self, *, user_id: int | None = None) -> dict[str, PlatformGroup]:
+        if self.panel_service is None:
+            return {}
+        try:
+            return await load_platform_groups(
+                self.session_factory, self.panel_service, user_id=user_id
+            )
+        except DeviceInventoryUnavailable as exc:
+            raise AudienceUnavailableError("device_platforms") from exc
+        except Exception as exc:
+            logger.exception("Unable to load registered device platforms")
+            raise AudienceUnavailableError("device_platforms") from exc
+
     async def resolve_user_ids(self, target: str) -> list[int]:
         normalized = self._normalize_target(target)
+        ids = await self._matching_user_ids(normalized)
+        if not ids or audience_target_user_id(normalized) is not None:
+            return ids
+        async with self.session_factory() as session:
+            exclusions = await broadcast_audience_dal.excluded_ids_by_target(session, normalized)
+        excluded = exclusions.get(normalized, set())
+        return [user_id for user_id in ids if user_id not in excluded]
+
+    async def resolve_targets(self, targets: Sequence[str]) -> list[int]:
+        normalized = list(dict.fromkeys(target.strip().lower() for target in targets))
+        for target in normalized:
+            if (
+                not target
+                or audience_target_user_id(target) is not None
+                or not self.has_target(target)
+            ):
+                raise AudienceNotFoundError(target)
+            if not self.is_target_available(target):
+                raise AudienceUnavailableError(target)
+        users: dict[int, None] = {}
+        platform_targets = [target for target in normalized if is_platform_target(target)]
+        if platform_targets:
+            groups = await self.platform_groups()
+            async with self.session_factory() as session:
+                excluded = await broadcast_audience_dal.excluded_ids_by_target(session)
+            for target in platform_targets:
+                group = groups.get(target)
+                if group is not None:
+                    users.update(
+                        dict.fromkeys(sorted(group.user_ids - excluded.get(target, set())))
+                    )
+        for target in normalized:
+            if not is_platform_target(target):
+                users.update(dict.fromkeys(await self.resolve_user_ids(target)))
+        return list(users)
+
+    async def user_audiences(self, user_id: int) -> list[str]:
+        candidates = sorted(AUDIENCE_TARGETS | {audience.target for audience in self.audiences()})
+        matched = [
+            target
+            for target in candidates
+            if self.is_target_available(target)
+            and user_id in await self._matching_user_ids(target, user_id=user_id)
+        ]
+        return sorted([*matched, *await self.platform_groups(user_id=user_id)])
+
+    async def _matching_user_ids(self, normalized: str, *, user_id: int | None = None) -> list[int]:
         single_user_id = audience_target_user_id(normalized)
         if single_user_id is not None:
             async with self.session_factory() as session:
                 if await user_dal.get_user_by_id(session, single_user_id) is None:
                     raise AudienceNotFoundError(normalized)
             return [single_user_id]
+
+        if is_platform_target(normalized):
+            if self.panel_service is None:
+                raise AudienceUnavailableError(normalized)
+            group = (await self.platform_groups(user_id=user_id)).get(normalized)
+            return sorted(group.user_ids) if group is not None else []
+        filters = {} if user_id is None else {"user_id": user_id}
         tariff_key = self._tariff_key(normalized)
         if tariff_key is not None:
             async with self.session_factory() as session:
-                return [
-                    int(user_id)
-                    for user_id in await user_dal.get_user_ids_with_active_subscription_on_tariff(
-                        session, tariff_key
-                    )
-                ]
+                return await user_dal.get_user_ids_with_active_subscription_on_tariff(
+                    session, tariff_key, **filters
+                )
         provider = self._providers.get(normalized)
         if provider is not None:
             if not self._provider_is_available(provider):
                 raise AudienceUnavailableError(normalized)
             user_ids = await provider.resolve_user_ids()
-            return [int(user_id) for user_id in dict.fromkeys(user_ids)]
+            return [int(uid) for uid in dict.fromkeys(user_ids)]
         if normalized not in AUDIENCE_TARGETS:
             raise AudienceNotFoundError(normalized)
-        if normalized == AUDIENCE_ADMINS:
-            async with self.session_factory() as session:
-                return await active_admin_user_ids(session)
         async with self.session_factory() as session:
+            if normalized == AUDIENCE_ADMINS:
+                return await active_admin_user_ids(session)
+            if normalized == AUDIENCE_WITHOUT_REQUIRED_CHANNEL:
+                channel_id = self.required_channel_id
+                if channel_id is None:
+                    raise AudienceUnavailableError(normalized)
+                stmt = broadcast_audience_dal.users_without_required_channel(channel_id)
+                if user_id is not None:
+                    stmt = stmt.where(User.user_id == user_id)
+                return [int(uid) for uid in await session.scalars(stmt)]
             if normalized == AUDIENCE_ACTIVE_NEVER_CONNECTED:
                 if self.panel_service is None:
                     return []
-                return await self._user_ids_with_active_subscription_never_connected(session)
-            if normalized == "active":
-                active_ids = await user_dal.get_user_ids_with_active_subscription(session)
-                return [int(uid) for uid in active_ids]
-            if normalized == "inactive":
-                return [
-                    int(uid)
-                    for uid in await user_dal.get_user_ids_without_active_subscription(session)
-                ]
-            if normalized == "expired":
-                return [
-                    int(uid)
-                    for uid in await user_dal.get_user_ids_with_expired_subscription(session)
-                ]
-            if normalized == "never":
-                return [
-                    int(uid)
-                    for uid in await user_dal.get_user_ids_without_any_subscription(session)
-                ]
-            all_ids = await user_dal.get_all_active_user_ids_for_broadcast(session)
-            return [int(uid) for uid in all_ids]
+                return await self._user_ids_with_active_subscription_never_connected(
+                    session, **filters
+                )
+            loaders = {
+                "all": user_dal.get_all_active_user_ids_for_broadcast,
+                "active": user_dal.get_user_ids_with_active_subscription,
+                "inactive": user_dal.get_user_ids_without_active_subscription,
+                "expired": user_dal.get_user_ids_with_expired_subscription,
+                "never": user_dal.get_user_ids_without_any_subscription,
+            }
+            return [int(uid) for uid in await loaders[normalized](session, **filters)]
 
-    async def counts(self) -> dict[str, int | None]:
+    async def counts(
+        self, platforms: dict[str, PlatformGroup] | None = None
+    ) -> dict[str, int | None]:
         async with self.session_factory() as session:
+            excluded = await broadcast_audience_dal.excluded_ids_by_target(session)
+            admin_ids = await active_admin_user_ids(session)
             counts: dict[str, int | None] = {
                 "all": await user_dal.count_all_active_users_for_broadcast(session),
                 "active": await user_dal.count_users_with_active_subscription_for_broadcast(
@@ -296,24 +414,44 @@ class AudienceSegmentationService:
                 ),
                 "never": await user_dal.count_users_without_any_subscription_for_broadcast(session),
                 AUDIENCE_ACTIVE_NEVER_CONNECTED: None,
-                AUDIENCE_ADMINS: len(await active_admin_user_ids(session)),
+                AUDIENCE_ADMINS: len(set(admin_ids) - excluded.pop(AUDIENCE_ADMINS, set())),
             }
             if self.tariffs:
                 per_tariff = await user_dal.count_active_subscriptions_per_tariff(session)
                 for key, _name in self.tariffs:
                     counts[audience_target_for_tariff(key)] = int(per_tariff.get(key, 0))
-            if self.panel_service is not None:
-                counts[AUDIENCE_ACTIVE_NEVER_CONNECTED] = len(
-                    await self._user_ids_with_active_subscription_never_connected(session)
+            channel_id = self.required_channel_id
+            if channel_id is not None:
+                channel_users = broadcast_audience_dal.users_without_required_channel(
+                    channel_id, exclude_target=AUDIENCE_WITHOUT_REQUIRED_CHANNEL
                 )
+                excluded.pop(AUDIENCE_WITHOUT_REQUIRED_CHANNEL, None)
+                counts[AUDIENCE_WITHOUT_REQUIRED_CHANNEL] = int(
+                    await session.scalar(select(func.count()).select_from(channel_users.subquery()))
+                    or 0
+                )
+            if self.panel_service is not None:
+                ids = await self._user_ids_with_active_subscription_never_connected(session)
+                counts[AUDIENCE_ACTIVE_NEVER_CONNECTED] = len(
+                    set(ids) - excluded.pop(AUDIENCE_ACTIVE_NEVER_CONNECTED, set())
+                )
+        for target, ids in excluded.items():
+            if counts.get(target) is not None:
+                matching = await self._matching_user_ids(target)
+                counts[target] = len(set(matching) - ids)
+        for target, group in (platforms or {}).items():
+            counts[target] = len(group.user_ids - excluded.get(target, set()))
         for provider in self._providers.values():
             if not self._provider_is_available(provider):
                 continue
             try:
                 value = (
                     await provider.count()
-                    if provider.count is not None
-                    else len(await provider.resolve_user_ids())
+                    if provider.count is not None and provider.target not in excluded
+                    else len(
+                        set(await provider.resolve_user_ids())
+                        - excluded.get(provider.target, set())
+                    )
                 )
                 counts[provider.target] = None if value is None else max(0, int(value))
             except Exception:
@@ -341,6 +479,8 @@ class AudienceSegmentationService:
     async def _active_subscription_panel_uuids_by_user(
         self,
         session: Any,
+        *,
+        user_id: int | None = None,
     ) -> dict[int, list[tuple[str, datetime | None]]]:
         now = datetime.now(UTC)
         stmt = (
@@ -359,6 +499,8 @@ class AudienceSegmentationService:
             )
             .order_by(Subscription.user_id.asc(), Subscription.end_date.desc())
         )
+        if user_id is not None:
+            stmt = stmt.where(User.user_id == user_id)
         result = await session.execute(stmt)
         grouped: dict[int, dict[str, datetime | None]] = defaultdict(dict)
         order: dict[int, list[str]] = defaultdict(list)
@@ -384,8 +526,13 @@ class AudienceSegmentationService:
     async def _user_ids_with_active_subscription_never_connected(
         self,
         session: Any,
+        *,
+        user_id: int | None = None,
     ) -> list[int]:
-        panel_uuids_by_user = await self._active_subscription_panel_uuids_by_user(session)
+        filters = {} if user_id is None else {"user_id": user_id}
+        panel_uuids_by_user = await self._active_subscription_panel_uuids_by_user(
+            session, **filters
+        )
         panel_uuids = list(
             dict.fromkeys(
                 panel_uuid

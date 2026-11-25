@@ -178,6 +178,7 @@
   let settingsSearchOpen = $state(false);
   const settingsSearchHasQuery = $derived(settingsSearchQuery.trim().length > 0);
   const settingsSearchVisible = $derived(settingsSearchOpen && settingsSearchHasQuery);
+  const visibleFields = $derived(visibleSettingsSections.flatMap((section) => section.fields));
   function openSettingsSearch(): void {
     if (settingsSearchHasQuery) settingsSearchOpen = true;
   }
@@ -231,9 +232,7 @@
   }
 
   function configuredValue(key: string): boolean {
-    const field = visibleSettingsSections
-      .flatMap((section) => section.fields)
-      .find((item) => item.key === key);
+    const field = visibleFields.find((item) => item.key === key);
     if (!field) return false;
     if (field.secret && !settingsDirty[key] && field.has_value) return true;
     const value = settingsDirty[key]?.value ?? valueFor(field);
@@ -241,9 +240,7 @@
   }
 
   function configuredText(key: string): string {
-    const field = visibleSettingsSections
-      .flatMap((section) => section.fields)
-      .find((item) => item.key === key);
+    const field = visibleFields.find((item) => item.key === key);
     if (!field) return "";
     return String(settingsDirty[key]?.value ?? valueFor(field) ?? "").trim();
   }
@@ -433,9 +430,9 @@
     {@const valueSource = settingsFieldValueSourceLabel(at, field, settingsDirty[field.key])}
     <div
       class="admin-setting"
-      class:admin-setting--menu-buttons={field.type === "menu_buttons"}
-      class:admin-setting--telegram-menu={field.type === "telegram_menu"}
-      class:admin-setting--payment-method-order={field.key === "PAYMENT_METHODS_ORDER"}
+      class:admin-setting--full-width={field.type === "menu_buttons" ||
+        field.type === "telegram_menu" ||
+        field.key === "PAYMENT_METHODS_ORDER"}
       class:is-overridden={isOverridden(field)}
       class:is-search-highlighted={highlightedSettingKey === field.key}
       data-settings-anchor={settingsFieldAnchorKey(field.key)}
@@ -533,6 +530,8 @@
             onOpenCustomButtons={telegramMenuSettings.openCustomButtons}
             onSaved={telegramMenuSettings.saveAppearance}
             subscribeSettingsSaved={telegramMenuSettings.subscribeSettingsSaved}
+            registerSaver={telegramMenuSettings.registerSaver}
+            reportDirty={telegramMenuSettings.reportDirty}
           />
         {:else if field.type === "menu_buttons"}
           <MenuButtonsField
@@ -547,7 +546,7 @@
             value={fieldTextValue(field)}
             items={choiceItems(field)}
             ariaLabel={fieldLabelText(field)}
-            placeholder={fieldPlaceholderText(field) || fieldLabelText(field)}
+            placeholder={fieldPlaceholderText(field) || at("select", {}, "Select")}
             onValueChange={fieldSelectHandler(field)}
           />
         {:else if field.type === "int" || field.type === "float"}
@@ -629,9 +628,14 @@
           />
         {/if}
         {#if isOverridden(field) || settingsDirty[field.key]}
-          <AdminButton size="sm" variant="ghost" onclick={() => resetField(field)}>
+          <AdminButton
+            variant="ghost"
+            class="admin-setting-reset"
+            title={at("reset", {}, "Reset")}
+            onclick={() => resetField(field)}
+          >
             <X size={12} />
-            {at("reset", {}, "Reset")}
+            <span class="admin-setting-reset-label">{at("reset", {}, "Reset")}</span>
           </AdminButton>
         {/if}
       </div>
@@ -873,15 +877,11 @@
 {/if}
 
 <style>
-  .admin-setting--menu-buttons,
-  .admin-setting--telegram-menu,
-  .admin-setting--payment-method-order {
+  .admin-setting--full-width {
     grid-template-columns: 1fr;
   }
 
-  .admin-setting--menu-buttons .admin-setting-control,
-  .admin-setting--telegram-menu .admin-setting-control,
-  .admin-setting--payment-method-order .admin-setting-control {
+  .admin-setting--full-width .admin-setting-control {
     width: 100%;
   }
 </style>

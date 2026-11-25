@@ -133,6 +133,7 @@
     primaryPayActionLabel: () => string;
     privacyPolicyUrl?: string;
     profileAvatarUrl?: string;
+    profileAvatarFallbackUrl?: string;
     profileEmail?: string;
     profileTelegramId?: string;
     promoBusy?: boolean;
@@ -265,6 +266,7 @@
     primaryPayActionLabel,
     privacyPolicyUrl = "",
     profileAvatarUrl = "",
+    profileAvatarFallbackUrl = "",
     profileEmail = "",
     profileTelegramId = "",
     promoBusy = false,
@@ -558,6 +560,7 @@
         {@const Screen = inviteScreen.component}
         <Screen
           {referral}
+          {routePrefix}
           {referralProgramEnabled}
           {referralBonusDetails}
           {referralBonusListMode}
@@ -580,7 +583,13 @@
     {:else if screen === "partner"}
       {#if partnerScreen.component}
         {@const Screen = partnerScreen.component}
-        <Screen {api} {copyText} goBack={activeTab === "settings" ? goSettings : undefined} {t} />
+        <Screen
+          {api}
+          {copyText}
+          {routePrefix}
+          goBack={activeTab === "settings" ? goSettings : undefined}
+          {t}
+        />
       {:else}
         <ScreenLoading screen={partnerScreen} {t} />
       {/if}
@@ -611,9 +620,11 @@
           {@const Screen = supportTicketScreen.component}
           <Screen
             maxBodyLength={appSettings?.support_ticket_max_body_length || 4000}
+            locale={currentLang}
             {brand}
             {user}
             userAvatarUrl={profileAvatarUrl}
+            userAvatarFallbackUrl={profileAvatarFallbackUrl}
             userInitials={telegramProfileName ? telegramProfileName.slice(0, 2).toUpperCase() : "U"}
             {t}
           />
@@ -624,6 +635,7 @@
         {@const Screen = supportScreen.component}
         <Screen
           maxSubjectLength={appSettings?.support_ticket_max_subject_length || 160}
+          locale={currentLang}
           maxBodyLength={appSettings?.support_ticket_max_body_length || 4000}
           {routePrefix}
           {user}
@@ -656,6 +668,7 @@
         {menuButtons}
         {privacyPolicyUrl}
         {profileAvatarUrl}
+        {profileAvatarFallbackUrl}
         {profileEmail}
         {profileTelegramId}
         {balance}

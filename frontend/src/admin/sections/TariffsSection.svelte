@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { takeSectionAction } from "$lib/admin/sectionActions.svelte";
   import { getSettingsStore, getTariffsStore } from "$lib/admin/context";
   import { Input, Sortable } from "$components/ui/index.js";
   import {
@@ -6,7 +7,6 @@
     Gift,
     RefreshCw,
     Trash2,
-    Plus,
     Save,
     TriangleAlert,
     X,
@@ -68,6 +68,9 @@
   } = $props();
 
   const tariffsStore = getTariffsStore();
+  $effect(() => {
+    if (takeSectionAction("tariffs", "create")) tariffsStore.openCreateTariff();
+  });
   const settingsStore = getSettingsStore();
 
   const tariffsState = $derived(tariffsStore);
@@ -261,15 +264,6 @@
             <RefreshCw size={13} />
             {at("btn_refresh", {}, "Refresh")}
           </AdminButton>
-          <AdminButton
-            size="sm"
-            variant="primary"
-            onclick={tariffsStore.openCreateTariff}
-            disabled={tariffsLoading || tariffsSaving}
-          >
-            <Plus size={13} />
-            {at("btn_create_tariff", {}, "Create Tariff")}
-          </AdminButton>
         </div>
       </header>
       <div class="admin-card-body">
@@ -362,7 +356,7 @@
                   <AdminButton
                     data-admin-action="open-tariff-delete"
                     size="sm"
-                    variant="danger"
+                    variant="dangerSoft"
                     onclick={() =>
                       tariffsStore.updateState({
                         tariffDeleteTarget: tariff,
@@ -425,21 +419,21 @@
             <AdminBadge variant="success">
               {at(
                 "tariff_reconciliation_healthy",
-                { count: tariffReconciliation.healthy },
+                { count: tariffReconciliation.healthy ?? 0 },
                 "Healthy: {count}"
               )}
             </AdminBadge>
             <AdminBadge variant={tariffReconciliation.candidates ? "warning" : "muted"}>
               {at(
                 "tariff_reconciliation_candidates",
-                { count: tariffReconciliation.candidates },
+                { count: tariffReconciliation.candidates ?? 0 },
                 "Safe matches: {count}"
               )}
             </AdminBadge>
             <AdminBadge variant={tariffReconciliation.unresolved ? "danger" : "muted"}>
               {at(
                 "tariff_reconciliation_unresolved",
-                { count: tariffReconciliation.unresolved },
+                { count: tariffReconciliation.unresolved ?? 0 },
                 "Needs review: {count}"
               )}
             </AdminBadge>

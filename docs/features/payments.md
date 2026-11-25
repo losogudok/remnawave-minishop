@@ -94,6 +94,11 @@ Mini App предлагает в отдельном окне другой дос
 
 ## Выбор способа оплаты в Mini App
 
+После создания платежа Mini App сразу открывает страницу провайдера через Telegram.
+Выбор внешнего или встроенного браузера зависит от клиента и его настроек.
+Если Telegram открыл страницу во встроенном браузере, её можно открыть во внешнем
+через пункт «Открыть в браузере» в меню Telegram.
+
 `PAYMENT_METHODS_DISPLAY_MODE=dropdown` используется по умолчанию и показывает компактный
 выпадающий список. Значение `buttons` возвращает отдельные кнопки. В обоих режимах сохраняются
 порядок из `PAYMENT_METHODS_ORDER`, название и иконка провайдера; настройка находится в
@@ -167,6 +172,22 @@ worker, повторные уведомления не начисляют пок
 
 Публичный API Anore не описывает рекуррентные списания: этот способ оформляет
 только разовые покупки. [Документация Anore](https://anore.cc/docs).
+
+## PayHot
+
+1. Создайте рабочий API-ключ PayHot с правами создания и чтения платежей.
+2. В кабинете PayHot добавьте HTTPS-вебхук `<WEBHOOK_BASE_URL>/webhook/payhot`
+   и подпишитесь на `payment.succeeded`. Скопируйте полный секрет подписи,
+   включая префикс `whsec_v2_`.
+3. В разделе «Платежи → PayHot» задайте ключ, секрет, способ оплаты и включите
+   провайдера. Те же настройки доступны через [переменные окружения](../configuration/env-vars.md#payhot).
+
+Покупатель оплачивает заказ на странице PayHot. Для карт, Apple Pay и Google Pay
+поддерживаются цены в RUB, USD и EUR. Для СБП, SberPay и криптооплаты цена заказа
+задаётся в RUB. Способ и валюта должны быть подключены к кассе PayHot.
+Интеграция принимает разовые рабочие платежи. Для подтверждения Core сверяет
+идентификаторы, сумму и валюту заказа по подписанному вебхуку или статусу из API.
+[Документация PayHot](https://docs.pay.hot/overview)
 
 ## Cryptomus
 
@@ -287,7 +308,9 @@ reverse proxy должен прокидывать `X-Forwarded-For`, а его I
 | FreeKassa | `WEBHOOK_BASE_URL` + `/webhook/freekassa` | Используйте как notification/webhook URL; при IP-фильтрации заполните `FREEKASSA_TRUSTED_IPS`. |
 | Platega | `WEBHOOK_BASE_URL` + `/webhook/platega` | Один общий webhook для всех разовых методов и рекуррентной подписки Platega. |
 | RollyPay | `WEBHOOK_BASE_URL` + `/webhook/rollypay` | Один подписанный webhook для разовых и всех регулярных списаний RollyPay. |
+| RivaraPay | `WEBHOOK_BASE_URL` + `/webhook/rivarapay` | Подпись проверяется с помощью `RIVARAPAY_WEBHOOK_SECRET`. |
 | SeverPay | `WEBHOOK_BASE_URL` + `/webhook/severpay` | Укажите как callback/webhook URL, если поле есть в кабинете мерчанта. |
+| PayHot | `WEBHOOK_BASE_URL` + `/webhook/payhot` | Подпишитесь на `payment.succeeded` и задайте отдельный секрет подписи. |
 | Wata | `WEBHOOK_BASE_URL` + `/webhook/wata` | Если включена проверка подписи, настройте `WATA_WEBHOOK_VERIFY_SIGNATURE` и `WATA_PUBLIC_KEY`. |
 | CryptoPay | `WEBHOOK_BASE_URL` + `/webhook/cryptopay` | Указывается в настройках Crypto Bot / CryptoPay webhook. |
 | Heleket | `WEBHOOK_BASE_URL` + `/webhook/heleket` | При необходимости включите `HELEKET_VERIFY_WEBHOOK_SIGNATURE` и `HELEKET_TRUSTED_IPS`. |
@@ -379,6 +402,17 @@ Platega подключается как отдельный платежный п
 3. Включите нужные кнопки: `PLATEGA_SBP_ENABLED`, `PLATEGA_CARD_ENABLED`, `PLATEGA_CRYPTO_ENABLED`, `PLATEGA_INTERNATIONAL_ENABLED`, `PLATEGA_ALL_METHODS_ENABLED` и/или `PLATEGA_SUBSCRIPTION_ENABLED`.
 4. Скопируйте URL вебхука из админ-панели и укажите его в кабинете Platega. Он должен быть публичным HTTPS URL с сертификатом доверенного центра: HTTP, localhost, приватные IP и self-signed сертификаты Platega не принимает. Один и тот же URL принимает и разовые транзакции, и колбэки подписок.
 5. Уточните у менеджера Platega, обязательно ли для категории вашего магазина поле `metadata.userId`. Minishop автоматически передаёт идентификатор плательщика в `metadata` всех разовых Platega-чекаутов.
+
+По умолчанию Minishop отправляет запросы на `https://app.platega.io/transaction/process`,
+а для страницы выбора способа оплаты — на `/v2/transaction/process` того же хоста.
+Для собственного шлюза задайте `PLATEGA_BASE_URL` в окружении backend или в админке.
+Сохранённое значение из админки имеет приоритет. Разрешение на частный IP действует
+для хоста и порта явно заданного URL.
+
+Если в журнале создания платежа указан источник `local_outbound_policy`, запрос заблокировал
+Minishop. В записи `local outbound policy blocked` указаны хост, порт и отклонённый IP.
+Сверьте их с настройкой шлюза и DNS внутри контейнера backend. При смешанном DNS-ответе
+клиент пробует только разрешённые IP. Подробности — в [настройках безопасности](../configuration/security.md).
 
 ### Разовые способы оплаты
 
@@ -489,6 +523,31 @@ RollyPay не присылает отдельные webhook о состояни�
 
 - [RollyPay](../configuration/env-vars.md#rollypay)
 - [Официальная документация RollyPay](https://docs.rollypay.io/)
+
+## RivaraPay
+
+RivaraPay открывает страницу оплаты для разовых платежей через СБП или
+криптовалютой. В обоих случаях Minishop выставляет счёт в рублях. При
+криптооплате клиент выбирает актив и сеть на странице RivaraPay.
+
+1. В кабинете RivaraPay подключите нужные способы к магазину. Криптоприём
+   подключается отдельно.
+2. Создайте рабочий ключ `live_…` с правами `payments:write` и `payments:read`,
+   затем укажите его в `RIVARAPAY_API_KEY`.
+3. Настройте `WEBHOOK_BASE_URL`. В кабинете RivaraPay добавьте вебхук
+   `https://ваш-домен/webhook/rivarapay` для события `payment.paid` и сохраните секрет в
+   `RIVARAPAY_WEBHOOK_SECRET`.
+4. Включите `RIVARAPAY_SBP_ENABLED` или `RIVARAPAY_CRYPTO_ENABLED`. Для
+   проверки доступности способов только администраторам используйте
+   соответствующие переключатели `_ADMIN_ONLY_ENABLED`.
+
+Для сортировки или ограничения по тарифам используйте `rivarapay_sbp` и
+`rivarapay_crypto`. Заказ подтверждается по подписанному событию оплаты со
+сверкой номера и суммы счёта. Тестовые события не активируют заказы. Комиссия
+для покупателя, если она настроена в RivaraPay, показывается на странице оплаты.
+
+[Настройки RivaraPay](../configuration/env-vars.md#rivarapay) ·
+[Документация API](https://rivarapay.io/docs)
 
 ## SeverPay
 
@@ -725,7 +784,7 @@ Heleket используется для крипто-инвойсов с merchan
 ### Настройка
 
 1. Включите `HELEKET_ENABLED`.
-2. Укажите `HELEKET_BASE_URL`, `HELEKET_MERCHANT_ID` и `HELEKET_API_KEY`.
+2. Укажите `HELEKET_MERCHANT_ID` и `HELEKET_API_KEY`. Базовый адрес `HELEKET_BASE_URL` по умолчанию — `https://api.heleket.hk`. Личный кабинет доступен на `https://dash.heleket.hk`. Адрес для входящих уведомлений задаётся отдельно через `WEBHOOK_BASE_URL`.
 3. Настройте `HELEKET_CURRENCY`.
 4. При необходимости задайте `HELEKET_TO_CURRENCY` и `HELEKET_NETWORK`.
 5. Проверьте `HELEKET_RETURN_URL` и `HELEKET_SUCCESS_URL`.

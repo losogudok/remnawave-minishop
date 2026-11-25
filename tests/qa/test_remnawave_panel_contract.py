@@ -56,7 +56,7 @@ async def _exercise_panel_contract() -> None:
     try:
         compatibility = await service.get_panel_api_compatibility(force_refresh=True)
         assert compatibility.version is not None
-        assert compatibility.version.lstrip("v").startswith(expected_version)
+        assert compatibility.version.lstrip("v") == expected_version
         assert compatibility.support_status in {"current", "maintenance"}
 
         users = await service.get_all_panel_users(log_responses=False)
@@ -113,6 +113,10 @@ async def _exercise_panel_contract() -> None:
         )
         assert updated and updated.get("description") == "core compatibility live smoke"
         assert int(updated.get("telegramId") or 0) == updated_telegram_id
+        cleared = await service.update_user_details_on_panel(user_ref, {"description": None})
+        assert cleared is not None and not cleared.get("description")
+        fresh = await service.get_user_by_uuid_lookup(user_ref)
+        assert fresh["ok"] and not fresh["user"].get("description")
         assert updated.get("tag") == updated_tag
 
         # Panel 3.4.1 runtime already required a scalar here, while its OpenAPI

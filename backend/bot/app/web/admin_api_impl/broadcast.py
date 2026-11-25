@@ -24,6 +24,7 @@ from bot.services.audience_segmentation import (
     AUDIENCE_ACTIVE_NEVER_CONNECTED,
     AUDIENCE_ADMINS,
     AUDIENCE_TARGETS,
+    AudienceDefinition,
     AudienceNotFoundError,
     AudienceSegmentationService,
     AudienceUnavailableError,
@@ -169,6 +170,7 @@ def _resolve_audience_service(request: web.Request) -> AudienceSegmentationServi
     return AudienceSegmentationService(
         get_session_factory(request),
         panel_service=_resolve_panel_service(request),
+        settings=get_settings(request),
     )
 
 
@@ -557,6 +559,7 @@ def _broadcast_out(item: AdminBroadcast) -> AdminBroadcastOut:
         broadcast_id=int(item.broadcast_id),
         status=str(item.status),
         target=str(item.target),
+        targets=list(getattr(item, "targets", None) or [str(item.target)]),
         channels=[str(value) for value in list(item.channels or [])],
         exclude_blocked_telegram=bool(getattr(item, "exclude_blocked_telegram", False)),
         texts={str(key): str(value) for key, value in dict(item.texts or {}).items()},
@@ -614,7 +617,12 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
     except MessageImageError as exc:
         return _error(400, exc.code, exc.detail)
     settings: Settings = get_settings(request)
-    target = str(body.target or "all").strip().lower()
+    targets = (
+        list(dict.fromkeys(value.strip().lower() for value in body.targets))
+        if body.targets
+        else None
+    )
+    target = targets[0] if targets else str(body.target or "all").strip().lower()
     texts = dict(body.texts)
     text = str(body.text or "").strip()
     default_language = str(settings.DEFAULT_LANGUAGE or "").strip().lower() or "en"
@@ -680,11 +688,15 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
 
     audience_service = _resolve_audience_service(request)
     try:
-        user_ids = await audience_service.resolve_user_ids(target)
-    except AudienceNotFoundError:
-        return _error(400, "invalid_audience", target)
-    except AudienceUnavailableError:
-        return _error(403, "audience_unavailable", target)
+        user_ids = (
+            await audience_service.resolve_user_ids(target)
+            if targets is None
+            else await audience_service.resolve_targets(targets)
+        )
+    except AudienceNotFoundError as exc:
+        return _error(400, "invalid_audience", str(exc) or target)
+    except AudienceUnavailableError as exc:
+        return _error(403, "audience_unavailable", str(exc) or target)
 
     exclude_blocked_telegram = (
         body.exclude_blocked_telegram
@@ -718,6 +730,7 @@ async def admin_broadcast_route(request: web.Request) -> web.Response:
             session,
             actor_id=actor_id,
             target=target,
+            targets=targets,
             user_ids=user_ids,
             channels=channels,
             exclude_blocked_telegram=exclude_blocked_telegram,
@@ -814,8 +827,25 @@ async def admin_broadcast_audience_counts_route(request: web.Request) -> web.Res
     settings: Settings = get_settings(request)
     service = request.app.get("audience_segmentation_service")
     if isinstance(service, AudienceSegmentationService):
-        counts = await service.counts()
-        audiences = service.audiences()
+        try:
+            platforms = await service.platform_groups()
+            audiences = service.audiences(platforms)
+        except AudienceUnavailableError:
+            logger.warning("Device platform audiences unavailable while loading broadcast counts")
+            platforms = {}
+            audiences = service.audiences()
+            audiences.append(
+                AudienceDefinition(
+                    target="device-platforms-unavailable",
+                    label_key="broadcast_platforms_unavailable",
+                    fallback_label="Could not load devices from the panel",
+                    order=600,
+                    available=False,
+                    group_label_key="broadcast_audience_group_platforms",
+                    group_fallback_label="Registered device platform",
+                )
+            )
+        counts = await service.counts(platforms)
     else:
         async_session_factory: sessionmaker = get_session_factory(request)
         panel_service = _resolve_panel_service(request)

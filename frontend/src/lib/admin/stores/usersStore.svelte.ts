@@ -16,6 +16,7 @@ import {
 import { defineRawStateProperty } from "./rawStateProperty";
 import { AdminUsersError, createUsersStoreQueries } from "./usersStoreQueries";
 import { createUsersStoreSquadOverrideActions } from "./usersStoreSquadOverrides";
+import { createUsersStoreHwidResetAction } from "./usersStoreHwidReset";
 import { createUsersStoreSubscriptionReissueAction } from "./usersStoreSubscriptionReissue";
 import { createUsersStoreNotificationPreferenceActions } from "./usersStoreNotificationPreferences";
 import { createUsersStoreBalanceActions } from "./usersStoreBalanceActions";
@@ -241,6 +242,8 @@ export function createUsersStore({
           users: data.users || [],
           usersTotal: data.total ?? (data.users || []).length,
           usersTariffOptions: data.tariff_options || [],
+          usersExtensionColumns: data.extension_columns || [],
+          usersExtensionFilterOptions: data.extension_filters || [],
           userBalanceEnabled: Boolean(data.user_balance_enabled),
           partnerBalanceEnabled: Boolean(data.partner_balance_enabled),
           balanceCurrency: String(data.balance_currency || "RUB"),
@@ -898,16 +901,7 @@ export function createUsersStore({
     assignState(updates);
   }
 
-  const squadOverrideActions = createUsersStoreSquadOverrideActions({
-    api,
-    onToast,
-    at,
-    readStateSnapshot,
-    applyState,
-    invalidateUsersQueries,
-  });
-
-  const subscriptionReissueActions = createUsersStoreSubscriptionReissueAction({
+  const userActionDependencies = {
     api,
     onToast,
     at,
@@ -915,16 +909,13 @@ export function createUsersStore({
     applyState,
     invalidateUsersQueries,
     refreshOpenedUserDetail,
-  });
-
-  const notificationPreferenceActions = createUsersStoreNotificationPreferenceActions({
-    api,
-    onToast,
-    at,
-    readStateSnapshot,
-    applyState,
-    invalidateUsersQueries,
-  });
+  };
+  const squadOverrideActions = createUsersStoreSquadOverrideActions(userActionDependencies);
+  const hwidResetActions = createUsersStoreHwidResetAction(userActionDependencies);
+  const subscriptionReissueActions =
+    createUsersStoreSubscriptionReissueAction(userActionDependencies);
+  const notificationPreferenceActions =
+    createUsersStoreNotificationPreferenceActions(userActionDependencies);
 
   const telegramProfileActions = createUsersStoreTelegramProfileAction({
     api,
@@ -945,13 +936,7 @@ export function createUsersStore({
   });
 
   const balanceActions = createUsersStoreBalanceActions({
-    api,
-    onToast,
-    at,
-    readStateSnapshot,
-    applyState,
-    invalidateUsersQueries,
-    refreshOpenedUserDetail,
+    ...userActionDependencies,
     reportUserActionError,
   });
 
@@ -979,6 +964,7 @@ export function createUsersStore({
     ...balanceActions,
     ...squadOverrideActions,
     ...subscriptionReissueActions,
+    ...hwidResetActions,
     ...notificationPreferenceActions,
     loadUserLogs,
     setUserLogsSort,

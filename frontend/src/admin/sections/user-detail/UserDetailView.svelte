@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import { AdminButton } from "$components/patterns/admin/index.js";
   import { RefreshCw } from "$components/ui/icons.js";
   import UserDetailLinks from "./UserDetailLinks.svelte";
@@ -14,9 +15,12 @@
   import UserActionsTab from "./UserActionsTab.svelte";
   import UserMessageComposerCard from "./UserMessageComposerCard.svelte";
   import UserNotificationPreferencesCard from "./UserNotificationPreferencesCard.svelte";
+  import UserBroadcastAudiencesCard from "./UserBroadcastAudiencesCard.svelte";
   import UserDetailFacts from "./UserDetailFacts.svelte";
   import UserNotificationSummaryCard from "./UserNotificationSummaryCard.svelte";
   import UserLogsTab from "./UserLogsTab.svelte";
+  import UserDevicesTab from "./UserDevicesTab.svelte";
+  import UserProfileNote from "./UserProfileNote.svelte";
   import UserSubscriptionTab from "./UserSubscriptionTab.svelte";
   import type { AdminUser } from "$lib/admin/stores/usersStore";
   import type { AdminUserDetail } from "$lib/admin/stores/usersStoreState";
@@ -191,6 +195,14 @@
   } = $props();
 
   let notificationsOpen = $state(false);
+  let devicesTab = $state<HTMLButtonElement | null>(null);
+
+  async function openDevices() {
+    usersStore.userDetailTab = "devices";
+    await tick();
+    devicesTab?.focus({ preventScroll: true });
+    devicesTab?.scrollIntoView({ block: "center", inline: "nearest" });
+  }
   $effect(() => {
     void openedUser?.user_id;
     notificationsOpen = false;
@@ -213,7 +225,10 @@
       notificationsOpen = true;
       usersStore.userDetailTab = "subscription";
     }
-    if (selected.startsWith("extension:") && !visibleExtensionPanelTabs.has(selected)) {
+    if (
+      selected === "note" ||
+      (selected.startsWith("extension:") && !visibleExtensionPanelTabs.has(selected))
+    ) {
       usersStore.userDetailTab = "subscription";
     }
   });
@@ -240,6 +255,9 @@
     >
       {#snippet details()}
         {#if openedUserDetail}
+          {#key openedUser.user_id}
+            <UserProfileNote {at} userId={openedUser.user_id} />
+          {/key}
           <UserDetailFacts
             {routePrefix}
             {at}
@@ -265,7 +283,14 @@
     {#if openedUserDetail}
       <UserDetailLinks {at} {usersStore} {openedUserDetail} />
     {/if}
-    <UserDetailStats {at} {openedUser} {openedUserDetail} {fmtMoney} />
+    <UserDetailStats
+      {at}
+      {openedUser}
+      {openedUserDetail}
+      {fmtMoney}
+      onOpenDevices={openDevices}
+      devicesAvailable={Boolean(devicesTab)}
+    />
     {#if userDetailLoading}
       <div class="admin-user-page-state" aria-busy="true" aria-live="polite">
         <p class="admin-muted">{at("loading", {}, "Loading…")}</p>
@@ -293,6 +318,9 @@
               <Tabs.Trigger value="actions" class="admin-tabs-trigger"
                 >{at("user_tab_actions", {}, "Actions")}</Tabs.Trigger
               >
+              <Tabs.Trigger value="devices" class="admin-tabs-trigger" bind:ref={devicesTab}>
+                {at("user_tab_devices", {}, "Devices")}
+              </Tabs.Trigger>
               <Tabs.Trigger value="activity" class="admin-tabs-trigger"
                 >{at("user_tab_activity", {}, "Payments")}</Tabs.Trigger
               >
@@ -349,6 +377,14 @@
               {paymentStatusVariant}
               {onOpenPaymentCard}
             />
+
+            <Tabs.Content value="devices" class="admin-tabs-content">
+              {#if usersStore.userDetailTab === "devices"}
+                {#key openedUser.user_id}
+                  <UserDevicesTab {at} {fmtDate} userId={openedUser.user_id} />
+                {/key}
+              {/if}
+            </Tabs.Content>
 
             <UserLogsTab
               {at}
@@ -447,5 +483,10 @@
 >
   {#if openedUserDetail}
     <UserNotificationPreferencesCard {at} {usersStore} {openedUserDetail} busy={userActionBusy} />
+    {#if notificationsOpen && openedUser}
+      {#key openedUser.user_id}
+        <UserBroadcastAudiencesCard {at} userId={openedUser.user_id} />
+      {/key}
+    {/if}
   {/if}
 </Dialog>

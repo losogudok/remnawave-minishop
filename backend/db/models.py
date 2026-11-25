@@ -13,7 +13,6 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
-    and_,
     text,
 )
 from sqlalchemy.orm import relationship
@@ -24,6 +23,7 @@ from db import provider_mandate_models, subscription_notification_models
 from db import setup_reward_models as setup_reward_models
 from db import web_push_models as web_push_models
 from db.base import Base
+from db.subscription_renewal_columns import SubscriptionRenewalColumns
 from db.user_account_identity_columns import UserAccountIdentityColumns
 from db.user_notification_preference_columns import UserNotificationPreferenceColumns
 from db.user_telegram_state_columns import UserTelegramStateColumns
@@ -149,7 +149,7 @@ class UserPanelSquadOverride(Base):
     user = relationship("User", back_populates="panel_squad_overrides")
 
 
-class Subscription(Base):
+class Subscription(SubscriptionRenewalColumns, Base):
     __tablename__ = "subscriptions"
     __table_args__ = (
         Index("ix_subscriptions_is_active_end_date", "is_active", "end_date"),
@@ -181,8 +181,6 @@ class Subscription(Base):
     # genuinely short grants only; long or later extended rows still receive
     # the local fallback reminder spectrum.
     suppress_early_expiry_notifications = Column(Boolean, nullable=False, default=False)
-    auto_renew_enabled = Column(Boolean, default=True, index=True)
-    auto_renew_consent_version = Column(Integer, nullable=False, default=0)
     tariff_key = Column(String, nullable=True, index=True)
     tariff_binding_source = Column(String(32), nullable=True, index=True)
     tariff_bound_at = Column(DateTime(timezone=True), nullable=True)
@@ -351,6 +349,8 @@ class Payment(Base):
     provider_checked_at = Column(DateTime(timezone=True), nullable=True, index=True)
     failure_notified_at = Column(DateTime(timezone=True), nullable=True, index=True)
     provider = Column(String, nullable=False, default="yookassa", index=True)
+    provider_method = Column(String(48), nullable=True)
+    provider_fee_amount = Column(Float, nullable=True)
     funding_source = Column(String(48), nullable=False, default="external", index=True)
     subscription_days_spent = Column(Integer, nullable=True)
     subscription_days_snapshot = Column(Text, nullable=True)
@@ -409,6 +409,8 @@ class Payment(Base):
     promo_applies_to = Column(String(32), nullable=True)
     promo_min_subscription_months = Column(Integer, nullable=True)
     promo_min_subscription_days = Column(Integer, nullable=True)
+    promo_subscription_tariff_key = Column(String, nullable=True)
+    promo_exact_subscription_days = Column(Integer, nullable=True)
     promo_min_traffic_gb = Column(Numeric(10, 2), nullable=True)
     checkout_base_amount = Column(Float, nullable=True)
     checkout_discount_amount = Column(Float, nullable=True)
@@ -438,7 +440,6 @@ class Payment(Base):
     promo_usage_restored = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
-
     user = relationship("User", back_populates="payments")
     promo_code_used = relationship("PromoCode", back_populates="payments_where_used")
     auto_renew_cycle = relationship("AutoRenewCycle")
@@ -871,88 +872,6 @@ class RollyPaySubscription(Base):
     anchor_payment = relationship("Payment")
 
 
-class PromoCode(Base):
-    __tablename__ = "promo_codes"
-
-    promo_code_id = Column(Integer, primary_key=True, autoincrement=True)
-    code = Column(String, unique=True, nullable=False, index=True)
-    bonus_days = Column(Integer, nullable=False)
-    regular_traffic_gb = Column(Numeric(12, 3), nullable=True)
-    premium_traffic_gb = Column(Numeric(12, 3), nullable=True)
-    discount_percent = Column(Numeric(5, 2), nullable=True)
-    duration_multiplier = Column(Numeric(6, 3), nullable=True)
-    traffic_multiplier = Column(Numeric(6, 3), nullable=True)
-    bonus_requires_payment = Column(Boolean, nullable=False, default=False)
-    applies_to = Column(String(32), nullable=False, default="all")
-    min_subscription_months = Column(Integer, nullable=True)
-    min_subscription_days = Column(Integer, nullable=True)
-    min_traffic_gb = Column(Numeric(10, 2), nullable=True)
-    origin = Column(String(32), nullable=False, default="admin")
-    owner_plugin_id = Column(String(64), nullable=True)
-    # Set only for a code minted for one customer; NULL means a shared code.
-    user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=True, index=True)
-    max_activations = Column(Integer, nullable=False)
-    current_activations = Column(Integer, default=0)
-    is_active = Column(Boolean, default=True)
-    created_by_admin_id = Column(BigInteger, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    valid_until = Column(DateTime(timezone=True), nullable=True)
-    archived_at = Column(DateTime(timezone=True), nullable=True)
-    archived_code = Column(String, nullable=True)
-
-    activations = relationship(
-        "PromoCodeActivation", back_populates="promo_code", cascade="all, delete-orphan"
-    )
-    payments_where_used = relationship("Payment", back_populates="promo_code_used")
-
-
-class PromoCodeActivation(Base):
-    __tablename__ = "promo_code_activations"
-
-    activation_id = Column(Integer, primary_key=True, autoincrement=True)
-    promo_code_id = Column(Integer, ForeignKey("promo_codes.promo_code_id"), nullable=False)
-    user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False)
-    activated_at = Column(DateTime(timezone=True), server_default=func.now())
-    payment_id = Column(Integer, ForeignKey("payments.payment_id"), nullable=True)
-    effect_summary = Column(String, nullable=True)
-    bonus_days = Column(Integer, nullable=True)
-    regular_traffic_gb = Column(Numeric(12, 3), nullable=True)
-    premium_traffic_gb = Column(Numeric(12, 3), nullable=True)
-    discount_percent = Column(Numeric(5, 2), nullable=True)
-    duration_multiplier = Column(Numeric(6, 3), nullable=True)
-    traffic_multiplier = Column(Numeric(6, 3), nullable=True)
-    applies_to = Column(String(32), nullable=True)
-    base_amount = Column(Float, nullable=True)
-    discount_amount = Column(Float, nullable=True)
-    charged_months = Column(Integer, nullable=True)
-    charged_days = Column(Integer, nullable=True)
-    charged_gb = Column(Float, nullable=True)
-    granted_days = Column(Integer, nullable=True)
-    granted_gb = Column(Float, nullable=True)
-    granted_regular_traffic_gb = Column(Numeric(12, 3), nullable=True)
-    granted_premium_traffic_gb = Column(Numeric(12, 3), nullable=True)
-    is_manual_override = Column(Boolean, nullable=False, default=False)
-    # A historical standard redemption retained beside another account's
-    # standard redemption at merge. This is provenance, not a new grant or a
-    # manual override. The deleted account ID deliberately has no foreign key.
-    merged_from_user_id = Column(BigInteger, nullable=True)
-
-    promo_code = relationship("PromoCode", back_populates="activations")
-    user = relationship("User", back_populates="promo_code_activations")
-    payment = relationship("Payment")
-
-    __table_args__ = (
-        Index(
-            "uq_promo_user_activation_standard",
-            "promo_code_id",
-            "user_id",
-            unique=True,
-            postgresql_where=and_(is_manual_override.is_(False), merged_from_user_id.is_(None)),
-            sqlite_where=and_(is_manual_override.is_(False), merged_from_user_id.is_(None)),
-        ),
-    )
-
-
 from db import activity_models as activity_models  # noqa: E402
 from db import advertising_models as advertising_models  # noqa: E402
 from db import auth_models as auth_models  # noqa: E402
@@ -965,9 +884,13 @@ from db import guide_media_models as guide_media_models  # noqa: E402
 from db import legacy_import_models as legacy_import_models  # noqa: E402
 from db import message_image_models as message_image_models  # noqa: E402
 from db import partner_models as partner_models  # noqa: E402
+from db import promo_models as promo_models  # noqa: E402
 from db import referral_accrual_models as referral_accrual_models  # noqa: E402
 from db import subscription_access_rotation_models as access_rotation_models  # noqa: E402
 from db import wata_models as wata_models  # noqa: E402
+
+PromoCode = promo_models.PromoCode
+PromoCodeActivation = promo_models.PromoCodeActivation
 
 AdAttribution = activity_models.AdAttribution
 AdCampaign = activity_models.AdCampaign

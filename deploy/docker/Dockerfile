@@ -7,7 +7,7 @@
 # > .build-version file > live git > "dev+unknown") so the admin sidebar always
 # shows a tag / sha even though the runtime images have no git tooling and no
 # .git tree.
-FROM alpine:3.23@sha256:ff7f0c727dd796aa36787bfcd9a64bf35a6ce72a73451b3359fde849b6703d63 AS version-builder
+FROM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS version-builder
 COPY deploy/docker/retry_apk.sh /tmp/retry_apk.sh
 RUN sh /tmp/retry_apk.sh add --no-cache git
 WORKDIR /repo
@@ -62,7 +62,7 @@ RUN --mount=type=bind,source=.git,target=/repo/.git \
     printf '%s' "$provenance" > /build-provenance
 
 
-FROM ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852 AS python-dependencies
+FROM ubuntu:24.04@sha256:2198e4c65076e9cb0b3d695219df667c0e3b0072da64ca3c2648aca17dcecaf5 AS python-dependencies
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -102,8 +102,11 @@ RUN set -eux; \
     dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge '1.1.0-2ubuntu0.1'; \
     . /etc/os-release; \
     install -d /usr/share/postgresql-common/pgdg; \
-    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-      | gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg; \
+    curl --fail --silent --show-error --location \
+      --retry 4 --retry-all-errors --retry-max-time 150 --connect-timeout 15 --max-time 45 \
+      --output /tmp/pgdg-key.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc; \
+    gpg --dearmor --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg /tmp/pgdg-key.asc; \
+    rm /tmp/pgdg-key.asc; \
     echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
       > /etc/apt/sources.list.d/pgdg.list; \
     apt_update_with_retries; \
@@ -120,9 +123,9 @@ RUN useradd -u 10001 -m appuser
 COPY backend/requirements.txt backend/requirements.txt
 COPY deploy/docker/refresh_pip_vendor.py /tmp/refresh_pip_vendor.py
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-compile --upgrade "pip==26.2.2" && \
+    pip install --no-compile --upgrade "pip==26.3" && \
     pip install --no-compile --no-deps --only-binary=:all: --target /tmp/pip-vendor-fixes \
-      "urllib3==2.8.0" "msgpack==1.2.4" "setuptools==80.9.0" && \
+      "setuptools==80.9.0" && \
     pip install --no-compile -r backend/requirements.txt && \
     python /tmp/refresh_pip_vendor.py /tmp/pip-vendor-fixes && \
     rm -rf /tmp/pip-vendor-fixes /tmp/refresh_pip_vendor.py
@@ -143,7 +146,7 @@ COPY --from=version-builder /build-provenance /app/.build-provenance
 USER appuser
 
 
-FROM node:24-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS node-runtime
+FROM node:24-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS node-runtime
 
 FROM node-runtime AS frontend-builder
 
@@ -190,7 +193,7 @@ EXPOSE 8080 8081
 CMD ["python", "backend/plugin_launcher.py", "backend"]
 
 
-FROM docker:29.9.2-cli@sha256:5e6baf67325a79f64ed3bed6863954d5e05d0f3d4e57cbdb14809346814bbfdb AS docker-test-tools
+FROM docker:29.9.3-cli@sha256:5a7af0dcb0e46c803efe9b45371dd21cb500e5b4453250394ac6f06d49b6e6f1 AS docker-test-tools
 
 FROM python-dependencies AS qa-deps
 
@@ -232,7 +235,7 @@ LABEL org.opencontainers.image.source="https://gitlab.com/3252a8/remnawave-minis
 CMD ["python", "backend/plugin_launcher.py", "worker"]
 
 
-FROM nginx:1.30.7-alpine@sha256:caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3 AS nginx-brotli-builder
+FROM nginx:1.30.7-alpine@sha256:bef154735288bc38d99fac41ae63730684bcc661503673a04a0f9bc526ba8598 AS nginx-brotli-builder
 
 # Refresh Alpine packages for every published source revision.
 ARG REMNAWAVE_MINISHOP_APK_REFRESH=""
@@ -264,7 +267,7 @@ RUN set -eu; \
     cp objs/ngx_http_brotli_static_module.so /brotli-modules/
 
 
-FROM nginx:1.30.7-alpine@sha256:caf4e1e032a20f9c3c5e28fc7f25ffd768ad8677b4975c54193075997b3a97e3 AS frontend
+FROM nginx:1.30.7-alpine@sha256:bef154735288bc38d99fac41ae63730684bcc661503673a04a0f9bc526ba8598 AS frontend
 
 ARG REMNAWAVE_MINISHOP_APK_REFRESH=""
 COPY deploy/docker/retry_apk.sh /tmp/retry_apk.sh

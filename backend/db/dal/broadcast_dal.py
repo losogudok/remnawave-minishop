@@ -49,6 +49,7 @@ async def create_broadcast(
     scheduled_at: datetime,
     is_visible: bool = True,
     image_id: str | None = None,
+    targets: list[str] | None = None,
 ) -> AdminBroadcast:
     recipient_ids: set[int] = set()
     total_deliveries = 0
@@ -80,6 +81,7 @@ async def create_broadcast(
         status=status,
         is_visible=is_visible,
         target=target,
+        targets=targets,
         channels=list(channels),
         exclude_blocked_telegram=bool(exclude_blocked_telegram),
         texts=dict(texts),

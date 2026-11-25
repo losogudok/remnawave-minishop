@@ -1,15 +1,19 @@
 <script lang="ts">
   import { getSupportStore } from "$lib/webapp/context";
-  import { onMount, tick } from "svelte";
-  import { Badge, Button, ScrollArea, Skeleton } from "$components/ui/index.js";
+  import { onMount } from "svelte";
+  import { followTicketMessages } from "$lib/followTicketMessages";
+  import { observeVisualViewport } from "$lib/visualViewport";
+  import { Button, ScrollArea, Skeleton } from "$components/ui/index.js";
   import Card from "$components/ui/card.svelte";
   import { ArrowLeft, CheckCircle2 } from "$components/ui/icons.js";
   import TicketComposer from "$components/patterns/webapp/TicketComposer.svelte";
+  import TicketStatusBadge from "$components/patterns/webapp/TicketStatusBadge.svelte";
+  import ScreenHeading from "$components/patterns/webapp/ScreenHeading.svelte";
   import { TicketMessageBubble, TypingIndicator } from "$components/patterns/webapp/index.js";
   import type { TicketMessageButtonLike } from "$components/patterns/webapp/types";
   import { webappRichTextLabels } from "$lib/webapp/richTextLabels.js";
   import { wireTextLength } from "$lib/richtext/telegramHtml";
-  import { supportMessageImageUrl } from "$lib/messageImage";
+  import { supportMessageImageUrls } from "$lib/messageImage";
   import type { CustomEmojiMediaLoader } from "$lib/richtext/types";
   import {
     clearSupportDraft,
@@ -29,6 +33,7 @@
     created_at?: string;
     is_internal_note?: boolean;
     image_id?: string | null;
+    image_ids?: string[];
     message_id?: number;
     read_by_admin_at?: string | null;
     read_by_user_at?: string | null;
@@ -36,19 +41,23 @@
 
   type Props = {
     t?: Translate;
+    locale?: string;
     maxBodyLength?: number;
     brand?: Record<string, unknown>;
     user?: Record<string, unknown>;
     userAvatarUrl?: string;
+    userAvatarFallbackUrl?: string;
     userInitials?: string;
   };
 
   let {
     t = (key) => key,
+    locale = "ru",
     maxBodyLength = 4000,
     brand = {},
     user = {},
     userAvatarUrl = "",
+    userAvatarFallbackUrl = "",
     userInitials = "",
   }: Props = $props();
 
@@ -56,29 +65,18 @@
   const loadCustomEmojiMedia: CustomEmojiMediaLoader = (id, signal) =>
     supportStore.loadCustomEmojiMedia(ticketId, id, signal);
   let reply = $state("");
-  let replyImage = $state<File | null>(null);
+  let replyImages = $state<File[]>([]);
   let messagesScrollEl = $state<HTMLElement | null>(null);
-  let lastMessageKey = $state("");
   let replyDraftKey = $state("");
   let viewportHeight = $state("100dvh");
   let viewportTop = $state("0px");
 
-  onMount(() => {
-    const viewport = window.visualViewport;
-    const syncViewport = () => {
-      viewportHeight = `${viewport?.height ?? window.innerHeight}px`;
-      viewportTop = `${viewport?.offsetTop ?? 0}px`;
-    };
-    syncViewport();
-    viewport?.addEventListener("resize", syncViewport);
-    viewport?.addEventListener("scroll", syncViewport);
-    window.addEventListener("resize", syncViewport);
-    return () => {
-      viewport?.removeEventListener("resize", syncViewport);
-      viewport?.removeEventListener("scroll", syncViewport);
-      window.removeEventListener("resize", syncViewport);
-    };
-  });
+  onMount(() =>
+    observeVisualViewport(({ height, top }) => {
+      viewportHeight = `${height}px`;
+      viewportTop = `${top}px`;
+    })
+  );
 
   const labels = $derived(webappRichTextLabels(t));
   const imageLabels = $derived({
@@ -90,6 +88,8 @@
     invalidType: t("wa_message_image_invalid_type"),
     tooLarge: t("wa_message_image_too_large"),
     previewAlt: t("wa_message_image_preview_alt"),
+    tooMany: t("wa_support_images_too_many"),
+    totalTooLarge: t("wa_support_images_too_large"),
   });
   const imageViewerLabels = $derived({
     open: t("wa_image_viewer_open", {}, "Open image"),
@@ -104,10 +104,7 @@
   const detailLoading = $derived(supportStore.detailLoading);
   const sending = $derived(supportStore.sending);
   const peerTyping = $derived(supportStore.peerTyping);
-  const visibleStatus = $derived(
-    ["resolved", "closed"].includes(String(openedTicket?.status || "")) ? "closed" : "open"
-  );
-  const closed = $derived(visibleStatus === "closed");
+  const closed = $derived(openedTicket?.status === "resolved" || openedTicket?.status === "closed");
   const ticketId = $derived(String(openedTicket?.ticket_id || ""));
   const draftScope = $derived(supportDraftScope(user));
   const nextReplyDraftKey = $derived(ticketId ? `${draftScope}:${ticketId}` : "");
@@ -126,60 +123,32 @@
     else clearSupportDraft("reply", draftScope, ticketId);
   });
 
-  async function send(body: string, image: File | null) {
+  async function send(body: string, images: File[]) {
     const currentTicketId = ticketId;
     const currentDraftScope = draftScope;
-    const sent = await supportStore.sendReply(body, image);
+    const sent = await supportStore.sendReply(body, images);
     if (!sent) return;
     if (currentTicketId) clearSupportDraft("reply", currentDraftScope, currentTicketId);
+    if (ticketId !== currentTicketId) return;
     reply = "";
-    replyImage = null;
-  }
-
-  function scrollMessagesToBottom() {
-    if (!messagesScrollEl) return;
-    const scrollEl = messagesScrollEl as HTMLElement;
-    const scroll = () => {
-      scrollEl.scrollTop = scrollEl.scrollHeight;
-    };
-    scroll();
-    requestAnimationFrame(scroll);
-    window.setTimeout(scroll, 80);
-    window.setTimeout(scroll, 180);
+    replyImages = [];
+    if (messagesScrollEl) messagesScrollEl.scrollTop = messagesScrollEl.scrollHeight;
   }
 
   function messageAuthorName(message: MessageRecord) {
+    if (message.author_role === "user") return t("wa_support_role_user");
     if (["admin", "connector"].includes(String(message.author_role || ""))) {
       return t("wa_support_role_admin");
     }
     if (message?.author_label) return message.author_label;
     if (message?.author_name) return message.author_name;
-    return message?.author_role === "user" ? t("wa_support_role_user") : "";
+    return "";
   }
 
   $effect(() => {
     const viewport = messagesScrollEl;
-    if (!viewport) return;
-    let atBottom = true;
-    const trackPosition = () => {
-      atBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 64;
-    };
-    const observer = new ResizeObserver(() => {
-      if (atBottom) viewport.scrollTop = viewport.scrollHeight;
-    });
-    observer.observe(viewport);
-    viewport.addEventListener("scroll", trackPosition, { passive: true });
-    return () => {
-      observer.disconnect();
-      viewport.removeEventListener("scroll", trackPosition);
-    };
-  });
-
-  $effect(() => {
-    const nextKey = `${openedTicket?.ticket_id || ""}:${messages.length}:${messages.at(-1)?.message_id || ""}`;
-    if (!messagesScrollEl || nextKey === lastMessageKey) return;
-    lastMessageKey = nextKey;
-    void tick().then(scrollMessagesToBottom);
+    if (!viewport || !ticketId) return;
+    return followTicketMessages(viewport);
   });
 </script>
 
@@ -232,7 +201,10 @@
     </Card>
   {:else if !openedTicket}
     <Card class="support-ticket-card support-ticket-state-card">
-      <div class="empty-card">{t("wa_support_not_found")}</div>
+      <ScreenHeading
+        title={t("wa_support_not_found")}
+        back={{ label: t("wa_back"), onclick: () => supportStore.closeTicketView() }}
+      />
     </Card>
   {:else}
     <Card class="support-ticket-card">
@@ -250,16 +222,10 @@
 
         <div class="ticket-detail-title">
           <h1 title={openedTicket.subject}>{openedTicket.subject}</h1>
-          <small>{t("wa_support_ticket_number", { id: openedTicket.ticket_id })}</small>
-        </div>
-
-        <div class="ticket-badges">
-          <Badge
-            variant="outline"
-            class={`ticket-status-badge ticket-status-badge--${visibleStatus}`}
-          >
-            {t(`wa_support_status_${visibleStatus}`)}
-          </Badge>
+          <div class="ticket-detail-meta">
+            <small>{t("wa_support_ticket_number", { id: openedTicket.ticket_id })}</small>
+            <TicketStatusBadge status={openedTicket.status} {t} />
+          </div>
         </div>
       </header>
     </Card>
@@ -274,10 +240,11 @@
           {#if messages.length}
             {#each messages as message, index (`${ticketId}:${message.message_id ?? index}`)}
               <TicketMessageBubble
+                {locale}
                 role={message.author_role}
                 body={message.body}
                 bodyFormat={message.body_format}
-                imageUrl={message.image_id ? supportMessageImageUrl(message.image_id) : ""}
+                imageUrls={supportMessageImageUrls(message)}
                 loadImage={supportStore.loadImage}
                 {loadCustomEmojiMedia}
                 buttons={message.buttons}
@@ -286,6 +253,7 @@
                 supportBrand={brand}
                 {imageViewerLabels}
                 {userAvatarUrl}
+                {userAvatarFallbackUrl}
                 {userInitials}
                 authorName={messageAuthorName(message)}
                 readByUserAt={message.read_by_user_at}
@@ -311,7 +279,7 @@
       {:else}
         <TicketComposer
           bind:value={reply}
-          bind:image={replyImage}
+          bind:images={replyImages}
           {labels}
           {imageLabels}
           maxLength={maxBodyLength}
@@ -325,3 +293,13 @@
     </Card>
   {/if}
 </main>
+
+<style>
+  .ticket-detail-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    margin-top: 4px;
+  }
+</style>

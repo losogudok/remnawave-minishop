@@ -39,10 +39,17 @@ from .chain_0107_cleaned_trial_history import CHAIN_0107_CLEANED_TRIAL_HISTORY
 from .chain_0108_telegram_observations import CHAIN_0108_TELEGRAM_OBSERVATIONS
 from .chain_0109_subscription_days_payments import CHAIN_0109_SUBSCRIPTION_DAYS_PAYMENTS
 from .chain_0110_push_notification_preference import CHAIN_0110_PUSH_NOTIFICATION_PREFERENCE
+from .chain_0110_telegram_birthdays import CHAIN_0110_TELEGRAM_BIRTHDAYS
 from .chain_0111_broadcast_channel_destinations import (
     CHAIN_0111_BROADCAST_CHANNEL_DESTINATIONS,
 )
+from .chain_0111_payment_provider_method import CHAIN_0111_PAYMENT_PROVIDER_METHOD
+from .chain_0112_payment_provider_fee_amount import CHAIN_0112_PAYMENT_PROVIDER_FEE_AMOUNT
 from .chain_0112_setup_rewards import CHAIN_0112_SETUP_REWARDS
+from .chain_0113_promo_subscription_restrictions import CHAIN_0113_PROMO_SUBSCRIPTION_RESTRICTIONS
+from .chain_0114_support_message_images import CHAIN_0114_SUPPORT_MESSAGE_IMAGES
+from .chain_0115_broadcast_audiences import CHAIN_0115_BROADCAST_AUDIENCES
+from .chain_0116_grant_balance_renewal import CHAIN_0116_GRANT_BALANCE_RENEWAL
 from .engine import Migration
 
 MIGRATIONS: list[Migration] = [
@@ -85,4 +92,11 @@ MIGRATIONS: list[Migration] = [
     *CHAIN_0110_PUSH_NOTIFICATION_PREFERENCE,
     *CHAIN_0111_BROADCAST_CHANNEL_DESTINATIONS,
     *CHAIN_0112_SETUP_REWARDS,
+    *CHAIN_0110_TELEGRAM_BIRTHDAYS,
+    *CHAIN_0111_PAYMENT_PROVIDER_METHOD,
+    *CHAIN_0112_PAYMENT_PROVIDER_FEE_AMOUNT,
+    *CHAIN_0113_PROMO_SUBSCRIPTION_RESTRICTIONS,
+    *CHAIN_0114_SUPPORT_MESSAGE_IMAGES,
+    *CHAIN_0115_BROADCAST_AUDIENCES,
+    *CHAIN_0116_GRANT_BALANCE_RENEWAL,
 ]

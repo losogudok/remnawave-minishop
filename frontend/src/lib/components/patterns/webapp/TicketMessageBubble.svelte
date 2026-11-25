@@ -1,6 +1,7 @@
 <script lang="ts">
   import BrandMark from "$lib/webapp/BrandMark.svelte";
-  import { ImageViewer } from "$components/ui/index.js";
+  import AvatarImage from "./AvatarImage.svelte";
+  import TicketMessageImage from "./TicketMessageImage.svelte";
   import {
     Check,
     CheckCheck,
@@ -13,6 +14,7 @@
   import { customEmojiPreviews } from "$lib/richtext/customEmojiPreview";
   import type { CustomEmojiMediaLoader } from "$lib/richtext/types";
   import EmojiGlyph from "$lib/telegramEmoji/EmojiGlyph.svelte";
+  import { formatTicketTime } from "$lib/ticketTime";
 
   import type { TicketMessageButtonLike } from "./types.js";
 
@@ -29,14 +31,16 @@
     role?: string;
     body?: string;
     bodyFormat?: string;
-    imageUrl?: string;
+    imageUrls?: string[];
     loadImage?: (url: string) => Promise<Blob>;
     loadCustomEmojiMedia?: CustomEmojiMediaLoader;
     buttons?: TicketMessageButtonLike[];
     createdAt?: string;
+    locale?: string;
     isInternalNote?: boolean;
     perspective?: "admin" | "user";
     userAvatarUrl?: string;
+    userAvatarFallbackUrl?: string;
     userInitials?: string;
     authorName?: string;
     readByUserAt?: string | null;
@@ -50,14 +54,16 @@
     role = "user",
     body = "",
     bodyFormat = "text",
-    imageUrl = "",
+    imageUrls = [],
     loadImage = undefined,
     loadCustomEmojiMedia = undefined,
     buttons = [],
     createdAt = "",
+    locale = "ru",
     isInternalNote = false,
     perspective = "user",
     userAvatarUrl = "",
+    userAvatarFallbackUrl = "",
     userInitials = "",
     authorName = "",
     readByUserAt = null,
@@ -85,7 +91,7 @@
       ? [authorName, t("wa_support_internal_note", {}, "Internal note")].filter(Boolean).join(" / ")
       : authorName || t(`wa_support_role_${messageRole}`, {}, messageRole)
   );
-  const timeLabel = $derived(formatTime(createdAt));
+  const timeLabel = $derived(formatTicketTime(createdAt, locale));
   // Built from the parsed structure, never from the raw string: only the tags
   // the whitelist knows can reach the DOM, and bare URLs become tappable.
   const bodyHtml = $derived(
@@ -103,50 +109,6 @@
   const receiptLabel = $derived(
     t(messageRead ? "wa_support_message_read" : "wa_support_message_sent")
   );
-  let resolvedImageUrl = $state("");
-  let imageLoadFailed = $state(false);
-  let imageViewerOpen = $state(false);
-
-  $effect(() => {
-    const source = imageUrl;
-    const loader = loadImage;
-    resolvedImageUrl = "";
-    imageLoadFailed = false;
-    imageViewerOpen = false;
-    if (!source) return;
-    if (!loader) {
-      resolvedImageUrl = source;
-      return;
-    }
-
-    let active = true;
-    let objectUrl = "";
-    void loader(source)
-      .then((blob) => {
-        if (!active) return;
-        objectUrl = URL.createObjectURL(blob);
-        resolvedImageUrl = objectUrl;
-      })
-      .catch(() => {
-        if (active) imageLoadFailed = true;
-      });
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  });
-
-  function formatTime(value: string): string {
-    if (!value) return "";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-    return date.toLocaleString(undefined, {
-      day: "2-digit",
-      month: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
 </script>
 
 <article
@@ -160,14 +122,18 @@
       <Lock size={15} />
     {:else if showSupportAvatar}
       <BrandMark brand={supportBrand} size="sm" />
-    {:else if showUserAvatar && userAvatarUrl}
-      <img src={userAvatarUrl} alt="" loading="lazy" referrerpolicy="no-referrer" />
-    {:else if showUserAvatar && userInitials}
-      <strong>{userInitials}</strong>
+    {:else if showUserAvatar}
+      <AvatarImage src={userAvatarUrl} fallbackSrc={userAvatarFallbackUrl}>
+        {#snippet placeholder()}
+          {#if userInitials}
+            <strong>{userInitials}</strong>
+          {:else}
+            <UserRound size={15} />
+          {/if}
+        {/snippet}
+      </AvatarImage>
     {:else if messageRole === "admin"}
       <LifeBuoy size={15} />
-    {:else if messageRole === "user"}
-      <UserRound size={15} />
     {:else}
       <MessageSquare size={15} />
     {/if}
@@ -192,24 +158,12 @@
     </div>
 
     <div class="ticket-message-bubble">
-      {#if resolvedImageUrl}
-        <button
-          class="ticket-message-image-trigger"
-          type="button"
-          aria-label={imageViewerLabels.open}
-          onclick={() => (imageViewerOpen = true)}
-        >
-          <img
-            class="ticket-message-image"
-            src={resolvedImageUrl}
-            alt={t("wa_message_image_alt", {}, "Attached image")}
-            loading="lazy"
-          />
-        </button>
-      {:else if imageLoadFailed}
-        <span class="ticket-message-image-error" role="alert">
-          {t("wa_message_image_load_failed", {}, "The attached image could not be loaded")}
-        </span>
+      {#if imageUrls.length}
+        <div class="ticket-message-images" class:is-gallery={imageUrls.length > 1}>
+          {#each imageUrls as imageUrl (imageUrl)}
+            <TicketMessageImage {imageUrl} {loadImage} {imageViewerLabels} {t} />
+          {/each}
+        </div>
       {/if}
       {#if bodyHtml}
         <div
@@ -249,19 +203,34 @@
   </div>
 </article>
 
-<ImageViewer
-  open={imageViewerOpen}
-  src={resolvedImageUrl}
-  alt={t("wa_message_image_alt", {}, "Attached image")}
-  title={imageViewerLabels.title}
-  closeLabel={imageViewerLabels.close}
-  zoomInLabel={imageViewerLabels.zoomIn}
-  zoomOutLabel={imageViewerLabels.zoomOut}
-  resetLabel={imageViewerLabels.reset}
-  onclose={() => (imageViewerOpen = false)}
-/>
-
 <style>
+  .ticket-message-images {
+    margin-bottom: 6px;
+  }
+
+  .ticket-message-images:last-child {
+    margin-bottom: 0;
+  }
+
+  .ticket-message-images.is-gallery {
+    width: min(360px, 58vw);
+    max-width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .is-gallery :global(.ticket-message-image-trigger) {
+    width: 100%;
+    margin: 0;
+  }
+
+  .is-gallery :global(.ticket-message-image) {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+  }
+
   .ticket-button-icon {
     display: inline-flex;
     margin-inline-end: 4px;
