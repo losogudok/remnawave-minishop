@@ -160,9 +160,10 @@
   .install-gallery {
     --gallery-gutter: clamp(10px, 4%, 18px);
     --slide-width: min(70%, 320px);
+    container: install-gallery / inline-size;
     display: grid;
     gap: 16px;
-    width: min(100%, 460px);
+    width: 100%;
     min-width: 0;
     margin-inline: auto;
     padding-block: 16px 10px;
@@ -271,6 +272,17 @@
     box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 14%, transparent);
     opacity: 1;
     cursor: zoom-in;
+  }
+
+  @container install-gallery (min-width: 600px) {
+    .gallery-viewport {
+      padding-inline: var(--gallery-gutter) calc(100% - var(--slide-width) - var(--gallery-gutter));
+      scroll-padding-inline-start: var(--gallery-gutter);
+    }
+
+    .install-gallery-item {
+      scroll-snap-align: start;
+    }
   }
 
   .install-gallery-item:focus-visible {

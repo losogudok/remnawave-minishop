@@ -74,18 +74,33 @@ for (const width of [1280, 390]) {
         "aria-current",
         "step"
       );
+      await expect(gallery).toHaveCSS("opacity", "1");
+
+      const viewport = gallery.locator(".gallery-viewport");
+      const galleryBox = (await gallery.boundingBox())!;
+      const parentBox = (await gallery.locator("..").boundingBox())!;
+      expect(Math.abs(galleryBox.width - parentBox.width)).toBeLessThan(2);
+      const viewportBox = (await viewport.boundingBox())!;
+      const firstSlideBox = (await gallery.locator(".install-gallery-item").first().boundingBox())!;
+      const gutter = await gallery.evaluate((element) =>
+        parseFloat(getComputedStyle(element.querySelector(".gallery-header")!).paddingLeft)
+      );
+      if (galleryBox.width >= 600) {
+        expect(Math.abs(firstSlideBox.x - viewportBox.x - gutter)).toBeLessThan(2);
+      }
 
       await next.click();
       await expect(status).toHaveText("Шаг 2 из 3");
       await expect(gallery.locator(".gallery-progress .filled")).toHaveCount(2);
       const activeSlide = gallery.getByRole("button", { name: "Открыть скриншот 2" });
-      const viewport = gallery.locator(".gallery-viewport");
-      const viewportBox = (await viewport.boundingBox())!;
       const slideBox = (await activeSlide.boundingBox())!;
-      expect(
-        Math.abs(slideBox.x + slideBox.width / 2 - viewportBox.x - viewportBox.width / 2)
-      ).toBeLessThan(2);
-      await expect(gallery).toHaveCSS("opacity", "1");
+      if (galleryBox.width >= 600) {
+        expect(Math.abs(slideBox.x - viewportBox.x - gutter)).toBeLessThan(2);
+      } else {
+        expect(
+          Math.abs(slideBox.x + slideBox.width / 2 - viewportBox.x - viewportBox.width / 2)
+        ).toBeLessThan(2);
+      }
       await gallery.screenshot({ path: testInfo.outputPath("screenshot-steps.png") });
 
       await activeSlide.press("Enter");
