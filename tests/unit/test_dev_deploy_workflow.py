@@ -20,6 +20,49 @@ def _job(workflow: str, name: str) -> str:
     return match.group(1)
 
 
+_PERMISSION_RANK = {"none": 0, "read": 1, "write": 2}
+
+
+def _permissions_block(text: str, indent: str) -> dict[str, str]:
+    match = re.search(
+        rf"^{indent}permissions:\n((?:{indent}  [a-z-]+: \S+\n)+)",
+        text,
+        re.M,
+    )
+    if match is None:
+        return {}
+    return dict(re.findall(rf"^{indent}  ([a-z-]+): (\S+)$", match.group(1), re.M))
+
+
+def _required_callee_permissions(workflow: str) -> dict[str, str]:
+    required = _permissions_block(workflow, "")
+    for match in re.finditer(r"^  ([A-Za-z0-9_-]+):\n(.*?)(?=^  \S|\Z)", workflow, re.M | re.S):
+        for scope, level in _permissions_block(match.group(2), "    ").items():
+            if _PERMISSION_RANK[level] > _PERMISSION_RANK.get(required.get(scope, "none"), 0):
+                required[scope] = level
+    return required
+
+
+def test_reusable_workflow_callers_grant_callee_permissions() -> None:
+    for caller_path in sorted(WORKFLOWS.glob("*.yml")):
+        caller = caller_path.read_text(encoding="utf-8")
+        caller_top = _permissions_block(caller, "")
+        for match in re.finditer(r"^  ([A-Za-z0-9_-]+):\n(.*?)(?=^  \S|\Z)", caller, re.M | re.S):
+            job_name, job_body = match.group(1), match.group(2)
+            uses_match = re.search(r"^    uses: \./\.github/workflows/(\S+)$", job_body, re.M)
+            if uses_match is None:
+                continue
+            callee_name = uses_match.group(1)
+            callee = (WORKFLOWS / callee_name).read_text(encoding="utf-8")
+            granted = _permissions_block(job_body, "    ") or caller_top
+            for scope, needed in _required_callee_permissions(callee).items():
+                actual = granted.get(scope, "none")
+                assert _PERMISSION_RANK[actual] >= _PERMISSION_RANK[needed], (
+                    f"{caller_path.name} job '{job_name}' grants '{scope}: {actual}', "
+                    f"but {callee_name} requires '{scope}: {needed}'"
+                )
+
+
 def test_dev_candidates_start_early_but_promotion_and_deploy_wait_for_gates() -> None:
     workflow = (WORKFLOWS / "docker-dev.yml").read_text()
     publish = _job(workflow, "publish")

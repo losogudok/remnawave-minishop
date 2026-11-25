@@ -30,6 +30,11 @@ jobs:
     uses: ./.github/workflows/security.yml
 
   publish:
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+      packages: write
     uses: ./.github/workflows/_docker-publish-ghcr.yml
     with:
       source_ref: ${{ github.sha }}
