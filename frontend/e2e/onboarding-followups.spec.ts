@@ -134,7 +134,7 @@ for (const width of [1440, 390]) {
     });
     await expect(card).toHaveCount(0);
     await shortcut.click();
-    await expect(card.locator(".setup-offer")).toContainText("5");
+    await expect(card.locator(".setup-offer")).toHaveCount(0);
     await expect(dialog).toHaveCount(0);
     await install.click();
     await expect(dialog.locator(".pwa-install-action")).toBeVisible();
@@ -155,7 +155,7 @@ for (const width of [1440, 390]) {
     );
     const settingsCard = page.locator(".account-setup-card");
     await expect(settingsCard).toBeVisible();
-    await expect(settingsCard.locator(".setup-offer")).toContainText("5");
+    await expect(settingsCard.locator(".setup-offer")).toHaveCount(0);
     await expect(settingsCard.locator(".push-notifications-card")).toBeVisible();
     await expect(settingsCard.locator('[data-webapp-action="setup-dismiss"]')).toHaveCount(0);
     await expect(dialog).toHaveCount(0);

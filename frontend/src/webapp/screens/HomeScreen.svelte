@@ -904,7 +904,6 @@
         {api}
         preferences={notificationPreferences}
         {onPreferencesSaved}
-        activeAccess={subscription.active}
         {t}
       />
     {/if}

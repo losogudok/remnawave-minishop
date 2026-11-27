@@ -81,7 +81,9 @@ async def _grant(
         operation.state = "succeeded"
         operation.result_json = json_object({"applied": True, "code": str(code.code)})
     else:
-        active = await subscription_dal.get_active_subscription_by_user_id(session, user_id)
+        active = await subscription_dal.get_active_subscription_by_user_id(
+            session, user_id, fresh=True
+        )
         if active is None or utc(active.end_date) <= datetime.now(UTC):
             raise ExtensionError("extension_reward_requires_subscription")
         subscription = await session.scalar(

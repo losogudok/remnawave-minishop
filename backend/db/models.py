@@ -20,7 +20,6 @@ from sqlalchemy.sql import func
 
 from db import cleaned_trial_models as cleaned_trial_models
 from db import provider_mandate_models, subscription_notification_models
-from db import setup_reward_models as setup_reward_models
 from db import web_push_models as web_push_models
 from db.base import Base
 from db.subscription_renewal_columns import SubscriptionRenewalColumns

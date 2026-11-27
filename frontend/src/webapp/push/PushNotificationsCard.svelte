@@ -44,8 +44,6 @@
     initialState?: WebPushUiState;
     browserStatus?: BrowserPushStatus | null;
     loadOnMount?: boolean;
-    onEnabled?: () => void | Promise<void>;
-    rewardDays?: number;
   };
 
   let {
@@ -58,8 +56,6 @@
     initialState = undefined,
     browserStatus = $bindable(null),
     loadOnMount = true,
-    onEnabled = undefined,
-    rewardDays = 0,
   }: Props = $props();
 
   const status = $derived(browserStatus?.status ?? initialStatus);
@@ -154,7 +150,6 @@
         return;
       }
       updateStatus(result.status ?? status, true);
-      await onEnabled?.();
     } catch {
       message = t("wa_push_enable_failed", {}, "Could not enable notifications.");
       messageIsError = true;
@@ -309,12 +304,6 @@
     {/if}
   </div>
 
-  {#if rewardDays > 0 && uiState && ["default", "disabled", "enabled"].includes(uiState)}
-    <p class="push-notifications-card__reward">
-      {t("wa_setup_push_offer", { days: rewardDays })}
-    </p>
-  {/if}
-
   {#if loading}
     <div class="push-notifications-card__loading" role="status" aria-label={t("wa_loading")}>
       <Skeleton variant="line" width="85%" />
@@ -461,13 +450,6 @@
     color: var(--muted);
     font-size: 12px;
     line-height: 1.45;
-  }
-
-  .push-notifications-card__reward {
-    margin: 0;
-    color: var(--accent);
-    font-size: 12px;
-    line-height: 1.4;
   }
 
   .push-notifications-card__icon {

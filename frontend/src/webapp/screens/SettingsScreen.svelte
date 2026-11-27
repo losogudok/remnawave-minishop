@@ -97,7 +97,6 @@
     api?: ApiClient["api"];
     preferences?: NotificationPreferences;
     onPreferencesSaved?: (preferences: NotificationPreferences) => void;
-    activeAccess?: boolean;
     setLanguageMenuOpen?: (open: boolean) => void;
     setThemePreference?: StringAction;
     t?: Translate;
@@ -154,7 +153,6 @@
     api = undefined,
     preferences = normalizeNotificationPreferences(null),
     onPreferencesSaved = () => {},
-    activeAccess = false,
     setLanguageMenuOpen = () => {},
     setThemePreference = () => {},
     t = (key) => key,
@@ -186,7 +184,7 @@
 
 <main class="content with-nav">
   {#if api}
-    <AccountSetupCard {api} {preferences} {t} {activeAccess} {onPreferencesSaved} />
+    <AccountSetupCard {api} {preferences} {t} {onPreferencesSaved} />
   {/if}
   <UserExtensionPoint target="user.settings.profile">
     <Card class="settings-profile">

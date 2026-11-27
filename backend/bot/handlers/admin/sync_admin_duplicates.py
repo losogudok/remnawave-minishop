@@ -229,6 +229,7 @@ async def _absorb_duplicate_panel_identity(
             session,
             int(existing_user.user_id),
             keep_panel_uuid,
+            fresh=True,
         )
     duplicate_sub = await subscription_dal.get_subscription_by_panel_subscription_uuid(
         session, duplicate_subscription_uuid

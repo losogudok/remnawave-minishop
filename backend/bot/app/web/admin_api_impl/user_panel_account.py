@@ -24,6 +24,8 @@ async def linked_panel_account(
         return _error(404, "not_found")
     reference = str(user.panel_user_uuid or "").strip()
     if not reference:
-        active = await subscription_dal.get_active_subscription_by_user_id(session, user_id)
+        active = await subscription_dal.get_active_subscription_by_user_id(
+            session, user_id, fresh=lock
+        )
         reference = str(getattr(active, "panel_user_uuid", None) or "").strip()
     return reference or _error(404, "no_panel_user")

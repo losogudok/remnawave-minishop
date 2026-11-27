@@ -373,6 +373,7 @@ async def admin_user_premium_override_route(request: web.Request) -> web.Respons
         active.premium_bonus_bytes = int(bonus_bytes)
         if active.premium_unlimited_override:
             active.premium_is_limited = False
+        await session.flush()
 
         if subscription_service is not None:
             synced = await subscription_service.sync_premium_squad_access_to_panel(
@@ -435,6 +436,7 @@ async def admin_user_regular_traffic_override_route(request: web.Request) -> web
 
         active.regular_unlimited_override = bool(unlimited)
         active.regular_bonus_bytes = int(regular_bonus_bytes)
+        await session.flush()
 
         if subscription_service is not None:
             synced = await subscription_service.sync_main_traffic_limit_to_panel(session, target_id)
@@ -624,6 +626,7 @@ async def admin_user_hwid_device_limit_route(request: web.Request) -> web.Respon
 
         active.hwid_device_limit = hwid_device_limit
         active.hwid_device_limit_is_override = hwid_device_limit is not None
+        await session.flush()
 
         effective_limit = None
         if subscription_service is not None:

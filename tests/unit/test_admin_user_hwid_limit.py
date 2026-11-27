@@ -13,6 +13,7 @@ class FakeSession:
     def __init__(self):
         self.committed = False
         self.rolled_back = False
+        self.flushed = False
         self.refreshed = None
 
     async def __aenter__(self):
@@ -20,6 +21,9 @@ class FakeSession:
 
     async def __aexit__(self, exc_type, exc, tb):
         return False
+
+    async def flush(self):
+        self.flushed = True
 
     async def commit(self):
         self.committed = True

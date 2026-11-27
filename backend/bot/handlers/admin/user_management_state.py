@@ -606,6 +606,7 @@ async def process_premium_override_bonus_handler(
 
         active_sub.premium_unlimited_override = False
         active_sub.premium_bonus_bytes = max(0, bonus_bytes)
+        await session.flush()
 
         synced = await subscription_service.sync_premium_squad_access_to_panel(
             session, target_user_id
@@ -726,6 +727,7 @@ async def process_hwid_device_limit_handler(
 
         active_sub.hwid_device_limit = hwid_device_limit
         active_sub.hwid_device_limit_is_override = True
+        await session.flush()
         effective_limit = await subscription_service.sync_hwid_device_limit_to_panel(
             session, target_user_id
         )

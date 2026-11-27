@@ -649,7 +649,6 @@
         {api}
         preferences={normalizeNotificationPreferences(user.notification_preferences)}
         onPreferencesSaved={(next) => (user.notification_preferences = next)}
-        activeAccess={Boolean(subscription?.active)}
         qrLoginEnabled={(
           (appSettings.auth_providers || appSettings.authProviders || []) as string[]
         ).includes("qr")}

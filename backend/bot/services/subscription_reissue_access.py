@@ -64,7 +64,7 @@ async def reissue_subscription_access(
     """A retry observes the current panel UUID before attempting another revoke."""
     await user_dal.lock_user_by_id(session, user_id)
     subscription = await subscription_dal.get_active_subscription_by_user_id(
-        session, user_id, panel_user_uuid
+        session, user_id, panel_user_uuid, fresh=True
     )
     if subscription is None:
         return None, None

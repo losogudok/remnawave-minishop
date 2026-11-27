@@ -68,17 +68,26 @@ def _with_tariff_binding_metadata(
 
 
 async def get_active_subscription_by_user_id(
-    session: AsyncSession, user_id: int, panel_user_uuid: str | None = None
+    session: AsyncSession,
+    user_id: int,
+    panel_user_uuid: str | None = None,
+    *,
+    fresh: bool = False,
 ) -> Subscription | None:
-    stmt = (
-        select(Subscription)
-        .where(
-            Subscription.user_id == user_id,
-            Subscription.is_active == True,
-            Subscription.end_date > datetime.now(UTC),
-        )
-        .execution_options(populate_existing=True)
+    """Return the user's active subscription.
+
+    Pass ``fresh=True`` after waiting on a row lock when the session may already
+    hold a pre-lock copy of the subscription in its identity map. Unconditional
+    ``populate_existing=True`` would silently discard unflushed ORM mutations in
+    the same ``autoflush=False`` session.
+    """
+    stmt = select(Subscription).where(
+        Subscription.user_id == user_id,
+        Subscription.is_active == True,
+        Subscription.end_date > datetime.now(UTC),
     )
+    if fresh:
+        stmt = stmt.execution_options(populate_existing=True)
     if panel_user_uuid:
         stmt = stmt.where(Subscription.panel_user_uuid == panel_user_uuid)
     stmt = stmt.order_by(Subscription.end_date.desc()).limit(1)
@@ -133,7 +142,6 @@ async def get_subscription_by_id_for_update(
         .limit(1)
         .execution_options(populate_existing=True)
         .with_for_update()
-        .execution_options(populate_existing=True)
     )
     result = await session.execute(stmt)
     return result.scalars().first()

@@ -38,7 +38,6 @@ from .activation_dispatch import activate_non_period_purchase
 from .activation_rewards import (
     activation_checkout_matches,
     activation_reserved_until,
-    pending_activation_rewards,
 )
 from .activation_topups import record_activation_topups
 from .sale_mode import parse_sale_mode_context
@@ -213,18 +212,14 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             )
         else:
             current_active_sub = await subscription_dal.get_active_subscription_by_user_id(
-                session, user_id
+                session, user_id, fresh=True
             )
-        pending_values, pending_reward_until = await pending_activation_rewards(
-            session, user_id, current_active_sub
-        )
         current_active_is_trial = entitlement_helpers.subscription_is_trial(current_active_sub)
         if not activation_checkout_matches(
             self,
             payment,
             current_active_sub,
             checkout_grants,
-            pending_values,
             payment_db_id=payment_db_id,
             allow_subscription_end_change=allow_subscription_end_change,
         ):
@@ -282,7 +277,7 @@ class SubscriptionLifecycleActivationMixin(SubscriptionServiceMixinContract):
             if current_panel_limit is None:
                 current_panel_limit = getattr(current_active_sub, "traffic_limit_bytes", None)
         activation_at = datetime.now(UTC)
-        reserved_until = activation_reserved_until(db_user, pending_reward_until)
+        reserved_until = activation_reserved_until(db_user)
         # Keep the paid period boundary separate from immutable entitlement history.
         period_start_date = paid_subscription_period_start(
             activation_at,
